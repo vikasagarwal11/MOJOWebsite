@@ -199,8 +199,7 @@ const Register: React.FC = () => {
         </div>
       </div>
 
-      {/* Hidden reCAPTCHA container that AuthContext uses */}
-      <div id="recaptcha-container"></div>
+
     </div>
   );
 };
