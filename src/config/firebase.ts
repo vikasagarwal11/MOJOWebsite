@@ -1,3 +1,4 @@
+// src/config/firebase.ts
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
@@ -22,12 +23,6 @@ for (const [k, v] of Object.entries(firebaseConfig)) {
 
 // Flag to control local emulators (set VITE_USE_EMULATORS=true in .env.local)
 export const USING_EMULATORS = import.meta.env.VITE_USE_EMULATORS === 'true';
-// src/utils/firestore.ts
-export function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(obj).filter(([, v]) => v !== undefined)
-  ) as Partial<T>;
-}
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
@@ -35,7 +30,7 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// Connect to emulators in dev (no reCAPTCHA required for phone auth)
+// Connect to emulators in dev (Auth emulator does not require reCAPTCHA)
 if (USING_EMULATORS) {
   try {
     connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
