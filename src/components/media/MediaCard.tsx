@@ -1,51 +1,196 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Heart, MessageCircle, Tag, Play } from 'lucide-react';
 import { format } from 'date-fns';
 import { MediaFile } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-import { analytics } from '../../config/firebase';
+import { analytics, perf } from '../../config/firebase';
 import { logEvent } from 'firebase/analytics';
+import { trace } from 'firebase/performance';
 
 interface MediaCardProps {
   media: MediaFile;
 }
+
+/** Analytics helper */
 function log(name: string, params?: Record<string, any>) {
-  try { if (analytics) logEvent(analytics, name, params); } catch {}
+  try {
+    if (analytics) logEvent(analytics, name, params);
+  } catch {}
 }
+
+/** ---- Performance: first media tile paint (one-time) ---- */
+let mediaFirstPaintDone = false;
+function markMediaFirstPaintOnce() {
+  try {
+    if (mediaFirstPaintDone || !perf) return;
+    const t = trace(perf, 'media_first_paint');
+    // This is a point-in-time mark; if you want a duration, start earlier in the page and stop here.
+    t.start();
+    t.stop();
+    mediaFirstPaintDone = true;
+  } catch {}
+}
+
+/** ---- HLS loader (on-demand, non-Safari) ---- */
+async function ensureHls(video: HTMLVideoElement, src: string) {
+  // If the browser natively supports HLS (Safari), just set src
+  if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    if (video.src !== src) video.src = src;
+    return;
+  }
+  // Only spin up hls.js for .m3u8 streams
+  if (!/\.m3u8($|\?)/i.test(src)) {
+    if (video.src !== src) video.src = src;
+    return;
+  }
+  // Lazy import hls.js
+  const Hls = (await import('hls.js')).default as any;
+  const hls = new Hls();
+  hls.loadSource(src);
+  hls.attachMedia(video);
+}
+
+/** ---- Component ---- */
 const MediaCard: React.FC<MediaCardProps> = ({ media }) => {
   const { currentUser } = useAuth();
   const [isLiked, setIsLiked] = useState(
     currentUser ? media.likes.includes(currentUser.id) : false
   );
   const [showComments, setShowComments] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [hasLoggedImpression, setHasLoggedImpression] = useState(false);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  const canLike = !!currentUser;
+  const isVideo = media.type === 'video';
+
+  // Decide which source to play (prefer HLS if present)
+  const videoSrc = useMemo<string>(() => {
+    // If you add an `hlsUrl` in your metadata later, prefer it here:
+    // return media.hlsUrl || media.url;
+    return media.url;
+  }, [media.url]);
+
+  /** IntersectionObserver: log impressions and auto-pause */
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        const ratio = entry.intersectionRatio;
+
+        // First impression (>= 0.5 visible)
+        if (!hasLoggedImpression && ratio >= 0.5) {
+          log('media_impression', { id: media.id, type: media.type, public: (media as any).isPublic });
+          setHasLoggedImpression(true);
+        }
+
+        // Auto-pause when mostly off-screen
+        const v = videoRef.current;
+        if (v) {
+          if (!v.paused && ratio < 0.2) {
+            v.pause();
+            setIsPlaying(false);
+          }
+        }
+      },
+      { root: null, threshold: [0, 0.2, 0.5, 1] }
+    );
+
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [media.id, media.type, hasLoggedImpression]);
+
+  /** Like handler (UI only here; persist in Firestore in your parent if desired) */
   const handleLike = () => {
-    if (!currentUser) return;
-    setIsLiked(!isLiked);
-    // Here you would update the database
+    if (!canLike) return;
+    const next = !isLiked;
+    setIsLiked(next);
+    log('media_like', { id: media.id, liked: next });
+    // TODO: persist like (increment a counter or update an array) in your write path
+  };
+
+  /** Play video on demand, lazy-load HLS if needed */
+  const handlePlay = async () => {
+    if (!videoRef.current) return;
+    const v = videoRef.current;
+
+    try {
+      await ensureHls(v, videoSrc);
+      // Attributes to maximize inline playback
+      v.muted = true;
+      v.playsInline = true;
+      // Safari requires calling play() after attributes set
+      await v.play();
+      setIsPlaying(true);
+      log('media_play', { id: media.id });
+
+      // When the first visible tile is fully ready (poster loaded or first frame), mark perf
+      markMediaFirstPaintOnce();
+    } catch (e) {
+      // Could not play (autoplay policies, etc.)
+      console.warn('Video play failed:', e);
+    }
+  };
+
+  /** If an image (or poster thumb) loads and we haven't marked first paint yet, mark it */
+  const onImageLoaded = () => {
+    markMediaFirstPaintOnce();
   };
 
   return (
-    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group">
+    <div
+      ref={containerRef}
+      className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group"
+    >
       {/* Media Content */}
       <div className="relative aspect-square overflow-hidden">
-        {media.type === 'video' ? (
+        {isVideo ? (
+          /* We render a lightweight poster first; only load the video stream on click */
           <div className="relative">
+            {/* Poster / thumb */}
             <img
+              ref={imgRef}
               src={media.thumbnailUrl || media.url}
-              alt={media.title}
+              alt={media.title || 'Video'}
+              loading="lazy"
+              onLoad={onImageLoaded}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
-            <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-              <div className="w-16 h-16 bg-white/90 rounded-full flex items-center justify-center">
+            {/* Play overlay */}
+            <button
+              type="button"
+              aria-label="Play video"
+              onClick={handlePlay}
+              className="absolute inset-0 bg-black/20 flex items-center justify-center focus:outline-none"
+            >
+              <div className="w-16 h-16 bg-white/90 rounded-full flex items-center justify-center ring-1 ring-purple-200 shadow">
                 <Play className="w-8 h-8 text-purple-600 ml-1" />
               </div>
-            </div>
+            </button>
+            {/* Hidden <video> tag becomes active when play is requested */}
+            <video
+              ref={videoRef}
+              // Don't set src now; ensureHls will attach src or hls instance on demand
+              poster={media.thumbnailUrl || undefined}
+              className={`absolute inset-0 w-full h-full object-cover ${isPlaying ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`}
+              controls={isPlaying}
+              playsInline
+              muted
+            />
           </div>
         ) : (
           <img
+            ref={imgRef}
             src={media.url}
-            alt={media.title}
+            alt={media.title || 'Image'}
+            loading="lazy"
+            onLoad={onImageLoaded}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
         )}
@@ -66,8 +211,8 @@ const MediaCard: React.FC<MediaCardProps> = ({ media }) => {
         <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">
           {media.title}
         </h3>
-        
-        {media.description && (
+
+        {!!media.description && (
           <p className="text-gray-600 text-sm mb-3 line-clamp-2">
             {media.description}
           </p>
@@ -75,8 +220,19 @@ const MediaCard: React.FC<MediaCardProps> = ({ media }) => {
 
         {/* Meta Info */}
         <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
-          <span>By {media.uploaderName}</span>
-          <span>{format(media.createdAt, 'MMM d, yyyy')}</span>
+          <span>By {media.uploaderName || 'Member'}</span>
+          <span>
+            {format(
+              // guard in case createdAt is a Firestore Timestamp not converted yet
+              media.createdAt instanceof Date
+                ? media.createdAt
+                : // @ts-ignore – your hook already converts; this is a safety net
+                  (typeof (media as any).createdAt?.toDate === 'function'
+                    ? (media as any).createdAt.toDate()
+                    : new Date()),
+              'MMM d, yyyy'
+            )}
+          </span>
         </div>
 
         {/* Actions */}
@@ -84,35 +240,38 @@ const MediaCard: React.FC<MediaCardProps> = ({ media }) => {
           <div className="flex items-center space-x-4">
             <button
               onClick={handleLike}
+              disabled={!canLike}
               className={`flex items-center space-x-1 transition-colors ${
                 isLiked ? 'text-red-500' : 'text-gray-500 hover:text-red-500'
-              }`}
+              } ${!canLike ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
-              <span className="text-sm">{media.likes.length}</span>
+              <span className="text-sm">{media.likes?.length ?? 0}</span>
             </button>
-            
+
             <button
-              onClick={() => setShowComments(!showComments)}
+              onClick={() => setShowComments((s) => !s)}
               className="flex items-center space-x-1 text-gray-500 hover:text-purple-600 transition-colors"
             >
               <MessageCircle className="w-5 h-5" />
-              <span className="text-sm">{media.comments.length}</span>
+              <span className="text-sm">{media.comments?.length ?? 0}</span>
             </button>
           </div>
         </div>
 
-        {/* Comments Section */}
+        {/* Comments Section (UI only; wire up submit to Firestore if desired) */}
         {showComments && (
           <div className="mt-4 pt-4 border-t border-gray-200">
             <div className="space-y-3">
-              {media.comments.map((comment) => (
+              {(media.comments || []).map((comment: any) => (
                 <div key={comment.id} className="text-sm">
-                  <span className="font-medium text-gray-900">{comment.authorName}</span>
+                  <span className="font-medium text-gray-900">
+                    {comment.authorName || 'Member'}
+                  </span>
                   <span className="text-gray-600 ml-2">{comment.content}</span>
                 </div>
               ))}
-              
+
               {currentUser && (
                 <div className="mt-3">
                   <input
