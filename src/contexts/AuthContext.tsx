@@ -26,6 +26,7 @@ import {
 import { auth, db } from '../config/firebase';
 import { User } from '../types';
 import toast from 'react-hot-toast';
+import { USING_EMULATORS } from '../config/firebase';
 
 interface AuthContextType {
   currentUser: User | null;
