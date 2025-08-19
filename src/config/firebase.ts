@@ -32,24 +32,16 @@ export const storage = getStorage(app);
 
 // Connect to emulators in dev (Auth emulator does not require reCAPTCHA)
 if (USING_EMULATORS) {
-  try {
-    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-  } catch {}
-  try {
-    connectFirestoreEmulator(db, '127.0.0.1', 8080);
-  } catch {}
-  try {
-    connectStorageEmulator(storage, '127.0.0.1', 9199);
-  } catch {}
+  try { connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true }); } catch {}
+  try { connectFirestoreEmulator(db, '127.0.0.1', 8080); } catch {}
+  try { connectStorageEmulator(storage, '127.0.0.1', 9199); } catch {}
 }
 
 export let analytics: Analytics | undefined;
 if (typeof window !== 'undefined') {
-  isSupported()
-    .then((ok) => {
-      if (ok) analytics = getAnalytics(app);
-    })
-    .catch(() => {});
+  isSupported().then(ok => {
+    if (ok) analytics = getAnalytics(app);
+  }).catch(() => {});
 }
 
 export default app;
