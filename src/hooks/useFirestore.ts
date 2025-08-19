@@ -1,9 +1,9 @@
+// src/hooks/useFirestore.ts
 import { useState, useEffect } from 'react';
 import {
   collection,
   doc,
   getDocs,
-  getDoc,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -12,25 +12,60 @@ import {
   orderBy,
   onSnapshot,
   serverTimestamp,
-  Timestamp,
+  type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
+/** Remove undefined so Firestore doesn’t throw (it rejects undefined field values). */
+function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
+/** Convert common timestamp fields (if present) to Date for UI convenience. */
+function normalizeDoc(docData: any) {
+  const d = { id: docData.id, ...docData };
+  const tsFields = ['createdAt', 'updatedAt', 'date', 'validUntil', 'startAt'];
+  for (const f of tsFields) {
+    // @ts-ignore
+    const v = d[f];
+    // Firestore Timestamp has toDate; keep JS Date as-is
+    // @ts-ignore
+    d[f] = v?.toDate?.() ? v.toDate() : v instanceof Date ? v : v;
+  }
+  return d;
+}
+
+/**
+ * Policy-aware defaults:
+ * - posts  : guests see only isPublic==true, newest first (requires composite index)
+ * - events : guests see only public==true, soonest first (requires composite index)
+ * If caller passes constraints, we respect them and DO NOT add defaults.
+ */
+function defaultConstraintsFor(collectionName: string, isAuthed: boolean): QueryConstraint[] {
+  if (isAuthed) return [];
+  if (collectionName === 'posts') {
+    // Index: isPublic ASC, createdAt DESC
+    return [where('isPublic', '==', true), orderBy('createdAt', 'desc')];
+  }
+  if (collectionName === 'events') {
+    // Index: public ASC, startAt ASC
+    return [where('public', '==', true), orderBy('startAt', 'asc')];
+  }
+  // For other collections, no default
+  return [];
+}
+
 export const useFirestore = () => {
-  // Generic function to get all documents from a collection
+  const { currentUser } = useAuth();
+
+  // ---------- Simple “get all” (no realtime) ----------
+  // Keeps your original signature; if you want defaults here later, add an optional arg.
   const getCollection = async (collectionName: string) => {
     try {
-      const querySnapshot = await getDocs(collection(db, collectionName));
-      return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        // Convert Firestore timestamps to Date objects
-        createdAt: doc.data().createdAt?.toDate?.() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate?.() || new Date(),
-        date: doc.data().date?.toDate?.() || doc.data().date,
-        validUntil: doc.data().validUntil?.toDate?.() || doc.data().validUntil,
-      }));
+      const snap = await getDocs(collection(db, collectionName));
+      return snap.docs.map(d => normalizeDoc({ id: d.id, ...d.data() }));
     } catch (error) {
       console.error(`Error getting ${collectionName}:`, error);
       toast.error(`Failed to load ${collectionName}`);
@@ -38,14 +73,16 @@ export const useFirestore = () => {
     }
   };
 
-  // Generic function to add a document
+  // ---------- Writes ----------
   const addDocument = async (collectionName: string, data: any) => {
     try {
-      const docRef = await addDoc(collection(db, collectionName), {
+      const cleaned = stripUndefined({
         ...data,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        // if caller already set createdAt/updatedAt, we leave them; otherwise set here
+        createdAt: data?.createdAt ?? serverTimestamp(),
+        updatedAt: data?.updatedAt ?? serverTimestamp(),
       });
+      const docRef = await addDoc(collection(db, collectionName), cleaned);
       toast.success('Document created successfully');
       return docRef.id;
     } catch (error) {
@@ -55,13 +92,10 @@ export const useFirestore = () => {
     }
   };
 
-  // Generic function to update a document
   const updateDocument = async (collectionName: string, docId: string, data: any) => {
     try {
-      await updateDoc(doc(db, collectionName, docId), {
-        ...data,
-        updatedAt: serverTimestamp(),
-      });
+      const cleaned = stripUndefined({ ...data, updatedAt: serverTimestamp() });
+      await updateDoc(doc(db, collectionName, docId), cleaned);
       toast.success('Document updated successfully');
     } catch (error) {
       console.error(`Error updating ${collectionName}:`, error);
@@ -70,7 +104,6 @@ export const useFirestore = () => {
     }
   };
 
-  // Generic function to delete a document
   const deleteDocument = async (collectionName: string, docId: string) => {
     try {
       await deleteDoc(doc(db, collectionName, docId));
@@ -82,32 +115,49 @@ export const useFirestore = () => {
     }
   };
 
-  // Real-time listener for a collection
-  const useRealtimeCollection = (collectionName: string, queryConstraints: any[] = []) => {
+  // ---------- Realtime ----------
+  /**
+   * Realtime listener with policy defaults.
+   * If you pass `queryConstraints`, they are used as-is.
+   * If you pass none, we apply safe defaults based on auth + collection.
+   */
+  const useRealtimeCollection = (
+    collectionName: string,
+    queryConstraints: QueryConstraint[] = []
+  ) => {
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-      const q = query(collection(db, collectionName), ...queryConstraints);
-      
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const documents = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt?.toDate?.() || new Date(),
-          updatedAt: doc.data().updatedAt?.toDate?.() || new Date(),
-          date: doc.data().date?.toDate?.() || doc.data().date,
-          validUntil: doc.data().validUntil?.toDate?.() || doc.data().validUntil,
-        }));
-        setData(documents);
-        setLoading(false);
-      }, (error) => {
-        console.error(`Error listening to ${collectionName}:`, error);
-        setLoading(false);
-      });
+      const baseRef = collection(db, collectionName);
+
+      const constraints =
+        queryConstraints.length > 0
+          ? queryConstraints
+          : defaultConstraintsFor(collectionName, !!currentUser);
+
+      const q = constraints.length ? query(baseRef, ...constraints) : query(baseRef);
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const rows = snapshot.docs.map(d => normalizeDoc({ id: d.id, ...d.data() }));
+          setData(rows);
+          setLoading(false);
+        },
+        (error) => {
+          console.error(`Error listening to ${collectionName}:`, error);
+          setLoading(false);
+          // Helpful hint for common case
+          if ((error as any)?.code === 'permission-denied' && !currentUser) {
+            toast.error('Sign in to see private items.');
+          }
+        }
+      );
 
       return () => unsubscribe();
-    }, [collectionName]);
+      // Re-subscribe when auth state, collection, or constraints change
+    }, [collectionName, currentUser?.id, currentUser?.role, JSON.stringify(queryConstraints)]);
 
     return { data, loading };
   };
