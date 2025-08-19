@@ -47,6 +47,10 @@ function hasWhereEquals(constraints: QueryConstraint[], field: string, value: an
   });
 }
 
+function hasAnyOrderBy(constraints: QueryConstraint[]) {
+  return constraints.some((c: any) => c?.type === 'orderBy');
+}
+
 function hasOrderByField(constraints: QueryConstraint[], field: string) {
   return constraints.some((c: any) => {
     if (c?.type !== 'orderBy') return false;
@@ -61,9 +65,8 @@ function hasOrderByField(constraints: QueryConstraint[], field: string) {
 
 /**
  * Enforce guest-readable queries:
- * - posts  : add where(isPublic == true); default orderBy(createdAt, desc)
- * - events : add where(public == true);   default orderBy(startAt,  asc)
- * If the caller already included the where/orderBy, we leave it alone.
+ * - posts  : add where(isPublic == true); default orderBy(createdAt, desc) only if no orderBy present
+ * - events : add where(public == true);   default orderBy(startAt,  asc)  only if no orderBy present
  */
 function enforceGuestPolicy(
   collectionName: string,
@@ -76,10 +79,14 @@ function enforceGuestPolicy(
 
   if (collectionName === 'posts') {
     if (!hasWhereEquals(out, 'isPublic', true)) out.unshift(where('isPublic', '==', true));
-    if (!hasOrderByField(out, 'createdAt')) out.push(orderBy('createdAt', 'desc'));
+    if (!hasAnyOrderBy(out) && !hasOrderByField(out, 'createdAt')) {
+      out.push(orderBy('createdAt', 'desc'));
+    }
   } else if (collectionName === 'events') {
     if (!hasWhereEquals(out, 'public', true)) out.unshift(where('public', '==', true));
-    if (!hasOrderByField(out, 'startAt')) out.push(orderBy('startAt', 'asc'));
+    if (!hasAnyOrderBy(out) && !hasOrderByField(out, 'startAt')) {
+      out.push(orderBy('startAt', 'asc'));
+    }
   }
 
   return out;
