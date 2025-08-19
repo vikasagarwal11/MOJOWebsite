@@ -1,9 +1,15 @@
 // src/config/firebase.ts
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  connectFirestoreEmulator
+} from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
+import { getPerformance, Performance } from 'firebase/performance';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -26,8 +32,14 @@ export const USING_EMULATORS = import.meta.env.VITE_USE_EMULATORS === 'true';
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
+// ✅ Firestore with persistent local cache (multi-tab)
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+  }),
+});
+
 export const auth = getAuth(app);
-export const db = getFirestore(app);
 export const storage = getStorage(app);
 
 // Connect to emulators in dev (Auth emulator does not require reCAPTCHA)
@@ -38,10 +50,16 @@ if (USING_EMULATORS) {
 }
 
 export let analytics: Analytics | undefined;
+export let perf: Performance | undefined;
+
 if (typeof window !== 'undefined') {
   isSupported().then(ok => {
     if (ok) analytics = getAnalytics(app);
   }).catch(() => {});
+
+  try {
+    perf = getPerformance(app);
+  } catch {}
 }
 
 export default app;
