@@ -1,0 +1,240 @@
+// src/components/events/CreateEventModal.tsx
+import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { X, Calendar, Clock, MapPin, Users, FileText } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { useFirestore } from '../../hooks/useFirestore';
+import { useStorage } from '../../hooks/useStorage';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../config/firebase';
+
+const eventSchema = z.object({
+  title: z.string().min(1, 'Event title is required'),
+  description: z.string().min(10, 'Description must be at least 10 characters'),
+  date: z.string().min(1, 'Event date is required'),
+  time: z.string().min(1, 'Event time is required'),
+  location: z.string().min(1, 'Location is required'),
+  maxAttendees: z.number().min(1, 'Max attendees must be at least 1').optional(),
+  imageUrl: z.string().optional(),
+});
+
+type EventFormData = z.infer<typeof eventSchema>;
+
+interface CreateEventModalProps {
+  onClose: () => void;
+  onEventCreated: () => void;
+}
+
+const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCreated }) => {
+  const { currentUser } = useAuth();
+  const { addDocument } = useFirestore();
+  const { uploadFile, getStoragePath } = useStorage();
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isPublic, setIsPublic] = useState(false);
+
+  const { register, handleSubmit, formState: { errors } } = useForm<EventFormData>({
+    resolver: zodResolver(eventSchema),
+  });
+
+  const onSubmit = async (data: EventFormData) => {
+    if (!currentUser) return;
+
+    // canonical startAt = date + time
+    const startAt = new Date(data.date);
+    const [hh, mm] = String(data.time || '00:00').split(':').map(Number);
+    startAt.setHours(hh || 0, mm || 0, 0, 0);
+
+    setIsLoading(true);
+    try {
+      // optional image upload
+      let imageUrl = '';
+      if (selectedFile) {
+        const imagePath = getStoragePath('events', selectedFile.name);
+        imageUrl = await uploadFile(selectedFile, imagePath);
+      }
+
+      // full event doc
+      const eventData = {
+        title: data.title,
+        description: data.description,
+        date: new Date(data.date),   // legacy field retained
+        time: data.time,
+        startAt,
+        location: data.location,
+        imageUrl: imageUrl || data.imageUrl || '',
+        maxAttendees: Number.isFinite(data.maxAttendees as any) ? data.maxAttendees : undefined,
+        createdBy: currentUser.id,
+        public: isPublic,            // <-- new flag
+        rsvps: [] as any[],
+        attendees: [] as any[],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      await addDocument('events', eventData);
+
+      // if private upcoming, create a public teaser
+      if (!isPublic) {
+        await addDoc(collection(db, 'event_teasers'), {
+          title: data.title,
+          startAt,
+          createdAt: serverTimestamp(),
+        });
+      }
+
+      onEventCreated();
+    } catch (e) {
+      console.error('Error creating event:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <h2 className="text-2xl font-bold text-gray-900">Create New Event</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <X className="w-6 h-6 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Event Title</label>
+            <div className="relative">
+              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                {...register('title')}
+                type="text"
+                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.title ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                placeholder="Enter event title"
+              />
+            </div>
+            {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+            <textarea
+              {...register('description')}
+              rows={4}
+              className={`w-full px-4 py-3 rounded-lg border ${errors.description ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+              placeholder="Describe your event..."
+            />
+            {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  {...register('date')}
+                  type="date"
+                  className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.date ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                />
+              </div>
+              {errors.date && <p className="mt-1 text-sm text-red-600">{errors.date.message}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Time</label>
+              <div className="relative">
+                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  {...register('time')}
+                  type="time"
+                  className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.time ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                />
+              </div>
+              {errors.time && <p className="mt-1 text-sm text-red-600">{errors.time.message}</p>}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                {...register('location')}
+                type="text"
+                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.location ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                placeholder="Enter event location"
+              />
+            </div>
+            {errors.location && <p className="mt-1 text-sm text-red-600">{errors.location.message}</p>}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Max Attendees (Optional)</label>
+              <div className="relative">
+                <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  {...register('maxAttendees', { valueAsNumber: true })}
+                  type="number"
+                  min="1"
+                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="No limit"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Event Image (Optional)</label>
+              <div className="space-y-3">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+                <div className="text-center text-gray-500">or</div>
+                <input
+                  {...register('imageUrl')}
+                  type="url"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="Enter image URL..."
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Public toggle */}
+          <label className="flex items-center gap-3 pt-2">
+            <input
+              type="checkbox"
+              checked={isPublic}
+              onChange={(e) => setIsPublic(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+            />
+            <span className="text-sm text-gray-700">
+              Make this event public (visible to everyone)
+            </span>
+          </label>
+
+          {/* Submit */}
+          <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
+            <button type="button" onClick={onClose} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+            <button type="submit" disabled={isLoading} className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50">
+              {isLoading ? 'Creating...' : 'Create Event'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default CreateEventModal;
