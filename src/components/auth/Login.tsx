@@ -51,10 +51,42 @@ const Login: React.FC = () => {
       codeForm.reset({ verificationCode: '' });
       setStep('code');
       requestAnimationFrame(() => codeForm.setFocus('verificationCode'));
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Phone verification error:', error);
-    } finally {
+   } catch (err: any) {
+  console.error('Phone verification error:', err);
+
+  let message = 'Could not send code. Please try again.';
+
+  switch (err?.code) {
+    case 'auth/invalid-phone-number':
+      message = 'Invalid phone number. Please check and try again.';
+      break;
+    case 'auth/captcha-check-failed':
+      message =
+        "reCAPTCHA failed: add this site’s host to Firebase → Authentication → Authorized domains, then retry.";
+      break;
+    case 'auth/operation-not-allowed':
+      message =
+        'Phone sign-in is disabled. Enable it in Firebase Console → Authentication → Sign-in method.';
+      break;
+    case 'auth/too-many-requests':
+      message = 'Too many attempts. Please wait a minute and try again.';
+      break;
+    case 'auth/network-request-failed':
+      message = 'Network error. Check your connection and try again.';
+      break;
+  }
+
+  const lower = String(err?.message || '').toLowerCase();
+  if (lower.includes('hostname match not found')) {
+    message =
+      "This preview host isn’t authorized in Firebase. Add the exact host under Authentication → Authorized domains and retry.";
+  } else if (lower.includes('already been rendered')) {
+    message = 'Security check hiccup. Please try again.';
+  }
+
+  phoneForm.setError('phoneNumber', { message });
+}
+ finally {
       setIsLoading(false);
     }
   };
