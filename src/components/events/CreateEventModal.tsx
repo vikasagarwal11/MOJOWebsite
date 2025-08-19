@@ -1,4 +1,3 @@
-// src/components/events/CreateEventModal.tsx
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,7 +8,11 @@ import { useFirestore } from '../../hooks/useFirestore';
 import { useStorage } from '../../hooks/useStorage';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../config/firebase';
-import { stripUndefined } from '../../utils/firestore';
+
+// 🔹 Local helper so Firestore never sees undefined fields
+function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
 
 const eventSchema = z.object({
   title: z.string().min(1, 'Event title is required'),
@@ -35,9 +38,9 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
 
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isPublic, setIsPublic] = useState(false);
+  const [isPublic, setIsPublic] = useState(false); // default private; toggle makes it public
 
-  const { register, handleSubmit, formState: { errors } } = useForm<EventFormData>({
+  const { register, handleSubmit, formState: { errors }, reset } = useForm<EventFormData>({
     resolver: zodResolver(eventSchema),
   });
 
@@ -58,43 +61,25 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         imageUrl = await uploadFile(selectedFile, imagePath);
       }
 
+      // Build payload; remove undefineds to satisfy Firestore
       const rawEventData = {
-  title: data.title,
-  description: data.description,
-  date: new Date(data.date),
-  time: data.time,
-  startAt,
-  location: data.location,
-  imageUrl: imageUrl || data.imageUrl || undefined, // may be undefined
-  maxAttendees: Number.isFinite(data.maxAttendees as any) ? data.maxAttendees : undefined,
-  createdBy: currentUser.id,
-  public: isPublic,
-  rsvps: [] as any[],
-  attendees: [] as any[],
-  createdAt: serverTimestamp(),
-  updatedAt: serverTimestamp(),
-};
-
-const eventData = stripUndefined(rawEventData);
-await addDocument('events', eventData);
-      // full event doc
-      const eventData = {
         title: data.title,
         description: data.description,
-        date: new Date(data.date),   // legacy field retained
+        date: new Date(data.date), // legacy field retained
         time: data.time,
         startAt,
         location: data.location,
-        imageUrl: imageUrl || data.imageUrl || '',
+        imageUrl: imageUrl || data.imageUrl || undefined, // may be undefined
         maxAttendees: Number.isFinite(data.maxAttendees as any) ? data.maxAttendees : undefined,
         createdBy: currentUser.id,
-        public: isPublic,            // <-- new flag
+        public: isPublic, // <-- visibility flag
         rsvps: [] as any[],
         attendees: [] as any[],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
 
+      const eventData = stripUndefined(rawEventData);
       await addDocument('events', eventData);
 
       // if private upcoming, create a public teaser
@@ -106,6 +91,9 @@ await addDocument('events', eventData);
         });
       }
 
+      // clean up
+      reset();
+      setSelectedFile(null);
       onEventCreated();
     } catch (e) {
       console.error('Error creating event:', e);
@@ -134,6 +122,7 @@ await addDocument('events', eventData);
               <input
                 {...register('title')}
                 type="text"
+                disabled={isLoading}
                 className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.title ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
                 placeholder="Enter event title"
               />
@@ -146,6 +135,7 @@ await addDocument('events', eventData);
             <textarea
               {...register('description')}
               rows={4}
+              disabled={isLoading}
               className={`w-full px-4 py-3 rounded-lg border ${errors.description ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
               placeholder="Describe your event..."
             />
@@ -160,6 +150,7 @@ await addDocument('events', eventData);
                 <input
                   {...register('date')}
                   type="date"
+                  disabled={isLoading}
                   className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.date ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
                 />
               </div>
@@ -173,6 +164,7 @@ await addDocument('events', eventData);
                 <input
                   {...register('time')}
                   type="time"
+                  disabled={isLoading}
                   className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.time ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
                 />
               </div>
@@ -187,6 +179,7 @@ await addDocument('events', eventData);
               <input
                 {...register('location')}
                 type="text"
+                disabled={isLoading}
                 className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.location ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
                 placeholder="Enter event location"
               />
@@ -203,6 +196,7 @@ await addDocument('events', eventData);
                   {...register('maxAttendees', { valueAsNumber: true })}
                   type="number"
                   min="1"
+                  disabled={isLoading}
                   className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   placeholder="No limit"
                 />
@@ -215,6 +209,7 @@ await addDocument('events', eventData);
                 <input
                   type="file"
                   accept="image/*"
+                  disabled={isLoading}
                   onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
@@ -222,6 +217,7 @@ await addDocument('events', eventData);
                 <input
                   {...register('imageUrl')}
                   type="url"
+                  disabled={isLoading}
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   placeholder="Enter image URL..."
                 />
@@ -235,6 +231,7 @@ await addDocument('events', eventData);
               type="checkbox"
               checked={isPublic}
               onChange={(e) => setIsPublic(e.target.checked)}
+              disabled={isLoading}
               className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
             />
             <span className="text-sm text-gray-700">
@@ -244,10 +241,19 @@ await addDocument('events', eventData);
 
           {/* Submit */}
           <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
-            <button type="button" onClick={onClose} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isLoading}
+              className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
               Cancel
             </button>
-            <button type="submit" disabled={isLoading} className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50">
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50"
+            >
               {isLoading ? 'Creating...' : 'Create Event'}
             </button>
           </div>
