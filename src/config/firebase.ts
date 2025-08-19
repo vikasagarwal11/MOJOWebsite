@@ -1,7 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 
 const firebaseConfig = {
@@ -15,10 +15,13 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-// helpful runtime check
+// Helpful runtime check
 for (const [k, v] of Object.entries(firebaseConfig)) {
   if (!v) console.warn(`[Firebase] Missing env: ${k}`);
 }
+
+// Flag to control local emulators (set VITE_USE_EMULATORS=true in .env.local)
+export const USING_EMULATORS = import.meta.env.VITE_USE_EMULATORS === 'true';
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
@@ -26,11 +29,26 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
+// Connect to emulators in dev (no reCAPTCHA required for phone auth)
+if (USING_EMULATORS) {
+  try {
+    connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  } catch {}
+  try {
+    connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  } catch {}
+  try {
+    connectStorageEmulator(storage, '127.0.0.1', 9199);
+  } catch {}
+}
+
 export let analytics: Analytics | undefined;
 if (typeof window !== 'undefined') {
-  isSupported().then((ok) => {
-    if (ok) analytics = getAnalytics(app);
-  }).catch(() => {});
+  isSupported()
+    .then((ok) => {
+      if (ok) analytics = getAnalytics(app);
+    })
+    .catch(() => {});
 }
 
 export default app;
