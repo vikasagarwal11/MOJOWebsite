@@ -202,6 +202,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (err?.code === 'auth/operation-not-allowed') {
         toast.error('Enable Phone sign-in in Firebase Console → Authentication → Sign-in method → Phone.');
       }
+      if (err?.code === 'auth/captcha-check-failed' || msg.includes('hostname match not found')) {
+    const host = (typeof window !== 'undefined' && window.location?.host) ? window.location.host : '(unknown host)';
+    toast.error(`This domain is not authorized: ${host}. Add it in Firebase Console → Authentication → Settings → Authorized domains.`);
+    throw err;
+  }
 
       // “already rendered” or stale widget → reset & retry once
       if (msg.includes('already been rendered') || msg.includes('already')) {
