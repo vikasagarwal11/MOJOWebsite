@@ -58,6 +58,25 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         imageUrl = await uploadFile(selectedFile, imagePath);
       }
 
+      const rawEventData = {
+  title: data.title,
+  description: data.description,
+  date: new Date(data.date),
+  time: data.time,
+  startAt,
+  location: data.location,
+  imageUrl: imageUrl || data.imageUrl || undefined, // may be undefined
+  maxAttendees: Number.isFinite(data.maxAttendees as any) ? data.maxAttendees : undefined,
+  createdBy: currentUser.id,
+  public: isPublic,
+  rsvps: [] as any[],
+  attendees: [] as any[],
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp(),
+};
+
+const eventData = stripUndefined(rawEventData);
+await addDocument('events', eventData);
       // full event doc
       const eventData = {
         title: data.title,
