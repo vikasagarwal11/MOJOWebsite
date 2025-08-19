@@ -3,11 +3,15 @@ import { Heart, MessageCircle, Tag, Play } from 'lucide-react';
 import { format } from 'date-fns';
 import { MediaFile } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
+import { analytics } from '../../config/firebase';
+import { logEvent } from 'firebase/analytics';
 
 interface MediaCardProps {
   media: MediaFile;
 }
-
+function log(name: string, params?: Record<string, any>) {
+  try { if (analytics) logEvent(analytics, name, params); } catch {}
+}
 const MediaCard: React.FC<MediaCardProps> = ({ media }) => {
   const { currentUser } = useAuth();
   const [isLiked, setIsLiked] = useState(
