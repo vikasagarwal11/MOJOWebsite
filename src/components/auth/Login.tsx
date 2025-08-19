@@ -188,7 +188,7 @@ const Login: React.FC = () => {
         </div>
       </div>
 
-      {/* AuthContext auto-creates a hidden #recaptcha-container if it’s not present. */}
+
     </div>
   );
 };
