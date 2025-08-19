@@ -22,6 +22,12 @@ for (const [k, v] of Object.entries(firebaseConfig)) {
 
 // Flag to control local emulators (set VITE_USE_EMULATORS=true in .env.local)
 export const USING_EMULATORS = import.meta.env.VITE_USE_EMULATORS === 'true';
+// src/utils/firestore.ts
+export function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as Partial<T>;
+}
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
