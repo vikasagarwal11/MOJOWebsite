@@ -208,20 +208,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     throw err;
   }
 
-      // “already rendered” or stale widget → reset & retry once
-      if (msg.includes('already been rendered') || msg.includes('already')) {
-        try {
-          clearRecaptcha();
-          verifier = getOrCreateRecaptcha();
-          const result = await signInWithPhoneNumber(auth, phoneNumber, verifier);
-          toast.success('Verification code sent');
-          return result;
-        } catch (retryErr: any) {
-          console.error('reCAPTCHA retry failed:', retryErr);
-          toast.error(retryErr?.message || 'Failed to send verification code');
-          throw retryErr;
-        }
-      }
+      // “already rendered” handling (you already have this)
+  if (msg.includes('already been rendered') || msg.includes('already')) {
+    try {
+      clearRecaptcha();
+      const verifier2 = getOrCreateRecaptcha();
+      const result = await signInWithPhoneNumber(auth, phoneNumber, verifier2);
+      toast.success('Verification code sent');
+      return result;
+    } catch (retryErr: any) {
+      console.error('reCAPTCHA retry failed:', retryErr);
+      toast.error(retryErr?.message || 'Failed to send verification code');
+      throw retryErr;
+    }
+  }
 
       console.error('Phone verification error:', err);
       toast.error(err?.message || 'Failed to send verification code');
