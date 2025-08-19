@@ -18,50 +18,77 @@ import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
-/** Remove undefined so Firestore doesn’t throw (it rejects undefined field values). */
+/** Remove undefined so Firestore doesn’t throw on writes. */
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
 /** Convert common timestamp fields (if present) to Date for UI convenience. */
 function normalizeDoc(docData: any) {
-  const d = { id: docData.id, ...docData };
+  const out = { id: docData.id, ...docData };
   const tsFields = ['createdAt', 'updatedAt', 'date', 'validUntil', 'startAt'];
   for (const f of tsFields) {
-    // @ts-ignore
-    const v = d[f];
-    // Firestore Timestamp has toDate; keep JS Date as-is
-    // @ts-ignore
-    d[f] = v?.toDate?.() ? v.toDate() : v instanceof Date ? v : v;
+    const v = (out as any)[f];
+    (out as any)[f] = v?.toDate?.() ? v.toDate() : v instanceof Date ? v : v;
   }
-  return d;
+  return out;
+}
+
+/* ---------- helpers to inspect/augment constraints (best-effort) ---------- */
+function hasWhereEquals(constraints: QueryConstraint[], field: string, value: any) {
+  return constraints.some((c: any) => {
+    if (c?.type !== 'where') return false;
+    const f =
+      c?.field?.toString?.() ??
+      c?._field?.toString?.() ??
+      c?._field?.segments?.[0] ??
+      c?._field?.canonicalString?.();
+    return f === field && (c?.opStr === '==' || c?._op === '==') && (c?.value === value || c?._value === value);
+  });
+}
+
+function hasOrderByField(constraints: QueryConstraint[], field: string) {
+  return constraints.some((c: any) => {
+    if (c?.type !== 'orderBy') return false;
+    const f =
+      c?.field?.toString?.() ??
+      c?._field?.toString?.() ??
+      c?._field?.segments?.[0] ??
+      c?._field?.canonicalString?.();
+    return f === field;
+  });
 }
 
 /**
- * Policy-aware defaults:
- * - posts  : guests see only isPublic==true, newest first (requires composite index)
- * - events : guests see only public==true, soonest first (requires composite index)
- * If caller passes constraints, we respect them and DO NOT add defaults.
+ * Enforce guest-readable queries:
+ * - posts  : add where(isPublic == true); default orderBy(createdAt, desc)
+ * - events : add where(public == true);   default orderBy(startAt,  asc)
+ * If the caller already included the where/orderBy, we leave it alone.
  */
-function defaultConstraintsFor(collectionName: string, isAuthed: boolean): QueryConstraint[] {
-  if (isAuthed) return [];
+function enforceGuestPolicy(
+  collectionName: string,
+  isAuthed: boolean,
+  userConstraints: QueryConstraint[]
+): QueryConstraint[] {
+  if (isAuthed) return userConstraints;
+
+  const out = [...userConstraints];
+
   if (collectionName === 'posts') {
-    // Index: isPublic ASC, createdAt DESC
-    return [where('isPublic', '==', true), orderBy('createdAt', 'desc')];
+    if (!hasWhereEquals(out, 'isPublic', true)) out.unshift(where('isPublic', '==', true));
+    if (!hasOrderByField(out, 'createdAt')) out.push(orderBy('createdAt', 'desc'));
+  } else if (collectionName === 'events') {
+    if (!hasWhereEquals(out, 'public', true)) out.unshift(where('public', '==', true));
+    if (!hasOrderByField(out, 'startAt')) out.push(orderBy('startAt', 'asc'));
   }
-  if (collectionName === 'events') {
-    // Index: public ASC, startAt ASC
-    return [where('public', '==', true), orderBy('startAt', 'asc')];
-  }
-  // For other collections, no default
-  return [];
+
+  return out;
 }
 
 export const useFirestore = () => {
   const { currentUser } = useAuth();
 
-  // ---------- Simple “get all” (no realtime) ----------
-  // Keeps your original signature; if you want defaults here later, add an optional arg.
+  // ---------------- Simple collection fetch (no realtime) ----------------
   const getCollection = async (collectionName: string) => {
     try {
       const snap = await getDocs(collection(db, collectionName));
@@ -73,18 +100,17 @@ export const useFirestore = () => {
     }
   };
 
-  // ---------- Writes ----------
+  // ---------------- Writes (safe against undefined) ----------------
   const addDocument = async (collectionName: string, data: any) => {
     try {
       const cleaned = stripUndefined({
         ...data,
-        // if caller already set createdAt/updatedAt, we leave them; otherwise set here
         createdAt: data?.createdAt ?? serverTimestamp(),
         updatedAt: data?.updatedAt ?? serverTimestamp(),
       });
-      const docRef = await addDoc(collection(db, collectionName), cleaned);
+      const ref = await addDoc(collection(db, collectionName), cleaned);
       toast.success('Document created successfully');
-      return docRef.id;
+      return ref.id;
     } catch (error) {
       console.error(`Error adding to ${collectionName}:`, error);
       toast.error('Failed to create document');
@@ -115,12 +141,7 @@ export const useFirestore = () => {
     }
   };
 
-  // ---------- Realtime ----------
-  /**
-   * Realtime listener with policy defaults.
-   * If you pass `queryConstraints`, they are used as-is.
-   * If you pass none, we apply safe defaults based on auth + collection.
-   */
+  // ---------------- Realtime with automatic guest guards ----------------
   const useRealtimeCollection = (
     collectionName: string,
     queryConstraints: QueryConstraint[] = []
@@ -129,14 +150,13 @@ export const useFirestore = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-      const baseRef = collection(db, collectionName);
+      const authed = !!currentUser;
+      const safeConstraints = enforceGuestPolicy(collectionName, authed, queryConstraints);
 
-      const constraints =
-        queryConstraints.length > 0
-          ? queryConstraints
-          : defaultConstraintsFor(collectionName, !!currentUser);
-
-      const q = constraints.length ? query(baseRef, ...constraints) : query(baseRef);
+      const q =
+        safeConstraints.length > 0
+          ? query(collection(db, collectionName), ...safeConstraints)
+          : query(collection(db, collectionName));
 
       const unsubscribe = onSnapshot(
         q,
@@ -145,18 +165,27 @@ export const useFirestore = () => {
           setData(rows);
           setLoading(false);
         },
-        (error) => {
+        (error: any) => {
           console.error(`Error listening to ${collectionName}:`, error);
           setLoading(false);
-          // Helpful hint for common case
-          if ((error as any)?.code === 'permission-denied' && !currentUser) {
-            toast.error('Sign in to see private items.');
+
+          if (error?.code === 'failed-precondition') {
+            // Missing composite index
+            toast.error('This query needs a Firestore composite index. Click the console link in your devtools to create it.');
+          } else if (error?.code === 'permission-denied') {
+            if (!authed) {
+              toast.error('Sign in to view private items (or ensure the query filters to public content).');
+            } else {
+              toast.error('You do not have permission to read these documents.');
+            }
+          } else {
+            toast.error('Failed to load data.');
           }
         }
       );
 
       return () => unsubscribe();
-      // Re-subscribe when auth state, collection, or constraints change
+      // Re-subscribe if auth/role or constraints change
     }, [collectionName, currentUser?.id, currentUser?.role, JSON.stringify(queryConstraints)]);
 
     return { data, loading };
