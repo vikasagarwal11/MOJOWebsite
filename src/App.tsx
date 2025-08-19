@@ -46,25 +46,27 @@ function App() {
         <Router>
           <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
             <Toaster
-  position="bottom-right"
-  toastOptions={{
-    duration: 2500,
-    style: {
-      background: '#111827',
-      color: '#fff',
-      borderRadius: '10px',
-      padding: '10px 12px',
-      boxShadow: '0 8px 24px rgba(0,0,0,.22)',
-    },
-    success: { iconTheme: { primary: '#10B981', secondary: '#111827' } },
-    error:   { iconTheme: { primary: '#EF4444', secondary: '#111827' } },
-  }}
-/>
+              position="bottom-right"
+              toastOptions={{
+                duration: 2500,
+                style: {
+                  background: '#111827',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '10px 12px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,.22)',
+                },
+                success: { iconTheme: { primary: '#10B981', secondary: '#111827' } },
+                error:   { iconTheme: { primary: '#EF4444', secondary: '#111827' } },
+              }}
+            />
 
-
-            {/* Needed for Firebase Phone Auth (invisible reCAPTCHA). 
-                Your AuthProvider will create/use RecaptchaVerifier targeting this id. */}
-            <div id="recaptcha-container" style={{ display: 'none' }} />
+            {/* Single, global container for Firebase Phone Auth reCAPTCHA.
+                Do NOT add per-page containers in Login/Register. */}
+            <div
+              id="recaptcha-container"
+              style={{ position: 'fixed', width: 0, height: 0, overflow: 'hidden' }}
+            />
 
             <Routes>
               <Route path="/login" element={<Login />} />
