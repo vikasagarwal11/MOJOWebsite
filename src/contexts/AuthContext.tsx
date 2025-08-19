@@ -23,10 +23,9 @@ import {
   onSnapshot,
   Unsubscribe,
 } from 'firebase/firestore';
-import { auth, db } from '../config/firebase';
+import { auth, db, USING_EMULATORS } from '../config/firebase';
 import { User } from '../types';
 import toast from 'react-hot-toast';
-import { USING_EMULATORS } from '../config/firebase';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -52,26 +51,26 @@ export const useAuth = () => {
 
 /* =============================================================================
    reCAPTCHA: single global verifier bound to a single DOM node
-   - Modular SDK correct signature: new RecaptchaVerifier(auth, containerOrId, params?)
-   - We also “swap” the DOM node when resetting to avoid the “already rendered” loop
+   Using modular SDK signature: new RecaptchaVerifier(auth, containerOrId, params)
+   We “swap” the DOM node when resetting to avoid the “already rendered” loop.
    ============================================================================ */
 const RECAPTCHA_ID = 'recaptcha-container';
 let _recaptchaVerifierSingleton: RecaptchaVerifier | null = null;
 
-function getRecaptchaHostEl(): HTMLElement {
+function ensureRecaptchaHostEl(): HTMLElement {
   if (typeof document === 'undefined') {
     throw new Error('reCAPTCHA not available in this environment');
   }
   let el = document.getElementById(RECAPTCHA_ID);
   if (!el) {
-    // fallback (shouldn’t normally happen because App.tsx renders it)
+    // Fallback: create one if shell hasn’t rendered it yet
     el = document.createElement('div');
     el.id = RECAPTCHA_ID;
-    // keep it off-screen/invisible
     el.style.position = 'fixed';
-    el.style.width = '0';
-    el.style.height = '0';
-    el.style.overflow = 'hidden';
+    el.style.bottom = '0';
+    el.style.left = '0';
+    el.style.opacity = '0';
+    el.style.zIndex = '-1';
     document.body.appendChild(el);
   }
   return el;
@@ -79,7 +78,7 @@ function getRecaptchaHostEl(): HTMLElement {
 
 /** Replace the recaptcha container element with a fresh node (same id). */
 function swapRecaptchaContainer(): HTMLElement {
-  const oldEl = getRecaptchaHostEl();
+  const oldEl = ensureRecaptchaHostEl();
   const fresh = oldEl.cloneNode(false) as HTMLElement;
   oldEl.parentNode?.replaceChild(fresh, oldEl);
   return fresh;
@@ -89,16 +88,12 @@ function createRecaptcha(): RecaptchaVerifier {
   // Fully detach any previous grecaptcha widget by swapping the container node.
   swapRecaptchaContainer();
 
-  // ✅ Modular SDK: pass (auth, containerOrId, parameters)
-  const verifier = new RecaptchaVerifier(
-    auth,
-    RECAPTCHA_ID,
-    {
-      size: 'invisible',
-      callback: () => console.log('reCAPTCHA solved'),
-      'expired-callback': () => console.log('reCAPTCHA expired'),
-    }
-  );
+  // ✅ Modular SDK: (auth, containerOrId, parameters)
+  const verifier = new RecaptchaVerifier(auth, RECAPTCHA_ID, {
+    size: 'invisible',
+    callback: () => console.log('reCAPTCHA solved'),
+    'expired-callback': () => console.log('reCAPTCHA expired'),
+  });
 
   _recaptchaVerifierSingleton = verifier;
   return verifier;
@@ -192,6 +187,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const setupRecaptcha = (): RecaptchaVerifier => getOrCreateRecaptcha();
 
   const sendVerificationCode = async (phoneNumber: string): Promise<ConfirmationResult> => {
+    // Emulator path: no reCAPTCHA required, avoids hostname issues entirely
+    if (USING_EMULATORS) {
+      const fakeVerifier: any = {
+        type: 'recaptcha',
+        verify: async () => 'test-verifier-token',
+      };
+      const result = await signInWithPhoneNumber(auth, phoneNumber, fakeVerifier);
+      toast.success('Verification code (emulator) generated');
+      return result;
+    }
+
+    // Real Firebase: use reCAPTCHA
     let verifier = getOrCreateRecaptcha();
     try {
       const result = await signInWithPhoneNumber(auth, phoneNumber, verifier);
@@ -204,25 +211,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         toast.error('Enable Phone sign-in in Firebase Console → Authentication → Sign-in method → Phone.');
       }
       if (err?.code === 'auth/captcha-check-failed' || msg.includes('hostname match not found')) {
-    const host = (typeof window !== 'undefined' && window.location?.host) ? window.location.host : '(unknown host)';
-    toast.error(`This domain is not authorized: ${host}. Add it in Firebase Console → Authentication → Settings → Authorized domains.`);
-    throw err;
-  }
+        const host =
+          typeof window !== 'undefined' && (window.location?.host || window.location?.hostname)
+            ? window.location.host
+            : '(unknown host)';
+        toast.error(
+          `This domain is not authorized: ${host}. Add it in Firebase Console → Authentication → Settings → Authorized domains.`
+        );
+        throw err;
+      }
 
-      // “already rendered” handling (you already have this)
-  if (msg.includes('already been rendered') || msg.includes('already')) {
-    try {
-      clearRecaptcha();
-      const verifier2 = getOrCreateRecaptcha();
-      const result = await signInWithPhoneNumber(auth, phoneNumber, verifier2);
-      toast.success('Verification code sent');
-      return result;
-    } catch (retryErr: any) {
-      console.error('reCAPTCHA retry failed:', retryErr);
-      toast.error(retryErr?.message || 'Failed to send verification code');
-      throw retryErr;
-    }
-  }
+      // “already rendered” loop → reset & retry once
+      if (msg.includes('already been rendered') || msg.includes('already')) {
+        try {
+          clearRecaptcha();
+          const verifier2 = getOrCreateRecaptcha();
+          const result = await signInWithPhoneNumber(auth, phoneNumber, verifier2);
+          toast.success('Verification code sent');
+          return result;
+        } catch (retryErr: any) {
+          console.error('reCAPTCHA retry failed:', retryErr);
+          toast.error(retryErr?.message || 'Failed to send verification code');
+          throw retryErr;
+        }
+      }
 
       console.error('Phone verification error:', err);
       toast.error(err?.message || 'Failed to send verification code');
@@ -258,8 +270,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: any) {
       console.error('Code verification error:', error);
       let msg = 'Invalid verification code';
-      if (error?.code === 'auth/invalid-verification-code') msg = 'Invalid verification code. Please try again.';
-      else if (error?.code === 'auth/code-expired') msg = 'Verification code expired. Request a new one.';
+      if (error?.code === 'auth/invalid-verification-code')
+        msg = 'Invalid verification code. Please try again.';
+      else if (error?.code === 'auth/code-expired')
+        msg = 'Verification code expired. Request a new one.';
       toast.error(msg);
       throw error;
     }
