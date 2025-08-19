@@ -37,8 +37,8 @@ interface AuthContextType {
     displayName?: string
   ) => Promise<void>;
   logout: () => Promise<void>;
-  // keep signature for compatibility; the id arg is ignored
-  setupRecaptcha: (elementId?: string) => RecaptchaVerifier;
+  // kept for compatibility; the argument is ignored
+  setupRecaptcha: (_elementId?: string) => RecaptchaVerifier;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -49,10 +49,12 @@ export const useAuth = () => {
   return ctx;
 };
 
-/* ============================================================
+/* =============================================================================
    reCAPTCHA: single global verifier bound to a single DOM node
-   ============================================================ */
-const RECAPTCHA_ID = 'recaptcha-container'; // must exist once in App shell
+   - Modular SDK correct signature: new RecaptchaVerifier(auth, containerOrId, params?)
+   - We also “swap” the DOM node when resetting to avoid the “already rendered” loop
+   ============================================================================ */
+const RECAPTCHA_ID = 'recaptcha-container';
 let _recaptchaVerifierSingleton: RecaptchaVerifier | null = null;
 
 function getRecaptchaHostEl(): HTMLElement {
@@ -61,34 +63,50 @@ function getRecaptchaHostEl(): HTMLElement {
   }
   let el = document.getElementById(RECAPTCHA_ID);
   if (!el) {
-    // Fallback: create one if shell hasn’t rendered it yet (rare)
+    // fallback (shouldn’t normally happen because App.tsx renders it)
     el = document.createElement('div');
     el.id = RECAPTCHA_ID;
-    el.style.display = 'none';
+    // keep it off-screen/invisible
+    el.style.position = 'fixed';
+    el.style.width = '0';
+    el.style.height = '0';
+    el.style.overflow = 'hidden';
     document.body.appendChild(el);
   }
   return el;
 }
 
+/** Replace the recaptcha container element with a fresh node (same id). */
+function swapRecaptchaContainer(): HTMLElement {
+  const oldEl = getRecaptchaHostEl();
+  const fresh = oldEl.cloneNode(false) as HTMLElement;
+  oldEl.parentNode?.replaceChild(fresh, oldEl);
+  return fresh;
+}
+
 function createRecaptcha(): RecaptchaVerifier {
-  const host = getRecaptchaHostEl();
-  // Clear any previous widget markup the Firebase SDK injected
-  host.innerHTML = '';
-  const verifier = new RecaptchaVerifier(auth, host, {
-    size: 'invisible',
-    callback: () => console.log('reCAPTCHA solved'),
-    'expired-callback': () => console.log('reCAPTCHA expired'),
-  });
+  // Fully detach any previous grecaptcha widget by swapping the container node.
+  swapRecaptchaContainer();
+
+  // ✅ Modular SDK: pass (auth, containerOrId, parameters)
+  const verifier = new RecaptchaVerifier(
+    auth,
+    RECAPTCHA_ID,
+    {
+      size: 'invisible',
+      callback: () => console.log('reCAPTCHA solved'),
+      'expired-callback': () => console.log('reCAPTCHA expired'),
+    }
+  );
+
   _recaptchaVerifierSingleton = verifier;
   return verifier;
 }
 
 function getOrCreateRecaptcha(): RecaptchaVerifier {
-  // If we already have one and the host still exists, reuse it
   if (_recaptchaVerifierSingleton && document.getElementById(RECAPTCHA_ID)) {
     return _recaptchaVerifierSingleton;
   }
-  // Else (first time or after teardown), create a fresh one
   _recaptchaVerifierSingleton = null;
   return createRecaptcha();
 }
@@ -100,11 +118,11 @@ function clearRecaptcha() {
     console.warn('recaptcha clear error', e);
   }
   _recaptchaVerifierSingleton = null;
-  const host = document.getElementById(RECAPTCHA_ID);
-  if (host) host.innerHTML = '';
+  try {
+    swapRecaptchaContainer();
+  } catch {}
 }
-
-/* ============================================================ */
+/* ============================================================================= */
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -169,7 +187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // Kept for compatibility; ignores the passed id and uses the global container.
+  // kept for compatibility; ignores the passed id and uses the single global container
   const setupRecaptcha = (): RecaptchaVerifier => getOrCreateRecaptcha();
 
   const sendVerificationCode = async (phoneNumber: string): Promise<ConfirmationResult> => {
@@ -182,9 +200,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const msg = String(err?.message || '').toLowerCase();
 
       if (err?.code === 'auth/operation-not-allowed') {
-        toast.error(
-          'Enable Phone sign-in in Firebase Console → Authentication → Sign-in method → Phone.'
-        );
+        toast.error('Enable Phone sign-in in Firebase Console → Authentication → Sign-in method → Phone.');
       }
 
       // “already rendered” or stale widget → reset & retry once
@@ -236,10 +252,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error: any) {
       console.error('Code verification error:', error);
       let msg = 'Invalid verification code';
-      if (error?.code === 'auth/invalid-verification-code')
-        msg = 'Invalid verification code. Please try again.';
-      else if (error?.code === 'auth/code-expired')
-        msg = 'Verification code expired. Request a new one.';
+      if (error?.code === 'auth/invalid-verification-code') msg = 'Invalid verification code. Please try again.';
+      else if (error?.code === 'auth/code-expired') msg = 'Verification code expired. Request a new one.';
       toast.error(msg);
       throw error;
     }
