@@ -9,6 +9,7 @@ import { useFirestore } from '../../hooks/useFirestore';
 import { useStorage } from '../../hooks/useStorage';
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import { stripUndefined } from '../../utils/firestore';
 
 const eventSchema = z.object({
   title: z.string().min(1, 'Event title is required'),
