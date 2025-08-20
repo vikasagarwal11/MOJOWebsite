@@ -25,6 +25,7 @@ const dateObj =
   event.startAt?.toDate ? event.startAt.toDate() :
   typeof event.startAt === 'string' ? new Date(event.startAt) :
   new Date(event.startAt);
+  
   // for “upcoming” logic include time if provided
   const eventMoment = useMemo(() => {
     const d = new Date(dateObj);
