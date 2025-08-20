@@ -263,12 +263,33 @@ const MediaCard: React.FC<MediaCardProps> = ({ media }) => {
         {/* Comments */}
         {showComments && (
           <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
-            {comments.map((c) => (
-              <div key={c.id} className="text-sm">
-                <span className="font-medium text-gray-900">{c.authorName}</span>
-                <span className="text-gray-600 ml-2">{c.text}</span>
-              </div>
-            ))}
+            {comments.map((c) => {
+  const isMe = currentUser && c.authorId === currentUser.id;
+  return (
+    <div
+      key={c.id}
+      className={`relative pl-9 pr-2 py-2 border-l ${
+        isMe ? 'border-purple-300' : 'border-gray-200'
+      }`}
+    >
+      <span
+        className="absolute left-0 top-2 w-6 h-6 rounded-full ring-1 ring-white"
+        style={{ background: '#E9D8FD' }} // or reuse colorFor(c.authorId) if you import it
+        title={c.authorName}
+      />
+      <div className="text-[13px] leading-5">
+        <span className="font-medium text-gray-900">{c.authorName}</span>
+        {isMe && (
+          <span className="text-[10px] ml-2 px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+            You
+          </span>
+        )}
+        <span className="ml-2 text-gray-700 break-words">{c.text}</span>
+      </div>
+    </div>
+  );
+})}
+
             {canEngage ? (
               <div className="flex gap-2">
                 <input
