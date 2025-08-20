@@ -177,7 +177,9 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
         </div>
 
         {/* Comments */}
-        
+        {showComments && (
+  <div className="space-y-3">
+    {comments.map((c) => {
       const created =
         (c as any)?.createdAt?.toDate?.()
           ? (c as any).createdAt.toDate()
@@ -248,28 +250,8 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
 )}
 
 
-            {canEngage ? (
-              <form onSubmit={handleAddComment} className="flex gap-3">
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Add a comment…"
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
-                />
-                <button
-                  type="submit"
-                  disabled={!newComment.trim()}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                >
-                  Post
-                </button>
-              </form>
-            ) : (
-              <div className="text-xs text-gray-500">Sign in as a member to comment.</div>
-            )}
-          </div>
-        )}
+
+        
       </div>
     </div>
   );
