@@ -177,41 +177,75 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
         </div>
 
         {/* Comments */}
-        {showComments && (
-          <div className="space-y-4">
-            {comments.map((c) => {
-  const isMe = c.authorId === currentUser?.id;
-  const isAuthor = c.authorId === post.authorId;
-  return (
-    <div
-      key={c.id}
-      className={`relative pl-9 pr-2 py-2 border-l ${
-        isMe ? 'border-purple-300' : 'border-gray-200'
-      }`}
-    >
-      {/* tiny avatar dot */}
-      <span
-        className="absolute left-0 top-2 w-6 h-6 rounded-full ring-1 ring-white"
-        style={{ background: colorFor(c.authorId) }}
-        title={c.authorName}
-      />
-      <div className="text-[13px] leading-5">
-        <span className="font-medium text-gray-900">{c.authorName}</span>
-        {isAuthor && (
-          <span className="inline-flex items-center gap-1 text-[10px] ml-2 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
-            Author
-          </span>
-        )}
-        {isMe && !isAuthor && (
-          <span className="text-[10px] ml-2 px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
-            You
-          </span>
-        )}
-        <span className="ml-2 text-gray-700 break-words">{c.text}</span>
-      </div>
-    </div>
-  );
-})}
+        
+      const created =
+        (c as any)?.createdAt?.toDate?.()
+          ? (c as any).createdAt.toDate()
+          : (c as any).createdAt instanceof Date
+          ? (c as any).createdAt
+          : undefined;
+
+      const mine = c.authorId && currentUser?.id && c.authorId === currentUser.id;
+
+      return (
+        <div
+          key={c.id}
+          className="relative rounded-xl bg-purple-50/70 border border-purple-100 px-4 py-2 pl-10"
+        >
+          {/* tiny “bullet/avatar” dot to keep the sub-bullet look */}
+          <span className="absolute left-3 top-3 inline-block w-2 h-2 rounded-full bg-amber-300" />
+
+          <div className="flex flex-col">
+            {/* line 1: name + comment on same row */}
+            <div className="flex flex-wrap items-baseline gap-2 text-sm">
+              <span className="font-semibold text-gray-900">{c.authorName}</span>
+              {mine && (
+                <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-200 text-purple-800">
+                  You
+                </span>
+              )}
+              <span className="italic font-semibold text-gray-800 break-words">
+                {c.text || (c as any).content}
+              </span>
+            </div>
+
+            {/* line 2: tiny timestamp directly under the name */}
+            {created && (
+              <div className="mt-0.5 pl-0.5 text-[11px] text-gray-400">
+                {format(created, 'MMM d, yyyy • h:mm a')}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    })}
+
+    {/* Add Comment */}
+    {currentUser && (
+      <form onSubmit={handleComment} className="flex space-x-3">
+        <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
+          <User className="w-4 h-4 text-white" />
+        </div>
+        <div className="flex-1">
+          <input
+            type="text"
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            placeholder="Add a comment..."
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={!newComment.trim()}
+          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+        >
+          Post
+        </button>
+      </form>
+    )}
+  </div>
+)}
 
 
             {canEngage ? (
