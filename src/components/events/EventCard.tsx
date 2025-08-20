@@ -14,14 +14,17 @@ const EventCard: React.FC<EventCardProps> = ({ event }) => {
   const { currentUser } = useAuth();
 
   // prefer startAt, fallback to date
-  const dateObj = useMemo(() => {
-    const v: any = event.startAt ?? event.date;
+ // const dateObj = useMemo(() => {
+  //  const v: any = event.startAt ?? event.date;
     // @ts-ignore
-    if (v?.toDate) return v.toDate();
-    if (typeof v === 'string') return new Date(v);
-    return (v as Date) || new Date();
-  }, [event.startAt, event.date]);
-
+  //  if (v?.toDate) return v.toDate();
+   // if (typeof v === 'string') return new Date(v);
+   //return (v as Date) || new Date();
+ // }, [event.startAt, event.date]);
+const dateObj =
+  event.startAt?.toDate ? event.startAt.toDate() :
+  typeof event.startAt === 'string' ? new Date(event.startAt) :
+  new Date(event.startAt);
   // for “upcoming” logic include time if provided
   const eventMoment = useMemo(() => {
     const d = new Date(dateObj);
