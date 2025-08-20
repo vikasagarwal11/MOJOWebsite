@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, updateDoc, serverTimestamp, collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp, collection, query, where, orderBy, limit, onSnapshot, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
 import { db, storage } from '../config/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Camera, X as IconX, Bell, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { NJ_CITIES } from '../data/nj-cities';
@@ -69,6 +69,7 @@ const Profile: React.FC = () => {
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
   const [showEventModal, setShowEventModal] = useState(false);
+  const [rsvpsByEvent, setRsvpsByEvent] = useState<{ [eventId: string]: any[] }>({});
 
   // Load from Auth + Firestore
   useEffect(() => {
@@ -183,6 +184,29 @@ const Profile: React.FC = () => {
       return unsubscribe;
     }
   }, [currentUser, userRole]);
+
+  // Load RSVPs for admin events
+  useEffect(() => {
+    if (!currentUser || userRole !== 'admin' || allEvents.length === 0) return;
+    
+    const loadRsvps = async () => {
+      const rsvps: { [eventId: string]: any[] } = {};
+      
+      for (const event of allEvents) {
+        try {
+          const rsvpQuery = query(collection(db, 'events', event.id, 'rsvps'));
+          const rsvpSnap = await getDocs(rsvpQuery);
+          rsvps[event.id] = rsvpSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (error) {
+          console.error(`Error loading RSVPs for event ${event.id}:`, error);
+        }
+      }
+      
+      setRsvpsByEvent(rsvps);
+    };
+    
+    loadRsvps();
+  }, [currentUser, userRole, allEvents]);
 
   const isAuthed = !!currentUser;
 
@@ -354,6 +378,41 @@ const Profile: React.FC = () => {
   };
 
   const cityOptions = useMemo(() => NJ_CITIES, []);
+
+  // Admin: Update RSVP
+  const updateRsvp = async (eventId: string, userId: string, status: 'going' | 'maybe' | 'not-going' | null) => {
+    try {
+      const rsvpRef = doc(db, 'events', eventId, 'rsvps', userId);
+      if (status === null) {
+        await deleteDoc(rsvpRef);
+      } else {
+        const snap = await getDoc(rsvpRef);
+        if (snap.exists()) {
+          await updateDoc(rsvpRef, { status, updatedAt: serverTimestamp() });
+        } else {
+          await setDoc(rsvpRef, { status, createdAt: serverTimestamp() });
+        }
+      }
+      toast.success('RSVP updated');
+    } catch (e: any) {
+      console.error('Failed to update RSVP:', e);
+      toast.error(e?.message || 'Failed to update RSVP');
+    }
+  };
+
+  // Admin: Export RSVPs as CSV
+  const exportRsvps = (event: any) => {
+    const rsvps = rsvpsByEvent[event.id] || [];
+    const csv = ['UserID,Status', ...rsvps.map(r => `${r.id},${r.status}`)].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${event.title}_rsvps.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('RSVP list exported');
+  };
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-12">
@@ -654,6 +713,38 @@ const Profile: React.FC = () => {
                             Edit Event
                           </button>
                         </div>
+                      </div>
+                      
+                      {/* RSVP List for Admin */}
+                      <div className="mt-4">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">RSVP List</h4>
+                        {rsvpsByEvent[event.id]?.length ? (
+                          <div className="space-y-2">
+                            {rsvpsByEvent[event.id].map(rsvp => (
+                              <div key={rsvp.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                <span className="text-sm text-gray-600">{rsvp.id} ({rsvp.status})</span>
+                                <select
+                                  value={rsvp.status}
+                                  onChange={(e) => updateRsvp(event.id, rsvp.id, e.target.value as 'going' | 'maybe' | 'not-going' | null)}
+                                  className="text-xs px-2 py-1 rounded border border-gray-300"
+                                >
+                                  <option value="going">Going</option>
+                                  <option value="maybe">Maybe</option>
+                                  <option value="not-going">Not Going</option>
+                                  <option value="">Remove</option>
+                                </select>
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => exportRsvps(event)}
+                              className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                            >
+                              Export CSV
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">No RSVPs yet.</p>
+                        )}
                       </div>
                     </div>
                   ))}
