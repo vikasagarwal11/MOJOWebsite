@@ -1,52 +1,33 @@
-// src/pages/Events.tsx
-// @version 2025-08-18  events: members see all; guests see public upcoming + teasers; past is public
+// Events: members see all; guests see public upcoming + teasers; past (public only for guests)
 import React, { useEffect, useState } from 'react';
 import { Calendar, Plus } from 'lucide-react';
-import {
-  collection,
-  onSnapshot,
-  orderBy,
-  query,
-  where,
-  Timestamp,
-} from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import EventCard from '../components/events/EventCard';
 import CreateEventModal from '../components/events/CreateEventModal';
-import { where, orderBy } from 'firebase/firestore';
-
 
 type AnyEvent = any;
-
-type Teaser = {
-  id: string;
-  title: string;
-  startAt: Timestamp | Date | { toDate: () => Date };
-};
+type Teaser = { id: string; title: string; startAt: Timestamp | Date | { toDate: () => Date } };
 
 function tsToDate(v: any): Date {
   if (!v) return new Date();
-  // @ts-ignore
-  if (typeof v.toDate === 'function') return v.toDate();
+  if (typeof v?.toDate === 'function') return v.toDate();
   if (v instanceof Date) return v;
   if (typeof v === 'string') return new Date(v);
-  return new Date();
+  return new Date(v);
 }
-const now = new Date();
+
 const Events: React.FC = () => {
   const { currentUser, loading: authLoading } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  // members
-  const [upcoming, setUpcoming] = useState<AnyEvent[]>([]);
-  // guests
-  const [publicUpcoming, setPublicUpcoming] = useState<AnyEvent[]>([]);
+  const [upcoming, setUpcoming] = useState<AnyEvent[]>([]);           // members only
+  const [publicUpcoming, setPublicUpcoming] = useState<AnyEvent[]>([]); // guests
   const [upcomingTeasers, setUpcomingTeasers] = useState<Teaser[]>([]);
-  // past (public)
-  const [past, setPast] = useState<AnyEvent[]>([]);
+  const [past, setPast] = useState<AnyEvent[]>([]);                   // for guests: public only
 
   const [loadingUpcoming, setLoadingUpcoming] = useState(false);
   const [loadingPublicUpcoming, setLoadingPublicUpcoming] = useState(false);
@@ -54,9 +35,7 @@ const Events: React.FC = () => {
   const [loadingTeasers, setLoadingTeasers] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Real-time subscriptions
   useEffect(() => {
-    // Don’t attach listeners until we know if user is signed in or not
     if (authLoading) return;
 
     setErr(null);
@@ -64,34 +43,36 @@ const Events: React.FC = () => {
     const eventsRef = collection(db, 'events');
     const teasersRef = collection(db, 'event_teasers');
 
-    // --- Server/client time skew guard ---
-    // We fetch "past" as strictly earlier than (now - 2 minutes)
-    // so server-side rule (resource.data.startAt < request.time) is guaranteed true.
-    const SKEW_MS = 2 * 60 * 1000; // 2 minutes safety
+    // Buffer for past vs server time skew
+    const SKEW_MS = 2 * 60 * 1000;
     const nowClientMs = Date.now();
     const pastCutoff = Timestamp.fromMillis(nowClientMs - SKEW_MS);
+    const nowTs = Timestamp.fromMillis(nowClientMs);
 
-    // We still use "now" for upcoming. Slight boundary differences are okay there.
-    const now = Timestamp.fromMillis(nowClientMs);
-
-    // --- Past events (public) ---
-    const pastQ = query(
-      eventsRef,
-      where('startAt', '<', pastCutoff),   // <-- buffered cutoff
-      orderBy('startAt', 'desc')
-    );
-    const unsubPast = onSnapshot(
-      pastQ,
-      (snap) => {
-        setPast(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setLoadingPast(false);
-      },
-      (e) => {
-        console.error(e);
-        setErr('Failed to load past events.');
-        setLoadingPast(false);
-      }
-    );
+    // --- Past events ---
+    let unsubPast: () => void;
+    if (currentUser) {
+      // Members: all past
+      const pastQ = query(eventsRef, where('startAt', '<', pastCutoff), orderBy('startAt', 'desc'));
+      unsubPast = onSnapshot(
+        pastQ,
+        (snap) => { setPast(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoadingPast(false); },
+        (e) => { console.error(e); setErr('Failed to load past events.'); setLoadingPast(false); }
+      );
+    } else {
+      // Guests: public past only
+      const pastQ = query(
+        eventsRef,
+        where('public', '==', true),
+        where('startAt', '<', pastCutoff),
+        orderBy('startAt', 'desc')
+      );
+      unsubPast = onSnapshot(
+        pastQ,
+        (snap) => { setPast(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoadingPast(false); },
+        (e) => { console.error(e); setErr('Failed to load past events.'); setLoadingPast(false); }
+      );
+    }
 
     // --- Upcoming ---
     let unsubUpcoming: (() => void) | null = null;
@@ -99,73 +80,38 @@ const Events: React.FC = () => {
     let unsubTeasers: (() => void) | null = null;
 
     if (currentUser) {
-      // Members: full upcoming
       setLoadingUpcoming(true);
-      const upcomingQ = query(
-        eventsRef,
-        where('startAt', '>=', now),
-        orderBy('startAt', 'asc')
-      );
+      const upcomingQ = query(eventsRef, where('startAt', '>=', nowTs), orderBy('startAt', 'asc'));
       unsubUpcoming = onSnapshot(
         upcomingQ,
-        (snap) => {
-          setUpcoming(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-          setLoadingUpcoming(false);
-        },
-        (e) => {
-          console.error(e);
-          setErr('Failed to load upcoming events.');
-          setLoadingUpcoming(false);
-        }
+        (snap) => { setUpcoming(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoadingUpcoming(false); },
+        (e) => { console.error(e); setErr('Failed to load upcoming events.'); setLoadingUpcoming(false); }
       );
-      // Clear guest lists
       setPublicUpcoming([]);
       setUpcomingTeasers([]);
     } else {
-      // Guests: show PUBLIC upcoming + teasers
-
-      // 1) Public upcoming (requires composite index: public ASC, startAt ASC)
+      // Guests: public upcoming + teasers
       setLoadingPublicUpcoming(true);
       const publicUpcomingQ = query(
         eventsRef,
         where('public', '==', true),
-        where('startAt', '>=', now),
+        where('startAt', '>=', nowTs),
         orderBy('startAt', 'asc')
       );
       unsubPublicUpcoming = onSnapshot(
         publicUpcomingQ,
-        (snap) => {
-          setPublicUpcoming(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-          setLoadingPublicUpcoming(false);
-        },
-        (e) => {
-          console.error(e);
-          setErr('Failed to load public upcoming events.');
-          setLoadingPublicUpcoming(false);
-        }
+        (snap) => { setPublicUpcoming(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoadingPublicUpcoming(false); },
+        (e) => { console.error(e); setErr('Failed to load public upcoming events.'); setLoadingPublicUpcoming(false); }
       );
 
-      // 2) Teasers for private upcoming
       setLoadingTeasers(true);
-      const teaserQ = query(
-        teasersRef,
-        where('startAt', '>=', now),
-        orderBy('startAt', 'asc')
-      );
+      const teaserQ = query(teasersRef, where('startAt', '>=', nowTs), orderBy('startAt', 'asc'));
       unsubTeasers = onSnapshot(
         teaserQ,
-        (snap) => {
-          setUpcomingTeasers(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-          setLoadingTeasers(false);
-        },
-        (e) => {
-          console.error(e);
-          setErr('Failed to load upcoming event teasers.');
-          setLoadingTeasers(false);
-        }
+        (snap) => { setUpcomingTeasers(snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }))); setLoadingTeasers(false); },
+        (e) => { console.error(e); setErr('Failed to load upcoming event teasers.'); setLoadingTeasers(false); }
       );
 
-      // Clear member list
       setUpcoming([]);
     }
 
@@ -177,8 +123,6 @@ const Events: React.FC = () => {
     };
   }, [authLoading, currentUser]);
 
-  const showingUpcoming = activeTab === 'upcoming';
-
   const renderUpcomingForMember = () => {
     const isLoading = loadingUpcoming;
     const list = upcoming;
@@ -186,10 +130,7 @@ const Events: React.FC = () => {
     return (
       <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {!isLoading &&
-            list.map((event: AnyEvent) => (
-              <EventCard key={event.id} event={event} />
-            ))}
+          {!isLoading && list.map((event: AnyEvent) => <EventCard key={event.id} event={event} />)}
         </div>
 
         {isLoading && (
@@ -202,9 +143,7 @@ const Events: React.FC = () => {
         {!isLoading && list.length === 0 && (
           <div className="text-center py-16">
             <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-medium text-gray-500 mb-2">
-              No upcoming events found
-            </h3>
+            <h3 className="text-xl font-medium text-gray-500 mb-2">No upcoming events found</h3>
             <p className="text-gray-400">Check back soon for new events!</p>
           </div>
         )}
@@ -221,35 +160,25 @@ const Events: React.FC = () => {
 
     return (
       <>
-        {/* Public upcoming (full cards) */}
         {!!publicList.length && (
           <>
             <h3 className="text-lg font-semibold mb-3">Upcoming (public)</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-              {!isLoadingPublic &&
-                publicList.map((event: AnyEvent) => <EventCard key={event.id} event={event} />)}
+              {!isLoadingPublic && publicList.map((event: AnyEvent) => <EventCard key={event.id} event={event} />)}
             </div>
           </>
         )}
 
-        {/* Teasers for private upcoming */}
+        {/* Teasers */}
         <div className="rounded-xl border bg-white p-6">
-          <h3 className="text-lg font-semibold mb-2">
-            More coming up (members only)
-          </h3>
-          <p className="text-gray-600 mb-4">
-            Sign in to see full details and RSVP. Here’s a peek:
-          </p>
+          <h3 className="text-lg font-semibold mb-2">More coming up (members only)</h3>
+          <p className="text-gray-600 mb-4">Sign in to see full details and RSVP. Here’s a peek:</p>
 
           {!isLoadingTeasers && teaserList.length > 0 && (
             <ul className="divide-y">
               {teaserList.map((t) => {
                 const d = tsToDate(t.startAt);
-                const formatted = d.toLocaleDateString(undefined, {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                });
+                const formatted = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
                 return (
                   <li key={t.id} className="py-3 flex items-center justify-between">
                     <span className="font-medium text-gray-900">{t.title}</span>
@@ -270,17 +199,12 @@ const Events: React.FC = () => {
           {!isLoadingTeasers && !teaserList.length && !publicList.length && (
             <div className="text-center py-8">
               <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-              <div className="text-gray-500">
-                No upcoming events posted yet. Check back soon!
-              </div>
+              <div className="text-gray-500">No upcoming events posted yet. Check back soon!</div>
             </div>
           )}
 
           <div className="mt-6 text-center">
-            <a
-              href="/login"
-              className="inline-block px-6 py-2 rounded-full bg-purple-600 text-white font-semibold hover:bg-purple-700"
-            >
+            <a href="/login" className="inline-block px-6 py-2 rounded-full bg-purple-600 text-white font-semibold hover:bg-purple-700">
               Sign in to see details
             </a>
           </div>
@@ -296,10 +220,7 @@ const Events: React.FC = () => {
     return (
       <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {!isLoading &&
-            list.map((event: AnyEvent) => (
-              <EventCard key={event.id} event={event} />
-            ))}
+          {!isLoading && list.map((event: AnyEvent) => <EventCard key={event.id} event={event} />)}
         </div>
 
         {isLoading && (
@@ -312,12 +233,8 @@ const Events: React.FC = () => {
         {!isLoading && list.length === 0 && (
           <div className="text-center py-16">
             <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-medium text-gray-500 mb-2">
-              No past events found
-            </h3>
-            <p className="text-gray-400">
-              Past events will appear here once they are completed.
-            </p>
+            <h3 className="text-xl font-medium text-gray-500 mb-2">No past events found</h3>
+            <p className="text-gray-400">Past events will appear here once they are completed.</p>
           </div>
         )}
       </>
@@ -329,12 +246,8 @@ const Events: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
-            Fitness Events
-          </h1>
-          <p className="text-gray-600 text-lg">
-            Join our community events and transform your fitness journey
-          </p>
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Fitness Events</h1>
+          <p className="text-gray-600 text-lg">Join our community events and transform your fitness journey</p>
         </div>
 
         {currentUser?.role === 'admin' && (
@@ -353,9 +266,7 @@ const Events: React.FC = () => {
         <button
           onClick={() => setActiveTab('upcoming')}
           className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${
-            activeTab === 'upcoming'
-              ? 'bg-white text-purple-600 shadow-sm'
-              : 'text-gray-600 hover:text-purple-600'
+            activeTab === 'upcoming' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'
           }`}
         >
           Upcoming {currentUser ? `(${upcoming.length})` : ''}
@@ -363,9 +274,7 @@ const Events: React.FC = () => {
         <button
           onClick={() => setActiveTab('past')}
           className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${
-            activeTab === 'past'
-              ? 'bg-white text-purple-600 shadow-sm'
-              : 'text-gray-600 hover:text-purple-600'
+            activeTab === 'past' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'
           }`}
         >
           Past Events ({past.length})
@@ -373,16 +282,10 @@ const Events: React.FC = () => {
       </div>
 
       {/* Body */}
-      {activeTab === 'upcoming'
-        ? (currentUser ? renderUpcomingForMember() : renderUpcomingForGuest())
-        : renderPast()}
+      {activeTab === 'upcoming' ? (currentUser ? renderUpcomingForMember() : renderUpcomingForGuest()) : renderPast()}
 
       {/* Error banner */}
-      {err && (
-        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
-          {err}
-        </div>
-      )}
+      {err && <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">{err}</div>}
 
       {/* Create Event Modal */}
       {isCreateModalOpen && (
