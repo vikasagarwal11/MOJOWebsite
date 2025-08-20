@@ -20,8 +20,14 @@ const eventSchema = z.object({
   date: z.string().min(1, 'Event date is required'),
   time: z.string().min(1, 'Event time is required'),
   location: z.string().min(1, 'Location is required'),
-  maxAttendees: z.number().min(1, 'Max attendees must be at least 1').optional(),
-  imageUrl: z.string().optional(),
+   // 👇 map "", null, undefined, or NaN to undefined so it's truly optional
+  maxAttendees: z.preprocess(
+    (v) => (v === '' || v == null || Number.isNaN(v as any) ? undefined : Number(v)),
+    z.number().int().min(1, 'Max attendees must be at least 1').optional()
+  ),
+
+  // keep URL optional+empty-string friendly if you want
+  imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
 });
 
 type EventFormData = z.infer<typeof eventSchema>;
