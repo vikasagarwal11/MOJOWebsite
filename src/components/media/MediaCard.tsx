@@ -262,55 +262,72 @@ const MediaCard: React.FC<MediaCardProps> = ({ media }) => {
 
         {/* Comments */}
         {showComments && (
-          <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
-            {comments.map((c) => {
-  const isMe = currentUser && c.authorId === currentUser.id;
-  return (
-    <div
-      key={c.id}
-      className={`relative pl-9 pr-2 py-2 border-l ${
-        isMe ? 'border-purple-300' : 'border-gray-200'
-      }`}
-    >
-      <span
-        className="absolute left-0 top-2 w-6 h-6 rounded-full ring-1 ring-white"
-        style={{ background: '#E9D8FD' }} // or reuse colorFor(c.authorId) if you import it
-        title={c.authorName}
-      />
-      <div className="text-[13px] leading-5">
-        <span className="font-medium text-gray-900">{c.authorName}</span>
-        {isMe && (
-          <span className="text-[10px] ml-2 px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
-            You
-          </span>
-        )}
-        <span className="ml-2 text-gray-700 break-words">{c.text}</span>
-      </div>
-    </div>
-  );
-})}
+  <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
+    {comments.map((c) => {
+      const created =
+        (c as any)?.createdAt?.toDate?.()
+          ? (c as any).createdAt.toDate()
+          : (c as any).createdAt instanceof Date
+          ? (c as any).createdAt
+          : undefined;
 
-            {canEngage ? (
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Add a comment…"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
-                />
-                <button
-                  onClick={addComment}
-                  className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-                >
-                  Post
-                </button>
+      const mine = c.authorId && currentUser?.id && c.authorId === currentUser.id;
+
+      return (
+        <div
+          key={c.id}
+          className="relative rounded-xl bg-purple-50/70 border border-purple-100 px-4 py-2 pl-10"
+        >
+          {/* tiny “bullet/avatar” dot */}
+          <span className="absolute left-3 top-3 inline-block w-2 h-2 rounded-full bg-amber-300" />
+
+          <div className="flex flex-col">
+            {/* line 1: name + comment */}
+            <div className="flex flex-wrap items-baseline gap-2 text-sm">
+              <span className="font-semibold text-gray-900">{c.authorName}</span>
+              {mine && (
+                <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-200 text-purple-800">
+                  You
+                </span>
+              )}
+              <span className="italic font-semibold text-gray-800 break-words">
+                {c.text}
+              </span>
+            </div>
+
+            {/* line 2: small timestamp */}
+            {created && (
+              <div className="mt-0.5 pl-0.5 text-[11px] text-gray-400">
+                {format(created, 'MMM d, yyyy • h:mm a')}
               </div>
-            ) : (
-              <div className="text-xs text-gray-500">Sign in as a member to comment.</div>
             )}
           </div>
-        )}
+        </div>
+      );
+    })}
+
+    {canEngage ? (
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newComment}
+          onChange={(e) => setNewComment(e.target.value)}
+          placeholder="Add a comment…"
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+        />
+        <button
+          onClick={addComment}
+          className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+        >
+          Post
+        </button>
+      </div>
+    ) : (
+      <div className="text-xs text-gray-500">Sign in as a member to comment.</div>
+    )}
+  </div>
+)}
+
       </div>
     </div>
   );
