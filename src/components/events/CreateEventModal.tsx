@@ -199,13 +199,15 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
               <div className="relative">
                 <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
-                  {...register('maxAttendees', { valueAsNumber: true })}
-                  type="number"
-                  min="1"
-                  disabled={isLoading}
-                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="No limit"
-                />
+  {...register('maxAttendees')}
+  type="number"
+  min="1"
+  step="1"
+  inputMode="numeric"
+  disabled={isLoading}
+  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+  placeholder="No limit"
+/>
               </div>
             </div>
 
