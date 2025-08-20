@@ -1,25 +1,30 @@
-import EventTypeahead from './EventTypeahead';
-import React, { useState } from 'react';
+// src/components/media/MediaUploadModal.tsx
+import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, Upload, Image, FileText, Tag } from 'lucide-react';
-import { MediaFile, Event } from '../../types';
+import { X, Upload, FileText } from 'lucide-react';
+import { Event } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFirestore } from '../../hooks/useFirestore';
 import { useStorage } from '../../hooks/useStorage';
+import { stripUndefined } from '../../utils/firestore';
+import toast from 'react-hot-toast';
+import EventTypeahead from './EventTypeahead';
 
 const mediaSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().optional(),
-  eventId: z.string().optional(),
-  file: z.any().refine((files) => files?.length === 1, 'Please select a file'),
+  // file is handled by input element; we just ensure a File exists
+  file: z
+    .any()
+    .refine((files) => files?.length === 1 && files[0] instanceof File, 'Please select a file'),
 });
 
 type MediaFormData = z.infer<typeof mediaSchema>;
 
 interface MediaUploadModalProps {
-  events: Event[];
+  events: Event[];            // seed list for the typeahead
   onClose: () => void;
   onMediaUploaded: () => void;
 }
@@ -28,62 +33,102 @@ const MediaUploadModal: React.FC<MediaUploadModalProps> = ({ events, onClose, on
   const { currentUser } = useAuth();
   const { addDocument } = useFirestore();
   const { uploadFile, getStoragePath } = useStorage();
+
   const [isLoading, setIsLoading] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // Selected event from typeahead
+  const [selectedEvent, setSelectedEvent] = useState<{ id: string | null; title: string | null }>({
+    id: null,
+    title: null,
+  });
 
   const {
     register,
     handleSubmit,
     formState: { errors },
     watch,
-  } = useForm<MediaFormData>({
-    resolver: zodResolver(mediaSchema),
-  });
+  } = useForm<MediaFormData>({ resolver: zodResolver(mediaSchema) });
 
-  const watchedFile = watch('file');
+  const watchedFileList = watch('file');
 
-  React.useEffect(() => {
-    if (watchedFile && watchedFile[0]) {
-      const file = watchedFile[0];
-      const url = URL.createObjectURL(file);
-      setPreview(url);
-      return () => URL.revokeObjectURL(url);
-    } else {
-      setPreview(null);
+  // Build a quick preview for the chosen file
+  useEffect(() => {
+    const file: File | undefined = watchedFileList?.[0];
+    if (!file) {
+      setPreviewUrl(null);
+      return;
     }
-  }, [watchedFile]);
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [watchedFileList]);
+
+  // Small helpers
+  const fileSelected: File | null = useMemo(() => {
+    return watchedFileList && watchedFileList[0] instanceof File ? watchedFileList[0] : null;
+  }, [watchedFileList]);
+
+  const fileKind = useMemo<'image' | 'video' | null>(() => {
+    const f = fileSelected;
+    if (!f) return null;
+    if (f.type.startsWith('image/')) return 'image';
+    if (f.type.startsWith('video/')) return 'video';
+    // crude fallback by extension
+    const name = f.name.toLowerCase();
+    if (/\.(png|jpe?g|gif|webp|avif)$/.test(name)) return 'image';
+    if (/\.(mp4|webm|mov|m4v|mkv)$/.test(name)) return 'video';
+    return null;
+  }, [fileSelected]);
 
   const onSubmit = async (data: MediaFormData) => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      toast.error('Please sign in to upload media.');
+      return;
+    }
+    if (!fileSelected) {
+      toast.error('Select a file to upload.');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      const file = data.file[0];
-      
-      // Upload file to Firebase Storage
-      const filePath = getStoragePath('media', file.name);
-      const downloadURL = await uploadFile(file, filePath);
-      
-      const fileType = file.type.startsWith('image/') ? 'image' : 'video';
-      const selectedEvent = events.find(e => e.id === data.eventId);
-      
-      const mediaData = {
-        title: data.title,
-        description: data.description,
-        type: fileType,
-        url: downloadURL,
-        eventId: data.eventId,
-        eventTitle: selectedEvent?.title,
-        uploadedBy: currentUser.id,
-        uploaderName: currentUser.displayName,
-        likes: [],
-        comments: [],
-      };
+      // Upload to Storage
+      const path = getStoragePath('media', fileSelected.name);
+      const downloadURL = await uploadFile(fileSelected, path);
 
-      await addDocument('media', mediaData);
+      // Basic metadata
+      const isImage = fileKind === 'image';
+      const isVideo = fileKind === 'video';
+
+      // Build clean Firestore doc (no undefined fields)
+      const mediaDoc = stripUndefined({
+        title: data.title.trim(),
+        titleLower: data.title.trim().toLowerCase(),
+        description: data.description?.trim() || undefined,
+        type: isImage ? 'image' : isVideo ? 'video' : 'other',
+        url: downloadURL,
+        // Until you add Cloud Function derivatives, use the same as a placeholder for images.
+        thumbnailUrl: isImage ? downloadURL : undefined,
+        // Event tagging from typeahead
+        eventId: selectedEvent.id ?? null,
+        eventTitle: selectedEvent.title ?? null,
+        // Ownership
+        uploadedBy: currentUser.id,
+        uploaderName: currentUser.displayName || 'Member',
+        // Engagement primitives (counter fields scale better than arrays)
+        likes: [] as string[],
+        comments: [] as any[],
+        likesCount: 0,
+        commentsCount: 0,
+      });
+
+      await addDocument('media', mediaDoc);
+      toast.success('Media uploaded!');
       onMediaUploaded();
-    } catch (error) {
-      console.error('Error uploading media:', error);
+    } catch (err: any) {
+      console.error('Error uploading media:', err);
+      toast.error(err?.message || 'Failed to upload media');
     } finally {
       setIsLoading(false);
     }
@@ -95,37 +140,41 @@ const MediaUploadModal: React.FC<MediaUploadModalProps> = ({ events, onClose, on
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900">Upload Media</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-          >
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
             <X className="w-6 h-6 text-gray-500" />
           </button>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
-          {/* File Upload */}
+          {/* File */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Choose File
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Choose File</label>
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-purple-400 transition-colors">
               <input
                 {...register('file')}
                 type="file"
                 accept="image/*,video/*"
+                id="media-file-input"
                 className="hidden"
-                id="file-upload"
               />
-              <label htmlFor="file-upload" className="cursor-pointer">
-                {preview ? (
+              <label htmlFor="media-file-input" className="cursor-pointer block">
+                {previewUrl ? (
                   <div className="space-y-4">
-                    <img
-                      src={preview}
-                      alt="Preview"
-                      className="max-h-48 mx-auto rounded-lg"
-                    />
+                    {fileKind === 'video' ? (
+                      <video
+                        src={previewUrl}
+                        muted
+                        controls
+                        className="max-h-56 mx-auto rounded-lg"
+                      />
+                    ) : (
+                      <img
+                        src={previewUrl}
+                        alt="Preview"
+                        className="max-h-56 mx-auto rounded-lg object-cover"
+                      />
+                    )}
                     <p className="text-sm text-gray-600">Click to change file</p>
                   </div>
                 ) : (
@@ -133,24 +182,20 @@ const MediaUploadModal: React.FC<MediaUploadModalProps> = ({ events, onClose, on
                     <Upload className="w-12 h-12 text-gray-400 mx-auto" />
                     <div>
                       <p className="text-lg font-medium text-gray-700">Upload your media</p>
-                      <p className="text-sm text-gray-500">Drag and drop or click to browse</p>
+                      <p className="text-sm text-gray-500">Drag & drop or click to browse</p>
                     </div>
                   </div>
                 )}
               </label>
             </div>
-            {errors.file && (
-              <p className="mt-1 text-sm text-red-600">{errors.file.message}</p>
-            )}
+            {errors.file && <p className="mt-1 text-sm text-red-600">{String(errors.file.message)}</p>}
           </div>
 
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Title
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
             <div className="relative">
-              <FileText className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
                 {...register('title')}
                 type="text"
@@ -161,15 +206,13 @@ const MediaUploadModal: React.FC<MediaUploadModalProps> = ({ events, onClose, on
               />
             </div>
             {errors.title && (
-              <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>
+              <p className="mt-1 text-sm text-red-600">{String(errors.title.message)}</p>
             )}
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Description (Optional)
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Description (Optional)</label>
             <textarea
               {...register('description')}
               rows={3}
@@ -178,29 +221,15 @@ const MediaUploadModal: React.FC<MediaUploadModalProps> = ({ events, onClose, on
             />
           </div>
 
-          {/* Event Tag */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Tag with Event (Optional)
-            </label>
-            <div className="relative">
-              <Tag className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <select
-                {...register('eventId')}
-                className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
-              >
-                <option value="">No event tag</option>
-                {events.map((event) => (
-                  <option key={event.id} value={event.id}>
-                    {event.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          {/* Event typeahead */}
+          <EventTypeahead
+            value={selectedEvent}
+            onChange={setSelectedEvent}
+            seedEvents={events as any}
+          />
 
-          {/* Submit Button */}
-          <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
+          {/* Submit */}
+          <div className="flex justify-end gap-3 pt-6 border-t border-gray-200">
             <button
               type="button"
               onClick={onClose}
@@ -213,7 +242,7 @@ const MediaUploadModal: React.FC<MediaUploadModalProps> = ({ events, onClose, on
               disabled={isLoading}
               className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? 'Uploading...' : 'Upload Media'}
+              {isLoading ? 'Uploading…' : 'Upload Media'}
             </button>
           </div>
         </form>
