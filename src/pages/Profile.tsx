@@ -62,6 +62,14 @@ const Profile: React.FC = () => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
+  // Admin features
+  const [userRole, setUserRole] = useState<string>('member');
+  const [userEvents, setUserEvents] = useState<any[]>([]);
+  const [allEvents, setAllEvents] = useState<any[]>([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [showEventModal, setShowEventModal] = useState(false);
+
   // Load from Auth + Firestore
   useEffect(() => {
     if (!currentUser) return;
@@ -99,6 +107,9 @@ const Profile: React.FC = () => {
             youtube:   d.social?.youtube   || '',
             website:   d.social?.website   || '',
           });
+
+          // Set user role
+          setUserRole(d.role || 'member');
         }
       } catch {
         // ignore snapshot errors
@@ -129,7 +140,65 @@ const Profile: React.FC = () => {
     return unsubscribe;
   }, [currentUser]);
 
+  // Load events for admins and event creators
+  useEffect(() => {
+    if (!currentUser || !userRole) return;
+    
+    setLoadingEvents(true);
+    
+    if (userRole === 'admin') {
+      // Admins can see all events
+      const q = query(
+        collection(db, 'events'),
+        orderBy('startAt', 'desc'),
+        limit(50)
+      );
+      
+      const unsubscribe = onSnapshot(q, (snap) => {
+        setAllEvents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setLoadingEvents(false);
+      }, (error) => {
+        console.error('Error loading all events:', error);
+        setLoadingEvents(false);
+      });
+      
+      return unsubscribe;
+    } else {
+      // Regular users see events they created
+      const q = query(
+        collection(db, 'events'),
+        where('createdBy', '==', currentUser.id),
+        orderBy('startAt', 'desc'),
+        limit(20)
+      );
+      
+      const unsubscribe = onSnapshot(q, (snap) => {
+        setUserEvents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setLoadingEvents(false);
+      }, (error) => {
+        console.error('Error loading user events:', error);
+        setLoadingEvents(false);
+      });
+      
+      return unsubscribe;
+    }
+  }, [currentUser, userRole]);
+
   const isAuthed = !!currentUser;
+
+  // Mark notification as read
+  const markNotificationAsRead = async (notificationId: string) => {
+    try {
+      await updateDoc(doc(db, 'notifications', notificationId), {
+        read: true,
+        updatedAt: serverTimestamp()
+      });
+      toast.success('Notification marked as read');
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+      toast.error('Failed to mark notification as read');
+    }
+  };
 
   const initialsForAvatar = useMemo(() => {
     const name = displayName || [firstName, lastName].filter(Boolean).join(' ') || 'Member';
@@ -240,15 +309,7 @@ const Profile: React.FC = () => {
     }
   };
 
-  const markNotificationAsRead = async (notificationId: string) => {
-    try {
-      await updateDoc(doc(db, 'notifications', notificationId), { read: true });
-      toast.success('Notification marked as read');
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-      toast.error('Failed to mark notification as read');
-    }
-  };
+
 
   // ---------- Save ----------
   const onSave = async () => {
@@ -532,6 +593,130 @@ const Profile: React.FC = () => {
             <p className="text-xs text-gray-500">We’ll save them like <code>#yoga</code>, <code>#pilates</code>.</p>
           </div>
 
+          {/* Admin Event Management */}
+          {userRole === 'admin' && (
+            <div className="grid gap-4 mb-8">
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-semibold text-gray-700">Admin Event Management</h2>
+              </div>
+              
+              {loadingEvents ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+                  <p className="text-gray-500 mt-2">Loading events...</p>
+                </div>
+              ) : allEvents.length === 0 ? (
+                <div className="text-center py-8 bg-gray-50 rounded-lg">
+                  <p className="text-gray-500">No events found</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {allEvents.map((event) => (
+                    <div key={event.id} className="p-4 rounded-lg border border-gray-200 bg-white">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="font-medium text-gray-900">{event.title}</h3>
+                          <p className="text-sm text-gray-600 mt-1">{event.description}</p>
+                          <p className="text-xs text-gray-500 mt-2">
+                            {event.startAt?.toDate?.() 
+                              ? new Date(event.startAt.toDate()).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                              : 'Date TBD'
+                            }
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            Created by: {event.createdBy || 'Unknown'}
+                          </p>
+                        </div>
+                        
+                        <div className="flex items-center gap-2 ml-4">
+                          <button
+                            onClick={() => {
+                              setSelectedEvent(event);
+                              setShowEventModal(true);
+                            }}
+                            className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                          >
+                            Manage RSVPs
+                          </button>
+                          <button
+                            onClick={() => {
+                              // Navigate to events page and open edit modal
+                              window.location.href = '/events';
+                            }}
+                            className="text-xs px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                          >
+                            Edit Event
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* User Events (for non-admins) */}
+          {userRole !== 'admin' && userEvents.length > 0 && (
+            <div className="grid gap-4 mb-8">
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-semibold text-gray-700">My Events</h2>
+              </div>
+              
+              <div className="grid gap-3">
+                {userEvents.map((event) => (
+                  <div key={event.id} className="p-4 rounded-lg border border-gray-200 bg-white">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-900">{event.title}</h3>
+                        <p className="text-sm text-gray-600 mt-1">{event.description}</p>
+                        <p className="text-xs text-gray-500 mt-2">
+                          {event.startAt?.toDate?.() 
+                            ? new Date(event.startAt.toDate()).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })
+                            : 'Date TBD'
+                            }
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 ml-4">
+                        <button
+                          onClick={() => {
+                            setSelectedEvent(event);
+                            setShowEventModal(true);
+                          }}
+                          className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                        >
+                          View RSVPs
+                        </button>
+                        <button
+                          onClick={() => {
+                            // Navigate to events page and open edit modal
+                            window.location.href = '/events';
+                          }}
+                          className="text-xs px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                        >
+                          Edit Event
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Notifications */}
           <div className="grid gap-4">
             <div className="flex items-center gap-2">
@@ -620,6 +805,75 @@ const Profile: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* RSVP Management Modal */}
+      {showEventModal && selectedEvent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold">RSVP Management - {selectedEvent.title}</h2>
+                <button
+                  onClick={() => setShowEventModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <IconX className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6">
+              <div className="mb-4">
+                <h3 className="font-medium text-gray-900 mb-2">Event Details</h3>
+                <div className="text-sm text-gray-600">
+                  <p><strong>Date:</strong> {selectedEvent.startAt?.toDate?.() 
+                    ? new Date(selectedEvent.startAt.toDate()).toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })
+                    : 'Date TBD'
+                  }</p>
+                  {selectedEvent.location && <p><strong>Location:</strong> {selectedEvent.location}</p>}
+                  {selectedEvent.description && <p><strong>Description:</strong> {selectedEvent.description}</p>}
+                </div>
+              </div>
+              
+              <div className="mb-4">
+                <h3 className="font-medium text-gray-900 mb-2">RSVP List</h3>
+                <p className="text-sm text-gray-500 mb-3">RSVP management will be implemented in the next phase</p>
+                <div className="text-center py-8 bg-gray-50 rounded-lg">
+                  <p className="text-gray-500">RSVP management coming soon!</p>
+                  <p className="text-sm text-gray-400">This will show all attendees and allow admins to manage RSVPs</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6 border-t bg-gray-50">
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowEventModal(false)}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    setShowEventModal(false);
+                    window.location.href = '/events';
+                  }}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  Edit Event
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
