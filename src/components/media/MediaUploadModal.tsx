@@ -116,6 +116,7 @@ const MediaUploadModal: React.FC<MediaUploadModalProps> = ({ events, onClose, on
         // Ownership
         uploadedBy: currentUser.id,
         uploaderName: currentUser.displayName || 'Member',
+        isPublic: true,
         // Engagement primitives (counter fields scale better than arrays)
         likes: [] as string[],
         comments: [] as any[],
