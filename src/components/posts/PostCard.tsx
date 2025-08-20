@@ -180,33 +180,39 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
         {showComments && (
           <div className="space-y-4">
             {comments.map((c) => {
-              const isMe = c.authorId === currentUser?.id;
-              const isAuthor = c.authorId === post.authorId;
-              return (
-                <div
-                  key={c.id}
-                  className={`rounded-lg p-3 border ${isMe ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span
-                      className="w-5 h-5 rounded-full ring-1 ring-white"
-                      style={{ background: colorFor(c.authorId) }}
-                      title={c.authorName}
-                    />
-                    <span className="text-sm font-medium text-gray-900">{c.authorName}</span>
-                    {isAuthor && (
-                      <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
-                        <Crown className="w-3 h-3" /> Author
-                      </span>
-                    )}
-                    {isMe && !isAuthor && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">You</span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-700 ml-7">{c.text}</p>
-                </div>
-              );
-            })}
+  const isMe = c.authorId === currentUser?.id;
+  const isAuthor = c.authorId === post.authorId;
+  return (
+    <div
+      key={c.id}
+      className={`relative pl-9 pr-2 py-2 border-l ${
+        isMe ? 'border-purple-300' : 'border-gray-200'
+      }`}
+    >
+      {/* tiny avatar dot */}
+      <span
+        className="absolute left-0 top-2 w-6 h-6 rounded-full ring-1 ring-white"
+        style={{ background: colorFor(c.authorId) }}
+        title={c.authorName}
+      />
+      <div className="text-[13px] leading-5">
+        <span className="font-medium text-gray-900">{c.authorName}</span>
+        {isAuthor && (
+          <span className="inline-flex items-center gap-1 text-[10px] ml-2 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+            Author
+          </span>
+        )}
+        {isMe && !isAuthor && (
+          <span className="text-[10px] ml-2 px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+            You
+          </span>
+        )}
+        <span className="ml-2 text-gray-700 break-words">{c.text}</span>
+      </div>
+    </div>
+  );
+})}
+
 
             {canEngage ? (
               <form onSubmit={handleAddComment} className="flex gap-3">
