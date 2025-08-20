@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp, collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db, storage } from '../config/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Camera, X as IconX } from 'lucide-react';
+import { Camera, X as IconX, Bell, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { NJ_CITIES } from '../data/nj-cities';
 
@@ -58,6 +58,10 @@ const Profile: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
+  // Notifications
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+
   // Load from Auth + Firestore
   useEffect(() => {
     if (!currentUser) return;
@@ -100,6 +104,29 @@ const Profile: React.FC = () => {
         // ignore snapshot errors
       }
     })();
+  }, [currentUser]);
+
+  // Load notifications
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    setLoadingNotifications(true);
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', currentUser.id),
+      orderBy('createdAt', 'desc'),
+      limit(10)
+    );
+    
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoadingNotifications(false);
+    }, (error) => {
+      console.error('Error loading notifications:', error);
+      setLoadingNotifications(false);
+    });
+    
+    return unsubscribe;
   }, [currentUser]);
 
   const isAuthed = !!currentUser;
@@ -210,6 +237,16 @@ const Profile: React.FC = () => {
       e.preventDefault();
       addTag(tagInput);
       setTagInput('');
+    }
+  };
+
+  const markNotificationAsRead = async (notificationId: string) => {
+    try {
+      await updateDoc(doc(db, 'notifications', notificationId), { read: true });
+      toast.success('Notification marked as read');
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+      toast.error('Failed to mark notification as read');
     }
   };
 
@@ -493,6 +530,82 @@ const Profile: React.FC = () => {
               placeholder="Type an interest (e.g., yoga) and press Enter"
             />
             <p className="text-xs text-gray-500">We’ll save them like <code>#yoga</code>, <code>#pilates</code>.</p>
+          </div>
+
+          {/* Notifications */}
+          <div className="grid gap-4">
+            <div className="flex items-center gap-2">
+              <Bell className="w-5 h-5 text-purple-600" />
+              <h2 className="text-sm font-semibold text-gray-700">Notifications</h2>
+            </div>
+            
+            {loadingNotifications ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+                <p className="text-gray-500 mt-2">Loading notifications...</p>
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-lg">
+                <Bell className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                <p className="text-gray-500">No notifications yet</p>
+                <p className="text-sm text-gray-400">You'll see RSVP notifications here when members join your events</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {notifications.map((notification) => (
+                  <div
+                    key={notification.id}
+                    className={`p-4 rounded-lg border transition-all duration-200 ${
+                      notification.read 
+                        ? 'bg-gray-50 border-gray-200 text-gray-600' 
+                        : 'bg-purple-50 border-purple-200 text-gray-900'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{notification.message}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {notification.createdAt?.toDate?.() 
+                            ? new Date(notification.createdAt.toDate()).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })
+                            : 'Recently'
+                          }
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-center gap-2 ml-4">
+                        {notification.eventId && (
+                          <button
+                            onClick={() => {
+                              // Navigate to events page and open the specific event
+                              window.location.href = '/events';
+                            }}
+                            className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                          >
+                            View Event
+                          </button>
+                        )}
+                        
+                        {!notification.read && (
+                          <button
+                            onClick={() => markNotificationAsRead(notification.id)}
+                            className="text-xs px-2 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center gap-1"
+                            title="Mark as read"
+                          >
+                            <Eye className="w-3 h-3" />
+                            Read
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Save */}

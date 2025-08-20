@@ -1,15 +1,28 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, CalendarDays, MapPin, Users, Clock, CheckCircle, XCircle, HelpCircle } from 'lucide-react';
+import { Calendar, CalendarDays, MapPin, Users, Clock, CheckCircle, XCircle, HelpCircle, Edit, Trash2, CalendarPlus } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
-import { db } from '../../config/firebase';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db, storage } from '../../config/firebase';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
+import { deleteObject, ref } from 'firebase/storage';
+import toast from 'react-hot-toast';
+import { createEvent } from 'ics';
 
 interface EventCardProps {
   event: any;
+  onEdit?: (event: any) => void; // New prop for editing
 }
 
-const EventCard: React.FC<EventCardProps> = ({ event }) => {
+// Helper function to convert timestamp to Date
+function tsToDate(v: any): Date {
+  if (!v) return new Date();
+  if (typeof v?.toDate === 'function') return v.toDate();
+  if (v instanceof Date) return v;
+  if (typeof v === 'string') return new Date(v);
+  return new Date(v);
+}
+
+const EventCard: React.FC<EventCardProps> = ({ event, onEdit }) => {
   const { currentUser } = useAuth();
 
   // Prefer startAt
@@ -65,6 +78,69 @@ const EventCard: React.FC<EventCardProps> = ({ event }) => {
     }
   };
 
+  const handleDelete = async () => {
+    if (!currentUser || (currentUser.id !== event.createdBy && currentUser.role !== 'admin')) return;
+    
+    if (!confirm(`Are you sure you want to delete "${event.title}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      // Delete event
+      await deleteDoc(doc(db, 'events', event.id));
+      
+      // Delete teaser if exists
+      await deleteDoc(doc(db, 'event_teasers', event.id)).catch(() => {}); // Ignore if no teaser
+      
+      // Delete RSVPs
+      const rsvps = await getDocs(collection(db, 'events', event.id, 'rsvps'));
+      for (const rsvp of rsvps.docs) {
+        await deleteDoc(rsvp.ref);
+      }
+      
+      // Delete image if exists
+      if (event.imageUrl && event.imageUrl.includes('/o/')) {
+        try {
+          const imageRef = ref(storage, event.imageUrl);
+          await deleteObject(imageRef);
+        } catch (e) {
+          console.log('Image deletion failed (may not exist):', e);
+        }
+      }
+      
+      toast.success('Event deleted successfully');
+    } catch (e: any) {
+      console.error('Error deleting event:', e);
+      toast.error(e?.message || 'Failed to delete event');
+    }
+  };
+
+  const handleAddToCalendar = () => {
+    const start = dateObj;
+    const end = event.endAt ? tsToDate(event.endAt) : new Date(start.getTime() + 60 * 60 * 1000);
+    
+    createEvent({
+      start: [start.getFullYear(), start.getMonth() + 1, start.getDate(), start.getHours(), start.getMinutes()],
+      end: [end.getFullYear(), end.getMonth() + 1, end.getDate(), end.getHours(), end.getMinutes()],
+      title: event.title,
+      description: event.description,
+      location: event.location,
+    }, (err, value) => {
+      if (err) {
+        toast.error('Failed to generate calendar event');
+        return;
+      }
+      const blob = new Blob([value], { type: 'text/calendar' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${event.title}.ics`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Event added to calendar');
+    });
+  };
+
   return (
     <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group">
       {event.imageUrl && (
@@ -107,6 +183,38 @@ const EventCard: React.FC<EventCardProps> = ({ event }) => {
         </div>
 
         <p className="text-gray-600 text-sm mb-6 line-clamp-3">{event.description}</p>
+
+        {/* Action Buttons */}
+        <div className="flex justify-between items-center mb-4">
+          {/* Add to Calendar Button */}
+          <button
+            onClick={handleAddToCalendar}
+            className="flex items-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+          >
+            <CalendarPlus className="w-4 h-4 mr-1" />
+            Add to Calendar
+          </button>
+          
+          {/* Admin/Event Creator Actions */}
+          {(currentUser?.role === 'admin' || currentUser?.id === event.createdBy) && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => onEdit?.(event)}
+                className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+              >
+                <Edit className="w-4 h-4 mr-1" />
+                Edit
+              </button>
+              <button
+                onClick={handleDelete}
+                className="flex items-center px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                Delete
+              </button>
+            </div>
+          )}
+        </div>
 
         {currentUser && isUpcoming && (
           <div className="space-y-3">
