@@ -14,6 +14,8 @@ import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import EventCard from '../components/events/EventCard';
 import CreateEventModal from '../components/events/CreateEventModal';
+import { where, orderBy } from 'firebase/firestore';
+
 
 type AnyEvent = any;
 
@@ -31,7 +33,7 @@ function tsToDate(v: any): Date {
   if (typeof v === 'string') return new Date(v);
   return new Date();
 }
-
+const now = new Date();
 const Events: React.FC = () => {
   const { currentUser, loading: authLoading } = useAuth();
 
