@@ -177,7 +177,9 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
         </div>
 
         {/* Comments */}
-        {showComments && (
+        
+
+{showComments && (
   <div className="space-y-3">
     {comments.map((c) => {
       const created =
@@ -248,7 +250,6 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
     )}
   </div>
 )}
-
 
 
         
