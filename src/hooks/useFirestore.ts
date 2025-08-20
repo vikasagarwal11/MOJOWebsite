@@ -65,8 +65,9 @@ function hasOrderByField(constraints: QueryConstraint[], field: string) {
 
 /**
  * Enforce guest-readable queries:
- * - posts  : add where(isPublic == true); default orderBy(createdAt, desc) only if no orderBy present
- * - events : add where(public == true);   default orderBy(startAt,  asc)  only if no orderBy present
+ * - posts  : where(isPublic == true), default orderBy(createdAt desc)
+ * - events : where(public == true),   default orderBy(startAt  asc)
+ * - media  : where(isPublic == true), default orderBy(createdAt desc)
  */
 function enforceGuestPolicy(
   collectionName: string,
@@ -87,6 +88,11 @@ function enforceGuestPolicy(
     if (!hasAnyOrderBy(out) && !hasOrderByField(out, 'startAt')) {
       out.push(orderBy('startAt', 'asc'));
     }
+  } else if (collectionName === 'media') {
+    if (!hasWhereEquals(out, 'isPublic', true)) out.unshift(where('isPublic', '==', true));
+    if (!hasAnyOrderBy(out) && !hasOrderByField(out, 'createdAt')) {
+      out.push(orderBy('createdAt', 'desc'));
+    }
   }
 
   return out;
@@ -95,7 +101,6 @@ function enforceGuestPolicy(
 export const useFirestore = () => {
   const { currentUser } = useAuth();
 
-  // ---------------- Simple collection fetch (no realtime) ----------------
   const getCollection = async (collectionName: string) => {
     try {
       const snap = await getDocs(collection(db, collectionName));
@@ -107,7 +112,6 @@ export const useFirestore = () => {
     }
   };
 
-  // ---------------- Writes (safe against undefined) ----------------
   const addDocument = async (collectionName: string, data: any) => {
     try {
       const cleaned = stripUndefined({
@@ -148,7 +152,6 @@ export const useFirestore = () => {
     }
   };
 
-  // ---------------- Realtime with automatic guest guards ----------------
   const useRealtimeCollection = (
     collectionName: string,
     queryConstraints: QueryConstraint[] = []
@@ -177,11 +180,10 @@ export const useFirestore = () => {
           setLoading(false);
 
           if (error?.code === 'failed-precondition') {
-            // Missing composite index
-            toast.error('This query needs a Firestore composite index. Click the console link in your devtools to create it.');
+            toast.error('This query needs a Firestore composite index. Use the console link in devtools to create it.');
           } else if (error?.code === 'permission-denied') {
             if (!authed) {
-              toast.error('Sign in to view private items (or ensure the query filters to public content).');
+              toast.error('Sign in to view private items (or filter to public content).');
             } else {
               toast.error('You do not have permission to read these documents.');
             }
@@ -192,7 +194,6 @@ export const useFirestore = () => {
       );
 
       return () => unsubscribe();
-      // Re-subscribe if auth/role or constraints change
     }, [collectionName, currentUser?.id, currentUser?.role, JSON.stringify(queryConstraints)]);
 
     return { data, loading };
