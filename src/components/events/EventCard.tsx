@@ -91,7 +91,10 @@ const dateObj =
         <div className="space-y-2 mb-4">
           <div className="flex items-center text-gray-600">
             <Calendar className="w-4 h-4 mr-2 text-purple-500" />
-            <span className="text-sm">{format(dateObj, 'EEEE, MMMM d, yyyy')}</span>
+<span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm bg-purple-50 text-purple-700 border border-purple-200">
+  <CalendarDays className="w-4 h-4" />
+  {format(dateObj, 'EEE, MMM d • h:mm a')}
+</span>
           </div>
           <div className="flex items-center text-gray-600">
             <Clock className="w-4 h-4 mr-2 text-purple-500" />
