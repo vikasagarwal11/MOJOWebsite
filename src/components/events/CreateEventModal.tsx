@@ -76,7 +76,9 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         startAt,
         location: data.location,
         imageUrl: imageUrl || data.imageUrl || undefined, // may be undefined
-        maxAttendees: Number.isFinite(data.maxAttendees as any) ? data.maxAttendees : undefined,
+        maxAttendees: typeof data.maxAttendees === 'number' ? data.maxAttendees : undefined,
+
+//        maxAttendees: Number.isFinite(data.maxAttendees as any) ? data.maxAttendees : undefined,
         createdBy: currentUser.id,
         public: isPublic, // <-- visibility flag
         rsvps: [] as any[],
