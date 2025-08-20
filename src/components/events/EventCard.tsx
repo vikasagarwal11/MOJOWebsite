@@ -1,6 +1,6 @@
 // src/components/events/EventCard.tsx
 import React, { useMemo, useState } from 'react';
-import { Calendar, MapPin, Users, Clock, CheckCircle, XCircle, HelpCircle } from 'lucide-react';
+import { Calendar, CalendarDays, MapPin, Users, Clock, CheckCircle, XCircle, HelpCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../config/firebase';
