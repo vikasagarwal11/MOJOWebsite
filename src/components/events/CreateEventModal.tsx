@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useStorage } from '../../hooks/useStorage';
 import { addDoc, collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import toast from 'react-hot-toast';
 
 // 🔹 Firestore shouldn't see undefined fields
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
@@ -37,21 +38,25 @@ interface CreateEventModalProps {
 const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCreated }) => {
   const { currentUser } = useAuth();
   const { uploadFile, getStoragePath } = useStorage();
-
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isPublic, setIsPublic] = useState(false); // default private
-
+  const [isPublic, setIsPublic] = useState(true); // Default to public
   const { register, handleSubmit, formState: { errors }, reset } = useForm<EventFormData>({
     resolver: zodResolver(eventSchema),
   });
 
   const onSubmit = async (data: EventFormData) => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      toast.error('Please sign in to create an event.');
+      return;
+    }
 
     // Robust ISO join of date + time
     const startAt = new Date(`${data.date}T${data.time || '00:00'}`);
-    if (Number.isNaN(startAt.getTime())) throw new Error('Invalid date or time');
+    if (Number.isNaN(startAt.getTime())) {
+      toast.error('Invalid date or time');
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -65,14 +70,15 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
       // Build event payload (no undefineds)
       const eventData = stripUndefined({
         title: data.title.trim(),
+        titleLower: data.title.trim().toLowerCase(), // For EventTypeahead search
         description: data.description.trim(),
-        startAt,                                   // canonical datetime
+        startAt,
         location: data.location.trim(),
         imageUrl: imageUrl || (data.imageUrl?.trim() || undefined),
         maxAttendees: typeof data.maxAttendees === 'number' ? data.maxAttendees : undefined,
         createdBy: currentUser.id,
         public: isPublic,
-        attendingCount: 0,                         // will be maintained by Cloud Function
+        attendingCount: 0, // Will be maintained by Cloud Function
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -89,11 +95,13 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         }, { merge: true });
       }
 
+      toast.success('Event created successfully!');
       reset();
       setSelectedFile(null);
       onEventCreated();
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error creating event:', e);
+      toast.error(e?.message || 'Failed to create event');
     } finally {
       setIsLoading(false);
     }
@@ -109,7 +117,6 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
             <X className="w-6 h-6 text-gray-500" />
           </button>
         </div>
-
         {/* Form */}
         <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
           <div>
@@ -126,7 +133,6 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
             </div>
             {errors.title && <p className="mt-1 text-sm text-red-600">{errors.title.message}</p>}
           </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
             <textarea
@@ -138,7 +144,6 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
             />
             {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>}
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
@@ -153,7 +158,6 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
               </div>
               {errors.date && <p className="mt-1 text-sm text-red-600">{errors.date.message}</p>}
             </div>
-
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Time</label>
               <div className="relative">
@@ -168,7 +172,6 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
               {errors.time && <p className="mt-1 text-sm text-red-600">{errors.time.message}</p>}
             </div>
           </div>
-
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
             <div className="relative">
@@ -183,7 +186,6 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
             </div>
             {errors.location && <p className="mt-1 text-sm text-red-600">{errors.location.message}</p>}
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Max Attendees (Optional)</label>
@@ -201,7 +203,6 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                 />
               </div>
             </div>
-
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Event Image (Optional)</label>
               <div className="space-y-3">
@@ -223,7 +224,6 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
               </div>
             </div>
           </div>
-
           {/* Public toggle */}
           <label className="flex items-center gap-3 pt-2">
             <input
@@ -237,7 +237,6 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
               Make this event public (visible to everyone)
             </span>
           </label>
-
           {/* Submit */}
           <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
             <button
