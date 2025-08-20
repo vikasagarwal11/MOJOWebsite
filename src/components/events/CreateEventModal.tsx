@@ -50,22 +50,23 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     resolver: zodResolver(eventSchema),
   });
 
-  const onSubmit = async (data: EventFormData) => {
-    if (!currentUser) return;
+const onSubmit = async (data: EventFormData) => {
+  if (!currentUser) return;
 
-    // canonical startAt = date + time
-    const startAt = new Date(data.date);
-    const [hh, mm] = String(data.time || '00:00').split(':').map(Number);
-    startAt.setHours(hh || 0, mm || 0, 0, 0);
+  // robust startAt
+  const startAt = new Date(`${data.date}T${data.time || '00:00'}`);
+  if (Number.isNaN(startAt.getTime())) {
+    throw new Error('Invalid date or time');
+  }
 
-    setIsLoading(true);
-    try {
-      // optional image upload
-      let imageUrl = '';
-      if (selectedFile) {
-        const imagePath = getStoragePath('events', selectedFile.name);
-        imageUrl = await uploadFile(selectedFile, imagePath);
-      }
+  setIsLoading(true);
+  try {
+    // optional image upload
+    let imageUrl = '';
+    if (selectedFile) {
+      const imagePath = getStoragePath('events', selectedFile.name);
+      imageUrl = await uploadFile(selectedFile, imagePath);
+    }
 
       // Build payload; remove undefineds to satisfy Firestore
       const rawEventData = {
