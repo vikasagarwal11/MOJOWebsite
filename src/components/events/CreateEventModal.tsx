@@ -20,13 +20,13 @@ const eventSchema = z.object({
   date: z.string().min(1, 'Event date is required'),
   time: z.string().min(1, 'Event time is required'),
   location: z.string().min(1, 'Location is required'),
-   // 👇 map "", null, undefined, or NaN to undefined so it's truly optional
+
+  // Optional number: map blank/NaN → undefined
   maxAttendees: z.preprocess(
     (v) => (v === '' || v == null || Number.isNaN(v as any) ? undefined : Number(v)),
     z.number().int().min(1, 'Max attendees must be at least 1').optional()
   ),
 
-  // keep URL optional+empty-string friendly if you want
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
 });
 
