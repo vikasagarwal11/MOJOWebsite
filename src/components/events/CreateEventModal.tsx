@@ -4,12 +4,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { X, Calendar, Clock, MapPin, Users, FileText } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useFirestore } from '../../hooks/useFirestore';
 import { useStorage } from '../../hooks/useStorage';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
-// 🔹 Local helper so Firestore never sees undefined fields
+// 🔹 Firestore shouldn't see undefined fields
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
@@ -20,13 +19,11 @@ const eventSchema = z.object({
   date: z.string().min(1, 'Event date is required'),
   time: z.string().min(1, 'Event time is required'),
   location: z.string().min(1, 'Location is required'),
-
-  // Optional number: map blank/NaN → undefined
+  // Optional number: map blank / null / NaN → undefined
   maxAttendees: z.preprocess(
     (v) => (v === '' || v == null || Number.isNaN(v as any) ? undefined : Number(v)),
     z.number().int().min(1, 'Max attendees must be at least 1').optional()
   ),
-
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
 });
 
@@ -39,103 +36,59 @@ interface CreateEventModalProps {
 
 const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCreated }) => {
   const { currentUser } = useAuth();
-  const { addDocument } = useFirestore();
   const { uploadFile, getStoragePath } = useStorage();
 
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isPublic, setIsPublic] = useState(false); // default private; toggle makes it public
+  const [isPublic, setIsPublic] = useState(false); // default private
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<EventFormData>({
     resolver: zodResolver(eventSchema),
   });
 
-const onSubmit = async (data: EventFormData) => {
-  if (!currentUser) return;
+  const onSubmit = async (data: EventFormData) => {
+    if (!currentUser) return;
 
-  // robust startAt
-  const startAt = new Date(`${data.date}T${data.time || '00:00'}`);
-  if (Number.isNaN(startAt.getTime())) {
-    throw new Error('Invalid date or time');
-  }
+    // Robust ISO join of date + time
+    const startAt = new Date(`${data.date}T${data.time || '00:00'}`);
+    if (Number.isNaN(startAt.getTime())) throw new Error('Invalid date or time');
 
-  setIsLoading(true);
-  try {
-    // optional image upload
-    let imageUrl = '';
-    if (selectedFile) {
-      const imagePath = getStoragePath('events', selectedFile.name);
-      imageUrl = await uploadFile(selectedFile, imagePath);
-    }
-
-      // Build payload; remove undefineds to satisfy Firestore
-      const rawEventData = {
-        title: data.title,
-        description: data.description,
-        date: new Date(data.date), // legacy field retained
-        time: data.time,
-        startAt,
-        location: data.location,
-        imageUrl: imageUrl || data.imageUrl || undefined, // may be undefined
-        maxAttendees: typeof data.maxAttendees === 'number' ? data.maxAttendees : undefined,
-
-//        maxAttendees: Number.isFinite(data.maxAttendees as any) ? data.maxAttendees : undefined,
-        createdBy: currentUser.id,
-        public: isPublic, // <-- visibility flag
-        rsvps: [] as any[],
-        attendees: [] as any[],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-
-      //const eventData = stripUndefined(rawEventData);
-          const eventData = stripUndefined({
-      title: data.title.trim(),
-      description: data.description.trim(),
-      startAt,                                   // <-- canonical
-      location: data.location.trim(),
-      imageUrl: imageUrl || (data.imageUrl?.trim() || undefined),
-      maxAttendees: typeof data.maxAttendees === 'number' ? data.maxAttendees : undefined,
-      createdBy: currentUser.id,
-      public: isPublic,
-      attendingCount: 0,                         // <-- used by RSVP counter
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-
-    // Create event and capture id
-    const evRef = await addDoc(collection(db, 'events'), eventData);
-
-    // For private upcoming, create a teaser **with the same id**
-    if (!isPublic) {
-      await setDoc(doc(db, 'event_teasers', evRef.id), {
-        title: eventData.title,
-        startAt,
-        createdAt: serverTimestamp(),
-      }, { merge: true });
-    }
-
-    reset();
-    setSelectedFile(null);
-    onEventCreated();
-  } catch (e) {
-    console.error('Error creating event:', e);
-  } finally {
-    setIsLoading(false);
-  }
-};
-  await addDocument('events', eventData);
-
-      // if private upcoming, create a public teaser
-      if (!isPublic) {
-        await addDoc(collection(db, 'event_teasers'), {
-          title: data.title,
-          startAt,
-          createdAt: serverTimestamp(),
-        });
+    setIsLoading(true);
+    try {
+      // Optional image upload
+      let imageUrl = '';
+      if (selectedFile) {
+        const imagePath = getStoragePath('events', selectedFile.name);
+        imageUrl = await uploadFile(selectedFile, imagePath);
       }
 
-      // clean up
+      // Build event payload (no undefineds)
+      const eventData = stripUndefined({
+        title: data.title.trim(),
+        description: data.description.trim(),
+        startAt,                                   // canonical datetime
+        location: data.location.trim(),
+        imageUrl: imageUrl || (data.imageUrl?.trim() || undefined),
+        maxAttendees: typeof data.maxAttendees === 'number' ? data.maxAttendees : undefined,
+        createdBy: currentUser.id,
+        public: isPublic,
+        attendingCount: 0,                         // will be maintained by Cloud Function
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      // Create event (capture id)
+      const evRef = await addDoc(collection(db, 'events'), eventData);
+
+      // If private & upcoming: create a teaser with the SAME id
+      if (!isPublic) {
+        await setDoc(doc(db, 'event_teasers', evRef.id), {
+          title: eventData.title,
+          startAt,
+          createdAt: serverTimestamp(),
+        }, { merge: true });
+      }
+
       reset();
       setSelectedFile(null);
       onEventCreated();
@@ -237,15 +190,15 @@ const onSubmit = async (data: EventFormData) => {
               <div className="relative">
                 <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
-  {...register('maxAttendees')}
-  type="number"
-  min="1"
-  step="1"
-  inputMode="numeric"
-  disabled={isLoading}
-  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-  placeholder="No limit"
-/>
+                  {...register('maxAttendees')}
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  disabled={isLoading}
+                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  placeholder="No limit"
+                />
               </div>
             </div>
 
