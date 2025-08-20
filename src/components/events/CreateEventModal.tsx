@@ -88,8 +88,43 @@ const onSubmit = async (data: EventFormData) => {
         updatedAt: serverTimestamp(),
       };
 
-      const eventData = stripUndefined(rawEventData);
-      await addDocument('events', eventData);
+      //const eventData = stripUndefined(rawEventData);
+          const eventData = stripUndefined({
+      title: data.title.trim(),
+      description: data.description.trim(),
+      startAt,                                   // <-- canonical
+      location: data.location.trim(),
+      imageUrl: imageUrl || (data.imageUrl?.trim() || undefined),
+      maxAttendees: typeof data.maxAttendees === 'number' ? data.maxAttendees : undefined,
+      createdBy: currentUser.id,
+      public: isPublic,
+      attendingCount: 0,                         // <-- used by RSVP counter
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    // Create event and capture id
+    const evRef = await addDoc(collection(db, 'events'), eventData);
+
+    // For private upcoming, create a teaser **with the same id**
+    if (!isPublic) {
+      await setDoc(doc(db, 'event_teasers', evRef.id), {
+        title: eventData.title,
+        startAt,
+        createdAt: serverTimestamp(),
+      }, { merge: true });
+    }
+
+    reset();
+    setSelectedFile(null);
+    onEventCreated();
+  } catch (e) {
+    console.error('Error creating event:', e);
+  } finally {
+    setIsLoading(false);
+  }
+};
+  await addDocument('events', eventData);
 
       // if private upcoming, create a public teaser
       if (!isPublic) {
