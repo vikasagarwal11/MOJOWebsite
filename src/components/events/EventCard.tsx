@@ -1,5 +1,4 @@
-// src/components/events/EventCard.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, CalendarDays, MapPin, Users, Clock, CheckCircle, XCircle, HelpCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
@@ -13,38 +12,31 @@ interface EventCardProps {
 const EventCard: React.FC<EventCardProps> = ({ event }) => {
   const { currentUser } = useAuth();
 
-  // prefer startAt, fallback to date
- // const dateObj = useMemo(() => {
-  //  const v: any = event.startAt ?? event.date;
-    // @ts-ignore
-  //  if (v?.toDate) return v.toDate();
-   // if (typeof v === 'string') return new Date(v);
-   //return (v as Date) || new Date();
- // }, [event.startAt, event.date]);
-const dateObj =
-  event.startAt?.toDate ? event.startAt.toDate() :
-  typeof event.startAt === 'string' ? new Date(event.startAt) :
-  new Date(event.startAt);
-  
-  // for “upcoming” logic include time if provided
-  const eventMoment = useMemo(() => {
-    const d = new Date(dateObj);
-    const [h, m] = String(event.time || '00:00').split(':').map(Number);
-    d.setHours(h || 0, m || 0, 0, 0);
-    return d;
-  }, [dateObj, event.time]);
+  // Prefer startAt
+  const dateObj: Date = useMemo(() => {
+    const v: any = event.startAt;
+    if (v?.toDate) return v.toDate();
+    if (typeof v === 'string') return new Date(v);
+    return new Date(v);
+  }, [event.startAt]);
 
-  const isUpcoming = eventMoment.getTime() >= Date.now();
+  const isUpcoming = dateObj.getTime() >= Date.now();
 
-  const rsvps = Array.isArray(event.rsvps) ? event.rsvps : [];
-  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'maybe' | 'not-going' | null>(
-    currentUser ? (rsvps.find((r: any) => r.userId === currentUser.id)?.status ?? null) : null
-  );
+  // My RSVP (load my doc once)
+  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'maybe' | 'not-going' | null>(null);
+  useEffect(() => {
+    let cancel = false;
+    async function fetchMyRsvp() {
+      if (!currentUser || !event?.id) return;
+      const rsvpRef = doc(db, 'events', String(event.id), 'rsvps', currentUser.id);
+      const snap = await getDoc(rsvpRef);
+      if (!cancel) setRsvpStatus((snap.data()?.status as any) ?? null);
+    }
+    fetchMyRsvp();
+    return () => { cancel = true; };
+  }, [currentUser?.id, event?.id]);
 
-  const attendingCount =
-    Array.isArray(event.rsvps)
-      ? event.rsvps.filter((r: any) => r.status === 'going').length
-      : (event.attendees?.length ?? 0);
+  const attendingCount: number = event.attendingCount ?? 0;
 
   const getRSVPIcon = (status: string) =>
     status === 'going' ? <CheckCircle className="w-4 h-4" /> :
@@ -64,10 +56,8 @@ const dateObj =
       const rsvpRef = doc(db, 'events', String(event.id), 'rsvps', currentUser.id);
       const snap = await getDoc(rsvpRef);
       if (snap.exists()) {
-        // Rules: update only ['status','updatedAt']
         await updateDoc(rsvpRef, { status, updatedAt: serverTimestamp() });
       } else {
-        // Rules: create only ['status','createdAt']
         await setDoc(rsvpRef, { status, createdAt: serverTimestamp() });
       }
     } catch (e) {
@@ -79,7 +69,11 @@ const dateObj =
     <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group">
       {event.imageUrl && (
         <div className="h-48 overflow-hidden">
-          <img src={event.imageUrl} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          <img
+            src={event.imageUrl}
+            alt={event.title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
         </div>
       )}
 
@@ -91,14 +85,14 @@ const dateObj =
         <div className="space-y-2 mb-4">
           <div className="flex items-center text-gray-600">
             <Calendar className="w-4 h-4 mr-2 text-purple-500" />
-<span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm bg-purple-50 text-purple-700 border border-purple-200">
-  <CalendarDays className="w-4 h-4" />
-  {format(dateObj, 'EEE, MMM d • h:mm a')}
-</span>
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm bg-purple-50 text-purple-700 border border-purple-200">
+              <CalendarDays className="w-4 h-4" />
+              {format(dateObj, 'EEE, MMM d • h:mm a')}
+            </span>
           </div>
           <div className="flex items-center text-gray-600">
             <Clock className="w-4 h-4 mr-2 text-purple-500" />
-            <span className="text-sm">{event.time}</span>
+            <span className="text-sm">{format(dateObj, 'h:mm a')}</span>
           </div>
           <div className="flex items-center text-gray-600">
             <MapPin className="w-4 h-4 mr-2 text-purple-500" />
