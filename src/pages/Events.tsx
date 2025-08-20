@@ -7,6 +7,14 @@ import { useAuth } from '../contexts/AuthContext';
 import EventCard from '../components/events/EventCard';
 import CreateEventModal from '../components/events/CreateEventModal';
 
+import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
+import format from 'date-fns/format';
+import parse from 'date-fns/parse';
+import startOfWeek from 'date-fns/startOfWeek';
+import getDay from 'date-fns/getDay';
+import enUS from 'date-fns/locale/en-US';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+
 type AnyEvent = any;
 type Teaser = { id: string; title: string; startAt: Timestamp | Date | { toDate: () => Date } };
 
