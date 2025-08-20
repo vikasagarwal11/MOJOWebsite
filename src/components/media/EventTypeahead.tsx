@@ -1,22 +1,36 @@
+// src/components/events/EventTypeahead.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Tag, Search } from 'lucide-react';
 import { collection, getDocs, limit, orderBy, query, startAt, endAt } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
-type EventLite = { id: string; title?: string; titleLower?: string; startAt?: any };
+type EventLite = {
+  id: string;
+  title?: string;
+  titleLower?: string;
+  startAt?: any;
+};
+
 type Props = {
   value: { id: string | null; title: string | null };
   onChange: (next: { id: string | null; title: string | null }) => void;
-  seedEvents?: EventLite[];
+  seedEvents?: EventLite[];  // optional list from parent for local fallback
   placeholder?: string;
   disabled?: boolean;
 };
 
-const EventTypeahead: React.FC<Props> = ({ value, onChange, seedEvents = [], placeholder = 'Search events…', disabled }) => {
+const EventTypeahead: React.FC<Props> = ({
+  value,
+  onChange,
+  seedEvents = [],
+  placeholder = 'Search events…',
+  disabled,
+}) => {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(false);
   const [remote, setRemote] = useState<EventLite[]>([]);
+  const [activeIndex, setActiveIndex] = useState<number>(-1);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
   // Close on outside click
@@ -29,7 +43,7 @@ const EventTypeahead: React.FC<Props> = ({ value, onChange, seedEvents = [], pla
     return () => window.removeEventListener('click', onClick);
   }, []);
 
-  // Remote prefix search on titleLower
+  // Remote prefix search on titleLower (optional; falls back to local)
   useEffect(() => {
     let cancelled = false;
     const doFetch = async () => {
@@ -43,16 +57,17 @@ const EventTypeahead: React.FC<Props> = ({ value, onChange, seedEvents = [], pla
         if (cancelled) return;
         setRemote(snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })));
       } catch {
+        // if index/field missing we just fall back to local
         setRemote([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
-    const t = setTimeout(doFetch, 250);
+    const t = setTimeout(doFetch, 250); // debounce
     return () => { cancelled = true; clearTimeout(t); };
   }, [q]);
 
-  // Local fallback
+  // Local fallback over the seed list
   const localMatches = useMemo(() => {
     const txt = q.trim().toLowerCase();
     const base = seedEvents || [];
@@ -62,6 +77,11 @@ const EventTypeahead: React.FC<Props> = ({ value, onChange, seedEvents = [], pla
 
   const suggestions = (q.trim().length >= 2 && remote.length > 0) ? remote : localMatches;
 
+  useEffect(() => {
+    // reset highlight when opening or list changes
+    setActiveIndex(suggestions.length ? 0 : -1);
+  }, [open, q, loading, suggestions.length]);
+
   const pick = (ev: EventLite | null) => {
     onChange(ev ? { id: ev.id, title: ev.title || 'Event' } : { id: null, title: null });
     setOpen(false);
@@ -69,24 +89,49 @@ const EventTypeahead: React.FC<Props> = ({ value, onChange, seedEvents = [], pla
   };
 
   return (
-    <div ref={boxRef} role="combobox" aria-expanded={open} aria-owns="ev-suggest" className="relative">
-      <label className="block text-sm font-medium text-gray-700 mb-2">Tag with Event (Optional)</label>
+    <div
+      ref={boxRef}
+      role="combobox"
+      aria-expanded={open}
+      aria-owns="ev-suggest"
+      aria-haspopup="listbox"
+      className="relative"
+    >
+      <label className="block text-sm font-medium text-gray-700 mb-2">
+        Tag with Event (Optional)
+      </label>
 
       <div
-        className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg border ${open ? 'border-purple-400 ring-2 ring-purple-200' : 'border-gray-300'} bg-white cursor-text`}
+        className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg border ${
+          open ? 'border-purple-400 ring-2 ring-purple-200' : 'border-gray-300'
+        } bg-white cursor-text`}
         onClick={() => setOpen(true)}
       >
         <Tag className="w-4 h-4 text-gray-400" />
         <input
           aria-autocomplete="list"
           aria-controls="ev-suggest"
+          aria-activedescendant={
+            activeIndex >= 0 ? `ev-opt-${activeIndex}` : undefined
+          }
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              if (suggestions[0]) pick(suggestions[0]);
-              else pick(null);
+            if (!open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) setOpen(true);
+            if (!suggestions.length) return;
+
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setActiveIndex(i => Math.min(i + 1, suggestions.length - 1));
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setActiveIndex(i => Math.max(i - 1, 0));
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              pick(suggestions[activeIndex] || suggestions[0]);
+            } else if (e.key === 'Escape') {
+              setOpen(false);
             }
           }}
           placeholder={placeholder}
@@ -96,33 +141,58 @@ const EventTypeahead: React.FC<Props> = ({ value, onChange, seedEvents = [], pla
         <Search className="w-4 h-4 text-gray-400" />
       </div>
 
+      {/* Current selection pill */}
       {(value?.id || value?.title) && (
         <div className="mt-2 text-sm text-gray-700">
           Selected: <span className="font-medium">{value.title || 'No event tag'}</span>
-          <button type="button" onClick={() => pick(null)} className="ml-2 text-purple-600 hover:underline">Clear</button>
+          <button
+            type="button"
+            onClick={() => pick(null)}
+            className="ml-2 text-purple-600 hover:underline"
+          >
+            Clear
+          </button>
         </div>
       )}
 
       {open && (
-        <div className="absolute z-20 mt-2 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-auto">
-          <button type="button" className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700" onClick={() => pick(null)}>
+        <div
+          id="ev-suggest"
+          role="listbox"
+          className="absolute z-20 mt-2 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-64 overflow-auto"
+        >
+          <button
+            type="button"
+            role="option"
+            aria-selected={false}
+            className="w-full text-left px-3 py-2 hover:bg-gray-50 text-gray-700"
+            onClick={() => pick(null)}
+          >
             No event tag
           </button>
 
           {loading && <div className="px-3 py-2 text-sm text-gray-400">Searching…</div>}
-          {!loading && suggestions.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">No matches</div>}
+          {!loading && suggestions.length === 0 && (
+            <div className="px-3 py-2 text-sm text-gray-400">No matches</div>
+          )}
 
-          {!loading && suggestions.map(ev => (
-            <button
-              key={ev.id}
-              type="button"
-              role="option"
-              className="w-full text-left px-3 py-2 hover:bg-purple-50"
-              onClick={() => pick(ev)}
-            >
-              <div className="text-sm text-gray-900">{ev.title || 'Untitled Event'}</div>
-            </button>
-          ))}
+          {!loading &&
+            suggestions.map((ev, idx) => (
+              <button
+                key={ev.id}
+                id={`ev-opt-${idx}`}
+                type="button"
+                role="option"
+                aria-selected={idx === activeIndex}
+                className={`w-full text-left px-3 py-2 hover:bg-purple-50 ${
+                  idx === activeIndex ? 'bg-purple-50' : ''
+                }`}
+                onMouseEnter={() => setActiveIndex(idx)}
+                onClick={() => pick(ev)}
+              >
+                <div className="text-sm text-gray-900">{ev.title || 'Untitled Event'}</div>
+              </button>
+            ))}
         </div>
       )}
     </div>
