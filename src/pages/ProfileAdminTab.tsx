@@ -78,13 +78,14 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       <div className="space-y-6">
         {allEvents.map(event => (
           <div key={event.id} className="space-y-4">
-            {/* EventCard for consistent display */}
+            {/* EventCard for consistent display - WITH admin actions in Admin tab */}
             <EventCard
               event={event}
               onEdit={() => {
                 setEventToEdit(event);
                 setIsCreateModalOpen(true);
               }}
+              showAdminActions={true} // NEW: Show Edit/Delete buttons in Admin tab
             />
             
             {/* Admin Action Buttons - Clean, Non-Duplicate Implementation */}
