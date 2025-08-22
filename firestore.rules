@@ -1,257 +1,170 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
     // --- Helpers ---
-    function isSignedIn() {
-      return request.auth != null;
-    }
-    
+    function isSignedIn() { return request.auth != null; }
     function userDoc() {
-      return isSignedIn() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data : null;
+      return isSignedIn()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        : null;
     }
-    
-    function isAdmin() {
-      return userDoc() != null && userDoc().role == 'admin';
+    function isAdmin() { return userDoc() != null && userDoc().role == 'admin'; }
+    function isMember() { return userDoc() != null && userDoc().role == 'member'; }
+    function tokenPhone() { return isSignedIn() ? request.auth.token.phone_number : null; }
+    function isBlockedPhone() { return tokenPhone() == "+10000000000"; }
+    function isUserBlockedFromRsvp(userId) { 
+      return get(/databases/$(database)/documents/users/$(userId)).data.blockedFromRsvp == true; 
     }
-    
-    function isMember() {
-      return userDoc() != null && userDoc().role == 'member';
-    }
-    
-    function isBlockedPhone() {
-      return isSignedIn() && request.auth.token.phone_number == "+10000000000";
-    }
-    
-    function isNonEmptyString(v) {
-      return v is string && v.size() > 0;
-    }
-    
-    function isUrlLike(v) {
-      return v is string && v.size() <= 2048 && v.matches('https?://.*');
-    }
-    
+    function isNonEmptyString(v) { return v is string && v.size() > 0; }
+    function isUrlLike(v) { return v is string && v.size() <= 2048 && v.matches('https?://.*'); }
     function validAddress(m) {
-      return m is map && 
-        ('city' in m) && isNonEmptyString(m.city) && 
-        ('state' in m) && isNonEmptyString(m.state) && 
-        (!('street' in m) || m.street is string) && 
-        (!('postalCode' in m) || m.postalCode is string);
+      return m is map
+        && ('city' in m) && isNonEmptyString(m.city)
+        && ('state' in m) && isNonEmptyString(m.state)
+        && (!('street' in m) || m.street is string)
+        && (!('postalCode' in m) || m.postalCode is string);
     }
-    
     function validSocial(m) {
-      return m is map && 
-        m.keys().hasOnly(['instagram','facebook','twitter','tiktok','youtube','website']) && 
-        (!('instagram' in m) || isUrlLike(m.instagram)) && 
-        (!('facebook' in m) || isUrlLike(m.facebook)) && 
-        (!('twitter' in m) || isUrlLike(m.twitter)) && 
-        (!('tiktok' in m) || isUrlLike(m.tiktok)) && 
-        (!('youtube' in m) || isUrlLike(m.youtube)) && 
-        (!('website' in m) || isUrlLike(m.website));
+      return m is map
+        && m.keys().hasOnly(['instagram','facebook','twitter','tiktok','youtube','website'])
+        && (!('instagram' in m) || isUrlLike(m.instagram))
+        && (!('facebook' in m) || isUrlLike(m.facebook))
+        && (!('twitter' in m) || isUrlLike(m.twitter))
+        && (!('tiktok' in m) || isUrlLike(m.tiktok))
+        && (!('youtube' in m) || isUrlLike(m.youtube))
+        && (!('website' in m) || isUrlLike(m.website));
     }
-    
     function validUserProfileData(newData) {
-      return (!('displayName' in newData) || isNonEmptyString(newData.displayName)) && 
-        (!('email' in newData) || newData.email is string) && 
-        (!('photoURL' in newData) || isUrlLike(newData.photoURL)) && 
-        (!('about' in newData) || (newData.about is string && newData.about.size() <= 1000)) && 
-        (!('age' in newData) || (newData.age is number && newData.age >= 13 && newData.age <= 120)) && 
-        (!('address' in newData) || validAddress(newData.address)) && 
-        (!('social' in newData) || validSocial(newData.social));
+      return
+        (!('displayName' in newData) || isNonEmptyString(newData.displayName)) &&
+        (!('email' in newData) || newData.email is string) &&
+        (!('photoURL' in newData) || isUrlLike(newData.photoURL)) &&
+        (!('about' in newData) || (newData.about is string && newData.about.size() <= 1000)) &&
+        (!('age' in newData) || (newData.age is number && newData.age >= 13 && newData.age <= 120)) &&
+        (!('address' in newData) || validAddress(newData.address)) &&
+        (!('social' in newData) || validSocial(newData.social)) &&
+        (!('fcmToken' in newData) || (newData.fcmToken is string && newData.fcmToken.size() > 0));
     }
-    
-    // Enhanced event validation
-    function validEventData(newData) {
-      return isNonEmptyString(newData.title) && 
-        newData.title.size() <= 200 &&
-        isNonEmptyString(newData.description) && 
-        newData.description.size() <= 2000 &&
-        newData.startAt is timestamp &&
-        (!('endAt' in newData) || newData.endAt is timestamp) &&
-        (!('tags' in newData) || (newData.tags is list && newData.tags.size() <= 10)) &&
-        (!('location' in newData) || isNonEmptyString(newData.location)) &&
-        (!('maxAttendees' in newData) || (newData.maxAttendees is number && newData.maxAttendees > 0));
+    function validStatusHistory(history) {
+      return history is list
+        && history.size() > 0
+        && history[0] is map
+        && ('status' in history[0]) && history[0].status in ['going', 'maybe', 'not-going']
+        && ('changedAt' in history[0]) && history[0].changedAt is timestamp
+        && ('changedBy' in history[0]) && isNonEmptyString(history[0].changedBy);
     }
-    
-    // Check if user is event creator
-    function isEventCreator(eventId) {
-      return isSignedIn() && 
-        exists(/databases/$(database)/documents/events/$(eventId)) &&
-        get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid;
-    }
-    
     // --- USERS ---
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && 
-        request.auth.uid == userId && 
-        (!('role' in request.resource.data) || (request.resource.data.role == 'member' && !isBlockedPhone())) && 
-        validUserProfileData(request.resource.data);
-      allow update: if isSignedIn() && 
-        request.auth.uid == userId && 
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) && 
-        validUserProfileData(request.resource.data);
+      allow create: if isSignedIn()
+                    && request.auth.uid == userId
+                    && (!('role' in request.resource.data)
+                        || (request.resource.data.role == 'member' && !isBlockedPhone()))
+                    && validUserProfileData(request.resource.data);
+      allow update: if isSignedIn()
+                    && request.auth.uid == userId
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+                    && validUserProfileData(request.resource.data)
+                    || (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['blockedFromRsvp', 'updatedAt', 'fcmToken']))
+                    && (!('fcmToken' in request.resource.data) || request.resource.data.fcmToken is string);
       allow delete: if isSignedIn() && request.auth.uid == userId;
     }
-    
     // --- EVENT TEASERS ---
     match /event_teasers/{teaserId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
     }
-    
-    // --- EVENTS (Enhanced) ---
+    // --- EVENTS ---
     match /events/{eventId} {
-      allow read: if !('startAt' in resource.data) || 
-        resource.data.startAt < request.time || 
-        isSignedIn() || 
+      allow read: if
+        !('startAt' in resource.data) ||
+        resource.data.startAt < request.time ||
+        isSignedIn() ||
         (('public' in resource.data) && resource.data.public == true);
-      
-      // Enhanced create/update/delete permissions
-      allow create: if isSignedIn() && 
-        (isMember() || isAdmin()) && 
-        request.auth.uid == request.resource.data.createdBy &&
-        validEventData(request.resource.data);
-      
-      allow update: if isSignedIn() && 
-        (isAdmin() || isEventCreator(eventId)) &&
-        validEventData(request.resource.data);
-      
-      allow delete: if isSignedIn() && 
-        (isAdmin() || isEventCreator(eventId));
-      
-      // Enhanced RSVP management
+      allow create, update, delete: if isAdmin()
+        && (!('public' in request.resource.data) || (request.resource.data.public is bool));
       match /rsvps/{userId} {
         allow read: if isSignedIn();
-        
-        allow create: if (isMember() || isAdmin()) && 
-          request.auth.uid == userId && 
-          request.resource.data.keys().hasOnly(['status','createdAt']) && 
-          request.resource.data.status in ['going','maybe','not-going'];
-        
-        allow update: if (isMember() || isAdmin()) && 
-          request.auth.uid == userId && 
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','updatedAt']) && 
-          request.resource.data.status in ['going','maybe','not-going'];
-        
-        // Enhanced: Allow admins to modify any RSVP
-        allow delete: if (isMember() || isAdmin()) && 
-          (request.auth.uid == userId || isAdmin());
+        allow create: if (isMember() || isAdmin())
+                      && request.auth.uid == userId
+                      && !isUserBlockedFromRsvp(request.auth.uid)
+                      && request.resource.data.keys().hasOnly(['status', 'createdAt', 'updatedAt', 'statusHistory'])
+                      && request.resource.data.status in ['going', 'maybe', 'not-going']
+                      && validStatusHistory(request.resource.data.statusHistory)
+                      && request.resource.data.statusHistory.size() == 1
+                      && request.resource.data.statusHistory[0].status == request.resource.data.status
+                      && request.resource.data.statusHistory[0].changedBy == request.auth.uid;
+        allow update: if (isMember() || isAdmin())
+                      && (request.auth.uid == userId || isAdmin())
+                      && !isUserBlockedFromRsvp(userId)
+                      && request.resource.data.diff(resource.data).changedKeys().hasOnly(['status', 'updatedAt', 'statusHistory'])
+                      && request.resource.data.status in ['going', 'maybe', 'not-going']
+                      && validStatusHistory(request.resource.data.statusHistory)
+                      && (request.auth.uid == userId
+                          ? request.resource.data.statusHistory.size() == resource.data.statusHistory.size() + 1
+                            && request.resource.data.statusHistory[request.resource.data.statusHistory.size() - 1].status == request.resource.data.status
+                            && request.resource.data.statusHistory[request.resource.data.statusHistory.size() - 1].changedBy == request.auth.uid
+                          : request.resource.data.statusHistory.size() == resource.data.statusHistory.size() + 1
+                            && request.resource.data.statusHistory[request.resource.data.statusHistory.size() - 1].changedBy == request.auth.uid);
+        allow delete: if (isMember() || isAdmin()) && (request.auth.uid == userId || isAdmin());
       }
     }
-    
+    // --- NOTIFICATIONS ---
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow write: if isAdmin();
+      allow update: if request.auth != null && request.auth.uid == resource.data.userId && request.resource.data.diff(resource.data).changedKeys().hasOnly(['read']);
+    }
     // --- POSTS ---
     match /posts/{postId} {
-      allow read: if (('isPublic' in resource.data) && resource.data.isPublic == true) || 
-        isMember() || isAdmin();
-      
-      allow create: if isSignedIn() && 
-        (isMember() || isAdmin()) && 
-        request.auth.uid == request.resource.data.authorId;
-      
-      allow update, delete: if isSignedIn() && 
-        (request.auth.uid == resource.data.authorId || isAdmin());
-      
+      allow read: if (('isPublic' in resource.data) && resource.data.isPublic == true) || isMember() || isAdmin();
+      allow create: if isSignedIn() && (isMember() || isAdmin()) && request.auth.uid == request.resource.data.authorId;
+      allow update, delete: if isSignedIn() && (request.auth.uid == resource.data.authorId || isAdmin());
       match /likes/{userId} {
         allow read: if true;
-        allow create: if (isMember() || isAdmin()) && 
-          request.auth.uid == userId && 
-          request.resource.data.keys().hasOnly(['userId','createdAt']) && 
-          request.resource.data.userId == userId;
+        allow create: if (isMember() || isAdmin()) && request.auth.uid == userId && request.resource.data.keys().hasOnly(['userId', 'createdAt']) && request.resource.data.userId == userId;
         allow update: if false;
-        allow delete: if (isMember() || isAdmin()) && 
-          (request.auth.uid == userId || isAdmin());
+        allow delete: if (isMember() || isAdmin()) && (request.auth.uid == userId || isAdmin());
       }
-      
       match /comments/{commentId} {
         allow read: if true;
-        allow create: if isSignedIn() && 
-          request.auth.uid == request.resource.data.authorId && 
-          isNonEmptyString(request.resource.data.text) && 
-          request.resource.data.text.size() <= 1000 && 
-          request.resource.data.keys().hasOnly(['authorId','authorName','text','createdAt']);
-        allow update: if isSignedIn() && 
-          (request.auth.uid == resource.data.authorId || isAdmin()) && 
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['text','updatedAt']);
-        allow delete: if isSignedIn() && 
-          (request.auth.uid == resource.data.authorId || isAdmin());
+        allow create: if isSignedIn() && request.auth.uid == request.resource.data.authorId && isNonEmptyString(request.resource.data.text) && request.resource.data.text.size() <= 1000 && request.resource.data.keys().hasOnly(['authorId', 'authorName', 'text', 'createdAt']);
+        allow update: if isSignedIn() && (request.auth.uid == resource.data.authorId || isAdmin()) && request.resource.data.diff(resource.data).changedKeys().hasOnly(['text', 'updatedAt']);
+        allow delete: if isSignedIn() && (request.auth.uid == resource.data.authorId || isAdmin());
       }
     }
-    
     // --- MEDIA ---
     match /media/{mediaId} {
       allow read: if (resource.data.isPublic == true) || isMember() || isAdmin();
-      allow create: if isSignedIn() && 
-        request.auth.uid == request.resource.data.uploadedBy;
-      allow update, delete: if isSignedIn() && 
-        (request.auth.uid == resource.data.uploadedBy || isAdmin());
-      
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.uploadedBy;
+      allow update, delete: if isSignedIn() && (request.auth.uid == resource.data.uploadedBy || isAdmin());
       match /likes/{userId} {
         allow read: if true;
-        allow create: if (isMember() || isAdmin()) && 
-          request.auth.uid == userId && 
-          request.resource.data.keys().hasOnly(['userId','createdAt']) && 
-          request.resource.data.userId == userId;
+        allow create: if (isMember() || isAdmin()) && request.auth.uid == userId && request.resource.data.keys().hasOnly(['userId', 'createdAt']) && request.resource.data.userId == userId;
         allow update: if false;
-        allow delete: if (isMember() || isAdmin()) && 
-          (request.auth.uid == userId || isAdmin());
+        allow delete: if (isMember() || isAdmin()) && (request.auth.uid == userId || isAdmin());
       }
-      
       match /comments/{commentId} {
         allow read: if true;
-        allow create: if isSignedIn() && 
-          request.auth.uid == request.resource.data.authorId && 
-          isNonEmptyString(request.resource.data.text) && 
-          request.resource.data.text.size() <= 1000 && 
-          request.resource.data.keys().hasOnly(['authorId','authorName','text','createdAt']);
-        allow update: if isSignedIn() && 
-          (request.auth.uid == resource.data.authorId || isAdmin()) && 
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['text','updatedAt']);
-        allow delete: if isSignedIn() && 
-          (request.auth.uid == resource.data.authorId || isAdmin());
+        allow create: if isSignedIn() && request.auth.uid == request.resource.data.authorId && isNonEmptyString(request.resource.data.text) && request.resource.data.text.size() <= 1000 && request.resource.data.keys().hasOnly(['authorId', 'authorName', 'text', 'createdAt']);
+        allow update: if isSignedIn() && (request.auth.uid == resource.data.authorId || isAdmin()) && request.resource.data.diff(resource.data).changedKeys().hasOnly(['text', 'updatedAt']);
+        allow delete: if isSignedIn() && (request.auth.uid == resource.data.authorId || isAdmin());
       }
     }
-    
     // --- SPONSORS ---
     match /sponsors/{sponsorId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
-      
       match /promotions/{promotionId} {
         allow read: if true;
         allow create, update, delete: if isAdmin();
       }
     }
-    
-    // --- NOTIFICATIONS (Enhanced) ---
-    match /notifications/{notificationId} {
-      allow read: if request.auth != null && 
-        request.auth.uid == resource.data.userId;
-      
-      // Allow admins to create notifications (for system notifications)
-      allow create: if isAdmin();
-      
-      // Allow users to update only their own notifications (mark as read)
-      allow update: if request.auth != null && 
-        request.auth.uid == resource.data.userId && 
-        request.resource.data.diff(resource.data).changedKeys().hasOnly(['read']);
-      
-      // Allow admins to delete notifications
-      allow delete: if isAdmin();
-    }
-    
-    // --- Fallback ---
-    match /{parentPath=}/comments/{commentId} {
+    // --- Fallback for stray comments ---
+    match /{parentPath=**}/comments/{commentId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && 
-        request.auth.uid == request.resource.data.authorId && 
-        isNonEmptyString(request.resource.data.text);
-      allow update, delete: if isSignedIn() && 
-        (request.auth.uid == resource.data.authorId || isAdmin());
-    }
-    
-    match /{document=} {
-      allow read, write: if false;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.authorId && isNonEmptyString(request.resource.data.text) && request.resource.data.text.size() <= 1000;
+      allow update, delete: if isSignedIn() && (request.auth.uid == resource.data.authorId || isAdmin());
     }
   }
 }
