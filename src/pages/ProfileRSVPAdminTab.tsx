@@ -65,6 +65,36 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   // NEW: Per-event RSVP filter state (instead of global)
   const [eventRsvpFilters, setEventRsvpFilters] = useState<{[eventId: string]: 'all' | 'going' | 'maybe' | 'not-going'}>({});
   
+  // NEW: Date and Activity filter state
+  const [dateFilter, setDateFilter] = useState<'all' | 'upcoming' | 'this-week' | 'past'>('all');
+  const [activityFilter, setActivityFilter] = useState<'all' | 'has-rsvps' | 'no-rsvps' | 'high-activity'>('all');
+  
+  // NEW: Advanced search state
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [locationFilter, setLocationFilter] = useState('');
+  const [dateRangeFilter, setDateRangeFilter] = useState<{
+    startDate: string;
+    endDate: string;
+    enabled: boolean;
+  }>({
+    startDate: '',
+    endDate: '',
+    enabled: false
+  });
+  const [creatorFilter, setCreatorFilter] = useState('');
+  const [maxAttendeesFilter, setMaxAttendeesFilter] = useState<{
+    min: string;
+    max: string;
+    enabled: boolean;
+  }>({
+    min: '',
+    max: '',
+    enabled: false
+  });
+  
+  // NEW: Sorting state
+  const [sortBy, setSortBy] = useState<'date' | 'title' | 'location' | 'rsvp-count'>('date');
+  
   // Function to fetch user email and phone details
   const fetchUserDetails = async (userId: string) => {
     if (userDetails[userId]) return; // Already fetched
@@ -116,20 +146,139 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   const getEventRsvpFilter = (eventId: string) => {
     return eventRsvpFilters[eventId] || 'all';
   };
+  
+  // NEW: Helper functions for date filtering
+  const isEventUpcoming = (event: Event) => {
+    if (!event.startAt) return false;
+    const eventDate = event.startAt.toDate ? event.startAt.toDate() : new Date(event.startAt);
+    return eventDate > new Date();
+  };
+  
+  const isEventThisWeek = (event: Event) => {
+    if (!event.startAt) return false;
+    const eventDate = event.startAt.toDate ? event.startAt.toDate() : new Date(event.startAt);
+    const now = new Date();
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+    const endOfWeek = new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000);
+    return eventDate >= startOfWeek && eventDate <= endOfWeek;
+  };
+  
+  const isEventPast = (event: Event) => {
+    if (!event.startAt) return false;
+    const eventDate = event.startAt.toDate ? event.startAt.toDate() : new Date(event.startAt);
+    return eventDate < new Date();
+  };
+  
+  // NEW: Helper functions for advanced filtering
+  const isEventInDateRange = (event: Event) => {
+    if (!dateRangeFilter.enabled || !event.startAt) return true;
+    
+    const eventDate = event.startAt.toDate ? event.startAt.toDate() : new Date(event.startAt);
+    const startDate = dateRangeFilter.startDate ? new Date(dateRangeFilter.startDate) : null;
+    const endDate = dateRangeFilter.endDate ? new Date(dateRangeFilter.endDate) : null;
+    
+    if (startDate && eventDate < startDate) return false;
+    if (endDate && eventDate > endDate) return false;
+    
+    return true;
+  };
+  
+  const isEventInLocation = (event: Event) => {
+    if (!locationFilter.trim()) return true;
+    return event.location.toLowerCase().includes(locationFilter.toLowerCase());
+  };
+  
+  const isEventByCreator = (event: Event) => {
+    if (!creatorFilter.trim()) return true;
+    return event.createdBy.toLowerCase().includes(creatorFilter.toLowerCase());
+  };
+  
+  const isEventInAttendeeRange = (event: Event) => {
+    if (!maxAttendeesFilter.enabled || !event.maxAttendees) return true;
+    
+    const min = parseInt(maxAttendeesFilter.min) || 0;
+    const max = parseInt(maxAttendeesFilter.max) || Infinity;
+    
+    return event.maxAttendees >= min && event.maxAttendees <= max;
+  };
 
-  // NEW: Filter events based on search input
+  // NEW: Filter events based on search input, date, activity, and advanced filters
   React.useEffect(() => {
-    if (!eventFilter.trim()) {
-      setFilteredEvents(allEvents);
-    } else {
-      const filtered = allEvents.filter(event => 
+    let filtered = allEvents;
+    
+    // Apply text search filter
+    if (eventFilter.trim()) {
+      filtered = filtered.filter(event => 
         event.title.toLowerCase().includes(eventFilter.toLowerCase()) ||
         event.description.toLowerCase().includes(eventFilter.toLowerCase()) ||
         event.location.toLowerCase().includes(eventFilter.toLowerCase())
       );
-      setFilteredEvents(filtered);
     }
-  }, [eventFilter, allEvents]);
+    
+    // Apply date filter
+    if (dateFilter !== 'all') {
+      filtered = filtered.filter(event => {
+        switch (dateFilter) {
+          case 'upcoming':
+            return isEventUpcoming(event);
+          case 'this-week':
+            return isEventThisWeek(event);
+          case 'past':
+            return isEventPast(event);
+          default:
+            return true;
+        }
+      });
+    }
+    
+    // Apply activity filter
+    if (activityFilter !== 'all') {
+      filtered = filtered.filter(event => {
+        const rsvpCount = rsvpsByEvent[event.id]?.length || 0;
+        switch (activityFilter) {
+          case 'has-rsvps':
+            return rsvpCount > 0;
+          case 'no-rsvps':
+            return rsvpCount === 0;
+          case 'high-activity':
+            return rsvpCount >= 5;
+          default:
+            return true;
+        }
+      });
+    }
+    
+    // NEW: Apply advanced filters
+    filtered = filtered.filter(event => 
+      isEventInDateRange(event) &&
+      isEventInLocation(event) &&
+      isEventByCreator(event) &&
+      isEventInAttendeeRange(event)
+    );
+    
+    // NEW: Apply sorting
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'date':
+          if (!a.startAt || !b.startAt) return 0;
+          const dateA = a.startAt.toDate ? a.startAt.toDate() : new Date(a.startAt);
+          const dateB = b.startAt.toDate ? b.startAt.toDate() : new Date(b.startAt);
+          return dateA.getTime() - dateB.getTime();
+        case 'title':
+          return a.title.localeCompare(b.title);
+        case 'location':
+          return a.location.localeCompare(b.location);
+        case 'rsvp-count':
+          const countA = rsvpsByEvent[a.id]?.length || 0;
+          const countB = rsvpsByEvent[b.id]?.length || 0;
+          return countB - countA; // High to low
+        default:
+          return 0;
+      }
+    });
+    
+    setFilteredEvents(filtered);
+  }, [eventFilter, dateFilter, activityFilter, locationFilter, dateRangeFilter, creatorFilter, maxAttendeesFilter, sortBy, allEvents, rsvpsByEvent]);
 
   return (
   <div className="grid gap-6">
@@ -140,6 +289,14 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
           setRsvpFilter('all');        // Reset RSVP status filter
           setEventFilter('');          // Reset event search filter
           setEventRsvpFilters({});     // Reset all per-event RSVP filters
+          setDateFilter('all');        // Reset date filter
+          setActivityFilter('all');    // Reset activity filter
+          setLocationFilter('');       // Reset location filter
+          setDateRangeFilter({ startDate: '', endDate: '', enabled: false }); // Reset date range
+          setCreatorFilter('');        // Reset creator filter
+          setMaxAttendeesFilter({ min: '', max: '', enabled: false }); // Reset attendee range
+          setShowAdvancedSearch(false); // Hide advanced search
+          setSortBy('date');           // Reset sorting to date
         }}
         className="ml-4 text-xs text-purple-600 hover:underline"
         aria-label="Reset all filters"
@@ -294,13 +451,234 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
     
     {/* NEW: Event Filtering Section */}
     <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-semibold text-purple-800">Event Filtering</h3>
-        <span className="text-sm text-purple-600">
-          {filteredEvents.length} of {allEvents.length} events
-        </span>
+             <div className="flex items-center justify-between mb-3">
+         <h3 className="text-lg font-semibold text-purple-800">Event Filtering</h3>
+         <div className="flex items-center gap-3">
+           {/* NEW: Sorting Options */}
+           <div className="flex items-center gap-2">
+             <span className="text-xs text-purple-600 font-medium">Sort by:</span>
+             <select
+               value={sortBy}
+               onChange={(e) => setSortBy(e.target.value as 'date' | 'title' | 'location' | 'rsvp-count')}
+               className="px-2 py-1 text-xs border border-purple-200 rounded focus:ring-1 focus:ring-purple-500"
+             >
+               <option value="date">📅 Date</option>
+               <option value="title">📝 Title</option>
+               <option value="location">📍 Location</option>
+               <option value="rsvp-count">👥 RSVP Count</option>
+             </select>
+           </div>
+           <span className="text-sm text-purple-600">
+             {filteredEvents.length} of {allEvents.length} events
+           </span>
+         </div>
+       </div>
+      
+      {/* NEW: Quick Date Range Filter Pills */}
+      <div className="flex gap-2 mb-3 flex-wrap">
+        {[
+          { value: 'all', label: 'All Events', icon: '📅' },
+          { value: 'upcoming', label: 'Upcoming', icon: '⏰' },
+          { value: 'this-week', label: 'This Week', icon: '📆' },
+          { value: 'past', label: 'Past', icon: '📚' }
+        ].map(filter => (
+          <button
+            key={filter.value}
+            onClick={() => setDateFilter(filter.value as 'all' | 'upcoming' | 'this-week' | 'past')}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              dateFilter === filter.value
+                ? 'bg-purple-100 border-purple-300 text-purple-800 ring-2 ring-purple-200'
+                : 'bg-white border-purple-200 text-purple-700 hover:bg-purple-50'
+            }`}
+            title={`Filter by ${filter.label}`}
+          >
+            {filter.icon} {filter.label}
+          </button>
+        ))}
       </div>
-      <div className="flex gap-3 items-center">
+      
+             {/* NEW: RSVP Activity Filter Pills */}
+       <div className="flex gap-2 mb-3 flex-wrap">
+         {[
+           { value: 'all', label: 'All Activity', icon: '📊', count: Object.values(rsvpsByEvent).reduce((sum, rsvps) => sum + rsvps.length, 0) },
+           { value: 'has-rsvps', label: 'Has RSVPs', icon: '✅', count: allEvents.filter(e => rsvpsByEvent[e.id]?.length > 0).length },
+           { value: 'no-rsvps', label: 'No RSVPs', icon: '📭', count: allEvents.filter(e => !rsvpsByEvent[e.id]?.length).length },
+           { value: 'high-activity', label: 'High Activity', icon: '🔥', count: allEvents.filter(e => (rsvpsByEvent[e.id]?.length || 0) >= 5).length }
+         ].map(filter => (
+           <button
+             key={filter.value}
+             onClick={() => setActivityFilter(filter.value as 'all' | 'has-rsvps' | 'no-rsvps' | 'high-activity')}
+             className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+               activityFilter === filter.value
+                 ? 'bg-blue-100 border-blue-300 text-blue-800 ring-2 ring-blue-200'
+                 : 'bg-white border-blue-200 text-blue-700 hover:bg-blue-50'
+             }`}
+             title={`${filter.label}: ${filter.count} events`}
+           >
+             {filter.icon} {filter.label} ({filter.count})
+           </button>
+         ))}
+       </div>
+       
+               {/* NEW: Advanced Search Toggle - Converted to Icon */}
+        <div className="flex items-center justify-between mb-3">
+          <button
+            onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
+            className={`p-2 rounded-full transition-all ${
+              showAdvancedSearch 
+                ? 'bg-purple-100 text-purple-800 ring-2 ring-purple-300' 
+                : 'bg-white text-purple-600 hover:bg-purple-50 hover:scale-105'
+            }`}
+            title={showAdvancedSearch ? 'Hide Advanced Search' : 'Show Advanced Search'}
+            aria-label={showAdvancedSearch ? 'Hide Advanced Search' : 'Show Advanced Search'}
+          >
+            {showAdvancedSearch ? '🔽' : '⚙️'}
+          </button>
+          <span className="text-xs text-purple-600">
+            {showAdvancedSearch ? (
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                Advanced filters active
+              </span>
+            ) : (
+              'Click ⚙️ to expand'
+            )}
+          </span>
+        </div>
+       
+       {/* NEW: Advanced Search Panel */}
+       {showAdvancedSearch && (
+         <div className="p-4 bg-white border border-purple-200 rounded-lg mb-3">
+           <div className="grid md:grid-cols-2 gap-4">
+             {/* Location Filter */}
+             <div>
+               <label className="block text-sm font-medium text-gray-700 mb-2">
+                 📍 Location Filter
+               </label>
+               <input
+                 type="text"
+                 placeholder="Filter by location..."
+                 value={locationFilter}
+                 onChange={(e) => setLocationFilter(e.target.value)}
+                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+               />
+             </div>
+             
+             {/* Creator Filter */}
+             <div>
+               <label className="block text-sm font-medium text-gray-700 mb-2">
+                 👤 Creator Filter
+               </label>
+               <input
+                 type="text"
+                 placeholder="Filter by creator..."
+                 value={creatorFilter}
+                 onChange={(e) => setCreatorFilter(e.target.value)}
+                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+               />
+             </div>
+             
+             {/* Date Range Filter */}
+             <div>
+               <label className="block text-sm font-medium text-gray-700 mb-2">
+                 📅 Date Range Filter
+               </label>
+               <div className="flex items-center gap-2 mb-2">
+                 <input
+                   type="checkbox"
+                   checked={dateRangeFilter.enabled}
+                   onChange={(e) => setDateRangeFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                   className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                 />
+                 <span className="text-sm text-gray-600">Enable date range</span>
+               </div>
+               {dateRangeFilter.enabled && (
+                 <div className="grid grid-cols-2 gap-2">
+                   <input
+                     type="date"
+                     value={dateRangeFilter.startDate}
+                     onChange={(e) => setDateRangeFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                   />
+                   <input
+                     type="date"
+                     value={dateRangeFilter.endDate}
+                     onChange={(e) => setDateRangeFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                   />
+                 </div>
+               )}
+             </div>
+             
+             {/* Max Attendees Filter */}
+             <div>
+               <label className="block text-sm font-medium text-gray-700 mb-2">
+                 👥 Max Attendees Filter
+               </label>
+               <div className="flex items-center gap-2 mb-2">
+                 <input
+                   type="checkbox"
+                   checked={maxAttendeesFilter.enabled}
+                   onChange={(e) => setMaxAttendeesFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                   className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                 />
+                 <span className="text-sm text-gray-600">Enable attendee range</span>
+               </div>
+               {maxAttendeesFilter.enabled && (
+                 <div className="grid grid-cols-2 gap-2">
+                   <input
+                     type="number"
+                     placeholder="Min"
+                     value={maxAttendeesFilter.min}
+                     onChange={(e) => setMaxAttendeesFilter(prev => ({ ...prev, min: e.target.value }))}
+                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                   />
+                   <input
+                     type="number"
+                     placeholder="Max"
+                     value={maxAttendeesFilter.max}
+                     onChange={(e) => setMaxAttendeesFilter(prev => ({ ...prev, max: e.target.value }))}
+                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                   />
+                 </div>
+               )}
+             </div>
+           </div>
+           
+           {/* NEW: Active Advanced Filters Summary */}
+           {(locationFilter || creatorFilter || dateRangeFilter.enabled || maxAttendeesFilter.enabled) && (
+             <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+               <div className="flex items-center gap-2 mb-2">
+                 <span className="text-sm font-medium text-green-700">🎯 Active Advanced Filters:</span>
+               </div>
+               <div className="flex flex-wrap gap-2 text-xs">
+                 {locationFilter && (
+                   <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                     📍 Location: {locationFilter}
+                   </span>
+                 )}
+                 {creatorFilter && (
+                   <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                     👤 Creator: {creatorFilter}
+                   </span>
+                 )}
+                 {dateRangeFilter.enabled && (
+                   <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                     📅 Date Range: {dateRangeFilter.startDate} to {dateRangeFilter.endDate}
+                   </span>
+                 )}
+                 {maxAttendeesFilter.enabled && (
+                   <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                     👥 Attendees: {maxAttendeesFilter.min || '0'} - {maxAttendeesFilter.max || '∞'}
+                   </span>
+                 )}
+               </div>
+             </div>
+           )}
+         </div>
+       )}
+       
+       <div className="flex gap-3 items-center">
         <input
           type="text"
           placeholder="Search events by title, description, or location..."
@@ -476,19 +854,44 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                   </div>
                   {/* Detailed RSVP List */}
                   <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mt-4">
-                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-700">Detailed RSVP List</span>
-                      <select
-                        value={getEventRsvpFilter(event.id)}
-                        onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'maybe' | 'not-going')}
-                        className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
-                        aria-label={`Filter RSVPs for ${event.title}`}
-                      >
-                        <option value="all">All</option>
-                        <option value="going">Going</option>
-                        <option value="maybe">Maybe</option>
-                        <option value="not-going">Not Going</option>
-                      </select>
+                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-gray-700">Detailed RSVP List</span>
+                        <select
+                          value={getEventRsvpFilter(event.id)}
+                          onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'maybe' | 'not-going')}
+                          className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
+                          aria-label={`Filter RSVPs for ${event.title}`}
+                        >
+                          <option value="all">All</option>
+                          <option value="going">Going</option>
+                          <option value="maybe">Maybe</option>
+                          <option value="not-going">Not Going</option>
+                        </select>
+                      </div>
+                      
+                      {/* NEW: Quick Status Filter Pills */}
+                      <div className="flex gap-2 flex-wrap">
+                        {[
+                          { value: 'all', label: 'All', count: rsvpsByEvent[event.id]?.length || 0, color: 'bg-gray-100 text-gray-700' },
+                          { value: 'going', label: 'Going', count: rsvpsByEvent[event.id]?.filter(r => r.status === 'going').length || 0, color: 'bg-green-100 text-green-700' },
+                          { value: 'maybe', label: 'Maybe', count: rsvpsByEvent[event.id]?.filter(r => r.status === 'maybe').length || 0, color: 'bg-yellow-100 text-yellow-700' },
+                          { value: 'not-going', label: 'Not Going', count: rsvpsByEvent[event.id]?.filter(r => r.status === 'not-going').length || 0, color: 'bg-red-100 text-red-700' }
+                        ].map(filter => (
+                          <button
+                            key={filter.value}
+                            onClick={() => updateEventRsvpFilter(event.id, filter.value as 'all' | 'going' | 'maybe' | 'not-going')}
+                            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                              getEventRsvpFilter(event.id) === filter.value
+                                ? filter.color + ' ring-2 ring-offset-1 ring-gray-400'
+                                : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                            }`}
+                            title={`${filter.label}: ${filter.count} responses`}
+                          >
+                            {filter.label} ({filter.count})
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <ul className="divide-y divide-gray-200 max-h-60 overflow-y-auto">
                       {rsvpsByEvent[event.id]

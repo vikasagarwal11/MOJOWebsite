@@ -1,6 +1,6 @@
 // src/components/events/EventTypeahead.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Tag, Search } from 'lucide-react';
+import { Tag, Search, X } from 'lucide-react';
 import { collection, getDocs, limit, orderBy, query, startAt, endAt } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
@@ -97,14 +97,10 @@ const EventTypeahead: React.FC<Props> = ({
       aria-haspopup="listbox"
       className="relative"
     >
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        Tag with Event (Optional)
-      </label>
-
       <div
-        className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg border ${
+        className={`flex items-center gap-2 w-full h-11 px-3 rounded-xl border ${
           open ? 'border-purple-400 ring-2 ring-purple-200' : 'border-gray-300'
-        } bg-white cursor-text`}
+        } bg-white cursor-text hover:border-purple-400 transition-colors`}
         onClick={() => setOpen(true)}
       >
         <Tag className="w-4 h-4 text-gray-400" />
@@ -114,7 +110,7 @@ const EventTypeahead: React.FC<Props> = ({
           aria-activedescendant={
             activeIndex >= 0 ? `ev-opt-${activeIndex}` : undefined
           }
-          value={q}
+          value={q || (value?.title || '')}
           onChange={(e) => setQ(e.target.value)}
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => {
@@ -138,22 +134,19 @@ const EventTypeahead: React.FC<Props> = ({
           disabled={disabled}
           className="flex-1 outline-none bg-transparent text-gray-800 placeholder:text-gray-400"
         />
+        {value?.id && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); pick(null); }}
+            className="p-1 hover:bg-gray-100 rounded"
+          >
+            <X className="w-4 h-4 text-gray-400" />
+          </button>
+        )}
         <Search className="w-4 h-4 text-gray-400" />
       </div>
 
-      {/* Current selection pill */}
-      {(value?.id || value?.title) && (
-        <div className="mt-2 text-sm text-gray-700">
-          Selected: <span className="font-medium">{value.title || 'No event tag'}</span>
-          <button
-            type="button"
-            onClick={() => pick(null)}
-            className="ml-2 text-purple-600 hover:underline"
-          >
-            Clear
-          </button>
-        </div>
-      )}
+
 
       {open && (
         <div
