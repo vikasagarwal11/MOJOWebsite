@@ -43,6 +43,28 @@ const MediaGallery: React.FC = () => {
 
   const lb = useLightbox(paged);
 
+  // NEW: Processing queue statistics
+  const processingStats = useMemo(() => {
+    const stats = {
+      processing: 0,
+      ready: 0,
+      failed: 0,
+      total: mediaFiles.length
+    };
+    
+    mediaFiles.forEach((media: any) => {
+      if (media.transcodeStatus === 'processing') stats.processing++;
+      else if (media.transcodeStatus === 'ready') stats.ready++;
+      else if (media.transcodeStatus === 'failed') stats.failed++;
+    });
+    
+    return stats;
+  }, [mediaFiles]);
+
+  // Note: Since we're using useRealtimeCollection, the FFmpeg status updates
+  // will automatically be reflected in the UI when the Cloud Function updates
+  // the transcodeStatus field. The existing real-time listener will handle this.
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
@@ -58,6 +80,33 @@ const MediaGallery: React.FC = () => {
           <Upload className="w-5 h-5 mr-2" /> Upload Media
         </button>
       </div>
+
+      {/* NEW: Processing Status Bar */}
+      {(processingStats.processing > 0 || processingStats.failed > 0) && (
+        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-blue-700">
+                  {processingStats.processing} upgrading
+                </span>
+              </div>
+              {processingStats.failed > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                  <span className="text-sm font-medium text-red-700">
+                    {processingStats.failed} failed
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="text-xs text-gray-500">
+              FFmpeg pipeline enhancing media quality in the background
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filter Toolbar */}
       <div className="sticky top-20 z-10 mb-8">
