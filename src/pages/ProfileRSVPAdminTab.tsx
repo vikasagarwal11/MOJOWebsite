@@ -148,7 +148,8 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
       }
       return null;
     })()}
-    {/* User Blocking Section */}
+    {/* COMMENTED OUT: Duplicate User Management Section - Moved to Admin Tab Only */}
+    {/* 
     {currentUser?.role === 'admin' && (
       <div className="p-6 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border border-gray-200">
         <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
@@ -190,6 +191,19 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
         </div>
       </div>
     )}
+    */}
+    
+    {/* NEW: Clean RSVP Management Focus - No User Management Duplication */}
+    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+      <div className="flex items-center gap-2 text-blue-800">
+        <span className="text-lg">💡</span>
+        <div className="text-sm">
+          <strong>Note:</strong> User blocking and management is now handled exclusively in the <strong>Admin</strong> tab.
+          <br />
+          This tab focuses purely on RSVP management and analytics.
+        </div>
+      </div>
+    </div>
     {/* Events with RSVP Management */}
     {loadingAdminEvents ? (
       <div className="text-center py-8 bg-gray-50 rounded-lg">
@@ -252,16 +266,20 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                         </button>
                         <button
                           onClick={() => adjustAttendingCount(event.id, false)}
-                          disabled={event.attendingCount <= 0}
+                          disabled={Math.max(0, event.attendingCount || 0) <= 0}
                           className={`px-2 py-1 rounded text-xs transition-colors ${
-                            event.attendingCount <= 0
+                            Math.max(0, event.attendingCount || 0) <= 0
                               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                               : 'bg-red-600 text-white hover:bg-red-700'
                           }`}
-                          title={event.attendingCount <= 0 ? 'Cannot decrease below 0' : 'Decrease attendance count'}
+                          title={Math.max(0, event.attendingCount || 0) <= 0 ? 'Cannot decrease below 0' : 'Decrease attendance count'}
                           aria-label={`Decrease attendance count for ${event.title}`}
                         >
-                          ➖ Count {event.attendingCount <= 0 && '(0)'}
+                          ➖ Count {Math.max(0, event.attendingCount || 0) <= 0 && '(0)'}
+                          {/* FIXED: Show warning for negative values */}
+                          {(event.attendingCount || 0) < 0 && (
+                            <span className="ml-1 text-xs text-red-600">⚠️</span>
+                          )}
                         </button>
                       </div>
                     </div>
