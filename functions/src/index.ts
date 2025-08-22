@@ -98,8 +98,8 @@ export const onEventTeaserSync = onDocumentWritten("events/{eventId}", async (ev
 });
 
 // ---------------- EVENTS: RSVP notifications ----------------
-// Notify event creators when users RSVP to their events
-export const onRsvpNotification = onDocumentWritten("events/{eventId}/rsvps/{userId}", async (event) => {
+// Enhanced RSVP notification with push notifications (FCM)
+export const notifyRsvp = onDocumentWritten("events/{eventId}/rsvps/{userId}", async (event) => {
   const beforeData = event.data?.before.exists ? event.data?.before.data() : null;
   const afterData = event.data?.after.exists ? event.data?.after.data() : null;
   
@@ -132,7 +132,7 @@ export const onRsvpNotification = onDocumentWritten("events/{eventId}/rsvps/{use
       userName = userData.displayName || userData.firstName || userData.lastName || 'Member';
     }
     
-    // Create notification
+    // Create Firestore notification
     await db.collection('notifications').add({
       userId: eventCreatorId,
       message: `${userName} is going to ${eventData.title}!`,
@@ -144,8 +144,39 @@ export const onRsvpNotification = onDocumentWritten("events/{eventId}/rsvps/{use
       rsvpStatus: 'going'
     });
     
+    // Send push notification if FCM token exists
+    try {
+      const creatorDoc = await db.collection('users').doc(eventCreatorId).get();
+      const fcmToken = creatorDoc.data()?.fcmToken;
+      
+      if (fcmToken) {
+        const { getMessaging } = await import('firebase-admin/messaging');
+        const messaging = getMessaging();
+        
+        await messaging.send({
+          token: fcmToken,
+          notification: {
+            title: 'New RSVP',
+            body: `${userName} is going to ${eventData.title}!`,
+          },
+          data: { 
+            eventId,
+            type: 'rsvp',
+            userId: userId
+          },
+        });
+        
+        console.log(`Push notification sent to ${eventCreatorId} for event ${eventId}`);
+      }
+    } catch (fcmError) {
+      console.warn('FCM notification failed, but Firestore notification was created:', fcmError);
+    }
+    
     console.log(`Notification created for event ${eventId}: ${userName} is going`);
   } catch (error) {
     console.error('Error creating RSVP notification:', error);
   }
 });
+
+// Legacy function name for backward compatibility
+export const onRsvpNotification = notifyRsvp;

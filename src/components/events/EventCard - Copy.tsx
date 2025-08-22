@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, CalendarDays, MapPin, Users, Clock, CheckCircle, XCircle, HelpCircle, Edit, Trash2, CalendarPlus, Share2 } from 'lucide-react';
+import { Calendar, CalendarDays, MapPin, Users, Clock, CheckCircle, XCircle, HelpCircle, Edit, Trash2, CalendarPlus } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 import { db, storage } from '../../config/firebase';
@@ -28,7 +28,9 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit }) => {
   // Prefer startAt
   const dateObj: Date = useMemo(() => {
     const v: any = event.startAt;
-    return tsToDate(v);
+    if (v?.toDate) return v.toDate();
+    if (typeof v === 'string') return new Date(v);
+    return new Date(v);
   }, [event.startAt]);
 
   const isUpcoming = dateObj.getTime() >= Date.now();
@@ -66,19 +68,36 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit }) => {
     try {
       const rsvpRef = doc(db, 'events', String(event.id), 'rsvps', currentUser.id);
       const snap = await getDoc(rsvpRef);
-      const existing = snap.exists() ? snap.data() : { statusHistory: [] };
-      const newHistory = [
-        ...(existing.statusHistory || []),
-        {
-          status,
-          changedAt: serverTimestamp(),
-          changedBy: currentUser.id,
-        }
-      ];
       if (snap.exists()) {
-        await updateDoc(rsvpRef, { status, updatedAt: serverTimestamp(), statusHistory: newHistory });
+        // Get current RSVP data to build statusHistory
+        const currentData = snap.data();
+        const statusHistory = currentData.statusHistory || [];
+        
+        // Add new status change entry
+        const newHistoryEntry = {
+          status: status,
+          changedBy: currentUser.id,
+          changedAt: serverTimestamp()
+        };
+        
+        await updateDoc(rsvpRef, { 
+          status, 
+          updatedAt: serverTimestamp(),
+          statusHistory: [...statusHistory, newHistoryEntry]
+        });
       } else {
-        await setDoc(rsvpRef, { status, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), statusHistory: newHistory });
+        // Create new RSVP with initial statusHistory
+        const initialHistoryEntry = {
+          status: status,
+          changedBy: currentUser.id,
+          changedAt: serverTimestamp()
+        };
+        
+        await setDoc(rsvpRef, { 
+          status, 
+          createdAt: serverTimestamp(),
+          statusHistory: [initialHistoryEntry]
+        });
       }
     } catch (e) {
       console.error('RSVP write failed', e);
@@ -140,10 +159,12 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit }) => {
           />
         </div>
       )}
+
       <div className="p-6">
         <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-purple-600 transition-colors">
           {event.title}
         </h3>
+
         <div className="space-y-2 mb-4">
           <div className="flex items-center text-gray-600">
             <Calendar className="w-4 h-4 mr-2 text-purple-500" />
@@ -167,12 +188,14 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit }) => {
             </span>
           </div>
         </div>
+
         <p className="text-gray-600 text-sm mb-6 line-clamp-3">{event.description}</p>
+
         {/* Action Buttons */}
         <div className="flex justify-between items-center mb-4">
           {/* Add to Calendar Button */}
           <button
-           onClick={handleAddToCalendar}
+            onClick={handleAddToCalendar}
             className="flex items-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
           >
             <CalendarPlus className="w-4 h-4 mr-1" />

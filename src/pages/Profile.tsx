@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, updateDoc, serverTimestamp, collection, query, where, orderBy, limit, onSnapshot, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
-import { db, storage } from '../config/firebase';
+import { doc, getDoc, updateDoc, setDoc, deleteDoc, collection, query, where, orderBy, limit, onSnapshot, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { Camera, X as IconX, Bell, Eye, EyeOff } from 'lucide-react';
+import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
 import { NJ_CITIES } from '../data/nj-cities';
+import { ProfilePersonalTab } from './ProfilePersonalTab';
+import { ProfileEventsTab } from './ProfileEventsTab';
+import { ProfileRSVPAdminTab } from './ProfileRSVPAdminTab';
+import { ProfileAdminTab } from './ProfileAdminTab';
+import CreateEventModal from '../components/events/CreateEventModal';
 
 type Address = {
   street?: string;
@@ -13,15 +17,36 @@ type Address = {
   state?: string;
   postalCode?: string;
 };
-
 type SocialLinks = {
   instagram?: string;
   facebook?: string;
-  twitter?: string;   // still calling it "twitter" in the field name
+  twitter?: string;
   tiktok?: string;
   youtube?: string;
   website?: string;
 };
+
+interface Event {
+  id: string;
+  title: string;
+  description: string;
+  startAt: any;
+  endAt?: any;
+  location: string;
+  createdBy: string;
+  attendingCount: number;
+  maxAttendees?: number;
+  imageUrl?: string;
+}
+
+interface Notification {
+  id: string;
+  userId: string;
+  message: string;
+  createdAt: any;
+  read: boolean;
+  eventId?: string;
+}
 
 function normalizeTag(input: string): string | null {
   let t = (input || '').trim();
@@ -33,87 +58,77 @@ function normalizeTag(input: string): string | null {
 
 const Profile: React.FC = () => {
   const { currentUser } = useAuth();
-
-  // Core profile
+  const [activeTab, setActiveTab] = useState<'personal' | 'events' | 'rsvp' | 'admin'>('personal');
   const [firstName, setFirstName] = useState('');
-  const [lastName,  setLastName]  = useState('');
+  const [lastName, setLastName] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [photoURL, setPhotoURL] = useState<string | undefined>(undefined);
-  const [about, setAbout] = useState(''); // NEW
-
-  // Address + lookup
+  const [about, setAbout] = useState('');
   const [address, setAddress] = useState<Address>({ state: '' });
-
   const [zipStatus, setZipStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const zipAbortRef = useRef<AbortController | null>(null);
-
-  // Interests
   const [interests, setInterests] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
-
-  // Social
   const [social, setSocial] = useState<SocialLinks>({});
-
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-
-  // Notifications
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
-
-  // Admin features
-  const [userRole, setUserRole] = useState<string>('member');
-  const [userEvents, setUserEvents] = useState<any[]>([]);
-  const [allEvents, setAllEvents] = useState<any[]>([]);
-  const [loadingEvents, setLoadingEvents] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<any>(null);
-  const [showEventModal, setShowEventModal] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [rsvpedEvents, setRsvpedEvents] = useState<Event[]>([]);
+  const [userEvents, setUserEvents] = useState<Event[]>([]);
+  const [allEvents, setAllEvents] = useState<Event[]>([]);
   const [rsvpsByEvent, setRsvpsByEvent] = useState<{ [eventId: string]: any[] }>({});
+  const [userNames, setUserNames] = useState<{ [userId: string]: string }>({});
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [eventToEdit, setEventToEdit] = useState<Event | null>(null);
+  const [exportingRsvps, setExportingRsvps] = useState<string | null>(null);
+  const [notificationsPage, setNotificationsPage] = useState(1);
+  const [eventsPage, setEventsPage] = useState(1);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [loadingAdminEvents, setLoadingAdminEvents] = useState(false);
+  const [loadingBlockedUsers, setLoadingBlockedUsers] = useState(false);
+  const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread'>('all');
+  const [rsvpFilter, setRsvpFilter] = useState<'all' | 'going' | 'maybe' | 'not-going'>('all');
+  const [blockedUsers, setBlockedUsers] = useState<{ id: string; displayName: string; email: string; blockedAt: any }[]>([]);
+  const PAGE_SIZE = 10;
 
-  // Load from Auth + Firestore
+  // Load user profile
   useEffect(() => {
     if (!currentUser) return;
-
     setDisplayName(currentUser.displayName || '');
     setEmail(currentUser.email || '');
     setPhotoURL(currentUser.photoURL);
-
     (async () => {
       try {
         const snap = await getDoc(doc(db, 'users', currentUser.id));
         if (snap.exists()) {
           const d = snap.data() as any;
-
           setFirstName(d.firstName || '');
           setLastName(d.lastName || '');
           setDisplayName(d.displayName || currentUser.displayName || '');
           setEmail(d.email || currentUser.email || '');
           setPhotoURL(d.photoURL || currentUser.photoURL);
-          setAbout(d.about || ''); // NEW
-
+          setAbout(d.about || '');
           setAddress({
             street: d.address?.street || '',
             city: d.address?.city || '',
             state: d.address?.state || '',
             postalCode: d.address?.postalCode || '',
           });
-
           setInterests(Array.isArray(d.interests) ? d.interests : []);
           setSocial({
             instagram: d.social?.instagram || '',
-            facebook:  d.social?.facebook  || '',
-            twitter:   d.social?.twitter   || '',
-            tiktok:    d.social?.tiktok    || '',
-            youtube:   d.social?.youtube   || '',
-            website:   d.social?.website   || '',
+            facebook: d.social?.facebook || '',
+            twitter: d.social?.twitter || '',
+            tiktok: d.social?.tiktok || '',
+            youtube: d.social?.youtube || '',
+            website: d.social?.website || '',
           });
-
-          // Set user role
-          setUserRole(d.role || 'member');
         }
-      } catch {
-        // ignore snapshot errors
+      } catch (e) {
+        console.error('Failed to load user profile:', e);
+        toast.error('Failed to load profile');
       }
     })();
   }, [currentUser]);
@@ -121,182 +136,178 @@ const Profile: React.FC = () => {
   // Load notifications
   useEffect(() => {
     if (!currentUser) return;
-    
     setLoadingNotifications(true);
     const q = query(
       collection(db, 'notifications'),
       where('userId', '==', currentUser.id),
       orderBy('createdAt', 'desc'),
-      limit(10)
+      limit(PAGE_SIZE * notificationsPage)
     );
-    
+    const controller = new AbortController();
     const unsubscribe = onSnapshot(q, (snap) => {
-      setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoadingNotifications(false);
-    }, (error) => {
-      console.error('Error loading notifications:', error);
-      setLoadingNotifications(false);
-    });
-    
-    return unsubscribe;
-  }, [currentUser]);
-
-  // Load events for admins and event creators
-  useEffect(() => {
-    if (!currentUser || !userRole) return;
-    
-    setLoadingEvents(true);
-    
-    if (userRole === 'admin') {
-      // Admins can see all events
-      const q = query(
-        collection(db, 'events'),
-        orderBy('startAt', 'desc'),
-        limit(50)
-      );
-      
-      const unsubscribe = onSnapshot(q, (snap) => {
-        setAllEvents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setLoadingEvents(false);
-      }, (error) => {
-        console.error('Error loading all events:', error);
-        setLoadingEvents(false);
-      });
-      
-      return unsubscribe;
-    } else {
-      // Regular users see events they created
-      const q = query(
-        collection(db, 'events'),
-        where('createdBy', '==', currentUser.id),
-        orderBy('startAt', 'desc'),
-        limit(20)
-      );
-      
-      const unsubscribe = onSnapshot(q, (snap) => {
-        setUserEvents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        setLoadingEvents(false);
-      }, (error) => {
-        console.error('Error loading user events:', error);
-        setLoadingEvents(false);
-      });
-      
-      return unsubscribe;
-    }
-  }, [currentUser, userRole]);
-
-  // Load RSVPs for admin events
-  useEffect(() => {
-    if (!currentUser || userRole !== 'admin' || allEvents.length === 0) return;
-    
-    const loadRsvps = async () => {
-      const rsvps: { [eventId: string]: any[] } = {};
-      
-      for (const event of allEvents) {
-        try {
-          const rsvpQuery = query(collection(db, 'events', event.id, 'rsvps'));
-          const rsvpSnap = await getDocs(rsvpQuery);
-          rsvps[event.id] = rsvpSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        } catch (error) {
-          console.error(`Error loading RSVPs for event ${event.id}:`, error);
-        }
+      if (!controller.signal.aborted) {
+        setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setLoadingNotifications(false);
       }
-      
-      setRsvpsByEvent(rsvps);
+    }, (e) => {
+      console.error('Failed to load notifications:', e);
+      setLoadingNotifications(false);
+      toast.error(e?.code === 'permission-denied' ? 'Notifications access denied' : 'Failed to load notifications');
+    });
+    return () => {
+      controller.abort();
+      unsubscribe();
     };
-    
-    loadRsvps();
-  }, [currentUser, userRole, allEvents]);
+  }, [currentUser, notificationsPage]);
+
+  // Load RSVPed events
+  useEffect(() => {
+    if (!currentUser) return;
+    setLoadingEvents(true);
+    const q = query(
+      collection(db, 'events'),
+      where('rsvps', 'array-contains', { userId: currentUser.id, status: 'going' }),
+      limit(PAGE_SIZE * eventsPage)
+    );
+    const controller = new AbortController();
+    const unsubscribe = onSnapshot(q, (snap) => {
+      if (!controller.signal.aborted) {
+        const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setRsvpedEvents(events);
+        fetchUserNames(events.map(e => ({ id: e.createdBy })));
+        setLoadingEvents(false);
+      }
+    }, (e) => {
+      console.error('Failed to load RSVPed events:', e);
+      setLoadingEvents(false);
+      toast.error(e?.code === 'permission-denied' ? 'Events access denied' : 'Failed to load RSVPed events');
+    });
+    return () => {
+      controller.abort();
+      unsubscribe();
+    };
+  }, [currentUser, eventsPage]);
+
+  // Load user-created and all events (for admins)
+  useEffect(() => {
+    if (!currentUser) return;
+    // User-created events
+    const userQ = query(
+      collection(db, 'events'),
+      where('createdBy', '==', currentUser.id),
+      orderBy('startAt', 'desc'),
+      limit(PAGE_SIZE * eventsPage)
+    );
+    const unsubUser = onSnapshot(userQ, (snap) => {
+      const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setUserEvents(events);
+      fetchUserNames(events.map(e => ({ id: e.createdBy })));
+    }, (e) => {
+      console.error('Failed to load user events:', e);
+      toast.error(e?.code === 'permission-denied' ? 'User events access denied' : 'Failed to load user events');
+    });
+    // All events for admins
+    let unsubAll: (() => void) | undefined;
+    if (currentUser.role === 'admin') {
+      setLoadingAdminEvents(true);
+      const allQ = query(collection(db, 'events'), orderBy('startAt', 'desc'), limit(PAGE_SIZE * eventsPage));
+      unsubAll = onSnapshot(allQ, async (snap) => {
+        try {
+          const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          setAllEvents(events);
+          const batchSize = 10;
+          const batches = [];
+          for (let i = 0; i < events.length; i += batchSize) {
+            batches.push(events.slice(i, i + batchSize));
+          }
+          const rsvps: { [eventId: string]: any[] } = {};
+          for (const batch of batches) {
+            await Promise.all(
+              batch.map(async (event) => {
+                const rsvpQuery = query(collection(db, 'events', event.id, 'rsvps'), orderBy('updatedAt', 'desc'));
+                const rsvpSnap = await getDocs(rsvpQuery);
+                rsvps[event.id] = rsvpSnap.docs.map(d => ({ id: d.id, eventId: event.id, ...d.data() }));
+              })
+            );
+          }
+          setRsvpsByEvent(rsvps);
+          fetchUserNames([...events.map(e => ({ id: e.createdBy })), ...Object.values(rsvps).flat()]);
+        } catch (e) {
+          console.error('Failed to load admin events:', e);
+          toast.error('Failed to load events');
+        } finally {
+          setLoadingAdminEvents(false);
+        }
+      }, (e) => {
+        console.error('Failed to load admin events:', e);
+        toast.error(e?.code === 'permission-denied' ? 'Admin events access denied' : 'Failed to load events');
+        setLoadingAdminEvents(false);
+      });
+    }
+    return () => {
+      unsubUser();
+      unsubAll?.();
+    };
+  }, [currentUser, eventsPage]);
+
+  // Load blocked users for admins
+  useEffect(() => {
+    if (currentUser?.role === 'admin') {
+      fetchBlockedUsers();
+    }
+  }, [currentUser?.role]);
 
   const isAuthed = !!currentUser;
-
-  // Mark notification as read
-  const markNotificationAsRead = async (notificationId: string) => {
-    try {
-      await updateDoc(doc(db, 'notifications', notificationId), {
-        read: true,
-        updatedAt: serverTimestamp()
-      });
-      toast.success('Notification marked as read');
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-      toast.error('Failed to mark notification as read');
-    }
-  };
-
   const initialsForAvatar = useMemo(() => {
     const name = displayName || [firstName, lastName].filter(Boolean).join(' ') || 'Member';
     const parts = name.trim().split(/\s+/).slice(0, 2);
     return parts.map(p => p[0]?.toUpperCase() || '').join('') || 'MM';
   }, [displayName, firstName, lastName]);
 
-  if (!isAuthed) {
-    return (
-      <div className="max-w-3xl mx-auto px-4 py-12">
-        <div className="rounded-xl border bg-white p-8">
-          <h1 className="text-2xl font-semibold">Profile</h1>
-          <p className="mt-4 text-gray-600">Please sign in to view your profile.</p>
-        </div>
-      </div>
-    );
-  }
-
-  // ---------- Avatar upload ----------
+  // Avatar upload
   const onUploadAvatar = async (file: File) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       toast.error('Please choose an image file (JPEG/PNG/WebP).');
       return;
     }
-
-    // Fast local preview
     const tempUrl = URL.createObjectURL(file);
     setPhotoURL(tempUrl);
-
     try {
       setUploading(true);
-
       const ext =
-        file.type === 'image/png'  ? 'png'  :
+        file.type === 'image/png' ? 'png' :
         file.type === 'image/webp' ? 'webp' :
-        file.type === 'image/gif'  ? 'gif'  : 'jpg';
-
+        file.type === 'image/gif' ? 'gif' : 'jpg';
       const ts = Date.now();
       const avatarRef = ref(storage, `profiles/${currentUser!.id}/avatar_${ts}.${ext}`);
-
       await uploadBytes(avatarRef, file, {
         contentType: file.type,
         cacheControl: 'public, max-age=3600',
       });
-
       const url = await getDownloadURL(avatarRef);
-
       URL.revokeObjectURL(tempUrl);
       setPhotoURL(url);
-
       await updateDoc(doc(db, 'users', currentUser!.id), {
         photoURL: url,
         avatarUpdatedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-
       toast.success('Profile photo updated');
     } catch (e: any) {
-      console.error(e);
+      console.error('Failed to upload avatar:', e);
       toast.error(e?.message || 'Failed to upload avatar');
     } finally {
       setUploading(false);
     }
   };
 
-  // ---------- ZIP → City/State lookup ----------
+  // ZIP lookup
   const lookupZip = async (zip: string) => {
     if (!/^\d{5}$/.test(zip)) return;
-
     zipAbortRef.current?.abort();
     const ctrl = new AbortController();
     zipAbortRef.current = ctrl;
-
     setZipStatus('loading');
     try {
       const res = await fetch(`https://api.zippopotam.us/us/${zip}`, { signal: ctrl.signal });
@@ -305,7 +316,6 @@ const Profile: React.FC = () => {
       const place = data?.places?.[0];
       const city = place?.['place name'] || '';
       const state = place?.['state abbreviation'] || '';
-
       if (city && state) {
         setAddress(a => ({ ...a, city, state }));
         setZipStatus('ok');
@@ -317,14 +327,16 @@ const Profile: React.FC = () => {
     }
   };
 
-  // ---------- Interests ----------
+  // Interests
   const addTag = (raw: string) => {
     const t = normalizeTag(raw);
     if (!t) return;
     if (interests.includes(t)) return;
     setInterests(prev => [...prev, t]);
   };
+
   const removeTag = (t: string) => setInterests(prev => prev.filter(x => x !== t));
+
   const onTagKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
@@ -333,25 +345,20 @@ const Profile: React.FC = () => {
     }
   };
 
-
-
-  // ---------- Save ----------
+  // Save profile
   const onSave = async () => {
     const hasAnyAddress =
       !!address.street || !!address.city || !!address.state || !!address.postalCode;
-
     if (hasAnyAddress && (!address.city || !address.state)) {
       toast.error('If you add an address, City and State are required.');
       return;
     }
-
     const computedDisplay = [firstName, lastName].filter(Boolean).join(' ') || displayName || 'Member';
-
     try {
       setSaving(true);
       await updateDoc(doc(db, 'users', currentUser!.id), {
         firstName: firstName || '',
-        lastName:  lastName  || '',
+        lastName: lastName || '',
         displayName: computedDisplay,
         email: email || '',
         address: hasAnyAddress
@@ -370,28 +377,67 @@ const Profile: React.FC = () => {
       setDisplayName(computedDisplay);
       toast.success('Profile saved');
     } catch (e: any) {
-      console.error(e);
+      console.error('Failed to save profile:', e);
       toast.error(e?.message || 'Failed to save profile');
     } finally {
       setSaving(false);
     }
   };
 
-  const cityOptions = useMemo(() => NJ_CITIES, []);
+  // Mark notification as read
+  const markNotificationAsRead = async (notificationId: string) => {
+    try {
+      await updateDoc(doc(db, 'notifications', notificationId), {
+        read: true,
+        updatedAt: serverTimestamp(),
+      });
+      toast.success('Notification marked as read');
+    } catch (e: any) {
+      console.error('Failed to mark notification as read:', e);
+      toast.error(e?.message || 'Failed to mark notification as read');
+    }
+  };
 
-  // Admin: Update RSVP
+  // Mark all notifications as read
+  const markAllNotificationsAsRead = async () => {
+    try {
+      const batch = writeBatch(db);
+      notifications.forEach(n => {
+        if (!n.read) {
+          batch.update(doc(db, 'notifications', n.id), { read: true, updatedAt: serverTimestamp() });
+        }
+      });
+      await batch.commit();
+      toast.success('All notifications marked as read');
+    } catch (e: any) {
+      console.error('Failed to mark all notifications as read:', e);
+      toast.error(e?.message || 'Failed to mark all notifications as read');
+    }
+  };
+
+  // Update RSVP
   const updateRsvp = async (eventId: string, userId: string, status: 'going' | 'maybe' | 'not-going' | null) => {
     try {
       const rsvpRef = doc(db, 'events', eventId, 'rsvps', userId);
+      const snap = await getDoc(rsvpRef);
+      const existing = snap.exists() ? snap.data() : { statusHistory: [] };
+      const newHistory = [
+        ...(existing.statusHistory || []),
+        {
+          status,
+          changedAt: serverTimestamp(),
+          changedBy: currentUser!.id,
+        }
+      ];
       if (status === null) {
         await deleteDoc(rsvpRef);
       } else {
-        const snap = await getDoc(rsvpRef);
-        if (snap.exists()) {
-          await updateDoc(rsvpRef, { status, updatedAt: serverTimestamp() });
-        } else {
-          await setDoc(rsvpRef, { status, createdAt: serverTimestamp() });
-        }
+        await setDoc(rsvpRef, {
+          status,
+          createdAt: existing.createdAt || serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          statusHistory: newHistory,
+        }, { merge: true });
       }
       toast.success('RSVP updated');
     } catch (e: any) {
@@ -400,570 +446,398 @@ const Profile: React.FC = () => {
     }
   };
 
-  // Admin: Export RSVPs as CSV
-  const exportRsvps = (event: any) => {
-    const rsvps = rsvpsByEvent[event.id] || [];
-    const csv = ['UserID,Status', ...rsvps.map(r => `${r.id},${r.status}`)].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${event.title}_rsvps.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('RSVP list exported');
+  // Block user from RSVPing
+  const blockUserFromRsvp = async (userId: string) => {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (userDoc.exists() && userDoc.data().blockedFromRsvp) {
+        toast.error('User is already blocked from RSVPing');
+        return;
+      }
+      await updateDoc(doc(db, 'users', userId), {
+        blockedFromRsvp: true,
+        updatedAt: serverTimestamp(),
+      });
+      toast.success(`User ${userNames[userId] || userId} blocked from RSVPing`);
+      // Refresh blocked users list
+      fetchBlockedUsers();
+    } catch (e: any) {
+      console.error('Failed to block user:', e);
+      toast.error(e?.message || 'Failed to block user');
+    }
   };
+
+  // Unblock user from RSVPing
+  const unblockUser = async (userId: string) => {
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        blockedFromRsvp: false,
+        updatedAt: serverTimestamp()
+      });
+      toast.success('User unblocked from RSVPing');
+      // Refresh blocked users list
+      fetchBlockedUsers();
+    } catch (e: any) {
+      console.error('Failed to unblock user:', e);
+      toast.error(e?.message || 'Failed to unblock user');
+    }
+  };
+
+  // Fetch blocked users
+  const fetchBlockedUsers = async () => {
+    if (currentUser?.role !== 'admin') return;
+    
+    setLoadingBlockedUsers(true);
+    try {
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('blockedFromRsvp', '==', true));
+      const snapshot = await getDocs(q);
+      
+      const blocked = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })).filter(user => user.blockedFromRsvp === true);
+      
+      setBlockedUsers(blocked);
+    } catch (e: any) {
+      console.error('Failed to fetch blocked users:', e);
+      toast.error('Failed to fetch blocked users');
+    } finally {
+      setLoadingBlockedUsers(false);
+    }
+  };
+
+  // Export RSVPs
+  const exportRsvps = async (event: Event) => {
+    if (exportingRsvps === event.id) return;
+    try {
+      setExportingRsvps(event.id);
+      const rsvps = rsvpsByEvent[event.id] || [];
+      if (rsvps.length === 0) {
+        toast.error('No RSVPs to export');
+        return;
+      }
+      const userDetails = await Promise.all(
+        rsvps.map(async (rsvp) => {
+          try {
+            const userDoc = await getDoc(doc(db, 'users', rsvp.id));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              return {
+                userId: rsvp.id,
+                status: rsvp.status,
+                firstName: userData.firstName || '',
+                lastName: userData.lastName || '',
+                displayName: userData.displayName || '',
+                email: userData.email || '',
+                phone: userData.phone || '',
+                address: userData.address ? `${userData.address.street || ''} ${userData.address.city || ''} ${userData.address.state || ''} ${userData.address.postalCode || ''}`.trim() : '',
+                rsvpDate: rsvp.createdAt?.toDate?.() ? new Date(rsvp.createdAt.toDate()).toLocaleDateString('en-US') : 'Unknown'
+              };
+            }
+            return {
+              userId: rsvp.id,
+              status: rsvp.status,
+              firstName: 'Unknown',
+              lastName: 'User',
+              displayName: 'Unknown User',
+              email: '',
+              phone: '',
+              address: '',
+              rsvpDate: rsvp.createdAt?.toDate?.() ? new Date(rsvp.createdAt.toDate()).toLocaleDateString('en-US') : 'Unknown'
+            };
+          } catch {
+            return {
+              userId: rsvp.id,
+              status: rsvp.status,
+              firstName: 'Error',
+              lastName: 'Loading',
+              displayName: 'Error Loading User',
+              email: '',
+              phone: '',
+              address: '',
+              rsvpDate: rsvp.createdAt?.toDate?.() ? new Date(rsvp.createdAt.toDate()).toLocaleDateString('en-US') : 'Unknown'
+            };
+          }
+        })
+      );
+      const headers = [
+        'User ID',
+        'First Name',
+        'Last Name',
+        'Display Name',
+        'Email',
+        'Phone',
+        'Address',
+        'RSVP Status',
+        'RSVP Date'
+      ];
+      const csvRows = [
+        headers.join(','),
+        ...userDetails.map(user => [
+          user.userId,
+          `"${user.firstName}"`,
+          `"${user.lastName}"`,
+          `"${user.displayName}"`,
+          `"${user.email}"`,
+          `"${user.phone}"`,
+          `"${user.address}"`,
+          user.status,
+          user.rsvpDate
+        ].join(','))
+      ];
+      const csv = csvRows.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${event.title.replace(/[^a-z0-9]/gi, '_')}_rsvps_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${userDetails.length} RSVPs with full user details`);
+    } catch (e: any) {
+      console.error('Error exporting RSVPs:', e);
+      toast.error(e?.message || 'Failed to export RSVPs');
+    } finally {
+      setExportingRsvps(null);
+    }
+  };
+
+  // Fetch user names
+  const fetchUserNames = async (items: any[]) => {
+    const newUserNames: { [userId: string]: string } = {};
+    const userIdsToFetch = [...new Set(items
+      .map(item => item.id)
+      .filter(userId => !userNames[userId] && userId))];
+    if (userIdsToFetch.length === 0) return;
+    try {
+      const userDocs = await Promise.all(
+        userIdsToFetch.map(userId =>
+          getDoc(doc(db, 'users', userId)).then(snap => ({
+            userId,
+            displayName: snap.exists()
+              ? snap.data().displayName || [snap.data().firstName, snap.data().lastName].filter(Boolean).join(' ') || 'Unknown User'
+              : 'Unknown User',
+          }))
+        )
+      );
+      userDocs.forEach(({ userId, displayName }) => {
+        newUserNames[userId] = displayName;
+      });
+      setUserNames(prev => ({ ...prev, ...newUserNames }));
+    } catch (e) {
+      console.error('Error fetching user names:', e);
+      toast.error('Failed to fetch user names');
+    }
+  };
+
+  // Adjust attending count
+  const adjustAttendingCount = async (eventId: string, increment: boolean) => {
+    try {
+      const eventRef = doc(db, 'events', eventId);
+      const eventSnap = await getDoc(eventRef);
+      const currentCount = eventSnap.data()?.attendingCount || 0;
+      await updateDoc(eventRef, { attendingCount: Math.max(0, currentCount + (increment ? 1 : -1)) });
+      toast.success('Attendance count updated');
+    } catch (e: any) {
+      console.error('Failed to update attendance count:', e);
+      toast.error(e?.message || 'Failed to update attendance count');
+    }
+  };
+
+  // Share event
+  const shareEvent = async (event: Event) => {
+    const shareData = { title: event.title, url: `${window.location.origin}/events/${event.id}` };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(shareData.url);
+        toast.success('Event link copied to clipboard');
+      }
+    } catch (e: any) {
+      console.error('Failed to share event:', e);
+      toast.error(e?.message || 'Failed to share event');
+    }
+  };
+
+  // Analyze last-minute changes
+  const analyzeLastMinuteChanges = (rsvp: any, eventStart: any) => {
+    const history = rsvp.statusHistory || [];
+    const eventStartTime = eventStart?.toDate?.() ? new Date(eventStart.toDate()).getTime() : Date.now();
+    return history.filter((h: any) => {
+      const changeTime = h.changedAt?.toDate?.() ? new Date(h.changedAt.toDate()).getTime() : 0;
+      return h.status === 'not-going' && (eventStartTime - changeTime) <= 24 * 60 * 60 * 1000;
+    }).length;
+  };
+
+  const cityOptions = useMemo(() => NJ_CITIES, []);
+
+  if (!isAuthed) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-12">
+        <div className="rounded-xl border bg-white p-8">
+          <h1 className="text-2xl font-semibold">Profile</h1>
+          <p className="mt-4 text-gray-600">Please sign in to view your profile.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-12">
       <div className="rounded-2xl border bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-semibold mb-6">My Profile</h1>
-
-        {/* Header row: avatar + role/email */}
-        <div className="flex items-center gap-6 mb-8">
-          <div className="relative">
-            <div className="w-24 h-24 rounded-full overflow-hidden border bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white">
-              {photoURL ? (
-                <img src={photoURL} alt="avatar" className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-2xl font-bold">{initialsForAvatar}</span>
-              )}
-            </div>
-
-            <label className="absolute -bottom-2 -right-2 bg-purple-600 text-white p-2 rounded-full cursor-pointer hover:bg-purple-700">
-              <Camera className="w-4 h-4" />
-              <input
-                type="file"
-                className="hidden"
-                accept="image/*"
-                onChange={(e) => e.target.files?.[0] && onUploadAvatar(e.target.files[0])}
-                disabled={uploading}
-              />
-            </label>
-          </div>
-
-          <div>
-            <div className="text-sm text-gray-500">Role</div>
-            <div className="inline-flex items-center gap-2 mt-1">
-              <span className="px-2 py-1 rounded-full text-xs font-medium border">
-                {currentUser!.role}
-              </span>
-            </div>
-            {!!currentUser!.email && (
-              <div className="mt-2 text-sm text-gray-600">Auth email: {currentUser!.email}</div>
-            )}
-          </div>
-        </div>
-
-        {/* Form */}
-        <div className="grid gap-6">
-          {/* First / Last & Email */}
-          <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">First name</label>
-              <input
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="First name"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Last name</label>
-              <input
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Last name"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Email (optional)</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              placeholder="you@example.com"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Used for notifications and profile; phone sign-in remains your login method.
-            </p>
-          </div>
-
-          {/* Address */}
-          <div className="grid gap-4">
-            <h2 className="text-sm font-semibold text-gray-700">Address (optional)</h2>
-
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Street</label>
-                <input
-                  value={address.street || ''}
-                  onChange={(e) => setAddress(a => ({ ...a, street: e.target.value }))}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="123 Main St"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">ZIP code</label>
-                <input
-                  value={address.postalCode || ''}
-                  onChange={(e) => {
-                    const zip = e.target.value.replace(/\D/g, '').slice(0, 5);
-                    setAddress(a => ({ ...a, postalCode: zip }));
-                    if (zip.length === 5) lookupZip(zip);
-                    else setZipStatus('idle');
-                  }}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="07078"
-                  inputMode="numeric"
-                  maxLength={5}
-                />
-                <div className="h-5 text-xs mt-1">
-                  {zipStatus === 'loading' && <span className="text-gray-500">Looking up ZIP…</span>}
-                  {zipStatus === 'ok' && <span className="text-green-600">Matched city & state.</span>}
-                  {zipStatus === 'error' && <span className="text-red-600">ZIP not found.</span>}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
-                <input
-                  list="nj-cities"
-                  value={address.city || ''}
-                  onChange={(e) => setAddress(a => ({ ...a, city: e.target.value }))}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Short Hills"
-                />
-                <datalist id="nj-cities">
-                  {cityOptions.map(c => <option key={c} value={c} />)}
-                </datalist>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
-                <input
-                  value={address.state || 'NJ'}
-                  onChange={(e) => setAddress(a => ({ ...a, state: e.target.value.toUpperCase() }))}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="NJ"
-                  maxLength={2}
-                />
-              </div>
-            </div>
-
-            <p className="text-xs text-gray-500">
-              If you add an address, <span className="font-medium">City and State are required</span>.
-            </p>
-          </div>
-
-          {/* About */}
-          <div className="grid gap-2">
-            <h2 className="text-sm font-semibold text-gray-700">About (optional)</h2>
-            <textarea
-              value={about}
-              onChange={(e) => setAbout(e.target.value)}
-              maxLength={1000}
-              rows={4}
-              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              placeholder="A short bio for your profile… (max 1000 chars)"
-            />
-            <div className="text-xs text-gray-500">{about.length}/1000</div>
-          </div>
-
-          {/* Social links */}
-          <div className="grid gap-4">
-            <h2 className="text-sm font-semibold text-gray-700">Social links (optional)</h2>
-            <div className="grid md:grid-cols-2 gap-6">
-              <input
-                placeholder="Instagram URL"
-                value={social.instagram || ''}
-                onChange={(e) => setSocial(s => ({ ...s, instagram: e.target.value }))}
-                className="px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              />
-              <input
-                placeholder="Facebook URL"
-                value={social.facebook || ''}
-                onChange={(e) => setSocial(s => ({ ...s, facebook: e.target.value }))}
-                className="px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              />
-              <input
-                placeholder="Twitter/X URL"
-                value={social.twitter || ''}
-                onChange={(e) => setSocial(s => ({ ...s, twitter: e.target.value }))}
-                className="px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              />
-              <input
-                placeholder="TikTok URL"
-                value={social.tiktok || ''}
-                onChange={(e) => setSocial(s => ({ ...s, tiktok: e.target.value }))}
-                className="px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              />
-              <input
-                placeholder="YouTube URL"
-                value={social.youtube || ''}
-                onChange={(e) => setSocial(s => ({ ...s, youtube: e.target.value }))}
-                className="px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              />
-              <input
-                placeholder="Website URL"
-                value={social.website || ''}
-                onChange={(e) => setSocial(s => ({ ...s, website: e.target.value }))}
-                className="px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-
-          {/* Interests */}
-          <div className="grid gap-2">
-            <h2 className="text-sm font-semibold text-gray-700">Interests</h2>
-            <div className="flex flex-wrap gap-2">
-              {interests.map(t => (
-                <span
-                  key={t}
-                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-purple-100 text-purple-700"
-                >
-                  {t}
-                  <button
-                    type="button"
-                    onClick={() => removeTag(t)}
-                    className="hover:text-purple-900"
-                    aria-label={`Remove ${t}`}
-                  >
-                    <IconX className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <input
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={onTagKeyDown}
-              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              placeholder="Type an interest (e.g., yoga) and press Enter"
-            />
-            <p className="text-xs text-gray-500">We’ll save them like <code>#yoga</code>, <code>#pilates</code>.</p>
-          </div>
-
-          {/* Admin Event Management */}
-          {userRole === 'admin' && (
-            <div className="grid gap-4 mb-8">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-gray-700">Admin Event Management</h2>
-              </div>
-              
-              {loadingEvents ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
-                  <p className="text-gray-500 mt-2">Loading events...</p>
-                </div>
-              ) : allEvents.length === 0 ? (
-                <div className="text-center py-8 bg-gray-50 rounded-lg">
-                  <p className="text-gray-500">No events found</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {allEvents.map((event) => (
-                    <div key={event.id} className="p-4 rounded-lg border border-gray-200 bg-white">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-medium text-gray-900">{event.title}</h3>
-                          <p className="text-sm text-gray-600 mt-1">{event.description}</p>
-                          <p className="text-xs text-gray-500 mt-2">
-                            {event.startAt?.toDate?.() 
-                              ? new Date(event.startAt.toDate()).toLocaleDateString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })
-                              : 'Date TBD'
-                            }
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            Created by: {event.createdBy || 'Unknown'}
-                          </p>
-                        </div>
-                        
-                        <div className="flex items-center gap-2 ml-4">
-                          <button
-                            onClick={() => {
-                              setSelectedEvent(event);
-                              setShowEventModal(true);
-                            }}
-                            className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                          >
-                            Manage RSVPs
-                          </button>
-                          <button
-                            onClick={() => {
-                              // Navigate to events page and open edit modal
-                              window.location.href = '/events';
-                            }}
-                            className="text-xs px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
-                          >
-                            Edit Event
-                          </button>
-                        </div>
-                      </div>
-                      
-                      {/* RSVP List for Admin */}
-                      <div className="mt-4">
-                        <h4 className="text-sm font-medium text-gray-700 mb-2">RSVP List</h4>
-                        {rsvpsByEvent[event.id]?.length ? (
-                          <div className="space-y-2">
-                            {rsvpsByEvent[event.id].map(rsvp => (
-                              <div key={rsvp.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                                <span className="text-sm text-gray-600">{rsvp.id} ({rsvp.status})</span>
-                                <select
-                                  value={rsvp.status}
-                                  onChange={(e) => updateRsvp(event.id, rsvp.id, e.target.value as 'going' | 'maybe' | 'not-going' | null)}
-                                  className="text-xs px-2 py-1 rounded border border-gray-300"
-                                >
-                                  <option value="going">Going</option>
-                                  <option value="maybe">Maybe</option>
-                                  <option value="not-going">Not Going</option>
-                                  <option value="">Remove</option>
-                                </select>
-                              </div>
-                            ))}
-                            <button
-                              onClick={() => exportRsvps(event)}
-                              className="text-xs px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-                            >
-                              Export CSV
-                            </button>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-500">No RSVPs yet.</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* User Events (for non-admins) */}
-          {userRole !== 'admin' && userEvents.length > 0 && (
-            <div className="grid gap-4 mb-8">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-gray-700">My Events</h2>
-              </div>
-              
-              <div className="grid gap-3">
-                {userEvents.map((event) => (
-                  <div key={event.id} className="p-4 rounded-lg border border-gray-200 bg-white">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="font-medium text-gray-900">{event.title}</h3>
-                        <p className="text-sm text-gray-600 mt-1">{event.description}</p>
-                        <p className="text-xs text-gray-500 mt-2">
-                          {event.startAt?.toDate?.() 
-                            ? new Date(event.startAt.toDate()).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })
-                            : 'Date TBD'
-                            }
-                        </p>
-                      </div>
-                      
-                      <div className="flex items-center gap-2 ml-4">
-                        <button
-                          onClick={() => {
-                            setSelectedEvent(event);
-                            setShowEventModal(true);
-                          }}
-                          className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                        >
-                          View RSVPs
-                        </button>
-                        <button
-                          onClick={() => {
-                            // Navigate to events page and open edit modal
-                            window.location.href = '/events';
-                          }}
-                          className="text-xs px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
-                        >
-                          Edit Event
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Notifications */}
-          <div className="grid gap-4">
-            <div className="flex items-center gap-2">
-              <Bell className="w-5 h-5 text-purple-600" />
-              <h2 className="text-sm font-semibold text-gray-700">Notifications</h2>
-            </div>
-            
-            {loadingNotifications ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
-                <p className="text-gray-500 mt-2">Loading notifications...</p>
-              </div>
-            ) : notifications.length === 0 ? (
-              <div className="text-center py-8 bg-gray-50 rounded-lg">
-                <Bell className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                <p className="text-gray-500">No notifications yet</p>
-                <p className="text-sm text-gray-400">You'll see RSVP notifications here when members join your events</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {notifications.map((notification) => (
-                  <div
-                    key={notification.id}
-                    className={`p-4 rounded-lg border transition-all duration-200 ${
-                      notification.read 
-                        ? 'bg-gray-50 border-gray-200 text-gray-600' 
-                        : 'bg-purple-50 border-purple-200 text-gray-900'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{notification.message}</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {notification.createdAt?.toDate?.() 
-                            ? new Date(notification.createdAt.toDate()).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })
-                            : 'Recently'
-                          }
-                        </p>
-                      </div>
-                      
-                      <div className="flex items-center gap-2 ml-4">
-                        {notification.eventId && (
-                          <button
-                            onClick={() => {
-                              // Navigate to events page and open the specific event
-                              window.location.href = '/events';
-                            }}
-                            className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
-                          >
-                            View Event
-                          </button>
-                        )}
-                        
-                        {!notification.read && (
-                          <button
-                            onClick={() => markNotificationAsRead(notification.id)}
-                            className="text-xs px-2 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center gap-1"
-                            title="Mark as read"
-                          >
-                            <Eye className="w-3 h-3" />
-                            Read
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Save */}
-          <div className="flex items-center justify-end">
+        {/* Tabs */}
+        <div className="flex space-x-1 mb-8 bg-gray-100 p-1 rounded-lg">
+          <button
+            onClick={() => setActiveTab('personal')}
+            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'personal' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
+            aria-selected={activeTab === 'personal'}
+          >
+            Personal
+          </button>
+          <button
+            onClick={() => setActiveTab('events')}
+            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'events' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
+            aria-selected={activeTab === 'events'}
+          >
+            My Events
+          </button>
+          <button
+            onClick={() => setActiveTab('rsvp')}
+            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'rsvp' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
+            aria-selected={activeTab === 'rsvp'}
+          >
+            RSVP Management
+          </button>
+          {currentUser?.role === 'admin' && (
             <button
-              onClick={onSave}
-              disabled={saving}
-              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-full hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50"
+              onClick={() => setActiveTab('admin')}
+              className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'admin' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
+              aria-selected={activeTab === 'admin'}
             >
-              {saving ? 'Saving…' : 'Save Changes'}
+              Admin
             </button>
-          </div>
+          )}
         </div>
+        {/* Content */}
+        {activeTab === 'personal' && (
+          <ProfilePersonalTab
+            firstName={firstName}
+            setFirstName={setFirstName}
+            lastName={lastName}
+            setLastName={setLastName}
+            displayName={displayName}
+            setDisplayName={setDisplayName}
+            email={email}
+            setEmail={setEmail}
+            photoURL={photoURL}
+            about={about}
+            setAbout={setAbout}
+            address={address}
+            setAddress={setAddress}
+            zipStatus={zipStatus}
+            interests={interests}
+            tagInput={tagInput}
+            setTagInput={setTagInput}
+            social={social}
+            setSocial={setSocial}
+            saving={saving}
+            uploading={uploading}
+            cityOptions={cityOptions}
+            onUploadAvatar={onUploadAvatar}
+            lookupZip={lookupZip}
+            addTag={addTag}
+            removeTag={removeTag}
+            onTagKeyDown={onTagKeyDown}
+            onSave={onSave}
+            initialsForAvatar={initialsForAvatar}
+          />
+        )}
+        {activeTab === 'events' && (
+          <ProfileEventsTab
+            notifications={notifications}
+            markNotificationAsRead={markNotificationAsRead}
+            markAllNotificationsAsRead={markAllNotificationsAsRead}
+            rsvpedEvents={rsvpedEvents}
+            userEvents={userEvents}
+            allEvents={allEvents}
+            userNames={userNames}
+            shareEvent={shareEvent}
+            setIsCreateModalOpen={setIsCreateModalOpen}
+            setEventToEdit={setEventToEdit}
+            notificationsPage={notificationsPage}
+            setNotificationsPage={setNotificationsPage}
+            eventsPage={eventsPage}
+            setEventsPage={setEventsPage}
+            PAGE_SIZE={PAGE_SIZE}
+            notificationFilter={notificationFilter}
+            setNotificationFilter={setNotificationFilter}
+            loadingNotifications={loadingNotifications}
+            loadingEvents={loadingEvents}
+            currentUser={currentUser}
+          />
+        )}
+        {activeTab === 'rsvp' && (
+          <ProfileRSVPAdminTab
+            rsvpsByEvent={rsvpsByEvent}
+            allEvents={allEvents}
+            userNames={userNames}
+            updateRsvp={updateRsvp}
+            exportRsvps={exportRsvps}
+            exportingRsvps={exportingRsvps}
+            adjustAttendingCount={adjustAttendingCount}
+            blockUserFromRsvp={blockUserFromRsvp}
+            analyzeLastMinuteChanges={analyzeLastMinuteChanges}
+            rsvpFilter={rsvpFilter}
+            setRsvpFilter={setRsvpFilter}
+            eventsPage={eventsPage}
+            setEventsPage={setEventsPage}
+            PAGE_SIZE={PAGE_SIZE}
+            loadingAdminEvents={loadingAdminEvents}
+            currentUser={currentUser}
+          />
+        )}
+        {activeTab === 'admin' && currentUser?.role === 'admin' && (
+          <ProfileAdminTab
+            allEvents={allEvents}
+            rsvpsByEvent={rsvpsByEvent}
+            userNames={userNames}
+            setEventToEdit={setEventToEdit}
+            setIsCreateModalOpen={setIsCreateModalOpen}
+            shareEvent={shareEvent}
+            adjustAttendingCount={adjustAttendingCount}
+            exportRsvps={exportRsvps}
+            exportingRsvps={exportingRsvps}
+            updateRsvp={updateRsvp}
+            blockUserFromRsvp={blockUserFromRsvp}
+            unblockUser={unblockUser}
+            analyzeLastMinuteChanges={analyzeLastMinuteChanges}
+            eventsPage={eventsPage}
+            setEventsPage={setEventsPage}
+            PAGE_SIZE={PAGE_SIZE}
+            loadingAdminEvents={loadingAdminEvents}
+            rsvpFilter={rsvpFilter}
+            setRsvpFilter={setRsvpFilter}
+            blockedUsers={blockedUsers}
+            loadingBlockedUsers={loadingBlockedUsers}
+          />
+        )}
       </div>
-
-      {/* RSVP Management Modal */}
-      {showEventModal && selectedEvent && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">RSVP Management - {selectedEvent.title}</h2>
-                <button
-                  onClick={() => setShowEventModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <IconX className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
-            
-            <div className="p-6">
-              <div className="mb-4">
-                <h3 className="font-medium text-gray-900 mb-2">Event Details</h3>
-                <div className="text-sm text-gray-600">
-                  <p><strong>Date:</strong> {selectedEvent.startAt?.toDate?.() 
-                    ? new Date(selectedEvent.startAt.toDate()).toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })
-                    : 'Date TBD'
-                  }</p>
-                  {selectedEvent.location && <p><strong>Location:</strong> {selectedEvent.location}</p>}
-                  {selectedEvent.description && <p><strong>Description:</strong> {selectedEvent.description}</p>}
-                </div>
-              </div>
-              
-              <div className="mb-4">
-                <h3 className="font-medium text-gray-900 mb-2">RSVP List</h3>
-                <p className="text-sm text-gray-500 mb-3">RSVP management will be implemented in the next phase</p>
-                <div className="text-center py-8 bg-gray-50 rounded-lg">
-                  <p className="text-gray-500">RSVP management coming soon!</p>
-                  <p className="text-sm text-gray-400">This will show all attendees and allow admins to manage RSVPs</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="p-6 border-t bg-gray-50">
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowEventModal(false)}
-                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={() => {
-                    setShowEventModal(false);
-                    window.location.href = '/events';
-                  }}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                >
-                  Edit Event
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Create/Edit Event Modal */}
+      {isCreateModalOpen && (
+        <CreateEventModal
+          onClose={() => {
+            setIsCreateModalOpen(false);
+            setEventToEdit(null);
+          }}
+          onEventCreated={() => {
+            setIsCreateModalOpen(false);
+            setEventToEdit(null);
+          }}
+          eventToEdit={eventToEdit}
+        />
       )}
     </div>
   );
