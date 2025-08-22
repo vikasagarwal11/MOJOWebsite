@@ -802,24 +802,16 @@ const Profile: React.FC = () => {
         {activeTab === 'admin' && currentUser?.role === 'admin' && (
           <ProfileAdminTab
             allEvents={allEvents}
-            rsvpsByEvent={rsvpsByEvent}
             userNames={userNames}
             setEventToEdit={setEventToEdit}
             setIsCreateModalOpen={setIsCreateModalOpen}
             shareEvent={shareEvent}
-            adjustAttendingCount={adjustAttendingCount}
-            exportRsvps={exportRsvps}
-            exportingRsvps={exportingRsvps}
-            updateRsvp={updateRsvp}
             blockUserFromRsvp={blockUserFromRsvp}
             unblockUser={unblockUser}
-            analyzeLastMinuteChanges={analyzeLastMinuteChanges}
             eventsPage={eventsPage}
             setEventsPage={setEventsPage}
             PAGE_SIZE={PAGE_SIZE}
             loadingAdminEvents={loadingAdminEvents}
-            rsvpFilter={rsvpFilter}
-            setRsvpFilter={setRsvpFilter}
             blockedUsers={blockedUsers}
             loadingBlockedUsers={loadingBlockedUsers}
           />

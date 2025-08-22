@@ -1,0 +1,5 @@
+[33m935b985[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfeature/user-blocking-ui-and-eventcard-integration[m[33m, [m[1;31morigin/feature/user-blocking-ui-and-eventcard-integration[m[33m)[m feat: Complete EventCard integration across all Profile tabs
+[33m2c64d76[m feat: Implement User Blocking UI and prepare for EventCard integration
+[33m13bf4b4[m[33m ([m[1;32mmain[m[33m)[m fix: Complete RSVP management system in Profile component
+[33m56f4a21[m feat: Enhanced Profile page with admin event management and notifications
+[33m3a07a26[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m feat: Major UI/UX enhancements and Firebase integration
