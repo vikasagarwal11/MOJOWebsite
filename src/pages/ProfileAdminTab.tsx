@@ -21,48 +21,32 @@ interface Event {
 
 type ProfileAdminTabProps = {
   allEvents: Event[];
-  rsvpsByEvent: { [eventId: string]: any[] };
   userNames: { [userId: string]: string };
   setEventToEdit: (value: Event | null) => void;
   setIsCreateModalOpen: (value: boolean) => void;
   shareEvent: (event: Event) => Promise<void>;
-  adjustAttendingCount: (eventId: string, increment: boolean) => Promise<void>;
-  exportRsvps: (event: Event) => Promise<void>;
-  exportingRsvps: string | null;
-  updateRsvp: (eventId: string, userId: string, status: 'going' | 'maybe' | 'not-going' | null) => Promise<void>;
   blockUserFromRsvp: (userId: string) => Promise<void>;
   unblockUser: (userId: string) => Promise<void>;
-  analyzeLastMinuteChanges: (rsvp: any, eventStart: any) => number;
   eventsPage: number;
   setEventsPage: (value: number) => void;
   PAGE_SIZE: number;
   loadingAdminEvents: boolean;
-  rsvpFilter: 'all' | 'going' | 'maybe' | 'not-going';
-  setRsvpFilter: (value: 'all' | 'going' | 'maybe' | 'not-going') => void;
   blockedUsers: { id: string; displayName: string; email: string; blockedAt: any }[];
   loadingBlockedUsers: boolean;
 };
 
 export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   allEvents,
-  rsvpsByEvent,
   userNames,
   setEventToEdit,
   setIsCreateModalOpen,
   shareEvent,
-  adjustAttendingCount,
-  exportRsvps,
-  exportingRsvps,
-  updateRsvp,
   blockUserFromRsvp,
   unblockUser,
-  analyzeLastMinuteChanges,
   eventsPage,
   setEventsPage,
   PAGE_SIZE,
   loadingAdminEvents,
-  rsvpFilter,
-  setRsvpFilter,
   blockedUsers,
   loadingBlockedUsers,
 }) => (
@@ -147,193 +131,23 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                 📤 Share Event
               </button>
             </div>
-            {/* RSVP Management Section */}
+            {/* Quick Event Info */}
             <div className="border-t border-gray-200 pt-4">
-              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                📋 RSVP Management
-                <span className="text-xs text-gray-500 font-normal">
-                  ({rsvpsByEvent[event.id]?.length || 0} total responses)
-                </span>
-              </h4>
-              {rsvpsByEvent[event.id]?.length ? (
-                <>
-                  {/* RSVP Summary Dashboard */}
-                  <div className="mb-4 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium text-gray-700">Response Summary</span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => adjustAttendingCount(event.id, true)}
-                          className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition-colors"
-                          aria-label={`Increase attendance count for ${event.title}`}
-                        >
-                          ➕ Count
-                        </button>
-                        <button
-                          onClick={() => adjustAttendingCount(event.id, false)}
-                          disabled={event.attendingCount <= 0}
-                          className={`px-2 py-1 rounded text-xs transition-colors ${
-                            event.attendingCount <= 0
-                              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                              : 'bg-red-600 text-white hover:bg-red-700'
-                          }`}
-                          title={event.attendingCount <= 0 ? 'Cannot decrease below 0' : 'Decrease attendance count'}
-                          aria-label={`Decrease attendance count for ${event.title}`}
-                        >
-                          ➖ Count {event.attendingCount <= 0 && '(0)'}
-                        </button>
-                        <button
-                          onClick={() => exportRsvps(event)}
-                          disabled={exportingRsvps === event.id}
-                          className={`px-2 py-1 rounded text-xs transition-colors ${
-                            exportingRsvps === event.id
-                              ? 'bg-gray-400 cursor-not-allowed'
-                              : 'bg-purple-600 hover:bg-purple-700'
-                          } text-white`}
-                          aria-label={`Export RSVPs for ${event.title}`}
-                        >
-                          {exportingRsvps === event.id ? '⏳ Exporting...' : '📊 Export CSV'}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                        <span>Going: <strong>{rsvpsByEvent[event.id].filter(r => r.status === 'going').length}</strong></span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-yellow-500 rounded-full"></span>
-                        <span>Maybe: <strong>{rsvpsByEvent[event.id].filter(r => r.status === 'maybe').length}</strong></span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-red-500 rounded-full"></span>
-                        <span>Not Going: <strong>{rsvpsByEvent[event.id].filter(r => r.status === 'not-going').length}</strong></span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
-                        <span>Total: <strong>{rsvpsByEvent[event.id].length}</strong></span>
-                      </div>
-                    </div>
-                    <div className="mt-3 pt-3 border-t border-gray-200">
-                      <div className="text-xs text-gray-600 space-y-1">
-                        <div>
-                          <span className="font-medium text-green-700">Going:</span>{' '}
-                          {rsvpsByEvent[event.id]
-                            .filter(r => r.status === 'going')
-                            .map(r => userNames[r.id] || 'Loading...')
-                            .join(', ') || 'None'}
-                        </div>
-                        <div>
-                          <span className="font-medium text-yellow-700">Maybe:</span>{' '}
-                          {rsvpsByEvent[event.id]
-                            .filter(r => r.status === 'maybe')
-                            .map(r => userNames[r.id] || 'Loading...')
-                            .join(', ') || 'None'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Detailed RSVP List */}
-                  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mt-4">
-                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-700">Detailed RSVP List</span>
-                      <select
-                        value={rsvpFilter}
-                        onChange={(e) => setRsvpFilter(e.target.value as 'all' | 'going' | 'maybe' | 'not-going')}
-                        className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
-                        aria-label="Filter RSVPs"
-                      >
-                        <option value="all">All</option>
-                        <option value="going">Going</option>
-                        <option value="maybe">Maybe</option>
-                        <option value="not-going">Not Going</option>
-                      </select>
-                    </div>
-                    <ul className="divide-y divide-gray-200 max-h-60 overflow-y-auto">
-                      {rsvpsByEvent[event.id]
-                        .filter(r => rsvpFilter === 'all' || r.status === rsvpFilter)
-                        .map(rsvp => (
-                          <li key={rsvp.id} className="px-4 py-3 flex justify-between items-center hover:bg-gray-50">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-sm text-gray-900">
-                                  {userNames[rsvp.id] || 'Loading...'}
-                                </span>
-                                <span className="text-xs text-gray-400">({rsvp.id.slice(0, 8)}...)</span>
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                    rsvp.status === 'going'
-                                      ? 'bg-green-100 text-green-800'
-                                      : rsvp.status === 'maybe'
-                                      ? 'bg-yellow-100 text-yellow-800'
-                                      : 'bg-red-100 text-red-800'
-                                  }`}
-                                >
-                                  {rsvp.status === 'going' ? '✅ Going' : rsvp.status === 'maybe' ? '🤔 Maybe' : '❌ Not Going'}
-                                </span>
-                              </div>
-                              <div className="text-xs text-gray-500 mt-1 flex items-center gap-3">
-                                <span>
-                                  📅 RSVP:{' '}
-                                  {rsvp.createdAt?.toDate?.()
-                                    ? new Date(rsvp.createdAt.toDate()).toLocaleDateString('en-US', {
-                                        month: 'short',
-                                        day: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      })
-                                    : 'Unknown'}
-                                </span>
-                                {rsvp.updatedAt && (
-                                  <span>
-                                    🔄 Updated:{' '}
-                                    {new Date(rsvp.updatedAt.toDate()).toLocaleDateString('en-US', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <select
-                                value={rsvp.status}
-                                onChange={(e) => {
-                                  const newStatus = e.target.value as 'going' | 'maybe' | 'not-going' | '';
-                                  updateRsvp(event.id, rsvp.id, newStatus || null);
-                                }}
-                                className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
-                                aria-label={`Change RSVP status for ${userNames[rsvp.id] || rsvp.id}`}
-                              >
-                                <option value="going">✅ Going</option>
-                                <option value="maybe">🤔 Maybe</option>
-                                <option value="not-going">❌ Not Going</option>
-                                <option value="">🗑️ Remove</option>
-                              </select>
-                              {analyzeLastMinuteChanges(rsvp, event.startAt) > 0 && (
-                                <button
-                                  onClick={() => blockUserFromRsvp(rsvp.id)}
-                                  className="ml-2 px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
-                                  aria-label={`Block ${userNames[rsvp.id] || rsvp.id} from RSVPing`}
-                                >
-                                  Block
-                                </button>
-                              )}
-                            </div>
-                          </li>
-                        ))}
-                    </ul>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center py-8 bg-gray-50 rounded-lg">
-                  <span className="text-4xl">📭</span>
-                  <p className="text-sm text-gray-600 mt-2">No RSVPs yet for this event</p>
-                  <p className="text-xs text-gray-500">Responses will appear here as members RSVP</p>
+              <div className="text-sm text-gray-600 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span>👥 Attending:</span>
+                  <span className={`font-medium ${(event.attendingCount || 0) === 0 ? 'text-red-500' : 'text-green-600'}`}>
+                    {event.attendingCount || 0}
+                  </span>
                 </div>
-              )}
+                <div className="flex items-center gap-2">
+                  <span>👤 Created by:</span>
+                  <span className="font-medium">{userNames[event.createdBy] || event.createdBy || 'Unknown'}</span>
+                </div>
+                <div className="text-xs text-gray-500 mt-2">
+                  💡 For detailed RSVP management, use the "RSVP Management" tab
+                </div>
+              </div>
             </div>
           </div>
         ))}
@@ -380,7 +194,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
               🔒 Block User from RSVPing
             </button>
             <div className="text-xs text-gray-500">
-              💡 Tip: Use the "Block" button next to RSVPs to quickly block users
+              💡 Tip: Blocked users cannot RSVP to any events
             </div>
           </div>
         </div>
