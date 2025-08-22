@@ -11,6 +11,7 @@ import { createEvent } from 'ics';
 interface EventCardProps {
   event: any;
   onEdit?: () => void;
+  showAdminActions?: boolean; // NEW: Control whether to show Edit/Delete buttons
 }
 
 // Helper function to convert timestamp to Date
@@ -22,7 +23,7 @@ function tsToDate(v: any): Date {
   return new Date(v);
 }
 
-const EventCard: React.FC<EventCardProps> = ({ event, onEdit }) => {
+const EventCard: React.FC<EventCardProps> = ({ event, onEdit, showAdminActions = true }) => {
   const { currentUser } = useAuth();
 
   // Prefer startAt
@@ -180,8 +181,8 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit }) => {
           </button>
         </div>
         
-        {/* Admin/Event Creator Actions */}
-        {(currentUser?.role === 'admin' || currentUser?.id === event.createdBy) && (
+        {/* Admin/Event Creator Actions - Only show when showAdminActions is true */}
+        {showAdminActions && (currentUser?.role === 'admin' || currentUser?.id === event.createdBy) && (
           <div className="flex gap-2 mt-4">
             <button
               onClick={onEdit}

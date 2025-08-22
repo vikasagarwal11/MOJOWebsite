@@ -193,7 +193,8 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
     )}
     */}
     
-    {/* NEW: Clean RSVP Management Focus - No User Management Duplication */}
+    {/* COMMENTED OUT: Development note removed as requested */}
+    {/* 
     <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
       <div className="flex items-center gap-2 text-blue-800">
         <span className="text-lg">💡</span>
@@ -204,6 +205,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
         </div>
       </div>
     </div>
+    */}
     {/* Events with RSVP Management */}
     {loadingAdminEvents ? (
       <div className="text-center py-8 bg-gray-50 rounded-lg">
@@ -221,10 +223,11 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
         <h3 className="text-lg font-semibold text-gray-800">Event RSVP Details</h3>
         {allEvents.map(event => (
           <div key={event.id} className="space-y-4">
-            {/* EventCard for consistent display */}
+            {/* EventCard for consistent display - NO admin actions in RSVP tab */}
             <EventCard
               event={event}
               onEdit={undefined} // RSVP tab doesn't need edit functionality
+              showAdminActions={false} // NEW: Hide Edit/Delete buttons in RSVP tab
             />
             
             {/* RSVP Export Button */}
@@ -250,6 +253,46 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                   ({rsvpsByEvent[event.id]?.length || 0} total responses)
                 </span>
               </h4>
+              
+              {/* ATTENDANCE COUNT CONTROLS - ALWAYS VISIBLE FOR ALL EVENTS */}
+              <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-blue-700">Manual Attendance Adjustment</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => adjustAttendingCount(event.id, true)}
+                      className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors font-medium"
+                      aria-label={`Increase attendance count for ${event.title}`}
+                    >
+                      ➕ + Count
+                    </button>
+                    <button
+                      onClick={() => adjustAttendingCount(event.id, false)}
+                      disabled={Math.max(0, event.attendingCount || 0) <= 0}
+                      className={`px-3 py-1 rounded text-sm transition-colors font-medium ${
+                        Math.max(0, event.attendingCount || 0) <= 0
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-red-600 text-white hover:bg-red-700'
+                      }`}
+                      title={Math.max(0, event.attendingCount || 0) <= 0 ? 'Cannot decrease below 0' : 'Decrease attendance count'}
+                      aria-label={`Decrease attendance count for ${event.title}`}
+                    >
+                      ➖ - Count {Math.max(0, event.attendingCount || 0) <= 0 && '(0)'}
+                      {/* FIXED: Show warning for negative values */}
+                      {(event.attendingCount || 0) < 0 && (
+                        <span className="ml-1 text-xs text-red-600">⚠️ Invalid data</span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <div className="text-xs text-blue-600">
+                  💡 Use these buttons to manually adjust the attendance count for walk-ins, corrections, or actual attendance tracking.
+                  <br />
+                  <strong>Current Count:</strong> {Math.max(0, event.attendingCount || 0)} attending
+                </div>
+              </div>
+              
+              {/* RSVP DATA SECTION - Only show when there are actual RSVPs */}
               {rsvpsByEvent[event.id]?.length ? (
                 <>
                   {/* RSVP Summary Dashboard */}
@@ -383,6 +426,48 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                   </span>
                                 )}
                               </div>
+                              
+                              {/* RSVP HISTORY VIEW - Easy to develop, low risk */}
+                              {rsvp.statusHistory && rsvp.statusHistory.length > 1 && (
+                                <details className="mt-2 text-xs">
+                                  <summary className="cursor-pointer text-blue-600 hover:text-blue-800 font-medium">
+                                    📋 View RSVP History ({rsvp.statusHistory.length} changes)
+                                  </summary>
+                                  <div className="mt-2 pl-4 space-y-1">
+                                    {rsvp.statusHistory.map((history: any, index: number) => (
+                                      <div key={index} className="flex items-center gap-2 text-gray-600">
+                                        <span className={`w-2 h-2 rounded-full ${
+                                          history.status === 'going' ? 'bg-green-500' :
+                                          history.status === 'maybe' ? 'bg-yellow-500' :
+                                          'bg-red-500'
+                                        }`}></span>
+                                        <span className="font-medium capitalize">
+                                          {history.status === 'not-going' ? "Can't Go" : history.status}
+                                        </span>
+                                        <span>•</span>
+                                        <span>
+                                          {history.changedAt?.toDate?.()
+                                            ? new Date(history.changedAt.toDate()).toLocaleDateString('en-US', {
+                                                month: 'short',
+                                                day: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit'
+                                              })
+                                            : 'Unknown time'}
+                                        </span>
+                                        {history.changedBy && (
+                                          <>
+                                            <span>•</span>
+                                            <span className="text-gray-500">
+                                              by {userNames[history.changedBy] || history.changedBy.slice(0, 8) + '...'}
+                                            </span>
+                                          </>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
+                              )}
                             </div>
                             <div className="flex items-center gap-2">
                               <select
@@ -419,6 +504,9 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                   <span className="text-4xl">📭</span>
                   <p className="text-sm text-gray-600 mt-2">No RSVPs yet for this event</p>
                   <p className="text-xs text-gray-500">Responses will appear here as members RSVP</p>
+                  <p className="text-xs text-blue-600 mt-2">
+                    💡 Use the +Count/-Count buttons above to manually adjust attendance for walk-ins or corrections
+                  </p>
                 </div>
               )}
             </div>
