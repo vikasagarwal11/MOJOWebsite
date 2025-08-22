@@ -11,7 +11,11 @@ import { createEvent } from 'ics';
 interface EventCardProps {
   event: any;
   onEdit?: () => void;
-  showAdminActions?: boolean; // NEW: Control whether to show Edit/Delete buttons
+  onDelete?: () => void;
+  onShare?: () => void;
+  showAdminActions?: boolean; // Control whether to show Edit/Delete buttons below
+  showTopActions?: boolean; // NEW: Control whether to show action icons at top-right
+  showCalendarButton?: boolean; // Control whether to show Add to Calendar button
 }
 
 // Helper function to convert timestamp to Date
@@ -23,7 +27,15 @@ function tsToDate(v: any): Date {
   return new Date(v);
 }
 
-const EventCard: React.FC<EventCardProps> = ({ event, onEdit, showAdminActions = true }) => {
+const EventCard: React.FC<EventCardProps> = ({ 
+  event, 
+  onEdit, 
+  onDelete, 
+  onShare, 
+  showAdminActions = true, 
+  showTopActions = false, 
+  showCalendarButton = true 
+}) => {
   const { currentUser } = useAuth();
 
   // Prefer startAt
@@ -142,9 +154,62 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, showAdminActions =
         </div>
       )}
       <div className="p-6">
-        <h3 className="text-xl font-bold text-gray-900 mb-3 group-hover:text-purple-600 transition-colors">
-          {event.title}
-        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xl font-bold text-gray-900 group-hover:text-purple-600 transition-colors">
+            {event.title}
+          </h3>
+          
+          {/* Top Action Icons - Only show when showTopActions is true */}
+          {showTopActions && (
+            <div className="flex items-center gap-2">
+              {/* Calendar icon - always shown when showTopActions is true */}
+              <button
+                onClick={handleAddToCalendar}
+                className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors"
+                title="Add to Calendar"
+                aria-label="Add to Calendar"
+              >
+                <CalendarPlus className="w-4 h-4" />
+              </button>
+              
+              {/* Admin actions - only shown for admins/creators */}
+              {(currentUser?.role === 'admin' || currentUser?.id === event.createdBy) && (
+                <>
+                  {onShare && (
+                    <button
+                      onClick={onShare}
+                      className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                      title="Share Event"
+                      aria-label="Share Event"
+                    >
+                      <Share2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  {onEdit && (
+                    <button
+                      onClick={onEdit}
+                      className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                      title="Edit Event"
+                      aria-label="Edit Event"
+                    >
+                      <Edit className="w-4 h-4" />
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button
+                      onClick={onDelete}
+                      className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                      title="Delete Event"
+                      aria-label="Delete Event"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
         <div className="space-y-2 mb-4">
           <div className="flex items-center text-gray-600">
             <Calendar className="w-4 h-4 mr-2 text-purple-500" />
@@ -169,17 +234,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, showAdminActions =
           </div>
         </div>
         <p className="text-gray-600 text-sm mb-6 line-clamp-3">{event.description}</p>
-        {/* Action Buttons */}
-        <div className="flex justify-between items-center mb-4">
-          {/* Add to Calendar Button */}
-          <button
-           onClick={handleAddToCalendar}
-            className="flex items-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
-          >
-            <CalendarPlus className="w-4 h-4 mr-1" />
-            Add to Calendar
-          </button>
-        </div>
+
         
         {/* Admin/Event Creator Actions - Only show when showAdminActions is true */}
         {showAdminActions && (currentUser?.role === 'admin' || currentUser?.id === event.createdBy) && (

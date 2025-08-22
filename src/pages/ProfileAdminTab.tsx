@@ -76,20 +76,46 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       </div>
     ) : (
       <div className="space-y-6">
-        {allEvents.map(event => (
-          <div key={event.id} className="space-y-4">
-            {/* EventCard for consistent display - WITH admin actions in Admin tab */}
+        {allEvents.map((event, index) => (
+          <div 
+            key={event.id} 
+            className={`space-y-4 p-4 rounded-lg ${
+              index % 2 === 0 
+                ? 'bg-blue-50/50 border-l-4 border-blue-200' 
+                : 'bg-pink-50/50 border-l-4 border-pink-200'
+            }`}
+          >
+            {/* EventCard for consistent display - WITH top action icons in Admin tab */}
             <EventCard
               event={event}
               onEdit={() => {
                 setEventToEdit(event);
                 setIsCreateModalOpen(true);
               }}
-              showAdminActions={true} // NEW: Show Edit/Delete buttons in Admin tab
+              onDelete={async () => {
+                if (!confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)) return;
+                try {
+                  await deleteDoc(doc(db, 'events', event.id));
+                  await deleteDoc(doc(db, 'event_teasers', event.id)).catch(() => {});
+                  const rsvps = await getDocs(collection(db, 'events', event.id, 'rsvps'));
+                  for (const rsvp of rsvps.docs) {
+                    await deleteDoc(rsvp.ref);
+                  }
+                  if (event.imageUrl) {
+                    const imageRef = ref(storage, `events/${event.id}/${event.imageUrl.split('/').pop()}`);
+                    await deleteObject(imageRef).catch(() => {});
+                  }
+                  toast.success('Event deleted');
+                } catch (e: any) {
+                  toast.error(e?.message || 'Failed to delete event');
+                }
+              }}
+              onShare={() => shareEvent(event)}
+              showAdminActions={false} // Hide the buttons below since we have top icons
+              showTopActions={true} // Show action icons at top-right
             />
             
-            {/* Admin Action Buttons - Clean, Non-Duplicate Implementation */}
-            <div className="flex items-center gap-2 justify-end">
+            {/* Top action icons are now displayed in the EventCard header */}
               {/* COMMENTED OUT: Duplicate buttons that were confusing users */}
               {/* 
               <button
@@ -136,48 +162,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
               */}
               
               {/* NEW: Clean, single action buttons with clear labels */}
-              <button
-                onClick={() => {
-                  setEventToEdit(event);
-                  setIsCreateModalOpen(true);
-                }}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium flex items-center gap-2"
-                aria-label={`Edit ${event.title}`}
-              >
-                ✏️ Edit Event
-              </button>
-              <button
-                onClick={async () => {
-                  if (!confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)) return;
-                  try {
-                    await deleteDoc(doc(db, 'events', event.id));
-                    await deleteDoc(doc(db, 'event_teasers', event.id)).catch(() => {});
-                    const rsvps = await getDocs(collection(db, 'events', event.id, 'rsvps'));
-                    for (const rsvp of rsvps.docs) {
-                      await deleteDoc(rsvp.ref);
-                    }
-                    if (event.imageUrl) {
-                      const imageRef = ref(storage, `events/${event.id}/${event.imageUrl.split('/').pop()}`);
-                      await deleteObject(imageRef).catch(() => {});
-                    }
-                    toast.success('Event deleted');
-                  } catch (e: any) {
-                    toast.error(e?.message || 'Failed to delete event');
-                  }
-                }}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium flex items-center gap-2"
-                aria-label={`Delete ${event.title}`}
-              >
-                🗑️ Delete Event
-              </button>
-              <button
-                onClick={() => shareEvent(event)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2"
-                aria-label={`Share ${event.title}`}
-              >
-                📤 Share Event
-              </button>
-            </div>
+
             {/* Quick Event Info */}
             <div className="border-t border-gray-200 pt-4">
               <div className="text-sm text-gray-600 space-y-1">
