@@ -369,19 +369,24 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                   </span>
                 </div>
                 
-                {/* Export CSV Button - Moved to RSVP Management header */}
-                <button
-                  onClick={() => exportRsvps(event)}
-                  disabled={exportingRsvps === event.id}
-                  className={`px-3 py-1 rounded text-sm transition-colors ${
-                    exportingRsvps === event.id
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-purple-600 hover:bg-purple-700'
-                  } text-white`}
-                  aria-label={`Export RSVPs for ${event.title}`}
-                >
-                  {exportingRsvps === event.id ? '⏳ Exporting...' : '📊 Export RSVPs CSV'}
-                </button>
+                                 {/* Export CSV Button - Converted to Icon */}
+                                   <button
+                    onClick={() => exportRsvps(event)}
+                    disabled={exportingRsvps === event.id}
+                    className={`p-2 rounded-full transition-colors ${
+                      exportingRsvps === event.id
+                        ? 'bg-gray-400 cursor-not-allowed'
+                        : 'bg-green-600 hover:bg-green-700 hover:scale-105'
+                    } text-white`}
+                    title={exportingRsvps === event.id ? 'Exporting...' : 'Export RSVPs CSV'}
+                    aria-label={`Export RSVPs for ${event.title}`}
+                  >
+                    {exportingRsvps === event.id ? (
+                      <span className="text-sm">⏳</span>
+                    ) : (
+                      <span className="text-sm">📊</span>
+                    )}
+                  </button>
               </div>
               
                              {/* ATTENDANCE MANAGEMENT - COMPACT & PROFESSIONAL */}
