@@ -137,7 +137,7 @@ const MediaCard: React.FC<MediaCardProps> = ({ media }) => {
   };
 
   // load latest 10 comments when panel is open
-  const [comments, setComments] = useState<Array<{ id: string; authorName: string; text: string }>>([]);
+  const [comments, setComments] = useState<Array<{ id: string; authorName: string; text: string; authorId?: string; createdAt?: any }>>([]);
   useEffect(() => {
     if (!showComments) return;
     const q = query(
