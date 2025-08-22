@@ -679,8 +679,8 @@ const Profile: React.FC = () => {
         <div className="rounded-xl border bg-white p-8">
           <h1 className="text-2xl font-semibold">Profile</h1>
           <p className="mt-4 text-gray-600">Please sign in to view your profile.</p>
-        </div>
-      </div>
+            </div>
+          </div>
     );
   }
 
@@ -704,13 +704,13 @@ const Profile: React.FC = () => {
           >
             My Events
           </button>
-          <button
+                  <button
             onClick={() => setActiveTab('rsvp')}
             className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'rsvp' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
             aria-selected={activeTab === 'rsvp'}
           >
             RSVP Management
-          </button>
+                  </button>
           {currentUser?.role === 'admin' && (
             <button
               onClick={() => setActiveTab('admin')}
@@ -720,7 +720,7 @@ const Profile: React.FC = () => {
               Admin
             </button>
           )}
-        </div>
+          </div>
         {/* Content */}
         {activeTab === 'personal' && (
           <ProfilePersonalTab
@@ -816,7 +816,7 @@ const Profile: React.FC = () => {
             loadingBlockedUsers={loadingBlockedUsers}
           />
         )}
-      </div>
+        </div>
       {/* Create/Edit Event Modal */}
       {isCreateModalOpen && (
         <CreateEventModal
