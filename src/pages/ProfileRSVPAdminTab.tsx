@@ -51,16 +51,38 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   PAGE_SIZE,
   loadingAdminEvents,
   currentUser,
-}) => (
+}) => {
+  // NEW: Event filtering state
+  const [eventFilter, setEventFilter] = React.useState('');
+  const [filteredEvents, setFilteredEvents] = React.useState<Event[]>(allEvents);
+
+  // NEW: Filter events based on search input
+  React.useEffect(() => {
+    if (!eventFilter.trim()) {
+      setFilteredEvents(allEvents);
+    } else {
+      const filtered = allEvents.filter(event => 
+        event.title.toLowerCase().includes(eventFilter.toLowerCase()) ||
+        event.description.toLowerCase().includes(eventFilter.toLowerCase()) ||
+        event.location.toLowerCase().includes(eventFilter.toLowerCase())
+      );
+      setFilteredEvents(filtered);
+    }
+  }, [eventFilter, allEvents]);
+
+  return (
   <div className="grid gap-6">
     <div className="flex items-center gap-2">
       <h2 className="text-sm font-semibold text-gray-700">RSVP Management & Analytics</h2>
       <button
-        onClick={() => setRsvpFilter('all')}
+        onClick={() => {
+          setRsvpFilter('all');        // Reset RSVP status filter
+          setEventFilter('');          // Reset event search filter
+        }}
         className="ml-4 text-xs text-purple-600 hover:underline"
-        aria-label="Reset RSVP filter"
+        aria-label="Reset all filters"
       >
-        Reset Filter
+        Reset All Filters
       </button>
     </div>
     {/* RSVP Analytics Dashboard */}
@@ -195,6 +217,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
     
     {/* COMMENTED OUT: Development note removed as requested */}
     {/* 
+    
     <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
       <div className="flex items-center gap-2 text-blue-800">
         <span className="text-lg">💡</span>
@@ -206,23 +229,60 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
       </div>
     </div>
     */}
+    
+    {/* NEW: Event Filtering Section */}
+    <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-lg font-semibold text-purple-800">Event Filtering</h3>
+        <span className="text-sm text-purple-600">
+          {filteredEvents.length} of {allEvents.length} events
+        </span>
+      </div>
+      <div className="flex gap-3 items-center">
+        <input
+          type="text"
+          placeholder="Search events by title, description, or location..."
+          value={eventFilter}
+          onChange={(e) => setEventFilter(e.target.value)}
+          className="flex-1 px-4 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+        />
+        <button
+          onClick={() => setEventFilter('')}
+          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+        >
+          Clear Filter
+        </button>
+      </div>
+    </div>
+    
     {/* Events with RSVP Management */}
     {loadingAdminEvents ? (
       <div className="text-center py-8 bg-gray-50 rounded-lg">
         <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-2"></div>
         <p className="text-gray-500">Loading admin events...</p>
       </div>
-    ) : allEvents.length === 0 ? (
+    ) : filteredEvents.length === 0 ? (
       <div className="text-center py-8 bg-gray-50 rounded-lg">
         <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-        <p className="text-sm text-gray-600">No events found</p>
-        <p className="text-xs text-gray-400">Create an event to start managing RSVPs</p>
+        <p className="text-sm text-gray-600">
+          {eventFilter ? `No events match "${eventFilter}"` : 'No events found'}
+        </p>
+        <p className="text-xs text-gray-400">
+          {eventFilter ? 'Try adjusting your search terms' : 'Create an event to start managing RSVPs'}
+        </p>
       </div>
     ) : (
       <div className="space-y-6">
         <h3 className="text-lg font-semibold text-gray-800">Event RSVP Details</h3>
-        {allEvents.map(event => (
-          <div key={event.id} className="space-y-4">
+        {filteredEvents.map((event, index) => (
+          <div 
+            key={event.id} 
+            className={`space-y-4 p-4 rounded-lg ${
+              index % 2 === 0 
+                ? 'bg-blue-50/50 border-l-4 border-blue-200' 
+                : 'bg-pink-50/50 border-l-4 border-pink-200'
+            }`}
+          >
             {/* EventCard for consistent display - NO admin actions in RSVP tab */}
             <EventCard
               event={event}
@@ -230,8 +290,42 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
               showAdminActions={false} // NEW: Hide Edit/Delete buttons in RSVP tab
             />
             
-            {/* RSVP Export Button */}
-            <div className="flex items-center justify-end">
+            {/* Global Action Buttons - Export and Calendar */}
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  // Create calendar event for this specific event
+                  const start = new Date(event.startAt?.toDate?.() || event.startAt);
+                  const end = event.endAt ? new Date(event.endAt?.toDate?.() || event.endAt) : new Date(start.getTime() + 60 * 60 * 1000);
+                  
+                  // Generate ICS file
+                  const icsContent = [
+                    'BEGIN:VCALENDAR',
+                    'VERSION:2.0',
+                    'PRODID:-//Mojo Website//Event Calendar//EN',
+                    'BEGIN:VEVENT',
+                    `DTSTART:${start.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+                    `DTEND:${end.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
+                    `SUMMARY:${event.title}`,
+                    `DESCRIPTION:${event.description}`,
+                    `LOCATION:${event.location}`,
+                    'END:VEVENT',
+                    'END:VCALENDAR'
+                  ].join('\r\n');
+                  
+                  const blob = new Blob([icsContent], { type: 'text/calendar' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `${event.title}.ics`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors"
+                aria-label={`Add ${event.title} to calendar`}
+              >
+                📅 Add to Calendar
+              </button>
               <button
                 onClick={() => exportRsvps(event)}
                 disabled={exportingRsvps === event.id}
@@ -512,7 +606,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
             </div>
           </div>
         ))}
-        {allEvents.length >= PAGE_SIZE * eventsPage && (
+        {filteredEvents.length >= PAGE_SIZE * eventsPage && (
           <button
             onClick={() => setEventsPage(eventsPage + 1)}
             className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-full hover:bg-purple-700"
@@ -524,4 +618,5 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
       </div>
     )}
   </div>
-);
+  );
+};
