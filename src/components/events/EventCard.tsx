@@ -71,7 +71,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit }) => {
         ...(existing.statusHistory || []),
         {
           status,
-          changedAt: serverTimestamp(),
+          changedAt: new Date(), // ✅ Fixed: Use Date instead of serverTimestamp() for array elements
           changedBy: currentUser.id,
         }
       ];
