@@ -87,8 +87,10 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
               }}
             />
             
-            {/* Admin Action Buttons */}
+            {/* Admin Action Buttons - Clean, Non-Duplicate Implementation */}
             <div className="flex items-center gap-2 justify-end">
+              {/* COMMENTED OUT: Duplicate buttons that were confusing users */}
+              {/* 
               <button
                 onClick={() => {
                   setEventToEdit(event);
@@ -130,14 +132,68 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
               >
                 📤 Share Event
               </button>
+              */}
+              
+              {/* NEW: Clean, single action buttons with clear labels */}
+              <button
+                onClick={() => {
+                  setEventToEdit(event);
+                  setIsCreateModalOpen(true);
+                }}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium flex items-center gap-2"
+                aria-label={`Edit ${event.title}`}
+              >
+                ✏️ Edit Event
+              </button>
+              <button
+                onClick={async () => {
+                  if (!confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)) return;
+                  try {
+                    await deleteDoc(doc(db, 'events', event.id));
+                    await deleteDoc(doc(db, 'event_teasers', event.id)).catch(() => {});
+                    const rsvps = await getDocs(collection(db, 'events', event.id, 'rsvps'));
+                    for (const rsvp of rsvps.docs) {
+                      await deleteDoc(rsvp.ref);
+                    }
+                    if (event.imageUrl) {
+                      const imageRef = ref(storage, `events/${event.id}/${event.imageUrl.split('/').pop()}`);
+                      await deleteObject(imageRef).catch(() => {});
+                    }
+                    toast.success('Event deleted');
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Failed to delete event');
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium flex items-center gap-2"
+                aria-label={`Delete ${event.title}`}
+              >
+                🗑️ Delete Event
+              </button>
+              <button
+                onClick={() => shareEvent(event)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2"
+                aria-label={`Share ${event.title}`}
+              >
+                📤 Share Event
+              </button>
             </div>
             {/* Quick Event Info */}
             <div className="border-t border-gray-200 pt-4">
               <div className="text-sm text-gray-600 space-y-1">
                 <div className="flex items-center gap-2">
                   <span>👥 Attending:</span>
-                  <span className={`font-medium ${(event.attendingCount || 0) === 0 ? 'text-red-500' : 'text-green-600'}`}>
-                    {event.attendingCount || 0}
+                  <span className={`font-medium ${
+                    (event.attendingCount || 0) <= 0 
+                      ? 'text-red-500' 
+                      : (event.attendingCount || 0) > 10 
+                        ? 'text-green-600' 
+                        : 'text-yellow-600'
+                  }`}>
+                    {/* FIXED: Prevent negative values and show warning for invalid data */}
+                    {Math.max(0, event.attendingCount || 0)}
+                    {(event.attendingCount || 0) < 0 && (
+                      <span className="ml-1 text-xs text-red-600">⚠️ Invalid data</span>
+                    )}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
