@@ -384,42 +384,44 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                 </button>
               </div>
               
-              {/* ATTENDANCE COUNT CONTROLS - ALWAYS VISIBLE FOR ALL EVENTS */}
-              <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-blue-700">Manual Attendance Adjustment</span>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => adjustAttendingCount(event.id, true)}
-                      className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors font-medium"
-                      aria-label={`Increase attendance count for ${event.title}`}
-                    >
-                      ➕ + Count
-                    </button>
-                    <button
-                      onClick={() => adjustAttendingCount(event.id, false)}
-                      disabled={Math.max(0, event.attendingCount || 0) <= 0}
-                      className={`px-3 py-1 rounded text-sm transition-colors font-medium ${
-                        Math.max(0, event.attendingCount || 0) <= 0
-                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                          : 'bg-red-600 text-white hover:bg-red-700'
-                      }`}
-                      title={Math.max(0, event.attendingCount || 0) <= 0 ? 'Cannot decrease below 0' : 'Decrease attendance count'}
-                      aria-label={`Decrease attendance count for ${event.title}`}
-                    >
-                      ➖ - Count {Math.max(0, event.attendingCount || 0) <= 0 && '(0)'}
-                      {/* FIXED: Show warning for negative values */}
-                      {(event.attendingCount || 0) < 0 && (
-                        <span className="ml-1 text-xs text-red-600">⚠️ Invalid data</span>
-                      )}
-                    </button>
+                             {/* ATTENDANCE MANAGEMENT - COMPACT & PROFESSIONAL */}
+               <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                 <div className="flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                     <span className="text-sm text-blue-600">
+                       Update attendance (<strong className="text-blue-800 font-bold text-base">{Math.max(0, event.attendingCount || 0)} checked in</strong>)
+                     </span>
+                   </div>
+                   <div className="flex gap-2">
+                     <button
+                       onClick={() => adjustAttendingCount(event.id, true)}
+                       className="p-1.5 bg-green-600 text-white rounded-full hover:bg-green-700 transition-colors"
+                       title="Increase attendance count"
+                       aria-label={`Increase attendance count for ${event.title}`}
+                     >
+                       <span className="text-sm">➕</span>
+                     </button>
+                     <button
+                       onClick={() => adjustAttendingCount(event.id, false)}
+                       disabled={Math.max(0, event.attendingCount || 0) <= 0}
+                       className={`p-1.5 rounded-full transition-colors ${
+                         Math.max(0, event.attendingCount || 0) <= 0
+                           ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                           : 'bg-red-600 text-white hover:bg-red-700'
+                       }`}
+                       title={Math.max(0, event.attendingCount || 0) <= 0 ? 'Cannot decrease below 0' : 'Decrease attendance count'}
+                       aria-label={`Decrease attendance count for ${event.title}`}
+                     >
+                       <span className="text-sm">➖</span>
+                     </button>
+                   </div>
+                 </div>
+                {/* Show warning for negative values */}
+                {(event.attendingCount || 0) < 0 && (
+                  <div className="mt-2 text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
+                    ⚠️ Invalid data detected - attendance count cannot be negative
                   </div>
-                </div>
-                <div className="text-xs text-blue-600">
-                  💡 Use these buttons to manually adjust the attendance count for walk-ins, corrections, or actual attendance tracking.
-                  <br />
-                  <strong>Current Count:</strong> {Math.max(0, event.attendingCount || 0)} attending
-                </div>
+                )}
               </div>
               
               {/* RSVP DATA SECTION - Only show when there are actual RSVPs */}
