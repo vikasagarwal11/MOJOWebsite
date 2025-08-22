@@ -4,6 +4,7 @@ import { deleteDoc, doc, getDocs, collection } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
+import EventCard from '../components/events/EventCard';
 
 interface Event {
   id: string;
@@ -92,77 +93,59 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
     ) : (
       <div className="space-y-6">
         {allEvents.map(event => (
-          <div key={event.id} className="p-6 rounded-lg border border-gray-200 bg-white shadow-sm">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg text-gray-900">{event.title}</h3>
-                <p className="text-sm text-gray-600 mt-1">{event.description}</p>
-                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                  <span>
-                    📅 {event.startAt?.toDate?.()
-                      ? new Date(event.startAt.toDate()).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })
-                      : 'Date TBD'}
-                  </span>
-                  <span>
-                    👥 Attending:
-                    <span className={`font-medium ml-1 ${
-                      (event.attendingCount || 0) === 0 ? 'text-red-500' : 'text-green-600'
-                    }`}>
-                      {event.attendingCount || 0}
-                    </span>
-                  </span>
-                  <span>👤 Created by: {userNames[event.createdBy] || event.createdBy || 'Unknown'}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 ml-4">
-                <button
-                  onClick={() => {
-                    setEventToEdit(event);
-                    setIsCreateModalOpen(true);
-                  }}
-                  className="text-xs px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
-                  aria-label={`Edit ${event.title}`}
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)) return;
-                    try {
-                      await deleteDoc(doc(db, 'events', event.id));
-                      await deleteDoc(doc(db, 'event_teasers', event.id)).catch(() => {});
-                      const rsvps = await getDocs(collection(db, 'events', event.id, 'rsvps'));
-                      for (const rsvp of rsvps.docs) {
-                        await deleteDoc(rsvp.ref);
-                      }
-                      if (event.imageUrl) {
-                        const imageRef = ref(storage, `events/${event.id}/${event.imageUrl.split('/').pop()}`);
-                        await deleteObject(imageRef).catch(() => {});
-                      }
-                      toast.success('Event deleted');
-                    } catch (e: any) {
-                      toast.error(e?.message || 'Failed to delete event');
+          <div key={event.id} className="space-y-4">
+            {/* EventCard for consistent display */}
+            <EventCard
+              event={event}
+              onEdit={() => {
+                setEventToEdit(event);
+                setIsCreateModalOpen(true);
+              }}
+            />
+            
+            {/* Admin Action Buttons */}
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setEventToEdit(event);
+                  setIsCreateModalOpen(true);
+                }}
+                className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors text-sm"
+                aria-label={`Edit ${event.title}`}
+              >
+                ✏️ Edit Event
+              </button>
+              <button
+                onClick={async () => {
+                  if (!confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)) return;
+                  try {
+                    await deleteDoc(doc(db, 'events', event.id));
+                    await deleteDoc(doc(db, 'event_teasers', event.id)).catch(() => {});
+                    const rsvps = await getDocs(collection(db, 'events', event.id, 'rsvps'));
+                    for (const rsvp of rsvps.docs) {
+                      await deleteDoc(rsvp.ref);
                     }
-                  }}
-                  className="text-xs px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
-                  aria-label={`Delete ${event.title}`}
-                >
-                  Delete
-                </button>
-                <button
-                  onClick={() => shareEvent(event)}
-                  className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                  aria-label={`Share ${event.title}`}
-                >
-                  Share
-                </button>
-              </div>
+                    if (event.imageUrl) {
+                      const imageRef = ref(storage, `events/${event.id}/${event.imageUrl.split('/').pop()}`);
+                      await deleteObject(imageRef).catch(() => {});
+                    }
+                    toast.success('Event deleted');
+                  } catch (e: any) {
+                    toast.error(e?.message || 'Failed to delete event');
+                  }
+                }}
+                className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm"
+                aria-label={`Delete ${event.title}`}
+              >
+                🗑️ Delete Event
+              </button>
+              <button
+                onClick={() => shareEvent(event)}
+                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+                aria-label={`Share ${event.title}`}
+              >
+                📤 Share Event
+              </button>
             </div>
             {/* RSVP Management Section */}
             <div className="border-t border-gray-200 pt-4">

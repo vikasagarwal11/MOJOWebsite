@@ -1,5 +1,6 @@
 import React from 'react';
 import { Calendar } from 'lucide-react';
+import EventCard from '../components/events/EventCard';
 
 interface Event {
   id: string;
@@ -205,48 +206,27 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
       <div className="space-y-6">
         <h3 className="text-lg font-semibold text-gray-800">Event RSVP Details</h3>
         {allEvents.map(event => (
-          <div key={event.id} className="p-6 rounded-lg border border-gray-200 bg-white shadow-sm">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg text-gray-900">{event.title}</h3>
-                <p className="text-sm text-gray-600 mt-1">{event.description}</p>
-                <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                  <span>
-                    📅 {event.startAt?.toDate?.()
-                      ? new Date(event.startAt.toDate()).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })
-                      : 'Date TBD'}
-                  </span>
-                  <span>
-                    👥 Attending:
-                    <span className={`font-medium ml-1 ${
-                      (event.attendingCount || 0) === 0 ? 'text-red-500' : 'text-green-600'
-                    }`}>
-                      {event.attendingCount || 0}
-                    </span>
-                  </span>
-                  <span>👤 Created by: {userNames[event.createdBy] || event.createdBy || 'Unknown'}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 ml-4">
-                <button
-                  onClick={() => exportRsvps(event)}
-                  disabled={exportingRsvps === event.id}
-                  className={`px-2 py-1 rounded text-xs transition-colors ${
-                    exportingRsvps === event.id
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-purple-600 hover:bg-purple-700'
-                  } text-white`}
-                  aria-label={`Export RSVPs for ${event.title}`}
-                >
-                  {exportingRsvps === event.id ? '⏳ Exporting...' : '📊 Export CSV'}
-                </button>
-              </div>
+          <div key={event.id} className="space-y-4">
+            {/* EventCard for consistent display */}
+            <EventCard
+              event={event}
+              onEdit={undefined} // RSVP tab doesn't need edit functionality
+            />
+            
+            {/* RSVP Export Button */}
+            <div className="flex items-center justify-end">
+              <button
+                onClick={() => exportRsvps(event)}
+                disabled={exportingRsvps === event.id}
+                className={`px-3 py-1 rounded text-sm transition-colors ${
+                  exportingRsvps === event.id
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-purple-600 hover:bg-purple-700'
+                } text-white`}
+                aria-label={`Export RSVPs for ${event.title}`}
+              >
+                {exportingRsvps === event.id ? '⏳ Exporting...' : '📊 Export RSVPs CSV'}
+              </button>
             </div>
             {/* RSVP Management Section */}
             <div className="border-t border-gray-200 pt-4">
@@ -428,7 +408,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
         ))}
         {allEvents.length >= PAGE_SIZE * eventsPage && (
           <button
-            onClick={() => setEventsPage(p => p + 1)}
+            onClick={() => setEventsPage(eventsPage + 1)}
             className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-full hover:bg-purple-700"
             aria-label="Load more events"
           >
