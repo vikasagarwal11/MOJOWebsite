@@ -1,5 +1,7 @@
-import React from 'react';
-import { Calendar } from 'lucide-react';
+import React, { useState } from 'react';
+import { Calendar, Eye, EyeOff } from 'lucide-react';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import EventCard from '../components/events/EventCard';
 
 interface Event {
@@ -55,6 +57,65 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   // NEW: Event filtering state
   const [eventFilter, setEventFilter] = React.useState('');
   const [filteredEvents, setFilteredEvents] = React.useState<Event[]>(allEvents);
+  
+  // NEW: User details state for email/phone show/hide
+  const [userDetails, setUserDetails] = useState<{[userId: string]: {email?: string; phone?: string}}>({});
+  const [showContactInfo, setShowContactInfo] = useState<{[userId: string]: boolean}>({});
+  
+  // NEW: Per-event RSVP filter state (instead of global)
+  const [eventRsvpFilters, setEventRsvpFilters] = useState<{[eventId: string]: 'all' | 'going' | 'maybe' | 'not-going'}>({});
+  
+  // Function to fetch user email and phone details
+  const fetchUserDetails = async (userId: string) => {
+    if (userDetails[userId]) return; // Already fetched
+    
+    try {
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        setUserDetails(prev => ({
+          ...prev,
+          [userId]: {
+            email: userData.email || 'Not provided',
+            phone: userData.phone || 'Not provided'
+          }
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching user details:', error);
+      setUserDetails(prev => ({
+        ...prev,
+        [userId]: {
+          email: 'Error loading',
+          phone: 'Error loading'
+        }
+      }));
+    }
+  };
+  
+  // Function to toggle contact info visibility
+  const toggleContactInfo = async (userId: string) => {
+    if (!showContactInfo[userId]) {
+      await fetchUserDetails(userId);
+    }
+    setShowContactInfo(prev => ({
+      ...prev,
+      [userId]: !prev[userId]
+    }));
+  };
+  
+  // Function to update per-event RSVP filter
+  const updateEventRsvpFilter = (eventId: string, filter: 'all' | 'going' | 'maybe' | 'not-going') => {
+    setEventRsvpFilters(prev => ({
+      ...prev,
+      [eventId]: filter
+    }));
+  };
+  
+  // Function to get current filter for a specific event
+  const getEventRsvpFilter = (eventId: string) => {
+    return eventRsvpFilters[eventId] || 'all';
+  };
 
   // NEW: Filter events based on search input
   React.useEffect(() => {
@@ -78,6 +139,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
         onClick={() => {
           setRsvpFilter('all');        // Reset RSVP status filter
           setEventFilter('');          // Reset event search filter
+          setEventRsvpFilters({});     // Reset all per-event RSVP filters
         }}
         className="ml-4 text-xs text-purple-600 hover:underline"
         aria-label="Reset all filters"
@@ -283,70 +345,44 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                 : 'bg-pink-50/50 border-l-4 border-pink-200'
             }`}
           >
-            {/* EventCard for consistent display - NO admin actions in RSVP tab */}
+            {/* EventCard for consistent display - WITH top action icons in RSVP tab */}
             <EventCard
               event={event}
               onEdit={undefined} // RSVP tab doesn't need edit functionality
-              showAdminActions={false} // NEW: Hide Edit/Delete buttons in RSVP tab
+              onDelete={undefined} // RSVP tab doesn't need delete functionality
+              onShare={undefined} // RSVP tab doesn't need share functionality
+              showAdminActions={false} // Hide Edit/Delete buttons in RSVP tab
+              showTopActions={true} // Show action icons at top-right (calendar only)
+              showCalendarButton={false} // Hide the large Add to Calendar button
             />
             
-            {/* Global Action Buttons - Export and Calendar */}
-            <div className="flex items-center justify-end gap-3">
-              <button
-                onClick={() => {
-                  // Create calendar event for this specific event
-                  const start = new Date(event.startAt?.toDate?.() || event.startAt);
-                  const end = event.endAt ? new Date(event.endAt?.toDate?.() || event.endAt) : new Date(start.getTime() + 60 * 60 * 1000);
-                  
-                  // Generate ICS file
-                  const icsContent = [
-                    'BEGIN:VCALENDAR',
-                    'VERSION:2.0',
-                    'PRODID:-//Mojo Website//Event Calendar//EN',
-                    'BEGIN:VEVENT',
-                    `DTSTART:${start.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
-                    `DTEND:${end.toISOString().replace(/[-:]/g, '').split('.')[0]}Z`,
-                    `SUMMARY:${event.title}`,
-                    `DESCRIPTION:${event.description}`,
-                    `LOCATION:${event.location}`,
-                    'END:VEVENT',
-                    'END:VCALENDAR'
-                  ].join('\r\n');
-                  
-                  const blob = new Blob([icsContent], { type: 'text/calendar' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `${event.title}.ics`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors"
-                aria-label={`Add ${event.title} to calendar`}
-              >
-                📅 Add to Calendar
-              </button>
-              <button
-                onClick={() => exportRsvps(event)}
-                disabled={exportingRsvps === event.id}
-                className={`px-3 py-1 rounded text-sm transition-colors ${
-                  exportingRsvps === event.id
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-purple-600 hover:bg-purple-700'
-                } text-white`}
-                aria-label={`Export RSVPs for ${event.title}`}
-              >
-                {exportingRsvps === event.id ? '⏳ Exporting...' : '📊 Export RSVPs CSV'}
-              </button>
-            </div>
+
             {/* RSVP Management Section */}
             <div className="border-t border-gray-200 pt-4">
-              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                📋 RSVP Management
-                <span className="text-xs text-gray-500 font-normal">
-                  ({rsvpsByEvent[event.id]?.length || 0} total responses)
-                </span>
-              </h4>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-semibold text-gray-700">
+                    📋 RSVP Management
+                  </h4>
+                  <span className="text-xs text-gray-500 font-normal">
+                    ({rsvpsByEvent[event.id]?.length || 0} total responses)
+                  </span>
+                </div>
+                
+                {/* Export CSV Button - Moved to RSVP Management header */}
+                <button
+                  onClick={() => exportRsvps(event)}
+                  disabled={exportingRsvps === event.id}
+                  className={`px-3 py-1 rounded text-sm transition-colors ${
+                    exportingRsvps === event.id
+                      ? 'bg-gray-400 cursor-not-allowed'
+                      : 'bg-purple-600 hover:bg-purple-700'
+                  } text-white`}
+                  aria-label={`Export RSVPs for ${event.title}`}
+                >
+                  {exportingRsvps === event.id ? '⏳ Exporting...' : '📊 Export RSVPs CSV'}
+                </button>
+              </div>
               
               {/* ATTENDANCE COUNT CONTROLS - ALWAYS VISIBLE FOR ALL EVENTS */}
               <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
@@ -393,32 +429,6 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                   <div className="mb-4 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-sm font-medium text-gray-700">Response Summary</span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => adjustAttendingCount(event.id, true)}
-                          className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition-colors"
-                          aria-label={`Increase attendance count for ${event.title}`}
-                        >
-                          ➕ Count
-                        </button>
-                        <button
-                          onClick={() => adjustAttendingCount(event.id, false)}
-                          disabled={Math.max(0, event.attendingCount || 0) <= 0}
-                          className={`px-2 py-1 rounded text-xs transition-colors ${
-                            Math.max(0, event.attendingCount || 0) <= 0
-                              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                              : 'bg-red-600 text-white hover:bg-red-700'
-                          }`}
-                          title={Math.max(0, event.attendingCount || 0) <= 0 ? 'Cannot decrease below 0' : 'Decrease attendance count'}
-                          aria-label={`Decrease attendance count for ${event.title}`}
-                        >
-                          ➖ Count {Math.max(0, event.attendingCount || 0) <= 0 && '(0)'}
-                          {/* FIXED: Show warning for negative values */}
-                          {(event.attendingCount || 0) < 0 && (
-                            <span className="ml-1 text-xs text-red-600">⚠️</span>
-                          )}
-                        </button>
-                      </div>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                       <div className="flex items-center gap-2">
@@ -462,10 +472,10 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                     <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
                       <span className="text-sm font-medium text-gray-700">Detailed RSVP List</span>
                       <select
-                        value={rsvpFilter}
-                        onChange={(e) => setRsvpFilter(e.target.value as 'all' | 'going' | 'maybe' | 'not-going')}
+                        value={getEventRsvpFilter(event.id)}
+                        onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'maybe' | 'not-going')}
                         className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
-                        aria-label="Filter RSVPs"
+                        aria-label={`Filter RSVPs for ${event.title}`}
                       >
                         <option value="all">All</option>
                         <option value="going">Going</option>
@@ -475,7 +485,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                     </div>
                     <ul className="divide-y divide-gray-200 max-h-60 overflow-y-auto">
                       {rsvpsByEvent[event.id]
-                        .filter(r => rsvpFilter === 'all' || r.status === rsvpFilter)
+                        .filter(r => getEventRsvpFilter(event.id) === 'all' || r.status === getEventRsvpFilter(event.id))
                         .map(rsvp => (
                           <li key={rsvp.id} className="px-4 py-3 flex justify-between items-center hover:bg-gray-50">
                             <div className="flex-1">
@@ -483,7 +493,14 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                 <span className="font-medium text-sm text-gray-900">
                                   {userNames[rsvp.id] || 'Loading...'}
                                 </span>
-                                <span className="text-xs text-gray-400">({rsvp.id.slice(0, 8)}...)</span>
+                                <button
+                                  onClick={() => toggleContactInfo(rsvp.id)}
+                                  className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                  title={showContactInfo[rsvp.id] ? 'Hide contact info' : 'Show contact info'}
+                                >
+                                  {showContactInfo[rsvp.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                  {showContactInfo[rsvp.id] ? 'Hide' : 'Show'} Contact
+                                </button>
                                 <span
                                   className={`px-2 py-1 rounded-full text-xs font-medium ${
                                     rsvp.status === 'going'
@@ -496,6 +513,20 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                   {rsvp.status === 'going' ? '✅ Going' : rsvp.status === 'maybe' ? '🤔 Maybe' : '❌ Not Going'}
                                 </span>
                               </div>
+                              
+                              {/* Show contact info when toggled */}
+                              {showContactInfo[rsvp.id] && userDetails[rsvp.id] && (
+                                <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-800 space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">📧 Email:</span>
+                                    <span>{userDetails[rsvp.id].email}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">📱 Phone:</span>
+                                    <span>{userDetails[rsvp.id].phone}</span>
+                                  </div>
+                                </div>
+                              )}
                               <div className="text-xs text-gray-500 mt-1 flex items-center gap-3">
                                 <span>
                                   📅 RSVP:{' '}
