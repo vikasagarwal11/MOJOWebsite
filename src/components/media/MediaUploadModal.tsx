@@ -73,36 +73,67 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
 
     const fileArr = selectedFiles;
 
-    await uploadMany(fileArr, async (f: File) => {
-      const kind = detectKind(f);
-      let dimensions: any; let duration: number | undefined;
-      if (kind === 'image') { dimensions = await getImageSize(f); }
-      if (kind === 'video') { const d = await getVideoDuration(f); duration = d.duration; }
+    try {
+      await uploadMany(fileArr, async (f: File) => {
+        const kind = detectKind(f);
+        let dimensions: any; let duration: number | undefined;
+        if (kind === 'image') { dimensions = await getImageSize(f); }
+        if (kind === 'video') { const d = await getVideoDuration(f); duration = d.duration; }
 
-      return {
-        title: data.title.trim(),
-        titleLower: data.title.trim().toLowerCase(),
-        description: data.description?.trim() || undefined,
-        type: kind,
-        eventId: selectedEvent.id ?? null,
-        eventTitle: selectedEvent.title ?? null,
-        uploadedBy: currentUser.id,
-        uploaderName: currentUser.displayName || 'Member',
-        isPublic: true,
-        likesCount: 0,
-        commentsCount: 0,
-        ...(dimensions? { dimensions } : {}),
-        ...(duration? { duration } : {}),
-      };
-    }, (fileName: string, progressPercent: number) => {
-      // Update progress for this specific file
-      setProgress(prev => ({ ...prev, [fileName]: progressPercent }));
-    });
+        return {
+          title: data.title.trim(),
+          titleLower: data.title.trim().toLowerCase(),
+          description: data.description?.trim() || undefined,
+          type: kind,
+          eventId: selectedEvent.id ?? null,
+          eventTitle: selectedEvent.title ?? null,
+          uploadedBy: currentUser.id,
+          uploaderName: currentUser.displayName || 'Member',
+          isPublic: true,
+          likesCount: 0,
+          commentsCount: 0,
+          transcodeStatus: 'ready', // Media is immediately available
+          ...(dimensions? { dimensions } : {}),
+          ...(duration? { duration } : {}),
+        };
+      }, (fileName: string, progressPercent: number) => {
+        // Update progress for this specific file
+        setProgress(prev => ({ ...prev, [fileName]: progressPercent }));
+      });
 
-    toast.success(`${fileArr.length} file(s) uploaded!`);
-    setProgress({}); // Clear progress
-    setSelectedFiles([]); // Clear selected files
-    reset(); onMediaUploaded();
+      // Enhanced success message with FFmpeg processing info
+      const hasVideos = fileArr.some(f => detectKind(f) === 'video');
+      const hasImages = fileArr.some(f => detectKind(f) === 'image');
+      
+      let processingInfo = '';
+      if (hasVideos && hasImages) {
+        processingInfo = 'Your media is ready to view! Videos will be optimized for streaming and images will be compressed in the background.';
+      } else if (hasVideos) {
+        processingInfo = 'Your video is ready to play! It will be optimized for streaming and converted to HLS format in the background.';
+      } else if (hasImages) {
+        processingInfo = 'Your images are ready to view! They will be compressed and optimized in the background.';
+      }
+
+      toast.success(
+        <div>
+          <div className="font-semibold">{fileArr.length} file(s) uploaded successfully!</div>
+          {processingInfo && (
+            <div className="text-sm opacity-90 mt-1">
+              {processingInfo}
+            </div>
+          )}
+        </div>,
+        { duration: 5000 }
+      );
+
+      setProgress({}); // Clear progress
+      setSelectedFiles([]); // Clear selected files
+      reset(); 
+      onMediaUploaded();
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast.error('Upload failed. Please try again.');
+    }
   };
 
   return (

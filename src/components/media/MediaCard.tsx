@@ -4,10 +4,12 @@ import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../config/firebase';
 import { collection, addDoc, doc, deleteDoc, serverTimestamp, updateDoc, increment, setDoc } from 'firebase/firestore';
-import { useHls } from '../../hooks/useHls';
 import { useViewCounter } from '../../hooks/useViewCounter';
 import { usePagedComments } from '../../hooks/usePagedComments';
 import { shareUrl } from '../../utils/share';
+import { attachHls, detachHls } from '../../utils/hls';
+import { getDownloadURL, ref } from 'firebase/storage';
+import { storage } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '../ConfirmDialog';
 
@@ -35,7 +37,58 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
   }, [menuOpen]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  useHls(videoRef.current, media?.sources?.hls);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
+  const [isHlsAttached, setIsHlsAttached] = useState(false);
+  const [isThumbnailLoading, setIsThumbnailLoading] = useState(true);
+  
+  // Load thumbnail URL if available
+  useEffect(() => {
+    setIsThumbnailLoading(true);
+    if (media.thumbnailPath) {
+      getDownloadURL(ref(storage, media.thumbnailPath))
+        .then(url => {
+          setThumbnailUrl(url);
+          setIsThumbnailLoading(false);
+        })
+        .catch(error => {
+          console.warn('Failed to load thumbnail:', error);
+          setThumbnailUrl(media.url); // Fallback to original
+          setIsThumbnailLoading(false);
+        });
+    } else {
+      setThumbnailUrl(media.url);
+      setIsThumbnailLoading(false);
+    }
+  }, [media.thumbnailPath, media.url]);
+
+  // Attach HLS when video element is ready and HLS source is available
+  useEffect(() => {
+    if (videoRef.current && media.sources?.hls && !isHlsAttached) {
+      // HLS is ready - upgrade to HLS streaming
+      attachHls(videoRef.current, media.sources.hls)
+        .then(() => setIsHlsAttached(true))
+        .catch(error => {
+          console.warn('Failed to attach HLS, using fallback:', error);
+          // Fallback to original video URL
+          if (videoRef.current) {
+            videoRef.current.src = media.url;
+          }
+        });
+    } else if (videoRef.current && !isHlsAttached && !media.sources?.hls) {
+      // No HLS yet - show original file immediately for instant playback
+      videoRef.current.src = media.url;
+    }
+  }, [media.sources?.hls, media.url, isHlsAttached]);
+
+  // Cleanup HLS when component unmounts or media changes
+  useEffect(() => {
+    return () => {
+      if (videoRef.current && isHlsAttached) {
+        detachHls(videoRef.current);
+        setIsHlsAttached(false);
+      }
+    };
+  }, [isHlsAttached]);
   useViewCounter(media.id, videoRef.current ?? null);
 
   // Like toggle (optimistic) - Cloud Functions handle counter updates
@@ -102,22 +155,77 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
 
   const comments = usePagedComments(media.id, 10);
 
-  const previewEl = useMemo(()=> media.type==='video' ? (
-    <div className="relative" onDoubleClick={onDoubleTap} onClick={onOpen}>
-      <video ref={videoRef} poster={media.thumbnailUrl || media.url} playsInline controls preload="metadata"
-        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
-        <source src={media.url} />
-      </video>
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center">
-          <Play className="w-6 h-6 text-purple-600 ml-0.5" />
+  const previewEl = useMemo(() => {
+    return media.type === 'video' ? (
+      <div className="relative" onDoubleClick={onDoubleTap} onClick={onOpen}>
+        <video 
+          ref={videoRef} 
+          poster={thumbnailUrl} 
+          playsInline 
+          controls 
+          preload="metadata"
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+        >
+          {/* Original source for immediate playback while HLS processes */}
+          <source src={media.url} type={media.type === 'video' ? 'video/mp4' : 'video/*'} />
+          {/* HLS will be attached dynamically via useEffect when ready */}
+        </video>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center">
+            <Play className="w-6 h-6 text-purple-600 ml-0.5" />
+          </div>
         </div>
+        {/* Show processing status if available */}
+        {media.transcodeStatus === 'processing' && (
+          <div className="absolute top-3 left-3 z-10">
+            <div className="px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              Upgrading...
+            </div>
+          </div>
+        )}
+        {media.transcodeStatus === 'failed' && (
+          <div className="absolute top-3 left-3 z-10">
+            <div className="px-3 py-1.5 bg-red-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
+              <div className="w-2 h-2 bg-white rounded-full"></div>
+              Upgrade Failed
+            </div>
+          </div>
+        )}
+        {media.transcodeStatus === 'ready' && media.type === 'video' && media.sources?.hls && (
+          <div className="absolute top-3 left-3 z-10">
+            <div className="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
+              <div className="w-2 h-2 bg-white rounded-full"></div>
+              HLS Ready
+            </div>
+          </div>
+        )}
+        {media.transcodeStatus === 'ready' && media.type === 'image' && media.thumbnailPath && (
+          <div className="absolute top-3 left-3 z-10">
+            <div className="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
+              <div className="w-2 h-2 bg-white rounded-full"></div>
+              Optimized
+            </div>
+          </div>
+        )}
       </div>
-    </div>
-  ) : (
-    <img src={media.thumbnailUrl || media.url} alt={media.title} loading="lazy" onDoubleClick={onDoubleTap} onClick={onOpen}
-      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-  ), [media, onOpen, liked]);
+    ) : (
+      isThumbnailLoading ? (
+        <div className="w-full h-full bg-gray-200 animate-pulse flex items-center justify-center">
+          <div className="text-gray-400">Loading...</div>
+        </div>
+      ) : (
+        <img 
+          src={thumbnailUrl} 
+          alt={media.title} 
+          loading="lazy" 
+          onDoubleClick={onDoubleTap} 
+          onClick={onOpen}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+        />
+      )
+    );
+  }, [media, onOpen, liked, thumbnailUrl, isThumbnailLoading]);
 
   const createdAt = media.createdAt instanceof Date ? media.createdAt : new Date(media.createdAt);
 
