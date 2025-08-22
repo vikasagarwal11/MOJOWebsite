@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { v4 as uuid } from 'uuid';
 
 export const useStorage = () => {
   const { currentUser } = useAuth();
@@ -21,13 +22,32 @@ export const useStorage = () => {
     try {
       const storageRef = ref(storage, path);
       
-      // Upload file
-      const snapshot = await uploadBytes(storageRef, file);
+      // Use uploadBytesResumable for progress tracking
+      const uploadTask = uploadBytesResumable(storageRef, file);
+      
+      // Set up progress tracking
+      if (onProgress) {
+        uploadTask.on('state_changed', 
+          (snapshot) => {
+            const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+            onProgress(progress);
+          },
+          (error) => {
+            console.error('Upload error:', error);
+            throw error;
+          },
+          async () => {
+            // Upload completed successfully
+          }
+        );
+      }
+      
+      // Wait for upload to complete
+      const snapshot = await uploadTask;
       
       // Get download URL
       const downloadURL = await getDownloadURL(snapshot.ref);
       
-      toast.success('File uploaded successfully');
       return downloadURL;
     } catch (error: any) {
       console.error('Upload error:', error);
@@ -67,7 +87,8 @@ export const useStorage = () => {
     
     switch (type) {
       case 'media':
-        return `media/${currentUser.id}/${Date.now()}_${fileName}`;
+        const batchId = uuid(); // Generate unique UUID for this upload
+        return `media/${currentUser.id}/${batchId}/${fileName}`;
       case 'profiles':
         return `profiles/${currentUser.id}/${fileName}`;
       case 'events':
@@ -79,10 +100,30 @@ export const useStorage = () => {
     }
   };
 
+  // Helper function to get storage folder path for cleanup
+  const getStorageFolder = (type: 'media' | 'profiles' | 'events' | 'sponsors') => {
+    if (!currentUser) return '';
+    
+    switch (type) {
+      case 'media':
+        const batchId = uuid(); // Generate unique UUID for this upload
+        return `media/${currentUser.id}/${batchId}/`;
+      case 'profiles':
+        return `profiles/${currentUser.id}/`;
+      case 'events':
+        return `events/`;
+      case 'sponsors':
+        return `sponsors/`;
+      default:
+        return `misc/`;
+    }
+  };
+
   return {
     uploadFile,
     deleteFile,
     getStoragePath,
+    getStorageFolder,
     uploading,
   };
 };

@@ -1,216 +1,128 @@
-// src/components/media/MediaCard.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Heart, MessageCircle, Tag, Play } from 'lucide-react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
+import { Heart, MessageCircle, Tag, Play, Share2, Download, MoreHorizontal, EyeOff, Eye, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { MediaFile } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
-import { analytics, db } from '../../config/firebase';
-import { logEvent } from 'firebase/analytics';
-import {
-  collection,
-  doc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-} from 'firebase/firestore';
+import { db } from '../../config/firebase';
+import { collection, addDoc, doc, deleteDoc, serverTimestamp, updateDoc, increment, setDoc } from 'firebase/firestore';
+import { useHls } from '../../hooks/useHls';
+import { useViewCounter } from '../../hooks/useViewCounter';
+import { usePagedComments } from '../../hooks/usePagedComments';
+import { shareUrl } from '../../utils/share';
 import toast from 'react-hot-toast';
-import { trace, getPerformance } from 'firebase/performance';
-import { likeMedia, unlikeMedia, addComment as addCommentHelper } from '../../utils/mediaActions';
+import ConfirmDialog from '../ConfirmDialog';
 
-// ---------- analytics helper ----------
-function log(name: string, params?: Record<string, any>) {
-  try { if (analytics) logEvent(analytics, name, params); } catch {}
-}
-
-// ---------- perf: first media tile paint ----------
-export function markMediaFirstPaint() {
-  try {
-    const perf = getPerformance();
-    const t = trace(perf, 'media_first_paint');
-    t.start();
-    return () => { try { t.stop(); } catch {} };
-  } catch {
-    return () => {};
-  }
-}
-
-// ---------- HLS helper (lazy import) ----------
-async function ensureHls(video: HTMLVideoElement, src: string) {
-  if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = src;
-    return;
-  }
-  const Hls = (await import('hls.js')).default;
-  const hls = new Hls();
-  hls.loadSource(src);
-  hls.attachMedia(video);
-}
-
-// ----------------------------------------------------------------------------
-interface MediaCardProps {
-  media: MediaFile & {
-    likesCount?: number;
-    commentsCount?: number;
-    sources?: { hls?: string }; // optional HLS url
-  };
-}
-
-const MediaCard: React.FC<MediaCardProps> = ({ media }) => {
+export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>void }) {
   const { currentUser } = useAuth();
   const canEngage = !!currentUser && (currentUser.role === 'member' || currentUser.role === 'admin');
 
-  // optimistic UI counts; will settle via collection re-renders
-  const [likesCount, setLikesCount] = useState<number>(media.likesCount ?? 0);
-  const [commentsCount, setCommentsCount] = useState<number>(media.commentsCount ?? 0);
   const [liked, setLiked] = useState<boolean>(false);
+  const [likesCount, setLikesCount] = useState<number>(media.likesCount ?? 0);
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // video handling
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuOpen && !(event.target as Element).closest('.admin-menu')) {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const stopPerfRef = useRef<() => void>(() => {});
+  useHls(videoRef.current, media?.sources?.hls);
+  useViewCounter(media.id, videoRef.current ?? null);
 
-  // subscribe to "my like" doc to keep the heart in sync
-  useEffect(() => {
-    if (!currentUser) { setLiked(false); return; }
-    const likeRef = doc(db, 'media', media.id, 'likes', currentUser.id);
-    const unsub = onSnapshot(likeRef, (snap) => setLiked(snap.exists()));
-    return () => unsub();
-  }, [media.id, currentUser?.id]);
-
-  // perf mark: stop when preview is loaded
-  useEffect(() => {
-    stopPerfRef.current = markMediaFirstPaint();
-    return () => stopPerfRef.current?.();
-  }, []);
-
-  // auto-pause videos when off-screen
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        const e = entries[0];
-        if (!e) return;
-        if (e.intersectionRatio < 0.2 && !v.paused) v.pause();
-      },
-      { threshold: [0, 0.2, 1] }
-    );
-    obs.observe(v);
-    return () => obs.disconnect();
-  }, [videoRef.current]);
-
-  // lazy-wire HLS only when a video card is on screen
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v || media.type !== 'video') return;
-    const hlsUrl = media.sources?.hls;
-    if (!hlsUrl) return; // fall back to mp4 in render
-    ensureHls(v, hlsUrl).catch(() => {/* ignore */});
-  }, [media.id, media.type]);
-
+  // Like toggle (optimistic) - Cloud Functions handle counter updates
   const handleLikeToggle = async () => {
-    if (!canEngage || !currentUser) {
-      toast.error('Only members can like media.');
-      return;
+    if (!canEngage || !currentUser) { 
+      toast.error('Only members can like.'); 
+      return; 
     }
+    
+    const likeRef = doc(db, 'media', media.id, 'likes', currentUser.id);
+    
     try {
       if (liked) {
-        setLiked(false);
-        setLikesCount((c) => Math.max(0, c - 1));
-        await unlikeMedia(media.id, currentUser.id);
-        log('media_unlike', { media_id: media.id });
+        setLiked(false); 
+        setLikesCount(c => Math.max(0, c - 1));
+        await deleteDoc(likeRef);
+        // Note: likesCount will be updated by Cloud Function
       } else {
-        setLiked(true);
-        setLikesCount((c) => c + 1);
-        await likeMedia(media.id, currentUser.id);
-        log('media_like', { media_id: media.id });
+        setLiked(true); 
+        setLikesCount(c => c + 1);
+        await setDoc(likeRef, { 
+          userId: currentUser.id, 
+          createdAt: serverTimestamp() 
+        });
+        // Note: commentsCount will be updated by Cloud Function
       }
     } catch (e: any) {
-      // roll back optimistic change
-      setLiked((v) => !v);
-      setLikesCount((c) => (liked ? c + 1 : Math.max(0, c - 1)));
-      toast.error(e?.message || 'Failed to update like.');
+      // Revert optimistic updates on error
+      setLiked(v => !v); 
+      setLikesCount(c => c + (liked ? 1 : -1));
+      toast.error(e?.message || 'Failed to update like');
     }
   };
 
-  // load latest 10 comments when panel is open
-  const [comments, setComments] = useState<Array<{ id: string; authorName: string; text: string; authorId?: string; createdAt?: any }>>([]);
-  useEffect(() => {
-    if (!showComments) return;
-    const q = query(
-      collection(db, 'media', media.id, 'comments'),
-      orderBy('createdAt', 'desc'),
-      limit(10)
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setComments(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-    });
-    return () => unsub();
-  }, [showComments, media.id]);
+  const onDoubleTap = () => { if (!liked) handleLikeToggle(); };
 
-  const addComment = async () => {
-    if (!canEngage || !currentUser) {
-      toast.error('Only members can comment.');
-      return;
-    }
-    const text = newComment.trim();
-    if (!text) return;
+  // Admin/owner functions
+  const canModerate = !!currentUser && (currentUser.role === 'admin' || currentUser.id === media.uploadedBy);
+
+  async function togglePublic() {
     try {
-      await addCommentHelper(media.id, currentUser.id, currentUser.displayName || 'Member', text);
-      setNewComment('');
-      setCommentsCount((c) => c + 1); // optimistic
-      log('media_comment', { media_id: media.id });
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to add comment.');
+      await updateDoc(doc(db, 'media', media.id), { isPublic: !media.isPublic });
+      toast.success(media.isPublic ? 'Hidden from public' : 'Now public');
+    } catch (e: any) { 
+      toast.error(e.message || 'Failed to update visibility'); 
     }
-  };
+  }
 
-  // preview node
-  const previewEl = useMemo(() => {
-    if (media.type === 'video') {
-      const poster = media.thumbnailUrl || media.url;
-      return (
-        <div className="relative">
-          <video
-            ref={videoRef}
-            poster={poster}
-            playsInline
-            controls
-            preload="metadata"
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            onLoadedData={() => stopPerfRef.current?.()}
-          >
-            {/* fallback source (mp4/webm) when no HLS */}
-            <source src={media.url} />
-          </video>
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center">
-              <Play className="w-6 h-6 text-purple-600 ml-0.5" />
-            </div>
-          </div>
+  function onClickDelete() {
+    setMenuOpen(false);
+    setConfirmOpen(true);
+  }
+
+  async function actuallyDelete() {
+    setConfirmOpen(false);
+    try {
+      await deleteDoc(doc(db, 'media', media.id));
+      // Cloud Function will delete Storage assets (see section 5)
+      toast.success('Media deleted successfully');
+    } catch (e: any) { 
+      toast.error(e.message || 'Failed to delete media'); 
+    }
+  }
+
+  const comments = usePagedComments(media.id, 10);
+
+  const previewEl = useMemo(()=> media.type==='video' ? (
+    <div className="relative" onDoubleClick={onDoubleTap} onClick={onOpen}>
+      <video ref={videoRef} poster={media.thumbnailUrl || media.url} playsInline controls preload="metadata"
+        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+        <source src={media.url} />
+      </video>
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center">
+          <Play className="w-6 h-6 text-purple-600 ml-0.5" />
         </div>
-      );
-    }
-    return (
-      <img
-        src={media.thumbnailUrl || media.url}
-        alt={media.title}
-        loading="lazy"
-        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-        onLoad={() => stopPerfRef.current?.()}
-      />
-    );
-  }, [media.id, media.type, media.url, media.thumbnailUrl, media.title]);
+      </div>
+    </div>
+  ) : (
+    <img src={media.thumbnailUrl || media.url} alt={media.title} loading="lazy" onDoubleClick={onDoubleTap} onClick={onOpen}
+      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+  ), [media, onOpen, liked]);
 
-  const createdAt =
-    media.createdAt instanceof Date ? media.createdAt : new Date((media as any).createdAt);
+  const createdAt = media.createdAt instanceof Date ? media.createdAt : new Date(media.createdAt);
 
   return (
-    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group">
-      {/* Media */}
+    <div className="bg-white/80 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group">
       <div className="relative aspect-square overflow-hidden">
         {previewEl}
         {media.eventTitle && (
@@ -221,15 +133,39 @@ const MediaCard: React.FC<MediaCardProps> = ({ media }) => {
             </div>
           </div>
         )}
+        <div className="absolute top-3 right-3 flex gap-2">
+          <button onClick={()=>shareUrl(media.url, media.title)} className="p-2 rounded-full bg-white/90 hover:bg-white">
+            <Share2 className="w-4 h-4 text-gray-700" />
+          </button>
+          <a href={media.url} download className="p-2 rounded-full bg-white/90 hover:bg-white">
+            <Download className="w-4 h-4 text-gray-700" />
+          </a>
+          {canModerate && (
+            <div className="relative admin-menu">
+              <button onClick={() => setMenuOpen(v => !v)}
+                className="p-2 rounded-full bg-white/90 hover:bg-white" aria-label="More">
+                <MoreHorizontal className="w-4 h-4 text-gray-700" />
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 mt-2 w-40 rounded-md bg-white shadow-lg p-1 border border-gray-200 z-10">
+                  <button onClick={togglePublic} className="w-full flex items-center gap-2 px-2 py-2 rounded hover:bg-gray-50 text-left">
+                    {media.isPublic ? <EyeOff className="w-4 h-4 text-gray-600"/> : <Eye className="w-4 h-4 text-gray-600"/>}
+                    <span className="text-sm">{media.isPublic ? 'Hide (make private)' : 'Make public'}</span>
+                  </button>
+                  <button onClick={onClickDelete} className="w-full flex items-center gap-2 px-2 py-2 rounded hover:bg-red-50 text-red-600 text-left">
+                    <Trash2 className="w-4 h-4"/> 
+                    <span className="text-sm">Delete</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Body */}
       <div className="p-4">
         <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{media.title}</h3>
-
-        {media.description && (
-          <p className="text-gray-600 text-sm mb-3 line-clamp-2">{media.description}</p>
-        )}
+        {media.description && <p className="text-gray-600 text-sm mb-3 line-clamp-2">{media.description}</p>}
 
         <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
           <span>By {media.uploaderName || 'Member'}</span>
@@ -238,99 +174,70 @@ const MediaCard: React.FC<MediaCardProps> = ({ media }) => {
 
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <button
-              onClick={handleLikeToggle}
-              disabled={!canEngage}
-              className={`flex items-center space-x-1 transition-colors ${
-                liked ? 'text-red-500' : 'text-gray-500 hover:text-red-500'
-              } ${!canEngage ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={canEngage ? '' : 'Members only'}
-            >
-              <Heart className={`w-5 h-5 ${liked ? 'fill-current' : ''}`} />
+            <button onClick={handleLikeToggle} className={`flex items-center space-x-1 transition-colors ${liked? 'text-red-500':'text-gray-500 hover:text-red-500'}`}>
+              <Heart className={`w-5 h-5 ${liked? 'fill-current':''}`} />
               <span className="text-sm">{likesCount}</span>
             </button>
 
-            <button
-              onClick={() => setShowComments((v) => !v)}
-              className="flex items-center space-x-1 text-gray-500 hover:text-purple-600 transition-colors"
-            >
+            <button onClick={()=> comments.setOpen(!comments.open)} className="flex items-center space-x-1 text-gray-500 hover:text-purple-600 transition-colors">
               <MessageCircle className="w-5 h-5" />
-              <span className="text-sm">{commentsCount}</span>
+              <span className="text-sm">{comments.comments.length}</span>
             </button>
           </div>
+          {typeof media.viewsCount === 'number' && (
+            <div className="text-xs text-gray-400">{media.viewsCount} views</div>
+          )}
         </div>
 
-        {/* Comments */}
-        {showComments && (
-  <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
-    {comments.map((c) => {
-      const created =
-        (c as any)?.createdAt?.toDate?.()
-          ? (c as any).createdAt.toDate()
-          : (c as any).createdAt instanceof Date
-          ? (c as any).createdAt
-          : undefined;
-
-      const mine = c.authorId && currentUser?.id && c.authorId === currentUser.id;
-
-      return (
-        <div
-          key={c.id}
-          className="relative rounded-xl bg-purple-50/70 border border-purple-100 px-4 py-2 pl-10"
-        >
-          {/* tiny “bullet/avatar” dot */}
-          <span className="absolute left-3 top-3 inline-block w-2 h-2 rounded-full bg-amber-300" />
-
-          <div className="flex flex-col">
-            {/* line 1: name + comment */}
-            <div className="flex flex-wrap items-baseline gap-2 text-sm">
-              <span className="font-semibold text-gray-900">{c.authorName}</span>
-              {mine && (
-                <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-200 text-purple-800">
-                  You
-                </span>
-              )}
-              <span className="italic font-semibold text-gray-800 break-words">
-                {c.text}
-              </span>
+        {comments.open && (
+          <div className="mt-3 space-y-3">
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              {comments.comments.map((c:any)=> (
+                <div key={c.id} className="text-sm text-gray-700">
+                  <span className="font-medium">{c.authorName || 'Member'}:</span> {c.text}
+                </div>
+              ))}
             </div>
-
-            {/* line 2: small timestamp */}
-            {created && (
-              <div className="mt-0.5 pl-0.5 text-[11px] text-gray-400">
-                {format(created, 'MMM d, yyyy • h:mm a')}
-              </div>
+            {comments.hasMore && (
+              <button onClick={comments.loadMore} className="text-xs text-purple-600 hover:underline">Load more</button>
             )}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!currentUser || !newComment.trim()) return;
+              
+              try {
+                await addDoc(collection(db, 'media', media.id, 'comments'), {
+                  text: newComment.trim(),
+                  authorId: currentUser.id,
+                  authorName: currentUser.displayName || 'Member',
+                  createdAt: serverTimestamp(),
+                });
+                
+                setNewComment('');
+                // Note: commentsCount will be updated by Cloud Function
+              } catch (error: any) {
+                toast.error('Failed to post comment: ' + error.message);
+              }
+            }} className="flex items-center gap-2">
+              <input value={newComment} onChange={e=>setNewComment(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-purple-500" placeholder="Add a comment…" />
+              <button className="px-3 py-2 bg-purple-600 text-white rounded-md">Post</button>
+            </form>
           </div>
-        </div>
-      );
-    })}
-
-    {canEngage ? (
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={newComment}
-          onChange={(e) => setNewComment(e.target.value)}
-          placeholder="Add a comment…"
-          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
-        />
-        <button
-          onClick={addComment}
-          className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-        >
-          Post
-        </button>
+        )}
       </div>
-    ) : (
-      <div className="text-xs text-gray-500">Sign in as a member to comment.</div>
-    )}
-  </div>
-)}
 
-      </div>
+      {/* Custom Confirmation Dialog */}
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Delete this media?"
+        message="This action cannot be undone. All associated files will be permanently removed."
+        confirmText="Delete"
+        cancelText="Cancel"
+        danger
+        onConfirm={actuallyDelete}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
-};
-
-export default MediaCard;
+}

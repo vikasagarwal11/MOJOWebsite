@@ -6,6 +6,7 @@ import Layout from './components/layout/Layout';
 import Home from './pages/Home';
 import Events from './pages/Events';
 import Media from './pages/Media';
+import MediaGallery from './components/media/MediaGallery';  // NEW VERSION
 import Posts from './pages/Posts';
 import Sponsors from './pages/Sponsors';
 import Login from './components/auth/Login';
@@ -74,7 +75,8 @@ function App() {
               <Route path="/" element={<Layout />}>
                 <Route index element={<Home />} />
                 <Route path="events" element={<Events />} />
-                <Route path="media" element={<Media />} />
+                {/* <Route path="media" element={<Media />} />  OLD VERSION - COMMENTED OUT */}
+                <Route path="media" element={<MediaGallery />} />  {/* NEW VERSION */}
                 <Route path="posts" element={<Posts />} />
                 <Route path="sponsors" element={<Sponsors />} />
                 <Route path="profile" element={<Profile />} />
