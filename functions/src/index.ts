@@ -320,13 +320,18 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
 // ---------------- MEDIA: FFmpeg Processing (Enhanced with Early Poster Generation) ----------------
 export const onMediaFileFinalize = onObjectFinalized(
   {
-    region: 'us-central1',
+    bucket: 'mojomediafiles', // Explicitly listen to your custom bucket
+    region: 'us-east1', // Match your bucket's region
     timeoutSeconds: 540,
     memory: '2GiB',
     cpu: 2, // Added CPU for faster FFmpeg processing
     concurrency: 1, // ensure one ffmpeg per instance to prevent resource thrashing
   },
   async (event) => {
+    console.log('🎬 onMediaFileFinalize triggered for:', event.data.name);
+    console.log('Bucket:', event.data.bucket);
+    console.log('Content type:', event.data.contentType);
+    console.log('Size:', event.data.size);
     const name = event.data.name || '';
     const ctype = event.data.contentType || '';
     
@@ -354,11 +359,28 @@ export const onMediaFileFinalize = onObjectFinalized(
     const base = path.parse(name).name;           // filename (no ext)
 
     // 1) Wait for the doc (handles upload→finalize→doc creation race)
+    console.log(`🔍 Looking for media document for file: ${name}`);
+    console.log(`Directory: ${dir}`);
+    
     const mediaRef = await findMediaDocRef(name, dir, 5);
     if (!mediaRef) {
       console.error(`❌ CRITICAL: No media doc found for ${name} after retries!`);
       console.error(`This means the upload succeeded but the Firestore document creation failed.`);
       console.error(`Check the upload logs and ensure the media document is created with correct filePath/storageFolder.`);
+      
+      // Let's also check what documents exist in the media collection
+      try {
+        const allMedia = await db.collection('media').limit(5).get();
+        console.log('🔍 Available media documents:', allMedia.docs.map(d => ({
+          id: d.id,
+          filePath: d.data()?.filePath,
+          storageFolder: d.data()?.storageFolder,
+          transcodeStatus: d.data()?.transcodeStatus
+        })));
+      } catch (checkError) {
+        console.error('Failed to check media collection:', checkError);
+      }
+      
       return;
     }
 
@@ -500,12 +522,20 @@ export const onMediaFileFinalize = onObjectFinalized(
         }));
 
         // Final write: mark ready and add HLS source
+        const hlsSourcePath = `${hlsPath}index.m3u8`;
+        console.log(`🎬 Setting video as ready with HLS source:`, {
+          mediaId: mediaRef.id,
+          hlsPath: hlsPath,
+          hlsSourcePath: hlsSourcePath,
+          fullHlsUrl: `gs://${bucket.name}/${hlsSourcePath}`
+        });
+        
         await mediaRef.set({
-          sources: { hls: `${hlsPath}index.m3u8` },
+          sources: { hls: hlsSourcePath },
           transcodeStatus: 'ready',
         }, { merge: true });
         
-        console.log(`HLS processing complete for video ${mediaRef.id}, HLS path: ${hlsPath}index.m3u8`);
+        console.log(`✅ HLS processing complete for video ${mediaRef.id}, HLS path: ${hlsSourcePath}`);
 
         // cleanup tmp
         fs.rmSync(hlsDirLocal, { recursive: true, force: true });

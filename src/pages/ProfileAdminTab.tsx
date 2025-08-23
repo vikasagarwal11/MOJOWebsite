@@ -95,6 +95,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   // Block a user from RSVPing
   const handleBlockUser = async (userId: string) => {
     try {
+      // For now, use the old blocking system to maintain compatibility
       await blockUserFromRsvp(userId);
       // Refresh search results to show updated blocked status
       setSearchResults(prev => 
@@ -106,6 +107,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       );
     } catch (error) {
       console.error('Failed to block user:', error);
+    }
+  };
+
+  // Enhanced blocking function
+  const handleEnhancedBlock = (user: any) => {
+    // This will be connected to the parent component's blocking modal
+    if (typeof window !== 'undefined') {
+      // Dispatch a custom event to open the blocking modal
+      window.dispatchEvent(new CustomEvent('openBlockModal', { 
+        detail: { user } 
+      }));
     }
   };
 
@@ -364,18 +376,27 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                       <div className="font-medium text-sm">{user.displayName || 'Unknown User'}</div>
                       <div className="text-xs text-gray-500">{user.email}</div>
                     </div>
-                    <button
-                      onClick={() => handleBlockUser(user.id)}
-                      disabled={user.blockedFromRsvp}
-                      className={`px-3 py-1 text-xs rounded transition-colors ${
-                        user.blockedFromRsvp
-                          ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                          : 'bg-red-600 text-white hover:bg-red-700'
-                      }`}
-                      title={user.blockedFromRsvp ? 'Already blocked' : 'Block user from RSVPing'}
-                    >
-                      {user.blockedFromRsvp ? 'Already Blocked' : 'Block'}
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleBlockUser(user.id)}
+                        disabled={user.blockedFromRsvp}
+                        className={`px-3 py-1 text-xs rounded transition-colors ${
+                          user.blockedFromRsvp
+                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                            : 'bg-red-600 text-white hover:bg-red-700'
+                        }`}
+                        title={user.blockedFromRsvp ? 'Already blocked' : 'Block user from RSVPing'}
+                      >
+                        {user.blockedFromRsvp ? 'Already Blocked' : 'Block RSVP'}
+                      </button>
+                      <button
+                        onClick={() => handleEnhancedBlock(user)}
+                        className="px-3 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                        title="Enhanced blocking options"
+                      >
+                        Advanced Block
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
