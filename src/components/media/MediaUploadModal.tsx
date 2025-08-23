@@ -107,11 +107,11 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
       
       let processingInfo = '';
       if (hasVideos && hasImages) {
-        processingInfo = 'Your media is ready to view! Videos will be optimized for streaming and images will be compressed in the background.';
+        processingInfo = 'Your media is ready to view! Videos will show poster images immediately and be enhanced with HLS streaming in the background. Images will be optimized instantly.';
       } else if (hasVideos) {
-        processingInfo = 'Your video is ready to play! It will be optimized for streaming and converted to HLS format in the background.';
+        processingInfo = 'Your video is ready to play! You\'ll see a poster image immediately while it\'s enhanced with HLS streaming in the background.';
       } else if (hasImages) {
-        processingInfo = 'Your images are ready to view! They will be compressed and optimized in the background.';
+        processingInfo = 'Your images are ready to view! They will be optimized instantly for web viewing.';
       }
 
       toast.success(
