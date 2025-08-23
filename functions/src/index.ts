@@ -50,18 +50,56 @@ export const onLikeWrite = onDocumentWritten("media/{mediaId}/likes/{userId}", a
   const beforeExists = event.data?.before.exists || false;
   const afterExists = event.data?.after.exists || false;
   const delta = afterExists && !beforeExists ? 1 : !afterExists && beforeExists ? -1 : 0;
-  if (delta === 0) return;
-  await db.doc(`media/${event.params.mediaId}`)
-    .update({ likesCount: FieldValue.increment(delta) });
+  
+  console.log('🔍 onLikeWrite triggered:', {
+    mediaId: event.params.mediaId,
+    userId: event.params.userId,
+    beforeExists,
+    afterExists,
+    delta
+  });
+  
+  if (delta === 0) {
+    console.log('🔍 No change detected, skipping update');
+    return;
+  }
+  
+  try {
+    await db.doc(`media/${event.params.mediaId}`)
+      .update({ likesCount: FieldValue.increment(delta) });
+    console.log('✅ Like count updated successfully:', { mediaId: event.params.mediaId, delta });
+  } catch (error) {
+    console.error('❌ Failed to update like count:', error);
+  }
 });
 
 export const onCommentWrite = onDocumentWritten("media/{mediaId}/comments/{commentId}", async (event) => {
   const beforeExists = event.data?.before.exists || false;
   const afterExists = event.data?.after.exists || false;
   const delta = afterExists && !beforeExists ? 1 : !afterExists && beforeExists ? -1 : 0;
-  if (delta === 0) return;
-  await db.doc(`media/${event.params.mediaId}`)
-    .update({ commentsCount: FieldValue.increment(delta) });
+  
+  console.log('🔍 onCommentWrite triggered:', {
+    mediaId: event.params.mediaId,
+    commentId: event.params.commentId,
+    beforeExists,
+    afterExists,
+    delta,
+    beforeData: event.data?.before.exists ? event.data.before.data() : null,
+    afterData: event.data?.after.exists ? event.data.after.data() : null
+  });
+  
+  if (delta === 0) {
+    console.log('🔍 No change detected, skipping update');
+    return;
+  }
+  
+  try {
+    await db.doc(`media/${event.params.mediaId}`)
+      .update({ commentsCount: FieldValue.increment(delta) });
+    console.log('✅ Comment count updated successfully:', { mediaId: event.params.mediaId, delta });
+  } catch (error) {
+    console.error('❌ Failed to update comment count:', error);
+  }
 });
 
 // ---------------- POSTS counters ----------------
