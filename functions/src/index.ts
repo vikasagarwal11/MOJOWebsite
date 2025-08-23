@@ -285,6 +285,7 @@ export const onMediaFileFinalize = onObjectFinalized(
     timeoutSeconds: 540,
     memory: '2GiB',
     cpu: 2, // Added CPU for faster FFmpeg processing
+    concurrency: 1, // ensure one ffmpeg per instance to prevent resource thrashing
   },
   async (event) => {
     const name = event.data.name || '';
@@ -293,6 +294,21 @@ export const onMediaFileFinalize = onObjectFinalized(
     // Only process user uploads under media/, skip our own outputs
     if (!name.startsWith('media/') || name.endsWith('.m3u8') || name.endsWith('.ts') || name.includes('/hls/')) return;
     if (path.basename(name).startsWith('thumb_') || path.basename(name).startsWith('poster_')) return;
+
+    // A) Handle odd contentType values (e.g., application/octet-stream) with file extension fallback
+    const ext = path.extname(name).toLowerCase();
+    const looksLikeVideo = 
+      (ctype || '').startsWith('video/') || 
+      ['.mp4','.mov','.m4v','.webm','.mkv'].includes(ext);
+    
+    const looksLikeImage = 
+      (ctype || '').startsWith('image/') || 
+      ['.jpg','.jpeg','.png','.webp','.gif'].includes(ext);
+    
+    if (!looksLikeImage && !looksLikeVideo) {
+      console.log('Unknown media type, skipping', { ctype, name, ext });
+      return;
+    }
 
     const bucket = getStorage().bucket(event.data.bucket);
     const dir = path.dirname(name);               // media/<uid>/<batchId>
@@ -322,7 +338,7 @@ export const onMediaFileFinalize = onObjectFinalized(
       console.log(`Found media doc: ${mediaRef.id}, current status: ${mediaData?.transcodeStatus || 'none'}`);
       console.log(`Media type: ${mediaData?.type}, uploaded by: ${mediaData?.uploadedBy}`);
       // Images → make a WebP thumbnail and capture dimensions
-      if (ctype.startsWith('image/')) {
+      if (looksLikeImage) {
         const meta = await sharp(tmpOriginal).metadata();
         const thumbLocal = path.join(os.tmpdir(), `thumb_${base}.webp`);
         await sharp(tmpOriginal)
@@ -351,7 +367,7 @@ export const onMediaFileFinalize = onObjectFinalized(
         fs.unlinkSync(thumbLocal);
       }
       // Videos → poster + HLS + duration/dimensions
-      else if (ctype.startsWith('video/')) {
+      else if (looksLikeVideo) {
         await mediaRef.set({ transcodeStatus: 'processing' }, { merge: true });
 
         // Probe
