@@ -17,6 +17,30 @@ import toast from 'react-hot-toast';
 import { usePopperTooltip } from 'react-popper-tooltip';
 import 'react-popper-tooltip/dist/styles.css';
 
+// Custom styles for calendar tooltips
+const calendarTooltipStyles = `
+  .tooltip-container {
+    z-index: 9999 !important;
+    position: absolute !important;
+    pointer-events: none;
+  }
+  
+  .rbc-calendar {
+    overflow: visible !important;
+  }
+  
+  .rbc-month-view,
+  .rbc-week-view,
+  .rbc-day-view {
+    overflow: visible !important;
+  }
+  
+  .rbc-event {
+    position: relative;
+    z-index: 1;
+  }
+`;
+
 // Configure date-fns for react-big-calendar
 const localizer = dateFnsLocalizer({
   format,
@@ -38,6 +62,17 @@ function tsToDate(v: any): Date {
 }
 
 const Events: React.FC = () => {
+  // Inject custom calendar tooltip styles
+  React.useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.textContent = calendarTooltipStyles;
+    document.head.appendChild(styleElement);
+    
+    return () => {
+      document.head.removeChild(styleElement);
+    };
+  }, []);
+
   const { currentUser, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [viewMode, setViewMode] = useState<'grid' | 'calendar'>('grid');
@@ -195,16 +230,30 @@ const Events: React.FC = () => {
   }, [selectedEvent]);
 
   const EventTooltip = ({ event, children }: { event: AnyEvent; children: React.ReactNode }) => {
-    const { getTooltipProps, setTooltipRef, setTriggerRef, visible } = usePopperTooltip();
+    const { getTooltipProps, setTooltipRef, setTriggerRef, visible } = usePopperTooltip({
+      placement: 'top',
+      offset: [0, 10],
+      delayShow: 300,
+      delayHide: 100,
+    });
     return (
       <>
         <div ref={setTriggerRef}>{children}</div>
         {visible && (
-          <div ref={setTooltipRef} {...getTooltipProps({ className: 'tooltip-container bg-white border rounded-lg shadow-lg p-4 max-w-xs z-50' })}>
-            <h3 className="font-semibold text-gray-900">{event.title}</h3>
-            <p className="text-sm text-gray-600">{event.location}</p>
-            <p className="text-sm text-gray-600">{format(tsToDate(event.startAt), 'h:mm a')}</p>
-            {event.description && <p className="text-sm text-gray-500 mt-2 line-clamp-2">{event.description}</p>}
+          <div 
+            ref={setTooltipRef} 
+            {...getTooltipProps({ 
+              className: 'tooltip-container bg-white border border-gray-200 rounded-lg shadow-xl p-4 max-w-xs z-[9999] pointer-events-none',
+              style: {
+                zIndex: 9999,
+                position: 'absolute',
+              }
+            })}
+          >
+            <h3 className="font-semibold text-gray-900 mb-2">{event.title}</h3>
+            <p className="text-sm text-gray-600 mb-1">{event.location}</p>
+            <p className="text-sm text-gray-600 mb-2">{format(tsToDate(event.startAt), 'h:mm a')}</p>
+            {event.description && <p className="text-sm text-gray-500 line-clamp-2">{event.description}</p>}
           </div>
         )}
       </>
@@ -316,7 +365,7 @@ const Events: React.FC = () => {
 
   const renderCalendar = () => {
     return (
-      <div className="bg-white rounded-2xl shadow-lg p-6">
+      <div className="bg-white rounded-2xl shadow-lg p-6 relative overflow-visible">
         <BigCalendar
           localizer={localizer}
           events={calendarEvents}
