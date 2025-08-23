@@ -11,20 +11,21 @@ export function useUploader() {
 
   const uploadOne = useCallback(async (file: File, meta: any, onProgress?: (progress: number) => void) => {
     const path = getStoragePath('media', file.name);
-    const folder = getStorageFolder('media'); // Get the folder path for cleanup
+    // CRITICAL FIX: Derive folder from the actual path to ensure they match
+    const folder = path.substring(0, path.lastIndexOf('/') + 1);
     
     const url = await uploadFile(file, path, onProgress);
     const docData = { 
       ...meta, 
       url, 
       createdAt: new Date(),
-      storageFolder: folder, // Add this field for cleanup
-      filePath: path // Add this field for FFmpeg processing
+      storageFolder: folder, // This now matches the actual file path
+      filePath: path // This field for FFmpeg processing
     };
     
     await addDocument('media', docData);
     return { url, title: meta.title } as UploadResult;
-  }, [uploadFile, getStoragePath, getStorageFolder, addDocument]);
+  }, [uploadFile, getStoragePath, addDocument]);
 
   const uploadMany = useCallback(async (
     files: File[], 

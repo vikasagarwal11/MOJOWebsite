@@ -321,7 +321,10 @@ export const onMediaFileFinalize = onObjectFinalized(
         const thumbPath = `${dir}/thumb_${base}.webp`;
         await bucket.upload(thumbLocal, {
           destination: thumbPath,
-          metadata: { contentType: 'image/webp' },
+          metadata: { 
+            contentType: 'image/webp',
+            cacheControl: 'public,max-age=31536000,immutable' // OPTIMIZATION: 1 year cache for CDN
+          },
         });
 
         await mediaRef.set({
@@ -349,15 +352,23 @@ export const onMediaFileFinalize = onObjectFinalized(
         const height = stream.height || null;
 
         // 1) Generate POSTER and write it to Firestore immediately so UI can render it while processing
+        // OPTIMIZATION: Seek to 10% instead of first frame (often black) for better poster quality
         const posterLocal = path.join(os.tmpdir(), `poster_${base}.jpg`);
+        const seekTime = Math.max(0, (duration ?? 10) * 0.1); // 10% of duration, min 0
         await new Promise<void>((res, rej) =>
-          ffmpeg(tmpOriginal).frames(1).outputOptions(['-q:v 2'])
+          ffmpeg(tmpOriginal)
+            .inputOptions(['-ss', String(seekTime)]) // Seek to 10% mark
+            .frames(1)
+            .outputOptions(['-q:v 2'])
             .save(posterLocal).on('end', () => res()).on('error', rej)
         );
         const posterPath = `${dir}/poster_${base}.jpg`;
         await bucket.upload(posterLocal, {
           destination: posterPath,
-          metadata: { contentType: 'image/jpeg' },
+          metadata: { 
+            contentType: 'image/jpeg',
+            cacheControl: 'public,max-age=31536000,immutable' // OPTIMIZATION: 1 year cache for CDN
+          },
         });
 
         // EARLY WRITE so the card shows a poster image while HLS is still running
@@ -378,7 +389,7 @@ export const onMediaFileFinalize = onObjectFinalized(
           ffmpeg(tmpOriginal)
             .addOptions([
               '-profile:v', 'main',
-              '-vf', 'scale=w=1280:-2',     // keep aspect
+              '-vf', 'scale=w=min(iw\\,1280):h=-2',     // OPTIMIZATION: no upscaling, keep aspect
               '-start_number', '0',
               '-hls_time', '4',
               '-hls_list_size', '0',
@@ -396,10 +407,13 @@ export const onMediaFileFinalize = onObjectFinalized(
           const dest = `${hlsPath}${f}`;
           const ct = f.endsWith('.m3u8')
             ? 'application/vnd.apple.mpegurl'
-            : 'video/MP2T';
+            : 'video/mp2t'; // OPTIMIZATION: lowercase MIME type (standard compliance)
           return bucket.upload(path.join(hlsDirLocal, f), {
             destination: dest,
-            metadata: { contentType: ct },
+            metadata: { 
+              contentType: ct,
+              cacheControl: 'public,max-age=31536000,immutable' // OPTIMIZATION: 1 year cache for CDN
+            },
           });
         }));
 

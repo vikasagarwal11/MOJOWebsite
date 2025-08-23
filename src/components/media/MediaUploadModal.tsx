@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import { useUploader } from '../../hooks/useUploader';
 import { detectKind } from '../../utils/detectKind';
 import { getImageSize, getVideoDuration } from '../../utils/getMediaMetadata';
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+// Removed unused import: react-zoom-pan-pinch
 import EventTypeahead from './EventTypeahead';
 
 const schema = z.object({
@@ -92,7 +92,8 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
           isPublic: true,
           likesCount: 0,
           commentsCount: 0,
-          transcodeStatus: 'ready', // Media is immediately available
+          viewsCount: 0, // Initialize views counter for consistency
+          transcodeStatus: kind === 'video' ? 'processing' : 'ready', // Videos need processing, images are ready
           ...(dimensions? { dimensions } : {}),
           ...(duration? { duration } : {}),
         };
