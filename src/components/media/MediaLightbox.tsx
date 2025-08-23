@@ -79,6 +79,28 @@ export default function MediaLightbox({
     const v = videoRef.current;
     console.log('✅ Setting up video with HLS/fallback');
 
+    // Skip HLS in development due to CORS issues
+    if (import.meta.env.DEV) {
+      console.log('🔧 Development mode: HLS disabled due to CORS');
+      v.src = item.url;
+      console.log('📹 Setting video source for development:', item.url);
+      
+      // Start playing automatically if user arrived from slideshow
+      console.log('▶️ Attempting to auto-play video');
+      v.play().catch((e) => console.log('❌ Auto-play failed:', e));
+      
+      const onEnded = () => { 
+        console.log('🏁 Video ended, auto-advance:', autoAdvanceVideos);
+        if (autoAdvanceVideos) onNext(); 
+      };
+      v.addEventListener('ended', onEnded);
+
+      return () => {
+        console.log('🧹 Cleaning up video setup (development mode)');
+        v.removeEventListener('ended', onEnded);
+      };
+    }
+
     let cancelled = false;
     (async () => {
       try {

@@ -43,17 +43,20 @@ const MediaGallery: React.FC = () => {
 
   const lb = useLightbox(paged, { loop: true });
 
-  // NEW: Processing queue statistics
+  // NEW: Processing queue statistics - only count recent items (last 2 hours)
   const processingStats = useMemo(() => {
-    const stats = {
-      processing: 0,
-      enhancing: 0, // Videos with poster but still processing HLS
-      ready: 0,
-      failed: 0,
-      total: mediaFiles.length
-    };
+    const TWO_HOURS = 2 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    const fresh = mediaFiles.filter((m: any) => {
+      const t = (m.updatedAt?.toDate?.() ?? m.createdAt?.toDate?.() ?? m.updatedAt ?? m.createdAt ?? new Date());
+      const age = Math.abs(now - +new Date(t));
+      return age <= TWO_HOURS; // consider only fresh items
+    });
+
+    const stats = { processing: 0, enhancing: 0, ready: 0, failed: 0, total: fresh.length };
     
-    mediaFiles.forEach((media: any) => {
+    fresh.forEach((media: any) => {
       if (media.transcodeStatus === 'processing') {
         if (media.type === 'video' && media.thumbnailPath) {
           stats.enhancing++; // Has poster, still processing HLS

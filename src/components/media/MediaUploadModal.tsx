@@ -127,7 +127,14 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
 
         <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Choose Files</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">Choose Files</label>
+              {selectedFiles.length > 0 && (
+                <span className="text-sm text-purple-600 font-medium bg-purple-50 px-3 py-1 rounded-full">
+                  {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
+                </span>
+              )}
+            </div>
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-purple-400">
               <input
                 type="file"
