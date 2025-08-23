@@ -102,30 +102,10 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
         setProgress(prev => ({ ...prev, [fileName]: progressPercent }));
       });
 
-      // Enhanced success message with FFmpeg processing info
-      const hasVideos = fileArr.some(f => detectKind(f) === 'video');
-      const hasImages = fileArr.some(f => detectKind(f) === 'image');
-      
-      let processingInfo = '';
-      if (hasVideos && hasImages) {
-        processingInfo = 'Your media is ready to view! Videos will show poster images immediately and be enhanced with HLS streaming in the background. Images will be optimized instantly.';
-      } else if (hasVideos) {
-        processingInfo = 'Your video is ready to play! You\'ll see a poster image immediately while it\'s enhanced with HLS streaming in the background.';
-      } else if (hasImages) {
-        processingInfo = 'Your images are ready to view! They will be optimized instantly for web viewing.';
-      }
+      // Removed verbose processing info - users don't need technical details
 
-      toast.success(
-        <div>
-          <div className="font-semibold">{fileArr.length} file(s) uploaded successfully!</div>
-          {processingInfo && (
-            <div className="text-sm opacity-90 mt-1">
-              {processingInfo}
-            </div>
-          )}
-        </div>,
-        { duration: 5000 }
-      );
+      // Simplified toast - users don't need technical details
+      toast.success(`${fileArr.length} file(s) uploaded.`, { duration: 3000 });
 
       setProgress({}); // Clear progress
       setSelectedFiles([]); // Clear selected files
