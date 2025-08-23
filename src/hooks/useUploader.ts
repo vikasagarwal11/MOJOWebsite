@@ -37,7 +37,7 @@ export function useUploader() {
       const results: UploadResult[] = [];
       
       // Parallel uploads with concurrency cap (2 at a time)
-      const concurrency = 2;
+      const concurrency = 4;
       const queue = Array.from(files);
       
       const workers = Array.from({ length: concurrency }).map(async () => {

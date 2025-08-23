@@ -51,57 +51,106 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
   const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
   const [isHlsAttached, setIsHlsAttached] = useState(false);
   const [isThumbnailLoading, setIsThumbnailLoading] = useState(true);
+  const [localMedia, setLocalMedia] = useState(media); // Local copy for real-time sync
+  
+  // Keep localMedia in sync when this card points at a new doc
+  useEffect(() => {
+    setLocalMedia(media);
+  }, [media.id]); // important: key on id only
+  
+  // Real-time sync for main media document data (transcodeStatus, sources.hls, etc.)
+  useEffect(() => {
+    if (!media.id) return;
+    
+    const unsubscribe = onSnapshot(
+      doc(db, 'media', media.id),
+      (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const serverData = docSnapshot.data();
+          setLocalMedia((prev: any) => ({
+            ...prev,
+            ...serverData
+          }));
+          
+          // Debug: Log status changes
+          if (serverData.transcodeStatus !== media.transcodeStatus) {
+            console.log('🔄 Media status updated:', {
+              mediaId: media.id,
+              oldStatus: media.transcodeStatus,
+              newStatus: serverData.transcodeStatus,
+              hasHls: !!serverData.sources?.hls
+            });
+          }
+        }
+      },
+      (error: any) => {
+        console.warn('Failed to sync media data:', error);
+      }
+    );
+    
+    return unsubscribe;
+  }, [media.id, media.transcodeStatus]);
   
   // Load thumbnail URL if available
   useEffect(() => {
     setIsThumbnailLoading(true);
-    if (media.thumbnailPath) {
-      getDownloadURL(ref(storage, media.thumbnailPath))
+    if (localMedia.thumbnailPath) {
+      getDownloadURL(ref(storage, localMedia.thumbnailPath))
         .then(url => {
           setThumbnailUrl(url);
           setIsThumbnailLoading(false);
         })
         .catch(error => {
           console.warn('Failed to load thumbnail:', error);
-          setThumbnailUrl(media.url); // Fallback to original
+          setThumbnailUrl(localMedia.url); // Fallback to original
           setIsThumbnailLoading(false);
         });
     } else {
-      setThumbnailUrl(media.url);
+      setThumbnailUrl(localMedia.url);
       setIsThumbnailLoading(false);
     }
-  }, [media.thumbnailPath, media.url]);
+  }, [localMedia.thumbnailPath, localMedia.url]);
 
   // Enhanced debugging for video playback issues
   useEffect(() => {
     console.log('🎬 MediaCard Debug:', {
-      mediaId: media.id,
-      type: media.type,
-      transcodeStatus: media.transcodeStatus,
-      hasHls: !!media.sources?.hls,
-      hlsPath: media.sources?.hls,
-      hasThumbnail: !!media.thumbnailPath,
-      thumbnailPath: media.thumbnailPath,
-      videoUrl: media.url,
+      mediaId: localMedia.id,
+      type: localMedia.type,
+      transcodeStatus: localMedia.transcodeStatus,
+      hasHls: !!localMedia.sources?.hls,
+      hlsPath: localMedia.sources?.hls,
+      hasThumbnail: !!localMedia.thumbnailPath,
+      thumbnailPath: localMedia.thumbnailPath,
+      videoUrl: localMedia.url,
       isHlsAttached,
       videoRefExists: !!videoRef.current
     });
-  }, [media.id, media.type, media.transcodeStatus, media.sources?.hls, media.thumbnailPath, media.url, isHlsAttached]);
+  }, [localMedia.id, localMedia.type, localMedia.transcodeStatus, localMedia.sources?.hls, localMedia.thumbnailPath, localMedia.url, isHlsAttached]);
 
   // Attach HLS when video element is ready and HLS source is available
   useEffect(() => {
+    // Skip HLS in development due to CORS issues
+    if (import.meta.env.DEV) {
+      console.log('🔧 Development mode: HLS disabled due to CORS');
+      if (videoRef.current && !isHlsAttached) {
+        console.log('📹 Setting video source for development:', localMedia.url);
+        videoRef.current.src = localMedia.url;
+      }
+      return;
+    }
+
     console.log('🔧 HLS Attachment Logic:', {
       hasVideoRef: !!videoRef.current,
-      hasHlsSource: !!media.sources?.hls,
-      hlsPath: media.sources?.hls,
+      hasHlsSource: !!localMedia.sources?.hls,
+      hlsPath: localMedia.sources?.hls,
       isAlreadyAttached: isHlsAttached,
-      videoUrl: media.url
+      videoUrl: localMedia.url
     });
 
-    if (videoRef.current && media.sources?.hls && !isHlsAttached) {
-      console.log('✅ Attempting to attach HLS:', media.sources.hls);
+    if (videoRef.current && localMedia.sources?.hls && !isHlsAttached) {
+      console.log('✅ Attempting to attach HLS:', localMedia.sources.hls);
       // HLS is ready - upgrade to HLS streaming
-      attachHls(videoRef.current, media.sources.hls)
+      attachHls(videoRef.current, localMedia.sources.hls)
         .then(() => {
           console.log('✅ HLS attached successfully');
           setIsHlsAttached(true);
@@ -110,39 +159,39 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
           console.error('❌ Failed to attach HLS, using fallback:', error);
           // Fallback to original video URL
           if (videoRef.current) {
-            console.log('🔄 Setting fallback video source:', media.url);
-            videoRef.current.src = media.url;
+            console.log('🔄 Setting fallback video source:', localMedia.url);
+            videoRef.current.src = localMedia.url;
           }
         });
-    } else if (videoRef.current && !isHlsAttached && !media.sources?.hls) {
-      console.log('⚠️ No HLS source available, using original video URL:', media.url);
+    } else if (videoRef.current && !isHlsAttached && !localMedia.sources?.hls) {
+      console.log('⚠️ No HLS source available, using original video URL:', localMedia.url);
       // No HLS yet - show original file immediately for instant playback
-      videoRef.current.src = media.url;
+      videoRef.current.src = localMedia.url;
     } else {
       console.log('⏸️ HLS attachment conditions not met:', {
         hasVideoRef: !!videoRef.current,
-        hasHlsSource: !!media.sources?.hls,
+        hasHlsSource: !!localMedia.sources?.hls,
         isAlreadyAttached: isHlsAttached
       });
     }
-  }, [media.sources?.hls, media.url, isHlsAttached]);
+  }, [localMedia.sources?.hls, localMedia.url, isHlsAttached]);
 
   // Enhanced poster image handling - show poster immediately when available
   useEffect(() => {
-    if (media.thumbnailPath && media.type === 'video') {
+    if (localMedia.thumbnailPath && localMedia.type === 'video') {
       // For videos, show poster image immediately if available
-      getDownloadURL(ref(storage, media.thumbnailPath))
+      getDownloadURL(ref(storage, localMedia.thumbnailPath))
         .then(url => {
           setThumbnailUrl(url);
           setIsThumbnailLoading(false);
         })
         .catch(error => {
           console.warn('Failed to load poster image:', error);
-          setThumbnailUrl(media.url); // Fallback to original
+          setThumbnailUrl(localMedia.url); // Fallback to original
           setIsThumbnailLoading(false);
         });
     }
-  }, [media.thumbnailPath, media.type, media.url]);
+  }, [localMedia.thumbnailPath, localMedia.type, localMedia.url]);
 
   // Cleanup HLS when component unmounts or media changes
   useEffect(() => {
@@ -153,7 +202,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
       }
     };
   }, [isHlsAttached]);
-  useViewCounter(media.id, videoRef.current ?? null);
+  useViewCounter(localMedia.id, videoRef.current ?? null);
 
   // Like toggle (optimistic) - Cloud Functions handle counter updates
   const handleLikeToggle = async () => {
@@ -162,7 +211,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
       return; 
     }
     
-    const likeRef = doc(db, 'media', media.id, 'likes', currentUser.id);
+    const likeRef = doc(db, 'media', localMedia.id, 'likes', currentUser.id);
     
     try {
       if (liked) {
@@ -189,10 +238,10 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
 
   // Real-time sync for likes count to prevent stale data
   useEffect(() => {
-    if (!media.id) return;
+    if (!localMedia.id) return;
     
     const unsubscribe = onSnapshot(
-      doc(db, 'media', media.id),
+      doc(db, 'media', localMedia.id),
       (docSnapshot) => {
         if (docSnapshot.exists()) {
           const serverLikesCount = docSnapshot.data().likesCount ?? 0;
@@ -206,17 +255,17 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
     );
     
     return unsubscribe;
-  }, [media.id]);
+  }, [localMedia.id]);
 
   const onDoubleTap = () => { if (!liked) handleLikeToggle(); };
 
   // Admin/owner functions
-  const canModerate = !!currentUser && (currentUser.role === 'admin' || currentUser.id === media.uploadedBy);
+  const canModerate = !!currentUser && (currentUser.role === 'admin' || currentUser.id === localMedia.uploadedBy);
 
   async function togglePublic() {
     try {
-      await updateDoc(doc(db, 'media', media.id), { isPublic: !media.isPublic });
-      toast.success(media.isPublic ? 'Hidden from public' : 'Now public');
+      await updateDoc(doc(db, 'media', localMedia.id), { isPublic: !localMedia.isPublic });
+      toast.success(localMedia.isPublic ? 'Hidden from public' : 'Now public');
     } catch (e: any) { 
       toast.error(e.message || 'Failed to update visibility'); 
     }
@@ -230,7 +279,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
   async function actuallyDelete() {
     setConfirmOpen(false);
     try {
-      await deleteDoc(doc(db, 'media', media.id));
+      await deleteDoc(doc(db, 'media', localMedia.id));
       // Cloud Function will delete Storage assets (see section 5)
       toast.success('Media deleted successfully');
     } catch (e: any) { 
@@ -238,35 +287,35 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
     }
   }
 
-  const comments = usePagedComments(media.id, 10, { initialOpen: false });
+  const comments = usePagedComments(localMedia.id, 10, { initialOpen: false });
   
   // Debug logging for comment count discrepancy
   useEffect(() => {
-    if (media.commentsCount !== undefined && comments.comments.length !== media.commentsCount) {
+    if (localMedia.commentsCount !== undefined && comments.comments.length !== localMedia.commentsCount) {
       console.log('🔍 Comment count mismatch detected:', {
-        mediaId: media.id,
-        serverCount: media.commentsCount,
+        mediaId: localMedia.id,
+        serverCount: localMedia.commentsCount,
         localCount: comments.comments.length,
         comments: comments.comments.map(c => ({ id: c.id, text: c.text.substring(0, 20) }))
       });
     }
-  }, [media.commentsCount, comments.comments.length, media.id, comments.comments]);
+  }, [localMedia.commentsCount, comments.comments.length, localMedia.id, comments.comments]);
   
   // Real-time sync for comments count to prevent stale data
   useEffect(() => {
-    if (!media.id) return;
+    if (!localMedia.id) return;
     
     const unsubscribe = onSnapshot(
-      doc(db, 'media', media.id),
+      doc(db, 'media', localMedia.id),
       (docSnapshot) => {
         if (docSnapshot.exists()) {
           const serverCommentsCount = docSnapshot.data().commentsCount ?? 0;
           
           // Debug: Log if there's a mismatch
-          if (serverCommentsCount !== (media.commentsCount ?? 0)) {
+          if (serverCommentsCount !== (localMedia.commentsCount ?? 0)) {
             console.log('🔍 Comments count sync:', {
-              mediaId: media.id,
-              oldCount: media.commentsCount,
+              mediaId: localMedia.id,
+              oldCount: localMedia.commentsCount,
               newCount: serverCommentsCount,
               localCount: comments.comments.length
             });
@@ -279,10 +328,63 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
     );
     
     return unsubscribe;
-  }, [media.id, media.commentsCount, comments.comments.length]);
+  }, [localMedia.id, localMedia.commentsCount, comments.comments.length]);
+  
+  // Safe date parsing with fallback
+  const createdAt = useMemo(() => {
+    if (!localMedia.createdAt) return new Date();
+    
+    try {
+      // Handle Firestore Timestamp objects
+      if (localMedia.createdAt && typeof localMedia.createdAt === 'object' && 'seconds' in localMedia.createdAt) {
+        // This is a Firestore Timestamp
+        const timestamp = localMedia.createdAt as any;
+        return new Date(timestamp.seconds * 1000 + timestamp.nanoseconds / 1000000);
+      }
+      
+      if (localMedia.createdAt instanceof Date) {
+        return localMedia.createdAt;
+      }
+      
+      // Handle string dates
+      const date = new Date(localMedia.createdAt);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date value:', localMedia.createdAt);
+        return new Date();
+      }
+      
+      return date;
+    } catch (error) {
+      console.warn('Date parsing error:', error);
+      return new Date();
+    }
+  }, [localMedia.createdAt]);
+  
+  // One status object, one chip - prevents conflicting chips
+  const status = useMemo(() => {
+    const m = localMedia;
+    if (!m) return null;
+
+    if (m.transcodeStatus === 'failed') return { color: 'red', label: 'Upgrade Failed' };
+
+    if (m.type === 'video') {
+      if (m.transcodeStatus === 'ready' && !!m.sources?.hls) return { color: 'green', label: 'HLS Ready' };
+      if (m.transcodeStatus === 'processing' && !!m.thumbnailPath) return { color: 'purple', label: 'Poster Ready' };
+      if (m.transcodeStatus === 'processing') return { color: 'blue', label: 'Processing…' };
+    }
+
+    if (m.type === 'image') {
+      if (m.transcodeStatus === 'ready' && !!m.thumbnailPath) return { color: 'green', label: 'Optimized' };
+      if (m.transcodeStatus === 'processing') return { color: 'blue', label: 'Optimizing…' };
+    }
+
+    return null;
+  }, [localMedia]);
 
   const previewEl = useMemo(() => {
-    return media.type === 'video' ? (
+    return localMedia.type === 'video' ? (
       <div className="relative" onDoubleClick={onDoubleTap} onClick={onOpen}>
         <video 
           ref={videoRef} 
@@ -293,7 +395,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         >
           {/* Original source for immediate playback while HLS processes */}
-          <source src={media.url} type={media.type === 'video' ? 'video/mp4' : 'video/*'} />
+          <source src={localMedia.url} type={localMedia.type === 'video' ? 'video/mp4' : 'video/*'} />
           {/* HLS will be attached dynamically via useEffect when ready */}
         </video>
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -301,65 +403,16 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
             <Play className="w-6 h-6 text-purple-600 ml-0.5" />
           </div>
         </div>
-        {/* Show processing status if available */}
-        {/* Enhanced status logic: show poster as soon as thumbnailPath exists */}
-        {media.transcodeStatus === 'processing' && media.type === 'video' && media.thumbnailPath && (
-          <div className="absolute top-3 left-3 z-10">
-            <div className="px-3 py-1.5 bg-purple-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-              Enhancing...
-            </div>
-          </div>
-        )}
-        {media.transcodeStatus === 'processing' && media.type === 'video' && !media.thumbnailPath && (
-          <div className="absolute top-3 left-3 z-10">
-            <div className="px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-              Processing...
-            </div>
-          </div>
-        )}
-        {media.transcodeStatus === 'processing' && media.type === 'image' && (
-          <div className="absolute top-3 left-3 z-10">
-            <div className="px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-              Optimizing...
-            </div>
-          </div>
-        )}
-        {media.transcodeStatus === 'failed' && (
-          <div className="absolute top-3 left-3 z-10">
-            <div className="px-3 py-1.5 bg-red-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
-              <div className="w-2 h-2 bg-white rounded-full"></div>
-              Upgrade Failed
-            </div>
-          </div>
-        )}
-        {media.transcodeStatus === 'ready' && media.type === 'video' && media.sources?.hls && (
-          <div className="absolute top-3 left-3 z-10">
-            <div className="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
-              <div className="w-2 h-2 bg-white rounded-full"></div>
-              HLS Ready
-            </div>
-          </div>
-        )}
-        {/* New status: Video has poster but HLS still processing */}
-        {media.transcodeStatus === 'processing' && media.type === 'video' && media.thumbnailPath && !media.sources?.hls && (
-          <div className="absolute top-3 left-3 z-10">
-            <div className="px-3 py-1.5 bg-purple-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-              Poster Ready
-            </div>
-          </div>
-        )}
-        {media.transcodeStatus === 'ready' && media.type === 'image' && media.thumbnailPath && (
-          <div className="absolute top-3 left-3 z-10">
-            <div className="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
-              <div className="w-2 h-2 bg-white rounded-full"></div>
-              Optimized
-            </div>
-          </div>
-        )}
+                 {/* Single status chip - prevents conflicting chips */}
+         {status && (
+           <div className={`absolute top-3 left-3 z-10 px-3 py-1.5 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2
+                          ${status.color === 'green' ? 'bg-green-500' :
+                            status.color === 'purple' ? 'bg-purple-500' :
+                            status.color === 'blue' ? 'bg-blue-500' : 'bg-red-500'}`}>
+             <div className={`w-2 h-2 bg-white rounded-full ${status.color === 'blue' || status.color === 'purple' ? 'animate-pulse' : ''}`}></div>
+             {status.label}
+           </div>
+         )}
       </div>
     ) : (
       isThumbnailLoading ? (
@@ -369,7 +422,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
       ) : (
         <img 
           src={thumbnailUrl} 
-          alt={media.title} 
+          alt={localMedia.title} 
           loading="lazy" 
           onDoubleClick={onDoubleTap} 
           onClick={onOpen}
@@ -377,27 +430,25 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
         />
       )
     );
-  }, [media, onOpen, liked, thumbnailUrl, isThumbnailLoading]);
-
-  const createdAt = media.createdAt instanceof Date ? media.createdAt : new Date(media.createdAt);
+  }, [localMedia, onOpen, liked, thumbnailUrl, isThumbnailLoading]);
 
   return (
     <div className="bg-white/80 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group">
       <div className="relative aspect-square overflow-hidden">
         {previewEl}
-        {media.eventTitle && (
+        {localMedia.eventTitle && (
           <div className="absolute top-3 left-3">
             <div className="flex items-center px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-sm font-medium text-purple-600 border border-purple-200">
               <Tag className="w-3 h-3 mr-1" />
-              {media.eventTitle}
+              {localMedia.eventTitle}
             </div>
           </div>
         )}
         <div className="absolute top-3 right-3 flex gap-2">
-          <button onClick={()=>shareUrl(media.url, media.title)} className="p-2 rounded-full bg-white/90 hover:bg-white">
+          <button onClick={()=>shareUrl(localMedia.url, localMedia.title)} className="p-2 rounded-full bg-white/90 hover:bg-white">
             <Share2 className="w-4 h-4 text-gray-700" />
           </button>
-          <a href={media.url} download className="p-2 rounded-full bg-white/90 hover:bg-white">
+          <a href={localMedia.url} download className="p-2 rounded-full bg-white/90 hover:bg-white">
             <Download className="w-4 h-4 text-gray-700" />
           </a>
           {canModerate && (
@@ -409,8 +460,8 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
               {menuOpen && (
                 <div className="absolute right-0 mt-2 w-40 rounded-md bg-white shadow-lg p-1 border border-gray-200 z-10">
                   <button onClick={togglePublic} className="w-full flex items-center gap-2 px-2 py-2 rounded hover:bg-gray-50 text-left">
-                    {media.isPublic ? <EyeOff className="w-4 h-4 text-gray-600"/> : <Eye className="w-4 h-4 text-gray-600"/>}
-                    <span className="text-sm">{media.isPublic ? 'Hide (make private)' : 'Make public'}</span>
+                    {localMedia.isPublic ? <EyeOff className="w-4 h-4 text-gray-600"/> : <Eye className="w-4 h-4 text-gray-600"/>}
+                    <span className="text-sm">{localMedia.isPublic ? 'Hide (make private)' : 'Make public'}</span>
                   </button>
                   <button onClick={onClickDelete} className="w-full flex items-center gap-2 px-2 py-2 rounded hover:bg-red-50 text-red-600 text-left">
                     <Trash2 className="w-4 h-4"/> 
@@ -424,11 +475,11 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
       </div>
 
       <div className="p-4">
-        <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{media.title}</h3>
-        {media.description && <p className="text-gray-600 text-sm mb-3 line-clamp-2">{media.description}</p>}
+        <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{localMedia.title}</h3>
+        {localMedia.description && <p className="text-gray-600 text-sm mb-3 line-clamp-2">{localMedia.description}</p>}
 
         <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
-          <span>By {media.uploaderName || 'Member'}</span>
+          <span>By {localMedia.uploaderName || 'Member'}</span>
           <span>{format(createdAt, 'MMM d, yyyy')}</span>
         </div>
 
@@ -441,16 +492,16 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
 
             <button onClick={()=> comments.setOpen(!comments.open)} className="flex items-center space-x-1 text-gray-500 hover:text-purple-600 transition-colors">
               <MessageCircle className="w-5 h-5" />
-              <span className="text-sm" title={`Server count: ${media.commentsCount}, Local count: ${comments.comments.length}`}>
-                {media.commentsCount ?? comments.comments.length}
+              <span className="text-sm" title={`Server count: ${localMedia.commentsCount}, Local count: ${comments.comments.length}`}>
+                {localMedia.commentsCount ?? comments.comments.length}
               </span>
               {comments.comments.length > 0 && !comments.open && (
                 <span className="text-xs text-gray-400">• View all</span>
               )}
             </button>
           </div>
-          {typeof media.viewsCount === 'number' && (
-            <div className="text-xs text-gray-400">{media.viewsCount} views</div>
+          {typeof localMedia.viewsCount === 'number' && (
+            <div className="text-xs text-gray-400">{localMedia.viewsCount} views</div>
           )}
         </div>
 
@@ -489,7 +540,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
               if (!currentUser || !newComment.trim()) return;
               
               try {
-                await addDoc(collection(db, 'media', media.id, 'comments'), {
+                await addDoc(collection(db, 'media', localMedia.id, 'comments'), {
                   text: newComment.trim(),
                   authorId: currentUser.id,
                   authorName: currentUser.displayName || 'Member',
