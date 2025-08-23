@@ -160,8 +160,8 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
       (docSnapshot) => {
         if (docSnapshot.exists()) {
           const serverLikesCount = docSnapshot.data().likesCount ?? 0;
-                          // Always sync with server truth to prevent drift
-                setLikesCount(serverLikesCount);
+          // Always sync with server truth to prevent drift
+          setLikesCount(serverLikesCount);
         }
       },
       (error: any) => {
@@ -170,7 +170,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
     );
     
     return unsubscribe;
-  }, [media.id, likesCount]);
+  }, [media.id]);
 
   const onDoubleTap = () => { if (!liked) handleLikeToggle(); };
 
@@ -203,6 +203,47 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
   }
 
   const comments = usePagedComments(media.id, 10, { initialOpen: false });
+  
+  // Debug logging for comment count discrepancy
+  useEffect(() => {
+    if (media.commentsCount !== undefined && comments.comments.length !== media.commentsCount) {
+      console.log('🔍 Comment count mismatch detected:', {
+        mediaId: media.id,
+        serverCount: media.commentsCount,
+        localCount: comments.comments.length,
+        comments: comments.comments.map(c => ({ id: c.id, text: c.text.substring(0, 20) }))
+      });
+    }
+  }, [media.commentsCount, comments.comments.length, media.id, comments.comments]);
+  
+  // Real-time sync for comments count to prevent stale data
+  useEffect(() => {
+    if (!media.id) return;
+    
+    const unsubscribe = onSnapshot(
+      doc(db, 'media', media.id),
+      (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const serverCommentsCount = docSnapshot.data().commentsCount ?? 0;
+          
+          // Debug: Log if there's a mismatch
+          if (serverCommentsCount !== (media.commentsCount ?? 0)) {
+            console.log('🔍 Comments count sync:', {
+              mediaId: media.id,
+              oldCount: media.commentsCount,
+              newCount: serverCommentsCount,
+              localCount: comments.comments.length
+            });
+          }
+        }
+      },
+      (error: any) => {
+        console.warn('Failed to sync comments count:', error);
+      }
+    );
+    
+    return unsubscribe;
+  }, [media.id, media.commentsCount, comments.comments.length]);
 
   const previewEl = useMemo(() => {
     return media.type === 'video' ? (
@@ -364,7 +405,9 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
 
             <button onClick={()=> comments.setOpen(!comments.open)} className="flex items-center space-x-1 text-gray-500 hover:text-purple-600 transition-colors">
               <MessageCircle className="w-5 h-5" />
-              <span className="text-sm">{media.commentsCount ?? comments.comments.length}</span>
+              <span className="text-sm" title={`Server count: ${media.commentsCount}, Local count: ${comments.comments.length}`}>
+                {media.commentsCount ?? comments.comments.length}
+              </span>
               {comments.comments.length > 0 && !comments.open && (
                 <span className="text-xs text-gray-400">• View all</span>
               )}
