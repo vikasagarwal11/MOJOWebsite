@@ -21,8 +21,8 @@ type Props = {
 export default function MediaLightbox({
   item,
   onClose,
-  onPrev,
   onNext,
+  onPrev,
   autoPlay = true,
   intervalMs = 3500,
   pauseOnHover = true,
@@ -33,6 +33,19 @@ export default function MediaLightbox({
   const [posterUrl, setPosterUrl] = useState<string>('');
   const [scale, setScale] = useState(1);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  // DEBUG: Log component props and state
+  console.log('🔍 MediaLightbox DEBUG:', {
+    itemId: item?.id,
+    itemType: item?.type,
+    autoPlay,
+    intervalMs,
+    pauseOnHover,
+    autoAdvanceVideos,
+    playing,
+    hovering,
+    scale
+  });
 
   if (!item) return null;
 
@@ -50,30 +63,51 @@ export default function MediaLightbox({
 
   // Attach HLS (if available) in lightbox; fallback to original url
   useEffect(() => {
-    if (!item || item.type !== 'video' || !videoRef.current) return;
+    console.log('🎥 Video HLS useEffect triggered:', {
+      itemExists: !!item,
+      itemType: item?.type,
+      hasVideoRef: !!videoRef.current,
+      autoAdvanceVideos,
+      onNextFunction: typeof onNext
+    });
+
+    if (!item || item.type !== 'video' || !videoRef.current) {
+      console.log('❌ Video HLS setup skipped: Not a video or no video ref');
+      return;
+    }
+    
     const v = videoRef.current;
+    console.log('✅ Setting up video with HLS/fallback');
 
     let cancelled = false;
     (async () => {
       try {
         if (item.sources?.hls) {
+          console.log('🎬 Attaching HLS source:', item.sources.hls);
           await attachHls(v, item.sources.hls);
         } else {
+          console.log('📹 Using fallback video URL:', item.url);
           v.src = item.url;
         }
         if (!cancelled) {
           // Start playing automatically if user arrived from slideshow
-          v.play().catch(() => {});
+          console.log('▶️ Attempting to auto-play video');
+          v.play().catch((e) => console.log('❌ Auto-play failed:', e));
         }
-      } catch {
+      } catch (error) {
+        console.log('❌ HLS setup failed, using fallback:', error);
         v.src = item.url;
       }
     })();
 
-    const onEnded = () => { if (autoAdvanceVideos) onNext(); };
+    const onEnded = () => { 
+      console.log('🏁 Video ended, auto-advance:', autoAdvanceVideos);
+      if (autoAdvanceVideos) onNext(); 
+    };
     v.addEventListener('ended', onEnded);
 
     return () => {
+      console.log('🧹 Cleaning up video HLS setup');
       cancelled = true;
       v.removeEventListener('ended', onEnded);
       try { detachHls(v); } catch {}
@@ -82,29 +116,89 @@ export default function MediaLightbox({
 
   // Auto-advance images
   useEffect(() => {
-    if (!item || item.type === 'video') return;
-    if (!playing) return;
-    if (pauseOnHover && hovering) return;
+    console.log('🔄 Auto-advance useEffect triggered:', {
+      itemExists: !!item,
+      itemType: item?.type,
+      playing,
+      hovering,
+      pauseOnHover,
+      intervalMs,
+      onNextFunction: typeof onNext
+    });
 
-    const t = setInterval(onNext, intervalMs);
-    return () => clearInterval(t);
+    if (!item || item.type === 'video') {
+      console.log('❌ Auto-advance skipped: Not an image or no item');
+      return;
+    }
+    if (!playing) {
+      console.log('❌ Auto-advance skipped: Not playing');
+      return;
+    }
+    if (pauseOnHover && hovering) {
+      console.log('❌ Auto-advance skipped: Paused on hover');
+      return;
+    }
+
+    console.log('✅ Creating auto-advance timer for', intervalMs, 'ms');
+    const t = setInterval(() => {
+      console.log('⏰ Auto-advance timer fired, calling onNext()');
+      onNext();
+    }, intervalMs);
+    
+    return () => {
+      console.log('🧹 Cleaning up auto-advance timer');
+      clearInterval(t);
+    };
   }, [item, playing, hovering, pauseOnHover, intervalMs, onNext]);
 
   // Keyboard
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowRight') onNext();
-      if (e.key === 'ArrowLeft') onPrev();
-      if (e.key === ' ') { e.preventDefault(); setPlaying(p => !p); }
+      console.log('⌨️ Keyboard event:', e.key);
+      if (e.key === 'Escape') {
+        console.log('🚪 Escape key pressed, calling onClose()');
+        onClose();
+      }
+      if (e.key === 'ArrowRight') {
+        console.log('➡️ Right arrow key pressed, calling onNext()');
+        onNext();
+      }
+      if (e.key === 'ArrowLeft') {
+        console.log('⬅️ Left arrow key pressed, calling onPrev()');
+        onPrev();
+      }
+      if (e.key === ' ') { 
+        console.log('␣ Spacebar pressed, toggling playing state');
+        e.preventDefault(); 
+        setPlaying(p => !p); 
+      }
     };
+    console.log('⌨️ Setting up keyboard event listeners');
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      console.log('🧹 Cleaning up keyboard event listeners');
+      window.removeEventListener('keydown', onKey);
+    };
   }, [onClose, onNext, onPrev]);
 
   // Swipe; disable when zoomed so pan doesn't trigger slide
-  const swipe = useSwipe({ onLeft: onNext, onRight: onPrev });
+  const swipe = useSwipe({ 
+    onLeft: () => {
+      console.log('👈 Swipe left detected, calling onNext()');
+      onNext();
+    }, 
+    onRight: () => {
+      console.log('👉 Swipe right detected, calling onPrev()');
+      onPrev();
+    }
+  });
+  
   const swipeHandlers = scale > 1.02 ? {} : swipe;
+  console.log('🖱️ Swipe handlers:', {
+    scale,
+    swipeDisabled: scale > 1.02,
+    hasSwipeHandlers: Object.keys(swipeHandlers).length > 0
+  });
 
   return (
     <div
@@ -131,7 +225,15 @@ export default function MediaLightbox({
 
         {/* Body */}
         <div className="flex-1 flex items-center justify-center p-3 gap-4">
-          <button onClick={onPrev} className="text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors" aria-label="Previous">
+          <button 
+            onClick={() => {
+              console.log('⬅️ Previous button clicked, calling onPrev()');
+              console.log('🔍 onPrev function:', typeof onPrev, onPrev);
+              onPrev();
+            }} 
+            className="text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors" 
+            aria-label="Previous"
+          >
             <ChevronLeft className="w-8 h-8" />
           </button>
 
@@ -166,7 +268,15 @@ export default function MediaLightbox({
             </TransformComponent>
           </TransformWrapper>
 
-          <button onClick={onNext} className="text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors" aria-label="Next">
+          <button 
+            onClick={() => {
+              console.log('➡️ Next button clicked, calling onNext()');
+              console.log('🔍 onNext function:', typeof onNext, onNext);
+              onNext();
+            }} 
+            className="text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors" 
+            aria-label="Next"
+          >
             <ChevronRight className="w-8 h-8" />
           </button>
         </div>
@@ -175,7 +285,15 @@ export default function MediaLightbox({
         <div className="flex items-center justify-center gap-4 pb-4">
           {item.type === 'image' && (
             <button
-              onClick={() => setPlaying(p => !p)}
+              onClick={() => {
+                console.log('🎮 Play/Pause button clicked');
+                console.log('🔍 Current playing state:', playing);
+                setPlaying(p => {
+                  const newState = !p;
+                  console.log('🔄 Setting playing state to:', newState);
+                  return newState;
+                });
+              }}
               className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center gap-2 transition-colors"
               aria-label={playing ? 'Pause slideshow' : 'Play slideshow'}
             >
