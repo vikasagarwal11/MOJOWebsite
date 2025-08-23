@@ -21,14 +21,14 @@ type ProfileRSVPAdminTabProps = {
   rsvpsByEvent: { [eventId: string]: any[] };
   allEvents: Event[];
   userNames: { [userId: string]: string };
-  updateRsvp: (eventId: string, userId: string, status: 'going' | 'maybe' | 'not-going' | null) => Promise<void>;
+  updateRsvp: (eventId: string, userId: string, status: 'going' | 'not-going' | null) => Promise<void>;
   exportRsvps: (event: Event) => Promise<void>;
   exportingRsvps: string | null;
   adjustAttendingCount: (eventId: string, increment: boolean) => Promise<void>;
   blockUserFromRsvp: (userId: string) => Promise<void>;
   analyzeLastMinuteChanges: (rsvp: any, eventStart: any) => number;
-  rsvpFilter: 'all' | 'going' | 'maybe' | 'not-going';
-  setRsvpFilter: (value: 'all' | 'going' | 'maybe' | 'not-going') => void;
+  rsvpFilter: 'all' | 'going' | 'not-going';
+  setRsvpFilter: (value: 'all' | 'going' | 'not-going') => void;
   eventsPage: number;
   setEventsPage: (value: number) => void;
   PAGE_SIZE: number;
@@ -63,7 +63,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   const [showContactInfo, setShowContactInfo] = useState<{[userId: string]: boolean}>({});
   
   // NEW: Per-event RSVP filter state (instead of global)
-  const [eventRsvpFilters, setEventRsvpFilters] = useState<{[eventId: string]: 'all' | 'going' | 'maybe' | 'not-going'}>({});
+  const [eventRsvpFilters, setEventRsvpFilters] = useState<{[eventId: string]: 'all' | 'going' | 'not-going'}>({});
   
   // NEW: Date and Activity filter state
   const [dateFilter, setDateFilter] = useState<'all' | 'upcoming' | 'this-week' | 'past'>('all');
@@ -135,7 +135,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   };
   
   // Function to update per-event RSVP filter
-  const updateEventRsvpFilter = (eventId: string, filter: 'all' | 'going' | 'maybe' | 'not-going') => {
+  const updateEventRsvpFilter = (eventId: string, filter: 'all' | 'going' | 'not-going') => {
     setEventRsvpFilters(prev => ({
       ...prev,
       [eventId]: filter
@@ -865,7 +865,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                         >
                           <option value="all">All</option>
                           <option value="going">Going</option>
-                          <option value="maybe">Maybe</option>
+        
                           <option value="not-going">Not Going</option>
                         </select>
                       </div>
@@ -1015,7 +1015,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                 aria-label={`Change RSVP status for ${userNames[rsvp.id] || rsvp.id}`}
                               >
                                 <option value="going">✅ Going</option>
-                                <option value="maybe">🤔 Maybe</option>
+              
                                 <option value="not-going">❌ Not Going</option>
                                 <option value="">🗑️ Remove</option>
                               </select>
