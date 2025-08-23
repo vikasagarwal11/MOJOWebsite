@@ -72,22 +72,58 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
     }
   }, [media.thumbnailPath, media.url]);
 
+  // Enhanced debugging for video playback issues
+  useEffect(() => {
+    console.log('🎬 MediaCard Debug:', {
+      mediaId: media.id,
+      type: media.type,
+      transcodeStatus: media.transcodeStatus,
+      hasHls: !!media.sources?.hls,
+      hlsPath: media.sources?.hls,
+      hasThumbnail: !!media.thumbnailPath,
+      thumbnailPath: media.thumbnailPath,
+      videoUrl: media.url,
+      isHlsAttached,
+      videoRefExists: !!videoRef.current
+    });
+  }, [media.id, media.type, media.transcodeStatus, media.sources?.hls, media.thumbnailPath, media.url, isHlsAttached]);
+
   // Attach HLS when video element is ready and HLS source is available
   useEffect(() => {
+    console.log('🔧 HLS Attachment Logic:', {
+      hasVideoRef: !!videoRef.current,
+      hasHlsSource: !!media.sources?.hls,
+      hlsPath: media.sources?.hls,
+      isAlreadyAttached: isHlsAttached,
+      videoUrl: media.url
+    });
+
     if (videoRef.current && media.sources?.hls && !isHlsAttached) {
+      console.log('✅ Attempting to attach HLS:', media.sources.hls);
       // HLS is ready - upgrade to HLS streaming
       attachHls(videoRef.current, media.sources.hls)
-        .then(() => setIsHlsAttached(true))
+        .then(() => {
+          console.log('✅ HLS attached successfully');
+          setIsHlsAttached(true);
+        })
         .catch(error => {
-          console.warn('Failed to attach HLS, using fallback:', error);
+          console.error('❌ Failed to attach HLS, using fallback:', error);
           // Fallback to original video URL
           if (videoRef.current) {
+            console.log('🔄 Setting fallback video source:', media.url);
             videoRef.current.src = media.url;
           }
         });
     } else if (videoRef.current && !isHlsAttached && !media.sources?.hls) {
+      console.log('⚠️ No HLS source available, using original video URL:', media.url);
       // No HLS yet - show original file immediately for instant playback
       videoRef.current.src = media.url;
+    } else {
+      console.log('⏸️ HLS attachment conditions not met:', {
+        hasVideoRef: !!videoRef.current,
+        hasHlsSource: !!media.sources?.hls,
+        isAlreadyAttached: isHlsAttached
+      });
     }
   }, [media.sources?.hls, media.url, isHlsAttached]);
 

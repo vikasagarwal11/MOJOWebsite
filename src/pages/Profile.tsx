@@ -10,6 +10,8 @@ import { ProfileEventsTab } from './ProfileEventsTab';
 import { ProfileRSVPAdminTab } from './ProfileRSVPAdminTab';
 import { ProfileAdminTab } from './ProfileAdminTab';
 import CreateEventModal from '../components/events/CreateEventModal';
+import { useUserBlocking } from '../hooks/useUserBlocking';
+import { UserBlockModal } from '../components/user/UserBlockModal';
 
 type Address = {
   street?: string;
@@ -91,7 +93,17 @@ const Profile: React.FC = () => {
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread'>('all');
   const [rsvpFilter, setRsvpFilter] = useState<'all' | 'going' | 'maybe' | 'not-going'>('all');
   const [blockedUsers, setBlockedUsers] = useState<{ id: string; displayName: string; email: string; blockedAt: any }[]>([]);
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [userToBlock, setUserToBlock] = useState<any>(null);
   const PAGE_SIZE = 10;
+
+  // Enhanced user blocking system
+  const {
+    blockUser,
+    unblockUser: unblockUserEnhanced,
+    isBlocked,
+    canInteractWith
+  } = useUserBlocking();
 
   // Load user profile
   useEffect(() => {
@@ -256,6 +268,20 @@ const Profile: React.FC = () => {
       fetchBlockedUsers();
     }
   }, [currentUser?.role]);
+
+  // Listen for enhanced blocking modal requests
+  useEffect(() => {
+    const handleOpenBlockModal = (event: CustomEvent) => {
+      setUserToBlock(event.detail.user);
+      setShowBlockModal(true);
+    };
+
+    window.addEventListener('openBlockModal', handleOpenBlockModal as EventListener);
+    
+    return () => {
+      window.removeEventListener('openBlockModal', handleOpenBlockModal as EventListener);
+    };
+  }, []);
 
   const isAuthed = !!currentUser;
   const initialsForAvatar = useMemo(() => {
@@ -829,6 +855,27 @@ const Profile: React.FC = () => {
             setEventToEdit(null);
           }}
           eventToEdit={eventToEdit}
+        />
+      )}
+
+      {/* Enhanced User Blocking Modal */}
+      {showBlockModal && userToBlock && (
+        <UserBlockModal
+          isOpen={showBlockModal}
+          onClose={() => {
+            setShowBlockModal(false);
+            setUserToBlock(null);
+          }}
+          targetUser={userToBlock}
+          onBlock={async (targetUserId, reason, category, description, expiresAt) => {
+            try {
+              await blockUser(targetUserId, reason, category, description, expiresAt);
+              // Refresh blocked users list
+              fetchBlockedUsers();
+            } catch (error) {
+              console.error('Failed to block user:', error);
+            }
+          }}
         />
       )}
     </div>
