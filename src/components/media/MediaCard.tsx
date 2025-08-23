@@ -193,9 +193,10 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
           </div>
         </div>
         {/* Show processing status if available */}
+        {/* Enhanced status logic: show poster as soon as thumbnailPath exists */}
         {media.transcodeStatus === 'processing' && media.type === 'video' && media.thumbnailPath && (
           <div className="absolute top-3 left-3 z-10">
-            <div className="px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
+            <div className="px-3 py-1.5 bg-purple-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
               <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
               Enhancing...
             </div>
@@ -230,6 +231,15 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
             <div className="px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
               <div className="w-2 h-2 bg-white rounded-full"></div>
               HLS Ready
+            </div>
+          </div>
+        )}
+        {/* New status: Video has poster but HLS still processing */}
+        {media.transcodeStatus === 'processing' && media.type === 'video' && media.thumbnailPath && !media.sources?.hls && (
+          <div className="absolute top-3 left-3 z-10">
+            <div className="px-3 py-1.5 bg-purple-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              Poster Ready
             </div>
           </div>
         )}
