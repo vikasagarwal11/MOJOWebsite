@@ -3,7 +3,7 @@ import { Heart, MessageCircle, Tag, Play, Share2, Download, MoreHorizontal, EyeO
 import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../config/firebase';
-import { collection, addDoc, doc, deleteDoc, serverTimestamp, updateDoc, increment, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, deleteDoc, serverTimestamp, updateDoc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { useViewCounter } from '../../hooks/useViewCounter';
 import { usePagedComments } from '../../hooks/usePagedComments';
 import { shareUrl } from '../../utils/share';
@@ -161,10 +161,8 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
       (docSnapshot) => {
         if (docSnapshot.exists()) {
           const serverLikesCount = docSnapshot.data().likesCount ?? 0;
-          // Only update if server count differs significantly (prevents minor race conditions)
-          if (Math.abs(serverLikesCount - likesCount) > 1) {
-            setLikesCount(serverLikesCount);
-          }
+                          // Always sync with server truth to prevent drift
+                setLikesCount(serverLikesCount);
         }
       },
       (error: any) => {
