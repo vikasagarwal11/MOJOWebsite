@@ -17,6 +17,22 @@ import sharp from 'sharp';
 initializeApp();
 const db = getFirestore();
 
+// Helper functions for robust media processing
+const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+async function findMediaDocRef(name: string, dir: string, tries = 5): Promise<FirebaseFirestore.DocumentReference | null> {
+  for (let i = 0; i < tries; i++) {
+    let snap = await db.collection('media').where('filePath', '==', name).limit(1).get();
+    if (!snap.empty) return snap.docs[0].ref;
+
+    snap = await db.collection('media').where('storageFolder', '==', `${dir}/`).limit(1).get();
+    if (!snap.empty) return snap.docs[0].ref;
+
+    await sleep(500 * Math.pow(2, i)); // 0.5s, 1s, 2s, 4s, 8s
+  }
+  return null;
+}
+
 // Setup FFmpeg paths
 ffmpeg.setFfmpegPath(ffmpegStatic as string);
 ffmpeg.setFfprobePath(ffprobe.path);
@@ -268,47 +284,43 @@ export const onMediaFileFinalize = onObjectFinalized(
     region: 'us-central1',
     timeoutSeconds: 540,
     memory: '2GiB',
+    cpu: 2, // Added CPU for faster FFmpeg processing
   },
   async (event) => {
     const name = event.data.name || '';
     const ctype = event.data.contentType || '';
     
     // Only process user uploads under media/, skip our own outputs
-    if (!name.startsWith('media/')) return;
-    if (name.endsWith('.m3u8') || name.endsWith('.ts') || name.includes('/hls/')) return;
+    if (!name.startsWith('media/') || name.endsWith('.m3u8') || name.endsWith('.ts') || name.includes('/hls/')) return;
     if (path.basename(name).startsWith('thumb_') || path.basename(name).startsWith('poster_')) return;
 
     const bucket = getStorage().bucket(event.data.bucket);
     const dir = path.dirname(name);               // media/<uid>/<batchId>
     const base = path.parse(name).name;           // filename (no ext)
-    const tmpOriginal = path.join(os.tmpdir(), path.basename(name));
 
-    await bucket.file(name).download({ destination: tmpOriginal });
-
-    // Find the media doc by filePath FIRST (unique per file), then fallback to storageFolder
-    let snap = await db.collection('media')
-      .where('filePath', '==', name)        // <-- FIRST: exact match by file path
-      .limit(1).get();
-    
-    if (snap.empty) {
-      // Fallback: try to find by storageFolder (less reliable for multi-file uploads)
-      snap = await db.collection('media')
-        .where('storageFolder', '==', `${dir}/`)
-        .limit(1).get();
-      if (snap.empty) {
-        // No doc to write back to — nothing else to do
-        fs.unlinkSync(tmpOriginal);
-        return;
-      }
+    // 1) Wait for the doc (handles upload→finalize→doc creation race)
+    const mediaRef = await findMediaDocRef(name, dir, 5);
+    if (!mediaRef) {
+      console.log(`No media doc found for ${name} after retries; skipping.`);
+      return;
     }
-    const mediaRef = snap.docs[0].ref;
-    const mediaData = snap.docs[0].data();
-    
-    console.log(`Processing media file: ${name}`);
-    console.log(`Found media doc: ${mediaRef.id}, current status: ${mediaData.transcodeStatus || 'none'}`);
-    console.log(`Media type: ${mediaData.type}, uploaded by: ${mediaData.uploadedBy}`);
+
+    // 2) Unique temp filename to avoid rare collisions
+    const tmpOriginal = path.join(
+      os.tmpdir(),
+      `${base}-${Date.now()}-${Math.random().toString(36).slice(2)}${path.extname(name)}`
+    );
 
     try {
+      // 3) Download inside try block
+      await bucket.file(name).download({ destination: tmpOriginal });
+
+      // Get media data for processing
+      const mediaData = (await mediaRef.get()).data();
+      
+      console.log(`Processing media file: ${name}`);
+      console.log(`Found media doc: ${mediaRef.id}, current status: ${mediaData?.transcodeStatus || 'none'}`);
+      console.log(`Media type: ${mediaData?.type}, uploaded by: ${mediaData?.uploadedBy}`);
       // Images → make a WebP thumbnail and capture dimensions
       if (ctype.startsWith('image/')) {
         const meta = await sharp(tmpOriginal).metadata();
@@ -430,10 +442,13 @@ export const onMediaFileFinalize = onObjectFinalized(
         fs.unlinkSync(posterLocal);
       }
     } catch (err) {
-      await mediaRef.set({ transcodeStatus: 'failed' }, { merge: true });
+      await mediaRef.set({ transcodeStatus: 'failed' }, { merge: true }).catch(() => {});
       console.error('Transcode error for', name, err);
     } finally {
-      fs.unlinkSync(tmpOriginal);
+      // 4) Guarded cleanup to prevent errors
+      try { 
+        if (fs.existsSync(tmpOriginal)) fs.unlinkSync(tmpOriginal); 
+      } catch {}
     }
   }
 );
