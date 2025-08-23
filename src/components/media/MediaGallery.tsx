@@ -268,7 +268,16 @@ const MediaGallery: React.FC = () => {
       </InfiniteScroll>
 
       {lb.index!=null && (
-        <MediaLightbox item={paged[lb.index]} onPrev={lb.prev} onNext={lb.next} onClose={lb.close} />
+        <MediaLightbox 
+          item={paged[lb.index]} 
+          onPrev={lb.prev} 
+          onNext={lb.next} 
+          onClose={lb.close}
+          autoPlay={true}
+          intervalMs={3500}
+          pauseOnHover={true}
+          autoAdvanceVideos={true}
+        />
       )}
 
       {isUploadModalOpen && (
