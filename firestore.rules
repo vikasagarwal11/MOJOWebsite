@@ -77,12 +77,22 @@ service cloud.firestore {
     // --- EVENTS ---
     match /events/{eventId} {
       allow read: if
-        !('startAt' in resource.data) ||
+        // Past events are always readable (for history)
         resource.data.startAt < request.time ||
-        isSignedIn() ||
-        (('public' in resource.data) && resource.data.public == true);
-      allow create: if isSignedIn() && (isMember() || isAdmin())
-        && (!('public' in request.resource.data) || (request.resource.data.public is bool));
+        // Public events are readable by everyone
+        (('visibility' in resource.data) && resource.data.visibility == 'public') ||
+        // Legacy support: old 'public' field
+        (('public' in resource.data) && resource.data.public == true) ||
+        // Members-only events: visible to signed-in members/admins
+        (isSignedIn() && (isMember() || isAdmin()) && 
+         (('visibility' in resource.data) && resource.data.visibility == 'members')) ||
+        // Private events: only for creator, invited users, or admins
+        (isSignedIn() && (
+          request.auth.uid == resource.data.createdBy ||
+          isAdmin() ||
+          (('invitedUsers' in resource.data) && request.auth.uid in resource.data.invitedUsers)
+        ));
+      allow create: if isSignedIn() && (isMember() || isAdmin());
       allow update, delete: if isSignedIn() && (isAdmin() || request.auth.uid == resource.data.createdBy);
       match /rsvps/{userId} {
         allow read: if isSignedIn();
@@ -94,7 +104,20 @@ service cloud.firestore {
                       && validStatusHistory(request.resource.data.statusHistory)
                       && request.resource.data.statusHistory.size() == 1
                       && request.resource.data.statusHistory[0].status == request.resource.data.status
-                      && request.resource.data.statusHistory[0].changedBy == request.auth.uid;
+                      && request.resource.data.statusHistory[0].changedBy == request.auth.uid
+                      && (
+                        // Public events: anyone can RSVP
+                        (('visibility' in resource.data) && resource.data.visibility == 'public') ||
+                        // Legacy support: old 'public' field
+                        (('public' in resource.data) && resource.data.public == true) ||
+                        // Members-only events: only members can RSVP
+                        (isSignedIn() && (isMember() || isAdmin()) && 
+                         (('visibility' in resource.data) && resource.data.visibility == 'members')) ||
+                        // Private events: only invited users can RSVP
+                        (('invitedUsers' in resource.data) && request.auth.uid in resource.data.invitedUsers) ||
+                        // Event creator can always RSVP
+                        request.auth.uid == resource.data.createdBy
+                      );
         allow update: if (isMember() || isAdmin())
                       && (request.auth.uid == userId || isAdmin())
                       && !isUserBlockedFromRsvp(userId)

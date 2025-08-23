@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Calendar } from 'lucide-react';
-import { deleteDoc, doc, getDocs, collection } from 'firebase/firestore';
+import { deleteDoc, doc, getDocs, collection, query, where, limit } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
@@ -49,7 +49,64 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   loadingAdminEvents,
   blockedUsers,
   loadingBlockedUsers,
-}) => (
+}) => {
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Search users by name or email
+  const handleSearchUsers = async () => {
+    if (!userSearchQuery.trim()) return;
+    
+    setIsSearching(true);
+    try {
+      // Search users in Firestore by displayName or email
+      const usersRef = collection(db, 'users');
+      const q = query(
+        usersRef,
+        where('displayName', '>=', userSearchQuery),
+        where('displayName', '<=', userSearchQuery + '\uf8ff'),
+        limit(10)
+      );
+      
+      const snapshot = await getDocs(q);
+      const results = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          displayName: data?.displayName || 'Unknown User',
+          email: data?.email || 'No email',
+          blockedFromRsvp: data?.blockedFromRsvp || false
+        };
+      });
+      
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Failed to search users:', error);
+      toast.error('Failed to search users');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Block a user from RSVPing
+  const handleBlockUser = async (userId: string) => {
+    try {
+      await blockUserFromRsvp(userId);
+      // Refresh search results to show updated blocked status
+      setSearchResults(prev => 
+        prev.map(user => 
+          user.id === userId 
+            ? { ...user, blockedFromRsvp: true }
+            : user
+        )
+      );
+    } catch (error) {
+      console.error('Failed to block user:', error);
+    }
+  };
+
+  return (
   <div className="grid gap-6">
     <div className="flex items-center gap-2">
       <h2 className="text-sm font-semibold text-gray-700">Admin Event Management</h2>
@@ -219,12 +276,58 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         <div className="space-y-4">
           <h4 className="font-medium text-gray-700">Block User from RSVPing</h4>
           <div className="space-y-3">
-            <input
-              type="text"
-              placeholder="Search users by name or email..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              aria-label="Search users to block"
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Search users by name or email..."
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                aria-label="Search users to block"
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleSearchUsers();
+                  }
+                }}
+              />
+              <button
+                onClick={handleSearchUsers}
+                disabled={!userSearchQuery.trim() || isSearching}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                aria-label="Search users"
+              >
+                {isSearching ? 'Searching...' : 'Search'}
+              </button>
+            </div>
+            
+            {/* Search Results */}
+            {searchResults.length > 0 && (
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                <label className="text-sm font-medium text-gray-700">Search Results:</label>
+                {searchResults.map((user) => (
+                  <div key={user.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                    <div className="flex-1">
+                      <div className="font-medium text-sm">{user.displayName || 'Unknown User'}</div>
+                      <div className="text-xs text-gray-500">{user.email}</div>
+                    </div>
+                    <button
+                      onClick={() => handleBlockUser(user.id)}
+                      disabled={user.blockedFromRsvp}
+                      className={`px-3 py-1 text-xs rounded transition-colors ${
+                        user.blockedFromRsvp
+                          ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                          : 'bg-red-600 text-white hover:bg-red-700'
+                      }`}
+                      title={user.blockedFromRsvp ? 'Already blocked' : 'Block user from RSVPing'}
+                    >
+                      {user.blockedFromRsvp ? 'Already Blocked' : 'Block'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
             <button
               onClick={() => {
                 // TODO: Implement user search and blocking
@@ -313,4 +416,5 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       </div>
     </div>
   </div>
-);
+  );
+};
