@@ -193,11 +193,17 @@ const MediaGallery: React.FC = () => {
 
             {/* Sort */}
             <div className="lg:col-span-1">
-              <div className="text-xs font-medium text-gray-500 mb-1">Sort</div>
+              <div className="text-xs font-medium text-gray-500 mb-1 flex items-center gap-1">
+                <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                </svg>
+                Sort
+              </div>
               <select
                 value={filters.sort}
                 onChange={(e)=>filters.setSort(e.target.value as any)}
                 className="h-11 w-full rounded-xl border border-gray-300 bg-white px-3 focus:ring-2 focus:ring-purple-500"
+                title="Sort by date or popularity"
               >
                 <option value="date_desc">Newest</option>
                 <option value="date_asc">Oldest</option>

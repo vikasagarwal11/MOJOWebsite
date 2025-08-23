@@ -13,12 +13,15 @@ export async function attachHls(video: HTMLVideoElement, storagePath: string): P
     const url = await getDownloadURL(ref(storage, storagePath));
     
     if (Hls.isSupported()) {
-      // Modern browsers with HLS.js support
+      // CRITICAL FIX: Store HLS instance on video element for proper cleanup
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
         backBufferLength: 90
       });
+      
+      // Store the HLS instance on the video element for cleanup
+      (video as any)._hls = hls;
       
       hls.loadSource(url);
       hls.attachMedia(video);
@@ -58,14 +61,15 @@ export async function attachHls(video: HTMLVideoElement, storagePath: string): P
  */
 export function detachHls(video: HTMLVideoElement): void {
   try {
-    // Remove any existing HLS instance
-    if (video.hls) {
-      video.hls.destroy();
-      video.hls = null;
+    // CRITICAL FIX: Access the stored HLS instance and destroy it properly
+    const hls = (video as any)._hls;
+    if (hls) {
+      hls.destroy();
+      (video as any)._hls = undefined;
     }
     
     // Clear the video source
-    video.src = '';
+    video.removeAttribute('src');
     video.load();
   } catch (error) {
     console.error('Error detaching HLS:', error);
