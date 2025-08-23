@@ -50,6 +50,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [eventVisibility, setEventVisibility] = useState<'public' | 'members' | 'private'>('members'); // Default to members-only
   const [invitedUsers, setInvitedUsers] = useState<string[]>([]);
+  const [invitedUserDetails, setInvitedUserDetails] = useState<{[key: string]: any}>({});
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -83,6 +84,22 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         setEventVisibility(eventToEdit.public ? 'public' : 'members');
       }
       setInvitedUsers(eventToEdit.invitedUsers || []);
+      
+      // Load invited user details if editing a private event
+      if (eventToEdit.invitedUsers && eventToEdit.invitedUsers.length > 0) {
+        // This would ideally fetch user details from Firestore
+        // For now, we'll set placeholder data
+        const placeholderDetails: {[key: string]: any} = {};
+        eventToEdit.invitedUsers.forEach((userId: string) => {
+          placeholderDetails[userId] = {
+            id: userId,
+            displayName: `User ${userId.slice(0, 8)}...`,
+            email: 'Loading...',
+            photoURL: null
+          };
+        });
+        setInvitedUserDetails(placeholderDetails);
+      }
     }
   }, [eventToEdit]);
 
@@ -127,6 +144,10 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const handleInviteUser = (user: any) => {
     if (!invitedUsers.includes(user.id)) {
       setInvitedUsers([...invitedUsers, user.id]);
+      setInvitedUserDetails(prev => ({
+        ...prev,
+        [user.id]: user
+      }));
       setSearchResults([]);
       setUserSearchQuery('');
       toast.success(`Invited ${user.displayName}`);
@@ -136,6 +157,11 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   // Remove user from invitation list
   const handleRemoveInvitedUser = (userId: string) => {
     setInvitedUsers(invitedUsers.filter(id => id !== userId));
+    setInvitedUserDetails(prev => {
+      const newDetails = { ...prev };
+      delete newDetails[userId];
+      return newDetails;
+    });
   };
 
   const onSubmit = async (data: EventFormData) => {
@@ -500,20 +526,40 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                 {/* Invited Users List */}
                 {invitedUsers.length > 0 && (
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700">Invited Users:</label>
+                    <label className="text-sm font-medium text-gray-700">
+                      Invited Users ({invitedUsers.length}):
+                    </label>
                     <div className="space-y-2">
-                      {invitedUsers.map((userId, index) => (
-                        <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                          <span className="text-sm text-gray-700">{userId}</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveInvitedUser(userId)}
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
+                      {invitedUsers.map((userId, index) => {
+                        const userDetails = invitedUserDetails[userId] || 
+                                          { id: userId, displayName: 'Loading...', email: 'Loading...' };
+                        
+                        return (
+                          <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="flex items-center gap-3">
+                              {userDetails.photoURL && (
+                                <img 
+                                  src={userDetails.photoURL} 
+                                  alt={userDetails.displayName}
+                                  className="w-6 h-6 rounded-full"
+                                />
+                              )}
+                              <div>
+                                <div className="font-medium text-sm text-gray-700">{userDetails.displayName}</div>
+                                <div className="text-xs text-gray-500">{userDetails.email}</div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveInvitedUser(userId)}
+                              className="px-2 py-1 text-xs bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"
+                              title="Remove invitation"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

@@ -328,17 +328,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
           </div>
         </div>
       </div>
-      <div className="p-4 bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg border border-yellow-200">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">🤔</span>
-          <div>
-            <div className="text-sm text-yellow-600 font-medium">Maybe</div>
-            <div className="text-2xl font-bold text-yellow-800">
-              {Object.values(rsvpsByEvent).reduce((sum, rsvps) => sum + rsvps.filter(r => r.status === 'maybe').length, 0)}
-            </div>
-          </div>
-        </div>
-      </div>
+
       <div className="p-4 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200">
         <div className="flex items-center gap-2">
           <span className="text-2xl">❌</span>
@@ -822,7 +812,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="w-3 h-3 bg-yellow-500 rounded-full"></span>
-                        <span>Maybe: <strong>{rsvpsByEvent[event.id].filter(r => r.status === 'maybe').length}</strong></span>
+        
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="w-3 h-3 bg-red-500 rounded-full"></span>
@@ -842,13 +832,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                             .map(r => userNames[r.id] || 'Loading...')
                             .join(', ') || 'None'}
                         </div>
-                        <div>
-                          <span className="font-medium text-yellow-700">Maybe:</span>{' '}
-                          {rsvpsByEvent[event.id]
-                            .filter(r => r.status === 'maybe')
-                            .map(r => userNames[r.id] || 'Loading...')
-                            .join(', ') || 'None'}
-                        </div>
+
                       </div>
                     </div>
                   </div>
@@ -859,7 +843,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                         <span className="text-sm font-medium text-gray-700">Detailed RSVP List</span>
                         <select
                           value={getEventRsvpFilter(event.id)}
-                          onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'maybe' | 'not-going')}
+                          onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'not-going')}
                           className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
                           aria-label={`Filter RSVPs for ${event.title}`}
                         >
@@ -875,12 +859,12 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                         {[
                           { value: 'all', label: 'All', count: rsvpsByEvent[event.id]?.length || 0, color: 'bg-gray-100 text-gray-700' },
                           { value: 'going', label: 'Going', count: rsvpsByEvent[event.id]?.filter(r => r.status === 'going').length || 0, color: 'bg-green-100 text-green-700' },
-                          { value: 'maybe', label: 'Maybe', count: rsvpsByEvent[event.id]?.filter(r => r.status === 'maybe').length || 0, color: 'bg-yellow-100 text-yellow-700' },
+                  
                           { value: 'not-going', label: 'Not Going', count: rsvpsByEvent[event.id]?.filter(r => r.status === 'not-going').length || 0, color: 'bg-red-100 text-red-700' }
                         ].map(filter => (
                           <button
                             key={filter.value}
-                            onClick={() => updateEventRsvpFilter(event.id, filter.value as 'all' | 'going' | 'maybe' | 'not-going')}
+                            onClick={() => updateEventRsvpFilter(event.id, filter.value as 'all' | 'going' | 'not-going')}
                             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                               getEventRsvpFilter(event.id) === filter.value
                                 ? filter.color + ' ring-2 ring-offset-1 ring-gray-400'
@@ -911,17 +895,15 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                   {showContactInfo[rsvp.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                                   {showContactInfo[rsvp.id] ? 'Hide' : 'Show'} Contact
                                 </button>
-                                <span
-                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                    rsvp.status === 'going'
-                                      ? 'bg-green-100 text-green-800'
-                                      : rsvp.status === 'maybe'
-                                      ? 'bg-yellow-100 text-yellow-800'
-                                      : 'bg-red-100 text-red-800'
-                                  }`}
-                                >
-                                  {rsvp.status === 'going' ? '✅ Going' : rsvp.status === 'maybe' ? '🤔 Maybe' : '❌ Not Going'}
-                                </span>
+                                                                  <span
+                                    className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                      rsvp.status === 'going'
+                                        ? 'bg-green-100 text-green-800'
+                                        : 'bg-red-100 text-red-800'
+                                    }`}
+                                  >
+                                    {rsvp.status === 'going' ? '✅ Going' : '❌ Not Going'}
+                                  </span>
                               </div>
                               
                               {/* Show contact info when toggled */}
@@ -973,7 +955,6 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                       <div key={index} className="flex items-center gap-2 text-gray-600">
                                         <span className={`w-2 h-2 rounded-full ${
                                           history.status === 'going' ? 'bg-green-500' :
-                                          history.status === 'maybe' ? 'bg-yellow-500' :
                                           'bg-red-500'
                                         }`}></span>
                                         <span className="font-medium capitalize">
@@ -1008,7 +989,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               <select
                                 value={rsvp.status}
                                 onChange={(e) => {
-                                  const newStatus = e.target.value as 'going' | 'maybe' | 'not-going' | '';
+                                  const newStatus = e.target.value as 'going' | 'not-going' | '';
                                   updateRsvp(event.id, rsvp.id, newStatus || null);
                                 }}
                                 className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
