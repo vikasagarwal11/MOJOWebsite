@@ -3,34 +3,82 @@ import { X, Share2, Download, ChevronLeft, ChevronRight, Play, Pause } from 'luc
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { shareUrl } from '../../utils/share';
 import { useSwipe } from '../../hooks/useSwipe';
+import { getDownloadURL, ref } from 'firebase/storage';
+import { storage } from '../../config/firebase';
+import { attachHls, detachHls } from '../../utils/hls';
 
-export default function MediaLightbox({ 
-  item, 
-  onClose, 
-  onPrev, 
+type Props = {
+  item: any;
+  onClose: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  autoPlay?: boolean;        // slideshow for images
+  intervalMs?: number;
+  pauseOnHover?: boolean;
+  autoAdvanceVideos?: boolean;
+};
+
+export default function MediaLightbox({
+  item,
+  onClose,
+  onPrev,
   onNext,
   autoPlay = true,
   intervalMs = 3500,
   pauseOnHover = true,
-  autoAdvanceVideos = true
-}: {
-  item: any; 
-  onClose: () => void; 
-  onPrev: () => void; 
-  onNext: () => void;
-  autoPlay?: boolean;
-  intervalMs?: number;
-  pauseOnHover?: boolean;
-  autoAdvanceVideos?: boolean;
-}) {
+  autoAdvanceVideos = true,
+}: Props) {
   const [playing, setPlaying] = useState(autoPlay);
   const [hovering, setHovering] = useState(false);
+  const [posterUrl, setPosterUrl] = useState<string>('');
+  const [scale, setScale] = useState(1);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   if (!item) return null;
 
-  // Swipe functionality
-  const swipe = useSwipe({ onLeft: onNext, onRight: onPrev });
+  // Resolve Storage poster path → URL (images & videos)
+  useEffect(() => {
+    let mounted = true;
+    setPosterUrl('');
+    if (item.thumbnailPath) {
+      getDownloadURL(ref(storage, item.thumbnailPath))
+        .then((u) => mounted && setPosterUrl(u))
+        .catch(() => mounted && setPosterUrl(''));
+    }
+    return () => { mounted = false; };
+  }, [item?.thumbnailPath]);
+
+  // Attach HLS (if available) in lightbox; fallback to original url
+  useEffect(() => {
+    if (!item || item.type !== 'video' || !videoRef.current) return;
+    const v = videoRef.current;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        if (item.sources?.hls) {
+          await attachHls(v, item.sources.hls);
+        } else {
+          v.src = item.url;
+        }
+        if (!cancelled) {
+          // Start playing automatically if user arrived from slideshow
+          v.play().catch(() => {});
+        }
+      } catch {
+        v.src = item.url;
+      }
+    })();
+
+    const onEnded = () => { if (autoAdvanceVideos) onNext(); };
+    v.addEventListener('ended', onEnded);
+
+    return () => {
+      cancelled = true;
+      v.removeEventListener('ended', onEnded);
+      try { detachHls(v); } catch {}
+    };
+  }, [item, onNext, autoAdvanceVideos]);
 
   // Auto-advance images
   useEffect(() => {
@@ -38,54 +86,41 @@ export default function MediaLightbox({
     if (!playing) return;
     if (pauseOnHover && hovering) return;
 
-    const timer = setInterval(onNext, intervalMs);
-    return () => clearInterval(timer);
+    const t = setInterval(onNext, intervalMs);
+    return () => clearInterval(t);
   }, [item, playing, hovering, pauseOnHover, intervalMs, onNext]);
 
-  // Video auto-advance on end
+  // Keyboard
   useEffect(() => {
-    if (!item || item.type !== 'video' || !videoRef.current) return;
-    
-    const video = videoRef.current;
-    const handleEnded = () => {
-      if (autoAdvanceVideos) onNext();
-    };
-    
-    video.addEventListener('ended', handleEnded);
-    return () => video.removeEventListener('ended', handleEnded);
-  }, [item, autoAdvanceVideos, onNext]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
       if (e.key === 'ArrowRight') onNext();
       if (e.key === 'ArrowLeft') onPrev();
-      if (e.key === ' ') {
-        e.preventDefault();
-        setPlaying(p => !p);
-      }
+      if (e.key === ' ') { e.preventDefault(); setPlaying(p => !p); }
     };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [onClose, onNext, onPrev]);
 
+  // Swipe; disable when zoomed so pan doesn't trigger slide
+  const swipe = useSwipe({ onLeft: onNext, onRight: onPrev });
+  const swipeHandlers = scale > 1.02 ? {} : swipe;
+
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
-      onPointerDown={swipe.onPointerDown}
-      onPointerUp={swipe.onPointerUp}
+      {...swipeHandlers}
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
     >
       <div className="absolute inset-0 flex flex-col">
+        {/* Top bar */}
         <div className="flex items-center justify-between p-3">
           <button onClick={onClose} className="p-2 rounded-full bg-white/10 hover:bg-white/20" aria-label="Close">
             <X className="w-5 h-5 text-white" />
           </button>
           <div className="flex gap-2">
-            <button onClick={()=>shareUrl(item.url, item.title)} className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1">
+            <button onClick={() => shareUrl(item.url, item.title)} className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1">
               <Share2 className="w-4 h-4" /> Share
             </button>
             <a href={item.url} download className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1">
@@ -93,13 +128,13 @@ export default function MediaLightbox({
             </a>
           </div>
         </div>
+
+        {/* Body */}
         <div className="flex-1 flex items-center justify-center p-3 gap-4">
-          {/* Previous button */}
           <button onClick={onPrev} className="text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors" aria-label="Previous">
             <ChevronLeft className="w-8 h-8" />
           </button>
 
-          {/* Media with ZOOM PRESERVED */}
           <TransformWrapper
             initialScale={1}
             minScale={0.5}
@@ -107,21 +142,23 @@ export default function MediaLightbox({
             centerOnInit
             wheel={{ step: 0.1 }}
             pinch={{ step: 5 }}
+            onTransformed={(ref) => setScale(ref.state.scale)}
           >
             <TransformComponent>
               {item.type === 'video' ? (
-                <video 
+                <video
                   ref={videoRef}
-                  src={item.url} 
-                  controls 
-                  autoPlay 
-                  className="max-h-[85vh] max-w-[85vw] rounded-2xl"
-                  poster={item.thumbnailPath ? undefined : undefined}
+                  controls
+                  autoPlay
+                  playsInline
+                  preload="metadata"
+                  poster={posterUrl || undefined}
+                  className="max-h-[85vh] max-w-[85vw] rounded-2xl object-contain"
                 />
               ) : (
-                <img 
-                  src={item.thumbnailPath || item.url} 
-                  alt={item.title} 
+                <img
+                  src={posterUrl || item.url}
+                  alt={item.title || ''}
                   className="max-h-[85vh] max-w-[85vw] rounded-2xl object-contain"
                   draggable={false}
                 />
@@ -129,15 +166,13 @@ export default function MediaLightbox({
             </TransformComponent>
           </TransformWrapper>
 
-          {/* Next button */}
           <button onClick={onNext} className="text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors" aria-label="Next">
             <ChevronRight className="w-8 h-8" />
           </button>
         </div>
 
-        {/* Bottom controls bar */}
+        {/* Bottom controls */}
         <div className="flex items-center justify-center gap-4 pb-4">
-          {/* Play/Pause button (only for images) */}
           {item.type === 'image' && (
             <button
               onClick={() => setPlaying(p => !p)}
@@ -148,10 +183,8 @@ export default function MediaLightbox({
               <span className="text-sm">{playing ? 'Pause' : 'Play'}</span>
             </button>
           )}
-          
-          {/* Slideshow info */}
           <div className="text-white text-sm opacity-80">
-            {item.type === 'image' ? 'Slideshow' : 'Video'} • Auto-advance {playing ? 'ON' : 'OFF'}
+            {item.type === 'image' ? 'Slideshow' : 'Video'} • Auto-advance {item.type === 'image' ? (playing ? 'ON' : 'OFF') : (autoAdvanceVideos ? 'ON' : 'OFF')}
           </div>
         </div>
       </div>
