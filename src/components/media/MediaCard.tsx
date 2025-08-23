@@ -31,7 +31,6 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
       });
     }
   }, [currentUser, media.id]);
-  const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -203,7 +202,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
     }
   }
 
-  const comments = usePagedComments(media.id, 10);
+  const comments = usePagedComments(media.id, 10, { initialOpen: false });
 
   const previewEl = useMemo(() => {
     return media.type === 'video' ? (
@@ -363,18 +362,35 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
               <span className="text-sm">{likesCount}</span>
             </button>
 
-                         <button onClick={()=> comments.setOpen(!comments.open)} className="flex items-center space-x-1 text-gray-500 hover:text-purple-600 transition-colors">
-               <MessageCircle className="w-5 h-5" />
-               <span className="text-sm">{media.commentsCount ?? comments.comments.length}</span>
-             </button>
+            <button onClick={()=> comments.setOpen(!comments.open)} className="flex items-center space-x-1 text-gray-500 hover:text-purple-600 transition-colors">
+              <MessageCircle className="w-5 h-5" />
+              <span className="text-sm">{media.commentsCount ?? comments.comments.length}</span>
+              {comments.comments.length > 0 && !comments.open && (
+                <span className="text-xs text-gray-400">• View all</span>
+              )}
+            </button>
           </div>
           {typeof media.viewsCount === 'number' && (
             <div className="text-xs text-gray-400">{media.viewsCount} views</div>
           )}
         </div>
 
+        {/* Show latest comment preview when collapsed */}
+        {!comments.open && comments.comments.length > 0 && (
+          <div className="mt-2 p-2 bg-gray-50 rounded-lg border-l-2 border-purple-200">
+            <div className="text-xs text-gray-600 truncate">
+              <span className="font-medium">{comments.comments[0]?.authorName || 'Member'}:</span> {comments.comments[0]?.text}
+            </div>
+            {comments.comments.length > 1 && (
+              <div className="text-xs text-gray-400 mt-1">
+                and {comments.comments.length - 1} more comment{comments.comments.length > 2 ? 's' : ''}
+              </div>
+            )}
+          </div>
+        )}
+
         {comments.open && (
-          <div className="mt-3 space-y-3">
+          <div className="mt-3 space-y-3 relative">
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
               {comments.comments.map((c:any)=> (
                 <div key={c.id} className="text-sm text-gray-700">
@@ -382,6 +398,10 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
                 </div>
               ))}
             </div>
+            {/* Gradient fade at bottom for visual polish */}
+            {comments.comments.length > 3 && (
+              <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white/80 to-transparent" />
+            )}
             {comments.hasMore && (
               <button onClick={comments.loadMore} className="text-xs text-purple-600 hover:underline">Load more</button>
             )}

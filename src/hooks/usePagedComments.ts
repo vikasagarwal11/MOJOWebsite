@@ -4,11 +4,15 @@ import { db } from '../config/firebase';
 
 export type Comment = { id: string; text: string; authorName?: string; authorId?: string; createdAt?: any };
 
-export function usePagedComments(mediaId: string | undefined, pageSize = 10) {
+export function usePagedComments(
+  mediaId: string | undefined, 
+  pageSize = 10, 
+  opts?: { initialOpen?: boolean }
+) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [lastDoc, setLastDoc] = useState<any | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!opts?.initialOpen); // default false
 
   useEffect(() => {
     if (!open || !mediaId) return;

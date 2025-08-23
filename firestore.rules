@@ -83,8 +83,7 @@ service cloud.firestore {
         (('public' in resource.data) && resource.data.public == true);
       allow create: if isSignedIn() && (isMember() || isAdmin())
         && (!('public' in request.resource.data) || (request.resource.data.public is bool));
-      allow update, delete: if isSignedIn() && (isAdmin() || request.auth.uid == resource.data.createdBy)
-        && (!('public' in request.resource.data) || (request.resource.data.public is bool));
+      allow update, delete: if isSignedIn() && (isAdmin() || request.auth.uid == resource.data.createdBy);
       match /rsvps/{userId} {
         allow read: if isSignedIn();
         allow create: if (isMember() || isAdmin())
