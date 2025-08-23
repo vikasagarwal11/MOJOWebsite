@@ -91,7 +91,7 @@ const Profile: React.FC = () => {
   const [loadingAdminEvents, setLoadingAdminEvents] = useState(false);
   const [loadingBlockedUsers, setLoadingBlockedUsers] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread'>('all');
-  const [rsvpFilter, setRsvpFilter] = useState<'all' | 'going' | 'maybe' | 'not-going'>('all');
+  const [rsvpFilter, setRsvpFilter] = useState<'all' | 'going' | 'not-going'>('all');
   const [blockedUsers, setBlockedUsers] = useState<{ id: string; displayName: string; email: string; blockedAt: any }[]>([]);
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [userToBlock, setUserToBlock] = useState<any>(null);
@@ -442,7 +442,7 @@ const Profile: React.FC = () => {
   };
 
   // Update RSVP
-  const updateRsvp = async (eventId: string, userId: string, status: 'going' | 'maybe' | 'not-going' | null) => {
+  const updateRsvp = async (eventId: string, userId: string, status: 'going' | 'not-going' | null) => {
     try {
       const rsvpRef = doc(db, 'events', eventId, 'rsvps', userId);
       const snap = await getDoc(rsvpRef);

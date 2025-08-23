@@ -47,7 +47,7 @@ const EventCard: React.FC<EventCardProps> = ({
   const isUpcoming = dateObj.getTime() >= Date.now();
 
   // My RSVP (load my doc once)
-  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'maybe' | 'not-going' | null>(null);
+  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | null>(null);
   useEffect(() => {
     let cancel = false;
     async function fetchMyRsvp() {
@@ -64,16 +64,14 @@ const EventCard: React.FC<EventCardProps> = ({
 
   const getRSVPIcon = (status: string) =>
     status === 'going' ? <CheckCircle className="w-4 h-4" /> :
-    status === 'maybe' ? <HelpCircle className="w-4 h-4" /> :
     status === 'not-going' ? <XCircle className="w-4 h-4" /> : null;
 
   const getRSVPColor = (status: string) =>
     status === 'going' ? 'bg-green-100 text-green-700 border-green-200' :
-    status === 'maybe' ? 'bg-yellow-100 text-yellow-700 border-yellow-200' :
     status === 'not-going' ? 'bg-red-100 text-red-700 border-red-200' :
     'bg-gray-100 text-gray-700 border-gray-200';
 
-  const handleRSVP = async (status: 'going' | 'maybe' | 'not-going') => {
+  const handleRSVP = async (status: 'going' | 'not-going') => {
     if (!currentUser || !event?.id) return;
     setRsvpStatus(status);
     try {
@@ -258,7 +256,7 @@ const EventCard: React.FC<EventCardProps> = ({
           <div className="space-y-3">
             <div className="text-sm font-medium text-gray-700 mb-2">Your RSVP:</div>
             <div className="flex space-x-2">
-              {(['going', 'maybe', 'not-going'] as const).map((status) => (
+              {(['going', 'not-going'] as const).map((status) => (
                 <button
                   key={status}
                   onClick={() => handleRSVP(status)}
