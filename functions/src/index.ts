@@ -333,45 +333,58 @@ export const onMediaFileFinalize = onObjectFinalized(
       else if (looksLikeVideo) {
         await mediaRef.set({ transcodeStatus: 'processing' }, { merge: true });
 
-        // Probe
+        // Probe with type safety
         const probe: any = await new Promise((res, rej) =>
           ffmpeg(tmpOriginal).ffprobe((err: any, data: any) => err ? rej(err) : res(data))
         );
         const stream = (probe.streams || []).find((s: any) => s.width && s.height) || {};
-        const duration = probe.format?.duration || null;
+        
+        // Duration type safety - ensure it's always a number or null
+        const rawDuration = probe.format?.duration;
+        const duration = rawDuration != null ? Number(rawDuration) : null;
         const width = stream.width || null;
         const height = stream.height || null;
 
-        // 1) Generate POSTER and write it to Firestore immediately so UI can render it while processing
+        // 1) Generate POSTER with continue-on-fail logic
         // OPTIMIZATION: Seek to 10% instead of first frame (often black) for better poster quality
-        const posterLocal = path.join(os.tmpdir(), `poster_${base}.jpg`);
-        const seekTime = Math.max(0, (duration ?? 10) * 0.1); // 10% of duration, min 0
-        await new Promise<void>((res, rej) =>
-          ffmpeg(tmpOriginal)
-            .inputOptions(['-ss', String(seekTime)]) // Seek to 10% mark
-            .frames(1)
-            .outputOptions(['-q:v 2'])
-            .save(posterLocal).on('end', () => res()).on('error', rej)
-        );
-        const posterPath = `${dir}/poster_${base}.jpg`;
-        await bucket.upload(posterLocal, {
-          destination: posterPath,
-          metadata: { 
-            contentType: 'image/jpeg',
-            cacheControl: 'public,max-age=31536000,immutable' // OPTIMIZATION: 1 year cache for CDN
-          },
-        });
+        let posterPath: string | null = null;
+        try {
+          const posterLocal = path.join(os.tmpdir(), `poster_${base}.jpg`);
+          const seekTime = duration ? Math.max(0, duration * 0.1) : 0; // 10% of duration, min 0
+          await new Promise<void>((res, rej) =>
+            ffmpeg(tmpOriginal)
+              .inputOptions(['-ss', String(seekTime)]) // Seek to 10% mark
+              .frames(1)
+              .outputOptions(['-q:v 2'])
+              .save(posterLocal).on('end', () => res()).on('error', rej)
+          );
+          
+          posterPath = `${dir}/poster_${base}.jpg`;
+          await bucket.upload(posterLocal, {
+            destination: posterPath,
+            metadata: { 
+              contentType: 'image/jpeg',
+              cacheControl: 'public,max-age=31536000,immutable' // OPTIMIZATION: 1 year cache for CDN
+            },
+          });
 
-        // EARLY WRITE so the card shows a poster image while HLS is still running
-        await mediaRef.set({
-          thumbnailPath: posterPath,
-          transcodeStatus: 'processing',
-          duration,
-          dimensions: { width, height },
-        }, { merge: true });
-        
-        console.log(`Early poster written for video ${mediaRef.id}, poster: ${posterPath}`);
-        console.log(`Video dimensions: ${width}x${height}, duration: ${duration}s`);
+          // EARLY WRITE so the card shows a poster image while HLS is still running
+          await mediaRef.set({
+            thumbnailPath: posterPath,
+            transcodeStatus: 'processing',
+            duration,
+            dimensions: { width, height },
+          }, { merge: true });
+          
+          console.log(`Early poster written for video ${mediaRef.id}, poster: ${posterPath}`);
+          console.log(`Video dimensions: ${width}x${height}, duration: ${duration}s`);
+
+          // Cleanup poster temp file
+          fs.unlinkSync(posterLocal);
+        } catch (e) {
+          console.warn('Poster generation failed; continuing with HLS:', e);
+          // Continue without poster - video will still get HLS streaming
+        }
 
         // 2) HLS transcode (this may take longer; UI already has poster)
         const hlsDirLocal = path.join(os.tmpdir(), `hls_${base}`);
@@ -418,7 +431,7 @@ export const onMediaFileFinalize = onObjectFinalized(
 
         // cleanup tmp
         fs.rmSync(hlsDirLocal, { recursive: true, force: true });
-        fs.unlinkSync(posterLocal);
+        // posterLocal cleanup is now handled inside the poster generation try-catch
       }
     } catch (err) {
       await mediaRef.set({ transcodeStatus: 'failed' }, { merge: true }).catch(() => {});
