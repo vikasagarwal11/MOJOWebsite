@@ -21,15 +21,53 @@ const db = getFirestore();
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 async function findMediaDocRef(name: string, dir: string, tries = 5): Promise<FirebaseFirestore.DocumentReference | null> {
+  console.log(`🔍 Searching for media doc:`, { name, dir });
+  
   for (let i = 0; i < tries; i++) {
+    console.log(`🔍 Attempt ${i + 1}/${tries}:`);
+    
+    // First try: exact filePath match
     let snap = await db.collection('media').where('filePath', '==', name).limit(1).get();
-    if (!snap.empty) return snap.docs[0].ref;
+    if (!snap.empty) {
+      const doc = snap.docs[0];
+      console.log(`✅ Found by filePath: ${doc.id}`, { 
+        filePath: doc.data()?.filePath,
+        storageFolder: doc.data()?.storageFolder,
+        transcodeStatus: doc.data()?.transcodeStatus
+      });
+      return doc.ref;
+    }
+    console.log(`❌ No match by filePath: ${name}`);
 
-    snap = await db.collection('media').where('storageFolder', '==', `${dir}/`).limit(1).get();
-    if (!snap.empty) return snap.docs[0].ref;
+    // Second try: storageFolder match (ensure trailing slash)
+    const searchFolder = dir.endsWith('/') ? dir : `${dir}/`;
+    snap = await db.collection('media').where('storageFolder', '==', searchFolder).limit(1).get();
+    if (!snap.empty) {
+      const doc = snap.docs[0];
+      console.log(`✅ Found by storageFolder: ${doc.id}`, { 
+        filePath: doc.data()?.filePath,
+        storageFolder: doc.data()?.storageFolder,
+        transcodeStatus: doc.data()?.transcodeStatus
+      });
+      return doc.ref;
+    }
+    console.log(`❌ No match by storageFolder: ${searchFolder}`);
+
+    // Debug: show what documents exist in this collection
+    if (i === 0) {
+      const allDocs = await db.collection('media').limit(10).get();
+      console.log(`🔍 Available media docs:`, allDocs.docs.map(d => ({
+        id: d.id,
+        filePath: d.data()?.filePath,
+        storageFolder: d.data()?.storageFolder,
+        transcodeStatus: d.data()?.transcodeStatus
+      })));
+    }
 
     await sleep(500 * Math.pow(2, i)); // 0.5s, 1s, 2s, 4s, 8s
   }
+  
+  console.log(`❌ Failed to find media doc after ${tries} attempts`);
   return null;
 }
 
@@ -318,7 +356,9 @@ export const onMediaFileFinalize = onObjectFinalized(
     // 1) Wait for the doc (handles upload→finalize→doc creation race)
     const mediaRef = await findMediaDocRef(name, dir, 5);
     if (!mediaRef) {
-      console.log(`No media doc found for ${name} after retries; skipping.`);
+      console.error(`❌ CRITICAL: No media doc found for ${name} after retries!`);
+      console.error(`This means the upload succeeded but the Firestore document creation failed.`);
+      console.error(`Check the upload logs and ensure the media document is created with correct filePath/storageFolder.`);
       return;
     }
 
@@ -482,3 +522,41 @@ export const onMediaFileFinalize = onObjectFinalized(
     }
   }
 );
+
+// ---------------- MANUAL FIX: Reset Stuck Processing Videos ----------------
+export const resetStuckProcessing = onDocumentCreated("manual_fixes/{fixId}", async (event) => {
+  const data = event.data?.data();
+  if (!data || data.type !== 'reset_stuck_processing') return;
+  
+  console.log('🔄 Manual fix triggered: resetting stuck processing videos');
+  
+  try {
+    // Find all media documents stuck in processing
+    const stuckMedia = await db.collection('media')
+      .where('transcodeStatus', '==', 'processing')
+      .where('type', '==', 'video')
+      .get();
+    
+    console.log(`Found ${stuckMedia.docs.length} stuck processing videos`);
+    
+    // Reset them to 'ready' if they have HLS sources, or 'failed' if not
+    const updates = stuckMedia.docs.map(async (doc) => {
+      const mediaData = doc.data();
+      const hasHls = mediaData.sources?.hls;
+      
+      await doc.ref.set({
+        transcodeStatus: hasHls ? 'ready' : 'failed',
+        lastManualFix: FieldValue.serverTimestamp(),
+        manualFixReason: hasHls ? 'HLS exists but status was stuck' : 'No HLS found, marking as failed'
+      }, { merge: true });
+      
+      console.log(`✅ Reset ${doc.id} to ${hasHls ? 'ready' : 'failed'}`);
+    });
+    
+    await Promise.all(updates);
+    console.log(`✅ Successfully reset ${stuckMedia.docs.length} stuck videos`);
+    
+  } catch (error) {
+    console.error('❌ Failed to reset stuck processing videos:', error);
+  }
+});

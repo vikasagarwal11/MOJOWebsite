@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { X, Calendar, Clock, MapPin, Users, FileText, Tag } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStorage } from '../../hooks/useStorage';
-import { addDoc, collection, doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, doc, setDoc, updateDoc, serverTimestamp, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -48,7 +48,11 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const { uploadFile, getStoragePath } = useStorage();
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isPublic, setIsPublic] = useState(true); // Default to public
+  const [eventVisibility, setEventVisibility] = useState<'public' | 'members' | 'private'>('members'); // Default to members-only
+  const [invitedUsers, setInvitedUsers] = useState<string[]>([]);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
 
@@ -72,13 +76,66 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   useEffect(() => {
     if (eventToEdit) {
       setTags(eventToEdit.tags || []);
-      setIsPublic(eventToEdit.public ?? true);
+      // Convert old 'public' field to new 'visibility' system
+      if (eventToEdit.visibility) {
+        setEventVisibility(eventToEdit.visibility);
+      } else if (eventToEdit.public !== undefined) {
+        setEventVisibility(eventToEdit.public ? 'public' : 'members');
+      }
+      setInvitedUsers(eventToEdit.invitedUsers || []);
     }
   }, [eventToEdit]);
 
   const addTag = (raw: string) => {
     const t = raw.trim().toLowerCase().replace(/\s+/g, '-');
     if (t && !tags.includes(t)) setTags([...tags, t]);
+  };
+
+  // Search users for invitation
+  const handleUserSearch = async () => {
+    if (!userSearchQuery.trim()) return;
+    
+    setIsSearching(true);
+    try {
+      // Search users by displayName or email
+      const usersRef = collection(db, 'users');
+      const q = query(
+        usersRef,
+        where('displayName', '>=', userSearchQuery),
+        where('displayName', '<=', userSearchQuery + '\uf8ff'),
+        limit(10)
+      );
+      
+      const snapshot = await getDocs(q);
+      const results = snapshot.docs.map(doc => ({
+        id: doc.id,
+        displayName: doc.data().displayName || 'Unknown User',
+        email: doc.data().email || 'No email',
+        photoURL: doc.data().photoURL
+      }));
+      
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Failed to search users:', error);
+      toast.error('Failed to search users');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Add user to invitation list
+  const handleInviteUser = (user: any) => {
+    if (!invitedUsers.includes(user.id)) {
+      setInvitedUsers([...invitedUsers, user.id]);
+      setSearchResults([]);
+      setUserSearchQuery('');
+      toast.success(`Invited ${user.displayName}`);
+    }
+  };
+
+  // Remove user from invitation list
+  const handleRemoveInvitedUser = (userId: string) => {
+    setInvitedUsers(invitedUsers.filter(id => id !== userId));
   };
 
   const onSubmit = async (data: EventFormData) => {
@@ -121,7 +178,8 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         maxAttendees: data.maxAttendees ? Number(data.maxAttendees) : undefined,
         tags: tags.length > 0 ? tags : undefined,
         createdBy: currentUser.id,
-        public: isPublic,
+        visibility: eventVisibility,
+        invitedUsers: eventVisibility === 'private' ? invitedUsers : undefined,
         attendingCount: eventToEdit?.attendingCount ?? 0,
         createdAt: eventToEdit?.createdAt ?? serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -131,16 +189,16 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         // Update existing event
         await updateDoc(doc(db, 'events', eventToEdit.id), eventData);
         
-        // Handle teaser updates
-        if (!isPublic && !eventToEdit.public) {
+        // Handle teaser updates for private events
+        if (eventVisibility === 'private' && (!eventToEdit.visibility || eventToEdit.visibility === 'private')) {
           // Event remains private, update teaser
           await setDoc(doc(db, 'event_teasers', eventToEdit.id), {
             title: eventData.title,
             startAt,
             createdAt: serverTimestamp(),
           }, { merge: true });
-        } else if (isPublic && eventToEdit.public === false) {
-          // Event changed from private to public, remove teaser
+        } else if (eventVisibility !== 'private' && (eventToEdit.visibility === 'private' || eventToEdit.public === false)) {
+          // Event changed from private to public/members, remove teaser
           await setDoc(doc(db, 'event_teasers', eventToEdit.id), {}, { merge: true }).catch(() => {});
         }
         
@@ -149,7 +207,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         // Create new event
         const evRef = await addDoc(collection(db, 'events'), eventData);
         // If private & upcoming: create a teaser with the SAME id
-        if (!isPublic) {
+        if (eventVisibility === 'private') {
           await setDoc(doc(db, 'event_teasers', evRef.id), {
             title: eventData.title,
             startAt,
@@ -324,19 +382,144 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
               </div>
             </div>
           </div>
-          {/* Public toggle */}
-          <label className="flex items-center gap-3 pt-2">
-            <input
-              type="checkbox"
-              checked={isPublic}
-              onChange={(e) => setIsPublic(e.target.checked)}
-              disabled={isLoading}
-              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-            />
-            <span className="text-sm text-gray-700">
-              Make this event public (visible to everyone)
-            </span>
-          </label>
+          {/* Event Visibility Selection */}
+          <div className="space-y-4 pt-4">
+            <label className="block text-sm font-medium text-gray-700">Event Visibility</label>
+            <div className="space-y-3">
+              <label className="flex items-center gap-3">
+                <input
+                  type="radio"
+                  name="visibility"
+                  value="public"
+                  checked={eventVisibility === 'public'}
+                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
+                  disabled={isLoading}
+                  className="h-4 w-4 text-purple-600 focus:ring-purple-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">🌍 Public Event</span>
+                  <p className="text-xs text-gray-500">Visible to everyone, anyone can RSVP</p>
+                </div>
+              </label>
+              
+              <label className="flex items-center gap-3">
+                <input
+                  type="radio"
+                  name="visibility"
+                  value="members"
+                  checked={eventVisibility === 'members'}
+                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
+                  disabled={isLoading}
+                  className="h-4 w-4 text-purple-600 focus:ring-purple-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">👥 Members Only</span>
+                  <p className="text-xs text-gray-500">Visible to platform members only</p>
+                </div>
+              </label>
+              
+              <label className="flex items-center gap-3">
+                <input
+                  type="radio"
+                  name="visibility"
+                  value="private"
+                  checked={eventVisibility === 'private'}
+                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
+                  disabled={isLoading}
+                  className="h-4 w-4 text-purple-600 focus:ring-purple-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">🔒 Private Event</span>
+                  <p className="text-xs text-gray-500">Invitation only, select specific users</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Invitation System for Private Events */}
+          {eventVisibility === 'private' && (
+            <div className="space-y-4 pt-4">
+              <label className="block text-sm font-medium text-gray-700">Invite Users</label>
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    placeholder="Search users by name or email..."
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleUserSearch}
+                    disabled={isLoading || !userSearchQuery.trim() || isSearching}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                  >
+                    {isSearching ? 'Searching...' : 'Search'}
+                  </button>
+                </div>
+                
+                {/* Search Results */}
+                {searchResults.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Search Results:</label>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {searchResults.map((user) => (
+                        <div key={user.id} className="flex items-center justify-between p-2 bg-blue-50 rounded-lg border border-blue-200">
+                          <div className="flex items-center gap-3">
+                            {user.photoURL && (
+                              <img 
+                                src={user.photoURL} 
+                                alt={user.displayName}
+                                className="w-8 h-8 rounded-full"
+                              />
+                            )}
+                            <div>
+                              <div className="font-medium text-sm text-gray-700">{user.displayName}</div>
+                              <div className="text-xs text-gray-500">{user.email}</div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleInviteUser(user)}
+                            disabled={invitedUsers.includes(user.id)}
+                            className={`px-3 py-1 text-xs rounded transition-colors ${
+                              invitedUsers.includes(user.id)
+                                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                                : 'bg-green-600 text-white hover:bg-green-700'
+                            }`}
+                            title={invitedUsers.includes(user.id) ? 'Already invited' : 'Invite user'}
+                          >
+                            {invitedUsers.includes(user.id) ? 'Invited' : 'Invite'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Invited Users List */}
+                {invitedUsers.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-700">Invited Users:</label>
+                    <div className="space-y-2">
+                      {invitedUsers.map((userId, index) => (
+                        <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                          <span className="text-sm text-gray-700">{userId}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveInvitedUser(userId)}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {/* Submit */}
           <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
             <button
