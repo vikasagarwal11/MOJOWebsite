@@ -3,7 +3,7 @@ import { Heart, MessageCircle, Tag, Play, Share2, Download, MoreHorizontal, EyeO
 import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../config/firebase';
-import { collection, addDoc, doc, deleteDoc, serverTimestamp, updateDoc, increment, setDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, deleteDoc, serverTimestamp, updateDoc, increment, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { useViewCounter } from '../../hooks/useViewCounter';
 import { usePagedComments } from '../../hooks/usePagedComments';
 import { shareUrl } from '../../utils/share';
@@ -19,6 +19,18 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
 
   const [liked, setLiked] = useState<boolean>(false);
   const [likesCount, setLikesCount] = useState<number>(media.likesCount ?? 0);
+
+  // Check user's initial like state on mount
+  useEffect(() => {
+    if (currentUser && media.id) {
+      const likeRef = doc(db, 'media', media.id, 'likes', currentUser.id);
+      getDoc(likeRef).then((docSnapshot: any) => {
+        setLiked(docSnapshot.exists());
+      }).catch((error: any) => {
+        console.warn('Failed to check initial like state:', error);
+      });
+    }
+  }, [currentUser, media.id]);
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -130,7 +142,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
           userId: currentUser.id, 
           createdAt: serverTimestamp() 
         });
-        // Note: commentsCount will be updated by Cloud Function
+        // Note: likesCount will be updated by Cloud Function
       }
     } catch (e: any) {
       // Revert optimistic updates on error
@@ -139,6 +151,29 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
       toast.error(e?.message || 'Failed to update like');
     }
   };
+
+  // Real-time sync for likes count to prevent stale data
+  useEffect(() => {
+    if (!media.id) return;
+    
+    const unsubscribe = onSnapshot(
+      doc(db, 'media', media.id),
+      (docSnapshot) => {
+        if (docSnapshot.exists()) {
+          const serverLikesCount = docSnapshot.data().likesCount ?? 0;
+          // Only update if server count differs significantly (prevents minor race conditions)
+          if (Math.abs(serverLikesCount - likesCount) > 1) {
+            setLikesCount(serverLikesCount);
+          }
+        }
+      },
+      (error: any) => {
+        console.warn('Failed to sync likes count:', error);
+      }
+    );
+    
+    return unsubscribe;
+  }, [media.id, likesCount]);
 
   const onDoubleTap = () => { if (!liked) handleLikeToggle(); };
 
@@ -330,10 +365,10 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
               <span className="text-sm">{likesCount}</span>
             </button>
 
-            <button onClick={()=> comments.setOpen(!comments.open)} className="flex items-center space-x-1 text-gray-500 hover:text-purple-600 transition-colors">
-              <MessageCircle className="w-5 h-5" />
-              <span className="text-sm">{comments.comments.length}</span>
-            </button>
+                         <button onClick={()=> comments.setOpen(!comments.open)} className="flex items-center space-x-1 text-gray-500 hover:text-purple-600 transition-colors">
+               <MessageCircle className="w-5 h-5" />
+               <span className="text-sm">{media.commentsCount ?? comments.comments.length}</span>
+             </button>
           </div>
           {typeof media.viewsCount === 'number' && (
             <div className="text-xs text-gray-400">{media.viewsCount} views</div>
