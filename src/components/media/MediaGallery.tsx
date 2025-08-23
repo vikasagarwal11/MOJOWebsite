@@ -41,7 +41,7 @@ const MediaGallery: React.FC = () => {
   
   const paged = useMemo(()=> filters.filtered.slice(0, page*18), [filters.filtered, page]);
 
-  const lb = useLightbox(paged);
+  const lb = useLightbox(paged, { loop: true });
 
   // NEW: Processing queue statistics
   const processingStats = useMemo(() => {

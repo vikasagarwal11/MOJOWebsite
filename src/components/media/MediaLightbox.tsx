@@ -29,7 +29,7 @@ export default function MediaLightbox({
   autoAdvanceVideos = true,
 }: Props) {
   const [playing, setPlaying] = useState(autoPlay);
-  const [hovering, setHovering] = useState(false);
+  const [userActive, setUserActive] = useState(false); // Replace hovering with userActive
   const [posterUrl, setPosterUrl] = useState<string>('');
   const [scale, setScale] = useState(1);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -43,7 +43,7 @@ export default function MediaLightbox({
     pauseOnHover,
     autoAdvanceVideos,
     playing,
-    hovering,
+    userActive,
     scale
   });
 
@@ -120,7 +120,7 @@ export default function MediaLightbox({
       itemExists: !!item,
       itemType: item?.type,
       playing,
-      hovering,
+      userActive,
       pauseOnHover,
       intervalMs,
       onNextFunction: typeof onNext
@@ -134,8 +134,8 @@ export default function MediaLightbox({
       console.log('❌ Auto-advance skipped: Not playing');
       return;
     }
-    if (pauseOnHover && hovering) {
-      console.log('❌ Auto-advance skipped: Paused on hover');
+    if (pauseOnHover && userActive) {
+      console.log('❌ Auto-advance skipped: User is active');
       return;
     }
 
@@ -149,7 +149,7 @@ export default function MediaLightbox({
       console.log('🧹 Cleaning up auto-advance timer');
       clearInterval(t);
     };
-  }, [item, playing, hovering, pauseOnHover, intervalMs, onNext]);
+  }, [item, playing, userActive, pauseOnHover, intervalMs, onNext]);
 
   // Keyboard
   useEffect(() => {
@@ -200,12 +200,51 @@ export default function MediaLightbox({
     hasSwipeHandlers: Object.keys(swipeHandlers).length > 0
   });
 
+  // Reset zoom when slide changes
+  useEffect(() => {
+    setScale(1);
+    console.log('🔄 Reset zoom to 1 for new slide:', item?.id);
+  }, [item?.id]);
+
+  // Inactivity timer to replace aggressive hover detection
+  useEffect(() => {
+    if (!pauseOnHover) return;
+    
+    let timeoutId: NodeJS.Timeout;
+    const setUserInactive = () => {
+      setUserActive(false);
+    };
+    
+    const setUserActiveAndReset = () => {
+      setUserActive(true);
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(setUserInactive, 1200); // Resume after 1.2s idle
+    };
+
+    // Listen for user activity on the media area only
+    const mediaArea = document.getElementById('lightbox-media-area');
+    if (mediaArea) {
+      mediaArea.addEventListener('mousemove', setUserActiveAndReset);
+      mediaArea.addEventListener('touchstart', setUserActiveAndReset);
+      mediaArea.addEventListener('click', setUserActiveAndReset);
+      
+      // Start with user inactive (allow slideshow to begin)
+      setUserActive(false);
+    }
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (mediaArea) {
+        mediaArea.removeEventListener('mousemove', setUserActiveAndReset);
+        mediaArea.removeEventListener('touchstart', setUserActiveAndReset);
+        mediaArea.removeEventListener('click', setUserActiveAndReset);
+      }
+    };
+  }, [pauseOnHover]);
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
-      {...swipeHandlers}
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
     >
       <div className="absolute inset-0 flex flex-col">
         {/* Top bar */}
@@ -224,9 +263,16 @@ export default function MediaLightbox({
         </div>
 
         {/* Body */}
-        <div className="flex-1 flex items-center justify-center p-3 gap-4">
+        <div 
+          id="lightbox-media-area"
+          className="flex-1 flex items-center justify-center p-3 gap-4"
+          style={{ touchAction: (scale > 1.02 ? 'auto' : 'pan-y') }}
+          {...swipeHandlers}
+        >
           <button 
-            onClick={() => {
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent accidental swipes
               console.log('⬅️ Previous button clicked, calling onPrev()');
               console.log('🔍 onPrev function:', typeof onPrev, onPrev);
               onPrev();
@@ -244,7 +290,10 @@ export default function MediaLightbox({
             centerOnInit
             wheel={{ step: 0.1 }}
             pinch={{ step: 5 }}
-            onTransformed={(ref) => setScale(ref.state.scale)}
+                         onTransformed={({ state }) => {
+               console.log('🔍 Transform state:', state);
+               setScale(state.scale);
+             }} 
           >
             <TransformComponent>
               {item.type === 'video' ? (
@@ -252,6 +301,7 @@ export default function MediaLightbox({
                   ref={videoRef}
                   controls
                   autoPlay
+                  muted
                   playsInline
                   preload="metadata"
                   poster={posterUrl || undefined}
@@ -269,7 +319,9 @@ export default function MediaLightbox({
           </TransformWrapper>
 
           <button 
-            onClick={() => {
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent accidental swipes
               console.log('➡️ Next button clicked, calling onNext()');
               console.log('🔍 onNext function:', typeof onNext, onNext);
               onNext();
@@ -301,9 +353,6 @@ export default function MediaLightbox({
               <span className="text-sm">{playing ? 'Pause' : 'Play'}</span>
             </button>
           )}
-          <div className="text-white text-sm opacity-80">
-            {item.type === 'image' ? 'Slideshow' : 'Video'} • Auto-advance {item.type === 'image' ? (playing ? 'ON' : 'OFF') : (autoAdvanceVideos ? 'ON' : 'OFF')}
-          </div>
         </div>
       </div>
     </div>
