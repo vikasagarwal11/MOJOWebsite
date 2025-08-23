@@ -211,45 +211,8 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/rsvps/{userId}", a
 export const onRsvpNotification = notifyRsvp;
 
 // ---------------- MEDIA: Like/Comment Counters ----------------
-export const onMediaLikeCreated = onDocumentCreated("media/{mediaId}/likes/{uid}", async (event) => {
-  const { mediaId } = event.params as { mediaId: string };
-  try {
-    await db.doc(`media/${mediaId}`).update({ likesCount: FieldValue.increment(1) });
-    console.log(`Incremented likesCount for media ${mediaId}`);
-  } catch (error) {
-    console.error(`Failed to increment likesCount for media ${mediaId}:`, error);
-  }
-});
-
-export const onMediaLikeDeleted = onDocumentDeleted("media/{mediaId}/likes/{uid}", async (event) => {
-  const { mediaId } = event.params as { mediaId: string };
-  try {
-    await db.doc(`media/${mediaId}`).update({ likesCount: FieldValue.increment(-1) });
-    console.log(`Decremented likesCount for media ${mediaId}`);
-  } catch (error) {
-    console.error(`Failed to decrement likesCount for media ${mediaId}:`, error);
-  }
-});
-
-export const onMediaCommentCreated = onDocumentCreated("media/{mediaId}/comments/{commentId}", async (event) => {
-  const { mediaId } = event.params as { mediaId: string };
-  try {
-    await db.doc(`media/${mediaId}`).update({ commentsCount: FieldValue.increment(1) });
-    console.log(`Incremented commentsCount for media ${mediaId}`);
-  } catch (error) {
-    console.error(`Failed to increment commentsCount for media ${mediaId}:`, error);
-  }
-});
-
-export const onMediaCommentDeleted = onDocumentDeleted("media/{mediaId}/comments/{commentId}", async (event) => {
-  const { mediaId } = event.params as { mediaId: string };
-  try {
-    await db.doc(`media/${mediaId}`).update({ commentsCount: FieldValue.increment(-1) });
-    console.log(`Decremented commentsCount for media ${mediaId}`);
-  } catch (error) {
-    console.error(`Failed to decrement commentsCount for media ${mediaId}:`, error);
-  }
-});
+// REMOVED: Duplicate onMediaLikeCreated/Deleted and onMediaCommentCreated/Deleted
+// These were causing double-counting. Using onLikeWrite and onCommentWrite instead.
 
 // ---------------- MEDIA: Storage Cleanup ----------------
 export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async (event) => {
