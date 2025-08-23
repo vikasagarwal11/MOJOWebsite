@@ -80,6 +80,23 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
     }
   }, [media.sources?.hls, media.url, isHlsAttached]);
 
+  // Enhanced poster image handling - show poster immediately when available
+  useEffect(() => {
+    if (media.thumbnailPath && media.type === 'video') {
+      // For videos, show poster image immediately if available
+      getDownloadURL(ref(storage, media.thumbnailPath))
+        .then(url => {
+          setThumbnailUrl(url);
+          setIsThumbnailLoading(false);
+        })
+        .catch(error => {
+          console.warn('Failed to load poster image:', error);
+          setThumbnailUrl(media.url); // Fallback to original
+          setIsThumbnailLoading(false);
+        });
+    }
+  }, [media.thumbnailPath, media.type, media.url]);
+
   // Cleanup HLS when component unmounts or media changes
   useEffect(() => {
     return () => {
@@ -176,11 +193,27 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
           </div>
         </div>
         {/* Show processing status if available */}
-        {media.transcodeStatus === 'processing' && (
+        {media.transcodeStatus === 'processing' && media.type === 'video' && media.thumbnailPath && (
           <div className="absolute top-3 left-3 z-10">
             <div className="px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
               <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-              Upgrading...
+              Enhancing...
+            </div>
+          </div>
+        )}
+        {media.transcodeStatus === 'processing' && media.type === 'video' && !media.thumbnailPath && (
+          <div className="absolute top-3 left-3 z-10">
+            <div className="px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              Processing...
+            </div>
+          </div>
+        )}
+        {media.transcodeStatus === 'processing' && media.type === 'image' && (
+          <div className="absolute top-3 left-3 z-10">
+            <div className="px-3 py-1.5 bg-blue-500 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+              Optimizing...
             </div>
           </div>
         )}

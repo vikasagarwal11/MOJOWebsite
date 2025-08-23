@@ -262,7 +262,7 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
   }
 });
 
-// ---------------- MEDIA: FFmpeg Processing ----------------
+// ---------------- MEDIA: FFmpeg Processing (Enhanced with Early Poster Generation) ----------------
 export const onMediaFileFinalize = onObjectFinalized(
   {
     region: 'us-central1',
@@ -285,12 +285,16 @@ export const onMediaFileFinalize = onObjectFinalized(
 
     await bucket.file(name).download({ destination: tmpOriginal });
 
-    // Find the media doc by storageFolder (recommended) or by filePath
+    // Find the media doc by filePath FIRST (unique per file), then fallback to storageFolder
     let snap = await db.collection('media')
-      .where('storageFolder', '==', `${dir}/`)
+      .where('filePath', '==', name)        // <-- FIRST: exact match by file path
       .limit(1).get();
+    
     if (snap.empty) {
-      snap = await db.collection('media').where('filePath', '==', name).limit(1).get();
+      // Fallback: try to find by storageFolder (less reliable for multi-file uploads)
+      snap = await db.collection('media')
+        .where('storageFolder', '==', `${dir}/`)
+        .limit(1).get();
       if (snap.empty) {
         // No doc to write back to — nothing else to do
         fs.unlinkSync(tmpOriginal);
@@ -298,6 +302,11 @@ export const onMediaFileFinalize = onObjectFinalized(
       }
     }
     const mediaRef = snap.docs[0].ref;
+    const mediaData = snap.docs[0].data();
+    
+    console.log(`Processing media file: ${name}`);
+    console.log(`Found media doc: ${mediaRef.id}, current status: ${mediaData.transcodeStatus || 'none'}`);
+    console.log(`Media type: ${mediaData.type}, uploaded by: ${mediaData.uploadedBy}`);
 
     try {
       // Images → make a WebP thumbnail and capture dimensions
@@ -320,6 +329,9 @@ export const onMediaFileFinalize = onObjectFinalized(
           transcodeStatus: 'ready',
           dimensions: { width: meta.width ?? null, height: meta.height ?? null },
         }, { merge: true });
+        
+        console.log(`Image processing complete for ${mediaRef.id}, thumbnail: ${thumbPath}`);
+        console.log(`Image dimensions: ${meta.width}x${meta.height}`);
 
         fs.unlinkSync(thumbLocal);
       }
@@ -336,7 +348,7 @@ export const onMediaFileFinalize = onObjectFinalized(
         const width = stream.width || null;
         const height = stream.height || null;
 
-        // Poster
+        // 1) Generate POSTER and write it to Firestore immediately so UI can render it while processing
         const posterLocal = path.join(os.tmpdir(), `poster_${base}.jpg`);
         await new Promise<void>((res, rej) =>
           ffmpeg(tmpOriginal).frames(1).outputOptions(['-q:v 2'])
@@ -348,7 +360,18 @@ export const onMediaFileFinalize = onObjectFinalized(
           metadata: { contentType: 'image/jpeg' },
         });
 
-        // HLS
+        // EARLY WRITE so the card shows a poster image while HLS is still running
+        await mediaRef.set({
+          thumbnailPath: posterPath,
+          transcodeStatus: 'processing',
+          duration,
+          dimensions: { width, height },
+        }, { merge: true });
+        
+        console.log(`Early poster written for video ${mediaRef.id}, poster: ${posterPath}`);
+        console.log(`Video dimensions: ${width}x${height}, duration: ${duration}s`);
+
+        // 2) HLS transcode (this may take longer; UI already has poster)
         const hlsDirLocal = path.join(os.tmpdir(), `hls_${base}`);
         fs.mkdirSync(hlsDirLocal, { recursive: true });
         await new Promise<void>((res, rej) =>
@@ -380,13 +403,13 @@ export const onMediaFileFinalize = onObjectFinalized(
           });
         }));
 
+        // Final write: mark ready and add HLS source
         await mediaRef.set({
-          sources: { hls: `${hlsPath}index.m3u8` }, // store Storage path; client calls getDownloadURL()
-          thumbnailPath: posterPath,
+          sources: { hls: `${hlsPath}index.m3u8` },
           transcodeStatus: 'ready',
-          duration,
-          dimensions: { width, height },
         }, { merge: true });
+        
+        console.log(`HLS processing complete for video ${mediaRef.id}, HLS path: ${hlsPath}index.m3u8`);
 
         // cleanup tmp
         fs.rmSync(hlsDirLocal, { recursive: true, force: true });

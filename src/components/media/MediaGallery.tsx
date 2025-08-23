@@ -47,14 +47,20 @@ const MediaGallery: React.FC = () => {
   const processingStats = useMemo(() => {
     const stats = {
       processing: 0,
+      enhancing: 0, // Videos with poster but still processing HLS
       ready: 0,
       failed: 0,
       total: mediaFiles.length
     };
     
     mediaFiles.forEach((media: any) => {
-      if (media.transcodeStatus === 'processing') stats.processing++;
-      else if (media.transcodeStatus === 'ready') stats.ready++;
+      if (media.transcodeStatus === 'processing') {
+        if (media.type === 'video' && media.thumbnailPath) {
+          stats.enhancing++; // Has poster, still processing HLS
+        } else {
+          stats.processing++; // Still in initial processing
+        }
+      } else if (media.transcodeStatus === 'ready') stats.ready++;
       else if (media.transcodeStatus === 'failed') stats.failed++;
     });
     
@@ -82,16 +88,26 @@ const MediaGallery: React.FC = () => {
       </div>
 
       {/* NEW: Processing Status Bar */}
-      {(processingStats.processing > 0 || processingStats.failed > 0) && (
+      {(processingStats.processing > 0 || processingStats.enhancing > 0 || processingStats.failed > 0) && (
         <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium text-blue-700">
-                  {processingStats.processing} upgrading
-                </span>
-              </div>
+              {processingStats.processing > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-medium text-blue-700">
+                    {processingStats.processing} processing
+                  </span>
+                </div>
+              )}
+              {processingStats.enhancing > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-medium text-purple-700">
+                    {processingStats.enhancing} enhancing
+                  </span>
+                </div>
+              )}
               {processingStats.failed > 0 && (
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-red-500 rounded-full"></div>
