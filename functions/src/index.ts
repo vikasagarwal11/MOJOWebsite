@@ -531,6 +531,9 @@ export const resetStuckProcessing = onDocumentCreated("manual_fixes/{fixId}", as
   console.log('🔄 Manual fix triggered: resetting stuck processing videos');
   
   try {
+    // Update document status to processing
+    await event.data?.ref.set({ status: 'processing' }, { merge: true });
+    
     // Find all media documents stuck in processing
     const stuckMedia = await db.collection('media')
       .where('transcodeStatus', '==', 'processing')
@@ -556,7 +559,21 @@ export const resetStuckProcessing = onDocumentCreated("manual_fixes/{fixId}", as
     await Promise.all(updates);
     console.log(`✅ Successfully reset ${stuckMedia.docs.length} stuck videos`);
     
+    // Update document status to completed
+    await event.data?.ref.set({ 
+      status: 'completed', 
+      processedCount: stuckMedia.docs.length,
+      completedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    
   } catch (error) {
     console.error('❌ Failed to reset stuck processing videos:', error);
+    
+    // Update document status to failed
+    await event.data?.ref.set({ 
+      status: 'failed', 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      failedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
   }
 });

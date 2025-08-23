@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Calendar } from 'lucide-react';
-import { deleteDoc, doc, getDocs, collection, query, where, limit } from 'firebase/firestore';
+import { deleteDoc, doc, getDocs, getDoc, collection, query, where, limit, addDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
 import EventCard from '../components/events/EventCard';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Event {
   id: string;
@@ -50,9 +51,11 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   blockedUsers,
   loadingBlockedUsers,
 }) => {
+  const { currentUser } = useAuth();
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
 
   // Search users by name or email
   const handleSearchUsers = async () => {
@@ -103,6 +106,56 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       );
     } catch (error) {
       console.error('Failed to block user:', error);
+    }
+  };
+
+  // Fix stuck processing videos
+  const handleFixStuckProcessing = async () => {
+    setIsFixingStuckProcessing(true);
+    try {
+      console.log('🔧 Attempting to create manual fix document...');
+      console.log('Current user:', currentUser);
+      
+      // Create a manual fix document to trigger the Cloud Function
+      const fixDoc = await addDoc(collection(db, 'manual_fixes'), {
+        type: 'reset_stuck_processing',
+        timestamp: new Date(),
+        triggeredBy: currentUser?.id || 'unknown',
+        status: 'pending'
+      });
+      
+      console.log('✅ Manual fix document created successfully:', fixDoc.id);
+      toast.success('Stuck processing fix triggered! Check the logs for details.');
+      
+      // Wait a moment and check if the document was processed
+      setTimeout(async () => {
+        try {
+          const docRef = doc(db, 'manual_fixes', fixDoc.id);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            console.log('📊 Manual fix document status:', data);
+            if (data.status === 'completed') {
+              toast.success('Fix completed successfully!');
+            } else if (data.status === 'failed') {
+              toast.error(`Fix failed: ${data.error || 'Unknown error'}`);
+            }
+          }
+        } catch (checkError) {
+          console.error('Failed to check document status:', checkError);
+        }
+      }, 3000);
+      
+    } catch (error: any) {
+      console.error('❌ Failed to trigger stuck processing fix:', error);
+      console.error('Error details:', {
+        code: error?.code,
+        message: error?.message,
+        details: error?.details
+      });
+      toast.error(`Failed to trigger fix: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setIsFixingStuckProcessing(false);
     }
   };
 
@@ -412,6 +465,32 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
               <li>• Blocking can be reversed by admins</li>
             </ul>
           </div>
+        </div>
+      </div>
+    </div>
+
+    {/* System Maintenance Tools */}
+    <div className="mt-8 p-6 rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="flex items-center gap-2 mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">System Maintenance</h3>
+        <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full font-medium">
+          System Tools
+        </span>
+      </div>
+      
+      <div className="space-y-4">
+        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <h4 className="font-medium text-yellow-800 mb-2">FFmpeg Pipeline Fix</h4>
+          <p className="text-sm text-yellow-700 mb-3">
+            If videos are stuck in "processing" state, this will reset them to the correct status.
+          </p>
+          <button
+            onClick={handleFixStuckProcessing}
+            disabled={isFixingStuckProcessing}
+            className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50"
+          >
+            {isFixingStuckProcessing ? 'Fixing...' : 'Fix Stuck Processing Videos'}
+          </button>
         </div>
       </div>
     </div>

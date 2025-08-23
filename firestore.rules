@@ -15,6 +15,24 @@ service cloud.firestore {
     function isUserBlockedFromRsvp(userId) { 
       return get(/databases/$(database)/documents/users/$(userId)).data.blockedFromRsvp == true; 
     }
+    
+    // Enhanced user blocking functions
+    function isUserBlocked(currentUserId, targetUserId) {
+      let blockDoc = get(/databases/$(database)/documents/userBlocks/$(currentUserId + '_' + targetUserId));
+      return blockDoc != null && blockDoc.data.isActive == true;
+    }
+    
+    function isUserBlockedBy(currentUserId, targetUserId) {
+      let blockDoc = get(/databases/$(database)/documents/userBlocks/$(targetUserId + '_' + currentUserId));
+      return blockDoc != null && blockDoc.data.isActive == true;
+    }
+    
+    function canInteract(currentUserId, targetUserId, interactionType) {
+      if (currentUserId == targetUserId) return true;
+      if (isUserBlocked(currentUserId, targetUserId)) return false;
+      if (isUserBlockedBy(currentUserId, targetUserId)) return false;
+      return true;
+    }
     function isNonEmptyString(v) { return v is string && v.size() > 0; }
     function isUrlLike(v) { return v is string && v.size() <= 2048 && v.matches('https?://.*'); }
     function validAddress(m) {
@@ -73,6 +91,37 @@ service cloud.firestore {
     match /event_teasers/{teaserId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
+    }
+    
+    // --- USER BLOCKS ---
+    match /userBlocks/{blockId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.blockedByUserId || 
+        request.auth.uid == resource.data.blockedUserId ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.blockedByUserId;
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.blockedByUserId ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+    
+    // --- BLOCK REPORTS ---
+    match /blockReports/{reportId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.reporterUserId ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.reporterUserId;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // --- MANUAL FIXES (Admin System Tools) ---
+    match /manual_fixes/{fixId} {
+      allow read, create, update, delete: if isAdmin();
     }
     // --- EVENTS ---
     match /events/{eventId} {
