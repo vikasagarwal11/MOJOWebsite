@@ -21,8 +21,10 @@ import 'react-popper-tooltip/dist/styles.css';
 const calendarTooltipStyles = `
   .tooltip-container {
     z-index: 9999 !important;
-    position: absolute !important;
+    position: fixed !important;
     pointer-events: none;
+    transform: translate(-50%, -100%);
+    margin-top: -10px;
   }
   
   .rbc-calendar {
@@ -38,6 +40,11 @@ const calendarTooltipStyles = `
   .rbc-event {
     position: relative;
     z-index: 1;
+  }
+  
+  /* Ensure tooltips render above everything */
+  .tooltip-container {
+    z-index: 99999 !important;
   }
 `;
 
@@ -185,33 +192,68 @@ const Events: React.FC = () => {
   // Filtered events for both views
   const filteredEvents = useMemo(() => {
     let list = activeTab === 'upcoming' ? (currentUser ? upcoming : publicUpcoming) : past;
-    if (!currentUser && activeTab === 'upcoming') {
-      // Include teasers for guests in upcoming
-      list = [
-        ...list,
-        ...upcomingTeasers.map(t => ({
-          ...t,
-          isTeaser: true,
-          tags: [], // No tags for teasers
-        })),
-      ];
-    }
-    return list.filter(e =>
+    
+    // For guests, only show public events in the main list (not teasers)
+    // Teasers are shown separately in the UI but not counted in the main list
+    const filtered = list.filter(e =>
       e.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
       (!tagFilter || e.tags?.includes(tagFilter))
     );
+    
+    // Debug logging for duplicate detection
+    if (activeTab === 'upcoming') {
+      console.log('🔍 Filtered Events Debug:', {
+        activeTab,
+        isUser: !!currentUser,
+        upcoming: upcoming.length,
+        publicUpcoming: publicUpcoming.length,
+        teasers: upcomingTeasers.length,
+        filtered: filtered.length,
+        events: filtered.map(e => ({ id: e.id, title: e.title, startAt: e.startAt, isTeaser: e.isTeaser }))
+      });
+    }
+    
+    return filtered;
   }, [searchQuery, tagFilter, activeTab, upcoming, publicUpcoming, past, upcomingTeasers, currentUser]);
 
   // Map filtered events to calendar format
   const calendarEvents = useMemo(() => {
-    return filteredEvents.map((e: AnyEvent) => ({
+    // For calendar view, we want to show both public events and teasers
+    let calendarList = [...filteredEvents];
+    
+    // Add teasers for guests in calendar view (but not in the main count)
+    if (!currentUser && activeTab === 'upcoming') {
+      const teaserEvents = upcomingTeasers.map(t => ({
+        ...t,
+        isTeaser: true,
+        tags: [], // No tags for teasers
+      }));
+      calendarList = [...calendarList, ...teaserEvents];
+    }
+    
+    // Remove duplicates based on title and start time
+    const uniqueEvents = calendarList.filter((event, index, self) => 
+      index === self.findIndex(e => 
+        e.title === event.title && 
+        tsToDate(e.startAt).getTime() === tsToDate(event.startAt).getTime()
+      )
+    );
+    
+    console.log('🔍 Calendar Events Debug:', {
+      original: filteredEvents.length,
+      withTeasers: calendarList.length,
+      unique: uniqueEvents.length,
+      events: uniqueEvents.map(e => ({ title: e.title, start: tsToDate(e.startAt), isTeaser: e.isTeaser }))
+    });
+    
+    return uniqueEvents.map((e: AnyEvent) => ({
       title: e.title,
       start: tsToDate(e.startAt),
       end: e.endAt ? tsToDate(e.endAt) : new Date(tsToDate(e.startAt).getTime() + 60 * 60 * 1000), // Use endAt if available
       allDay: false,
       resource: e,
     }));
-  }, [filteredEvents]);
+  }, [filteredEvents, currentUser, activeTab, upcomingTeasers]);
 
   // Fetch media for selected event
   useEffect(() => {
@@ -232,9 +274,10 @@ const Events: React.FC = () => {
   const EventTooltip = ({ event, children }: { event: AnyEvent; children: React.ReactNode }) => {
     const { getTooltipProps, setTooltipRef, setTriggerRef, visible } = usePopperTooltip({
       placement: 'top',
-      offset: [0, 10],
+      offset: [0, 8],
       delayShow: 300,
       delayHide: 100,
+      followCursor: false,
     });
     return (
       <>
@@ -243,10 +286,12 @@ const Events: React.FC = () => {
           <div 
             ref={setTooltipRef} 
             {...getTooltipProps({ 
-              className: 'tooltip-container bg-white border border-gray-200 rounded-lg shadow-xl p-4 max-w-xs z-[9999] pointer-events-none',
+              className: 'tooltip-container bg-white border border-gray-200 rounded-lg shadow-xl p-4 max-w-xs pointer-events-none',
               style: {
-                zIndex: 9999,
+                zIndex: 99999,
                 position: 'absolute',
+                transform: 'translateX(-50%)',
+                marginTop: '-4px',
               }
             })}
           >
@@ -266,7 +311,7 @@ const Events: React.FC = () => {
     return (
       <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {!isLoading && list.map((event: AnyEvent) => <EventCard key={event.id} event={event} onEdit={handleEditEvent} />)}
+          {!isLoading && list.map((event: AnyEvent) => <EventCard key={event.id} event={event} onEdit={() => handleEditEvent(event)} />)}
         </div>
         {isLoading && (
           <div className="text-center py-16">
@@ -344,7 +389,7 @@ const Events: React.FC = () => {
     return (
       <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {!isLoading && list.map((event: AnyEvent) => <EventCard key={event.id} event={event} onEdit={handleEditEvent} />)}
+          {!isLoading && list.map((event: AnyEvent) => <EventCard key={event.id} event={event} onEdit={() => handleEditEvent(event)} />)}
         </div>
         {isLoading && (
           <div className="text-center py-16">
@@ -391,13 +436,13 @@ const Events: React.FC = () => {
           })}
           className="text-gray-800"
           aria-label="Events calendar"
-          components={{
-            event: ({ event }) => (
-              <EventTooltip event={event.resource}>
-                <span className="block truncate">{event.title}</span>
-              </EventTooltip>
-            ),
-          }}
+                     components={{
+             event: ({ event }) => (
+               <EventTooltip event={event.resource}>
+                 <span className="block truncate" title="">{event.title}</span>
+               </EventTooltip>
+             ),
+           }}
         />
       </div>
     );
@@ -448,7 +493,7 @@ const Events: React.FC = () => {
               activeTab === 'upcoming' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'
             }`}
           >
-            Upcoming {currentUser ? `(${upcoming.length})` : ''}
+            Upcoming ({currentUser ? upcoming.length : publicUpcoming.length})
           </button>
           <button
             onClick={() => setActiveTab('past')}
