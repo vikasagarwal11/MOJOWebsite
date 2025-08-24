@@ -244,7 +244,14 @@ const EventCard: React.FC<EventCardProps> = ({
               Edit
             </button>
             <button
-              onClick={handleDelete}
+              onClick={() => {
+                if (confirm(`🚨 DELETE CONFIRMATION\n\nAre you sure you want to delete "${event.title}"?\n\nThis action:\n• Cannot be undone\n• Will remove all RSVPs\n• Will delete event images\n\nType "DELETE" to confirm:`)) {
+                  const userInput = prompt('Type "DELETE" to confirm deletion:');
+                  if (userInput === 'DELETE') {
+                    handleDelete();
+                  }
+                }
+              }}
               className="px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700"
             >
               Delete
