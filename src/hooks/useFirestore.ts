@@ -84,7 +84,19 @@ function enforceGuestPolicy(
       out.push(orderBy('createdAt', 'desc'));
     }
   } else if (collectionName === 'events') {
-    if (!hasWhereEquals(out, 'public', true)) out.unshift(where('public', '==', true));
+    // For events, we need to be more flexible with field types
+    // Check if user has provided specific constraints
+    const hasPublicField = hasWhereEquals(out, 'public', true);
+    const hasVisibilityField = hasWhereEquals(out, 'visibility', 'public');
+    
+    if (!hasPublicField && !hasVisibilityField) {
+      // For guests, only show public events
+      // Try visibility field first (newer events), then fallback to public field (legacy)
+      // Note: Firestore doesn't support OR queries easily, so we'll use visibility as primary
+      out.unshift(where('visibility', '==', 'public'));
+    }
+    
+    // Add default ordering if none provided
     if (!hasAnyOrderBy(out) && !hasOrderByField(out, 'startAt')) {
       out.push(orderBy('startAt', 'asc'));
     }
@@ -162,6 +174,16 @@ export const useFirestore = () => {
     useEffect(() => {
       const authed = !!currentUser;
       const safeConstraints = enforceGuestPolicy(collectionName, authed, queryConstraints);
+      
+      // Debug logging for events collection
+      if (collectionName === 'events') {
+        console.log('🔍 Events query constraints:', {
+          isAuthed: authed,
+          originalConstraints: queryConstraints,
+          safeConstraints: safeConstraints,
+          userRole: currentUser?.role
+        });
+      }
 
       const q =
         safeConstraints.length > 0
