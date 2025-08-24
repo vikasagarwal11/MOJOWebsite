@@ -593,8 +593,9 @@ const Events: React.FC = () => {
 
   const renderUpcomingForGuest = () => {
     const isLoadingPublic = loadingPublicUpcoming;
-    const publicList = filteredEvents.filter(e => !e.isTeaser); // Filtered public
-    const teaserList = filteredEvents.filter(e => e.isTeaser); // Filtered teasers
+    const publicList = filteredEvents; // filteredEvents already excludes teasers
+    const teaserList = upcomingTeasers
+      .filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase())); // Apply search to teasers
     return (
       <>
         {!!publicList.length && (
