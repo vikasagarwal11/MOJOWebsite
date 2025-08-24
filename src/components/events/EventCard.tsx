@@ -16,6 +16,7 @@ interface EventCardProps {
   showAdminActions?: boolean; // Control whether to show Edit/Delete buttons below
   showTopActions?: boolean; // NEW: Control whether to show action icons at top-right
   showCalendarButton?: boolean; // Control whether to show Add to Calendar button
+  showRsvp?: boolean; // Control whether to show RSVP functionality
 }
 
 // Helper function to convert timestamp to Date
@@ -34,7 +35,8 @@ const EventCard: React.FC<EventCardProps> = ({
   onShare, 
   showAdminActions = true, 
   showTopActions = false, 
-  showCalendarButton = true 
+  showCalendarButton = true,
+  showRsvp = true
 }) => {
   const { currentUser } = useAuth();
 
@@ -259,7 +261,7 @@ const EventCard: React.FC<EventCardProps> = ({
           </div>
         )}
 
-        {currentUser && isUpcoming && (
+        {showRsvp && currentUser && isUpcoming && (
           <div className="space-y-3">
             <div className="text-sm font-medium text-gray-700 mb-2">Your RSVP:</div>
             <div className="flex space-x-2">

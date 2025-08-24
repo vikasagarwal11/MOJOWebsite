@@ -830,7 +830,11 @@ const Events: React.FC = () => {
                </button>
             </div>
             <div className="p-6">
-              <EventCard event={selectedEvent} />
+              <EventCard 
+                event={selectedEvent} 
+                showAdminActions={false}
+                showRsvp={false}
+              />
               {eventMedia.length > 0 && (
                 <div className="mt-6">
                   <h3 className="text-lg font-semibold mb-3">Event Media</h3>
