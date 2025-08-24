@@ -38,7 +38,7 @@ const calendarTooltipStyles = `
   }
 
   .rbc-calendar {
-    overflow: visible !important;
+    overflow: hidden !important; /* Restore proper layout math */
   }
 
   .rbc-month-view,
@@ -50,13 +50,13 @@ const calendarTooltipStyles = `
   .rbc-event {
     position: relative;
     z-index: 1;
-    height: 22px !important; /* Increased height for better readability */
-    min-height: 22px !important;
-    max-height: 22px !important;
-    margin: 1px 0 !important; /* Slightly more margin between events */
-    padding: 2px 4px !important; /* More padding for better text display */
-    font-size: 0.7rem !important; /* Slightly larger font size */
-    line-height: 1.2 !important; /* Better line height for readability */
+    height: 18px !important; /* Reduced height to fit more events */
+    min-height: 18px !important;
+    max-height: 18px !important;
+    margin: 1px 0 !important;
+    padding: 1px 3px !important; /* Reduced padding */
+    font-size: 0.65rem !important; /* Smaller font */
+    line-height: 1.1 !important; /* Tighter line height */
     overflow: hidden !important;
     white-space: nowrap !important;
     text-overflow: ellipsis !important;
@@ -65,8 +65,8 @@ const calendarTooltipStyles = `
 
   /* Ensure calendar cells have enough height for multiple events */
   .rbc-month-view .rbc-date-content {
-    min-height: 70px !important; /* Height optimized for 3 larger events */
-    padding: 2px 2px 0px 2px !important; /* Reduced bottom padding */
+    min-height: 68px !important; /* Height optimized for 4 compact events */
+    padding: 2px !important; /* Compact padding */
   }
 
   /* Fix empty all-day events area in week view - COMPLETELY ELIMINATE */
@@ -155,15 +155,13 @@ const calendarTooltipStyles = `
     content: "Today";
     position: absolute;
     top: 2px;
-    left: 2px;
-    font-size: 0.6rem;
+    left: 4px;
+    font-size: 0.65rem;
     font-weight: 700;
     color: rgb(139, 92, 246);
     background: rgba(139, 92, 246, 0.15);
-    padding: 1px 4px;
-    border-radius: 0.2rem;
-    z-index: 2;
-    white-space: nowrap;
+    padding: 1px 6px;
+    border-radius: 4px;
   }
 
   /* Style today's column in week view */
@@ -188,6 +186,20 @@ const calendarTooltipStyles = `
     margin: 0.5px 0 !important;
     padding: 0px 2px !important;
     line-height: 1 !important;
+  }
+
+  /* The "+X more" control is a button.rbc-show-more (not .rbc-event) */
+  .rbc-month-view .rbc-show-more {
+    display: block !important;
+    height: 16px !important;
+    line-height: 16px !important;
+    font-size: 0.6rem !important;
+    font-weight: 600 !important;
+    padding: 0 4px !important;
+    margin-top: 1px !important;
+    background: rgba(139, 92, 246, 0.85) !important;
+    color: #fff !important;
+    border-radius: 3px !important;
   }
 
   /* Hover effect for events */
@@ -220,22 +232,9 @@ const calendarTooltipStyles = `
     z-index: 2 !important;
   }
 
-  /* Add bold "Today" indicator at top-left */
+  /* Remove global "Today" indicator to prevent duplicates */
   .rbc-today::after {
-    content: "Today";
-    position: absolute;
-    top: 2px;
-    left: 4px;
-    font-size: 0.7rem;
-    font-weight: 900; /* Extra bold for maximum visibility */
-    color: rgb(139, 92, 246);
-    background: rgba(139, 92, 246, 0.15);
-    padding: 2px 8px;
-    border-radius: 0.25rem;
-    z-index: 2;
-    white-space: nowrap;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-    box-shadow: 0 2px 4px rgba(139, 92, 246, 0.2);
+    content: none !important;
   }
 
   /* Position events in the middle of today's cell */
@@ -709,7 +708,7 @@ const Events: React.FC = () => {
            popupOffset={30}
                                                                                dayPropGetter={(date) => ({
           style: {
-            minHeight: '70px', /* Height optimized for 3 larger events */
+            minHeight: '68px', /* Height optimized for 4 compact events */
           }
         })}
         onNavigate={(newDate) => {
