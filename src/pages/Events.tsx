@@ -1,6 +1,7 @@
 // Events: members see all; guests see public upcoming + teasers; past (public only for guests)
 import React, { useEffect, useState, useMemo } from 'react';
-import { Calendar, Plus, X } from 'lucide-react';
+import { Calendar, Plus, X, Search } from 'lucide-react';
+import { useDebouncedCallback } from 'use-debounce'; // For debounced search
 import { collection, onSnapshot, orderBy, query, where, Timestamp, limit } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -239,7 +240,7 @@ const calendarTooltipStyles = `
 
   /* Position events in the middle of today's cell */
   .rbc-today .rbc-event {
-    margin-top: 25px !important; /* Push events down below Today label and date */
+    margin-top: 20px !important; /* Push events down below Today label and date */
   }
 
   /* Position +X more at the bottom */
@@ -322,6 +323,8 @@ const Events: React.FC = () => {
   const [eventToEdit, setEventToEdit] = useState<AnyEvent | null>(null);
   const [eventMedia, setEventMedia] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(''); // Debounced version for actual filtering
+  const [isSearching, setIsSearching] = useState(false); // Loading state for search
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [upcoming, setUpcoming] = useState<AnyEvent[]>([]); // members only
   const [publicUpcoming, setPublicUpcoming] = useState<AnyEvent[]>([]); // guests
@@ -332,6 +335,15 @@ const Events: React.FC = () => {
   const [loadingPast, setLoadingPast] = useState(true);
   const [loadingTeasers, setLoadingTeasers] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Debounced search function - delays search execution by 300ms
+  const debouncedSearch = useDebouncedCallback(
+    (query: string) => {
+      setDebouncedSearchQuery(query);
+      setIsSearching(false);
+    },
+    300 // 300ms delay
+  );
 
   const handleEditEvent = (event: AnyEvent) => {
     setEventToEdit(event);
@@ -430,7 +442,7 @@ const Events: React.FC = () => {
     // For guests, only show public events in the main list (not teasers)
     // Teasers are shown separately in the UI but not counted in the main list
     const filtered = list.filter(e =>
-      e.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      e.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) &&
       (!tagFilter || e.tags?.includes(tagFilter))
     );
     
@@ -443,12 +455,14 @@ const Events: React.FC = () => {
         publicUpcoming: publicUpcoming.length,
         teasers: upcomingTeasers.length,
         filtered: filtered.length,
+        searchQuery,
+        debouncedSearchQuery,
         events: filtered.map(e => ({ id: e.id, title: e.title, startAt: e.startAt, isTeaser: e.isTeaser }))
       });
     }
     
     return filtered;
-  }, [searchQuery, tagFilter, activeTab, upcoming, publicUpcoming, past, upcomingTeasers, currentUser]);
+  }, [debouncedSearchQuery, tagFilter, activeTab, upcoming, publicUpcoming, past, upcomingTeasers, currentUser]);
 
   // Map filtered events to calendar format
   const calendarEvents = useMemo(() => {
@@ -692,18 +706,14 @@ const Events: React.FC = () => {
            }}
            popup={true}
            popupOffset={30}
-                                                                       dayPropGetter={(date) => ({
-                style: {
-                  minHeight: '70px', /* Height optimized for 3 larger events */
-                }
-              })}
-             /* Show exactly 3 events per day, then "+X more" */
-             onNavigate={(newDate) => {
-               // This helps with event rendering
-             }}
-             /* Force React Big Calendar to show limited events per day */
-             step={60}
-             timeslots={1}
+                                                                               dayPropGetter={(date) => ({
+          style: {
+            minHeight: '70px', /* Height optimized for 3 larger events */
+          }
+        })}
+        onNavigate={(newDate) => {
+          // This helps with event rendering
+        }}
          />
       </div>
     );
@@ -729,13 +739,25 @@ const Events: React.FC = () => {
       </div>
       {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-4">
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search events by title..."
-          className="px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 flex-1"
-        />
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setIsSearching(true);
+              debouncedSearch(e.target.value);
+            }}
+            placeholder="Search events by title..."
+            className="w-full px-4 py-2 pl-10 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500"
+          />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          {isSearching && (
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500"></div>
+            </div>
+          )}
+        </div>
         <select
           value={tagFilter || ''}
           onChange={(e) => setTagFilter(e.target.value || null)}
