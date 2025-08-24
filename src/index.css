@@ -75,3 +75,8 @@
   ring-color: rgb(147 51 234);
   border-color: transparent;
 }
+
+/* Finger Preview Grid - disable scroll while previewing */
+.previewing {
+  touch-action: none;
+}
