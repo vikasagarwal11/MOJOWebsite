@@ -1,6 +1,6 @@
 // Events: members see all; guests see public upcoming + teasers; past (public only for guests)
 import React, { useEffect, useState, useMemo } from 'react';
-import { Calendar, Plus } from 'lucide-react';
+import { Calendar, Plus, X } from 'lucide-react';
 import { collection, onSnapshot, orderBy, query, where, Timestamp, limit } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -455,9 +455,9 @@ const Events: React.FC = () => {
           aria-label="Events calendar"
                      components={{
              event: ({ event }) => (
-               <EventTooltip event={event.resource}>
-                 <span className="block truncate" title="">{event.title}</span>
-               </EventTooltip>
+                               <EventTooltip event={event.resource}>
+                  <span className="block truncate">{event.title}</span>
+                </EventTooltip> 
              ),
            }}
         />
@@ -554,12 +554,13 @@ const Events: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h2 className="text-2xl font-bold text-gray-900">{selectedEvent.title}</h2>
-              <button
-                onClick={() => setSelectedEvent(null)}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <Calendar className="w-6 h-6 text-gray-500" />
-              </button>
+                             <button
+                 onClick={() => setSelectedEvent(null)}
+                 className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                 aria-label="Close event details"
+               >
+                 <X className="w-6 h-6 text-gray-500" />
+               </button>
             </div>
             <div className="p-6">
               <EventCard event={selectedEvent} />
