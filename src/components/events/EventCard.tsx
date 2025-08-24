@@ -41,12 +41,28 @@ const EventCard: React.FC<EventCardProps> = ({
   const { currentUser } = useAuth();
 
   // Prefer startAt
-  const dateObj: Date = useMemo(() => {
+  const startObj: Date = useMemo(() => {
     const v: any = event.startAt;
     return tsToDate(v);
   }, [event.startAt]);
 
-  const isUpcoming = dateObj.getTime() >= Date.now();
+  const endObj: Date | null = useMemo(() => {
+    if (!event.endAt) return null;
+    const v: any = event.endAt;
+    return tsToDate(v);
+  }, [event.endAt]);
+
+  const sameDay = endObj ? startObj.toDateString() === endObj.toDateString() : true;
+
+  const whenLine = endObj
+    ? (sameDay
+        // Sun, Aug 24 • 4:00 – 10:00 PM
+        ? `${format(startObj, 'EEE, MMM d • h:mm a')} – ${format(endObj, 'h:mm a')}`
+        // Sun, Aug 24 • 9:00 PM → Mon, Aug 25 • 1:00 AM
+        : `${format(startObj, 'EEE, MMM d • h:mm a')} → ${format(endObj, 'EEE, MMM d • h:mm a')}`)
+    : `${format(startObj, 'EEE, MMM d • h:mm a')}`;
+
+  const isUpcoming = startObj.getTime() >= Date.now();
 
   // My RSVP (load my doc once)
   const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | null>(null);
@@ -117,7 +133,7 @@ const EventCard: React.FC<EventCardProps> = ({
   };
 
   const handleAddToCalendar = () => {
-    const start = dateObj;
+    const start = startObj;
     const end = event.endAt ? tsToDate(event.endAt) : new Date(start.getTime() + 60 * 60 * 1000);
     
     createEvent({
@@ -215,12 +231,14 @@ const EventCard: React.FC<EventCardProps> = ({
             <Calendar className="w-4 h-4 mr-2 text-purple-500" />
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm bg-purple-50 text-purple-700 border border-purple-200">
               <CalendarDays className="w-4 h-4" />
-              {format(dateObj, 'EEE, MMM d • h:mm a')}
+              {whenLine}
             </span>
           </div>
           <div className="flex items-center text-gray-600">
             <Clock className="w-4 h-4 mr-2 text-purple-500" />
-            <span className="text-sm">{format(dateObj, 'h:mm a')}</span>
+            <span className="text-sm">
+              {endObj ? `Ends ${format(endObj, sameDay ? 'h:mm a' : 'EEE, MMM d • h:mm a')}` : 'No end time set'}
+            </span>
           </div>
           <div className="flex items-center text-gray-600">
             <MapPin className="w-4 h-4 mr-2 text-purple-500" />

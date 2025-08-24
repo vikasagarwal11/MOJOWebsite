@@ -47,7 +47,8 @@ const calendarTooltipStyles = `
     overflow: visible !important;
   }
 
-  .rbc-event {
+  /* Month view: compact chips so you can see more */
+  .rbc-month-view .rbc-event {
     position: relative;
     z-index: 1;
     height: 18px !important; /* Reduced height to fit more events */
@@ -61,6 +62,16 @@ const calendarTooltipStyles = `
     white-space: nowrap !important;
     text-overflow: ellipsis !important;
     border-radius: 3px !important;
+  }
+
+  /* Time views (week/day): DO NOT force a fixed height; let duration decide height */
+  .rbc-time-view .rbc-event {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    padding: 2px 4px !important;
+    font-size: 0.75rem !important;
+    line-height: 1.2 !important;
   }
 
   /* Ensure calendar cells have enough height for multiple events */
@@ -111,9 +122,9 @@ const calendarTooltipStyles = `
 
   /* Optimize week view time slots */
   .rbc-week-view .rbc-time-slot {
-    height: 25px !important; /* Compact height for time slots */
-    min-height: 25px !important;
-    max-height: 25px !important;
+    height: 30px !important; /* Match step={30} setting */
+    min-height: 30px !important;
+    max-height: 30px !important;
   }
 
   .rbc-week-view .rbc-time-content {
@@ -505,20 +516,56 @@ const Events: React.FC = () => {
       )
     );
     
-    console.log('🔍 Calendar Events Debug:', {
-      original: filteredEvents.length,
-      withTeasers: calendarList.length,
-      unique: uniqueEvents.length,
-      events: uniqueEvents.map(e => ({ title: e.title, start: tsToDate(e.startAt), isTeaser: e.isTeaser }))
-    });
+          console.log('🔍 Calendar Events Debug:', {
+        original: filteredEvents.length,
+        withTeasers: calendarList.length,
+        unique: uniqueEvents.length,
+        events: uniqueEvents.map(e => ({ 
+          title: e.title, 
+          start: tsToDate(e.startAt), 
+          startTime: tsToDate(e.startAt).toLocaleTimeString(),
+          end: e.endAt ? tsToDate(e.endAt) : 'default 1h',
+          endTime: e.endAt ? tsToDate(e.endAt).toLocaleTimeString() : 'default 1h',
+          duration: e.duration || 'none',
+          isTeaser: e.isTeaser 
+        }))
+      });
     
-    return uniqueEvents.map((e: AnyEvent) => ({
-      title: e.title,
-      start: tsToDate(e.startAt),
-      end: e.endAt ? tsToDate(e.endAt) : new Date(tsToDate(e.startAt).getTime() + 60 * 60 * 1000), // Use endAt if available
-      allDay: false,
-      resource: e,
-    }));
+         return uniqueEvents.map((e: AnyEvent) => {
+       const startTime = tsToDate(e.startAt);
+       let endTime: Date;
+       
+       // Handle end time properly
+       if (e.endAt) {
+         endTime = tsToDate(e.endAt);
+       } else if (e.duration) {
+         // If duration is specified in minutes
+         endTime = new Date(startTime.getTime() + (e.duration * 60 * 1000));
+       } else {
+         // Default to 1 hour if no end time or duration
+         endTime = new Date(startTime.getTime() + (60 * 60 * 1000));
+       }
+       
+       // Ensure end time is after start time
+       if (endTime <= startTime) {
+         endTime = new Date(startTime.getTime() + (60 * 60 * 1000));
+       }
+       
+       // Debug log for event timing
+       console.log(`📅 Event: ${e.title}`, {
+         start: startTime.toLocaleString(),
+         end: endTime.toLocaleString(),
+         duration: Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60)) + ' minutes'
+       });
+       
+       return {
+         title: e.title,
+         start: startTime,
+         end: endTime,
+         allDay: false,
+         resource: e,
+       };
+     });
   }, [filteredEvents, currentUser, activeTab, upcomingTeasers]);
 
   // Fetch media for selected event
@@ -725,14 +772,20 @@ const Events: React.FC = () => {
            }}
            popup={true}
            popupOffset={30}
-                                                                               dayPropGetter={(date) => ({
-          style: {
-            minHeight: '80px', /* Height optimized for 4 events + show more */
-          }
-        })}
-        onNavigate={(newDate) => {
-          // This helps with event rendering
-        }}
+                       showMultiDayTimes
+            dayLayoutAlgorithm="no-overlap"
+            step={30}
+            timeslots={2}
+            min={new Date(1970, 0, 1, 6, 0, 0)}
+            max={new Date(1970, 0, 1, 22, 0, 0)}
+           dayPropGetter={(date) => ({
+             style: {
+               minHeight: '68px', /* Height optimized for compact events */
+             }
+           })}
+           onNavigate={(newDate) => {
+             // This helps with event rendering
+           }}
          />
       </div>
     );
