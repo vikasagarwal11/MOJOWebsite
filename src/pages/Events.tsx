@@ -47,28 +47,25 @@ const calendarTooltipStyles = `
     overflow: visible !important;
   }
 
-  /* Month view: compact chips so you can see more */
-  .rbc-month-view .rbc-event {
-    position: relative;
-    z-index: 1;
-    height: 18px !important; /* Reduced height to fit more events */
-    min-height: 18px !important;
-    max-height: 18px !important;
-    margin: 1px 0 !important;
-    padding: 1px 3px !important; /* Reduced padding */
-    font-size: 0.65rem !important; /* Smaller font */
-    line-height: 1.1 !important; /* Tighter line height */
-    overflow: hidden !important;
-    white-space: nowrap !important;
-    text-overflow: ellipsis !important;
-    border-radius: 3px !important;
-  }
+ /* Month view: compact chips */
+.rbc-month-view .rbc-event {
+  position: relative;
+  z-index: 1;
+  height: 18px !important;
+  min-height: 18px !important;
+  max-height: 18px !important;
+  margin: 1px 0 !important;
+  padding: 1px 3px !important;
+  font-size: 0.65rem !important;
+  line-height: 1.1 !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+  border-radius: 3px !important;
+}
 
-  /* Time views (week/day): DO NOT force a fixed height; let duration decide height */
+    /* Time views (week/day): style only, do NOT set height */
   .rbc-time-view .rbc-event {
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
     padding: 2px 4px !important;
     font-size: 0.75rem !important;
     line-height: 1.2 !important;
@@ -88,9 +85,9 @@ const calendarTooltipStyles = `
   /* Hide all-day row in ALL views to eliminate empty space */
   .rbc-allday-cell, .rbc-allday-events {
     display: none !important;
-    height: 0 !important;
-    min-height: 0 !important;
-    max-height: 0 !important;
+   // height: 0 !important;
+   // min-height: 0 !important;
+   // max-height: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
     overflow: hidden !important;
