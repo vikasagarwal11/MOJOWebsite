@@ -16,35 +16,39 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import toast from 'react-hot-toast';
 import { usePopperTooltip } from 'react-popper-tooltip';
 import 'react-popper-tooltip/dist/styles.css';
+import ReactDOM from 'react-dom'; // For portal
+
+// Portal component to append tooltip to body
+const Portal = ({ children }: { children: React.ReactNode }) => {
+  return ReactDOM.createPortal(children, document.body);
+};
 
 // Custom styles for calendar tooltips
 const calendarTooltipStyles = `
   .tooltip-container {
-    z-index: 9999 !important;
-    position: fixed !important;
+    z-index: 10000 !important; /* High z-index to ensure top layering */
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    padding: 1rem;
+    max-width: 15rem;
     pointer-events: none;
-    transform: translate(-50%, -100%);
-    margin-top: -10px;
   }
-  
+
   .rbc-calendar {
     overflow: visible !important;
   }
-  
+
   .rbc-month-view,
   .rbc-week-view,
   .rbc-day-view {
     overflow: visible !important;
   }
-  
+
   .rbc-event {
     position: relative;
     z-index: 1;
-  }
-  
-  /* Ensure tooltips render above everything */
-  .tooltip-container {
-    z-index: 99999 !important;
   }
 `;
 
@@ -274,32 +278,45 @@ const Events: React.FC = () => {
   const EventTooltip = ({ event, children }: { event: AnyEvent; children: React.ReactNode }) => {
     const { getTooltipProps, setTooltipRef, setTriggerRef, visible } = usePopperTooltip({
       placement: 'top',
-      offset: [0, 8],
+      offset: [0, 8], // Slight offset to avoid overlap with event
       delayShow: 300,
       delayHide: 100,
       followCursor: false,
+
     });
+
+    // Debug log to verify positioning
+    useEffect(() => {
+      if (visible) {
+        // Note: setTriggerRef is a setter function, not a ref object
+        // We'll log when tooltip becomes visible for debugging
+        console.log('Tooltip visible for event:', event.title);
+      }
+    }, [visible, event.title]);
+
     return (
       <>
-        <div ref={setTriggerRef}>{children}</div>
+        <div ref={setTriggerRef} style={{ display: 'inline-block' }}>{children}</div>
         {visible && (
-          <div 
-            ref={setTooltipRef} 
-            {...getTooltipProps({ 
-              className: 'tooltip-container bg-white border border-gray-200 rounded-lg shadow-xl p-4 max-w-xs pointer-events-none',
-              style: {
-                zIndex: 99999,
-                position: 'absolute',
-                transform: 'translateX(-50%)',
-                marginTop: '-4px',
-              }
-            })}
-          >
-            <h3 className="font-semibold text-gray-900 mb-2">{event.title}</h3>
-            <p className="text-sm text-gray-600 mb-1">{event.location}</p>
-            <p className="text-sm text-gray-600 mb-2">{format(tsToDate(event.startAt), 'h:mm a')}</p>
-            {event.description && <p className="text-sm text-gray-500 line-clamp-2">{event.description}</p>}
-          </div>
+          <Portal>
+            <div
+              ref={setTooltipRef}
+              {...getTooltipProps({
+                className: 'tooltip-container',
+                style: {
+                  zIndex: 10000, // Ensure it's above all other elements
+                  position: 'fixed', // Fixed to screen, not relative to calendar
+                  transform: 'translate(-50%, -100%)', // Center horizontally, move up
+                  marginTop: '-10px', // Fine-tune vertical position
+                },
+              })}
+            >
+              <h3 className="font-semibold text-gray-900 mb-2">{event.title}</h3>
+              <p className="text-sm text-gray-600 mb-1">{event.location || 'No location'}</p>
+              <p className="text-sm text-gray-600 mb-2">{format(tsToDate(event.startAt), 'h:mm a')}</p>
+              {event.description && <p className="text-sm text-gray-500 line-clamp-2">{event.description}</p>}
+            </div>
+          </Portal>
         )}
       </>
     );
