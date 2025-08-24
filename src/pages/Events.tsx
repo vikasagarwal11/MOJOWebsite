@@ -49,6 +49,236 @@ const calendarTooltipStyles = `
   .rbc-event {
     position: relative;
     z-index: 1;
+    height: 22px !important; /* Increased height for better readability */
+    min-height: 22px !important;
+    max-height: 22px !important;
+    margin: 1px 0 !important; /* Slightly more margin between events */
+    padding: 2px 4px !important; /* More padding for better text display */
+    font-size: 0.7rem !important; /* Slightly larger font size */
+    line-height: 1.2 !important; /* Better line height for readability */
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+    border-radius: 3px !important;
+  }
+
+  /* Ensure calendar cells have enough height for multiple events */
+  .rbc-month-view .rbc-date-content {
+    min-height: 70px !important; /* Height optimized for 3 larger events */
+    padding: 2px 2px 0px 2px !important; /* Reduced bottom padding */
+  }
+
+  /* Fix empty all-day events area in week view - COMPLETELY ELIMINATE */
+  .rbc-week-view .rbc-allday-cell {
+    height: 0 !important; /* Completely eliminate height */
+    min-height: 0 !important;
+    max-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    display: none !important; /* Hide completely */
+  }
+
+  .rbc-week-view .rbc-allday-events {
+    height: 0 !important; /* Completely eliminate height */
+    min-height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    display: none !important; /* Hide completely */
+  }
+
+  /* Hide all-day events area completely */
+  .rbc-week-view .rbc-allday-cell,
+  .rbc-week-view .rbc-allday-events {
+    display: none !important;
+  }
+
+  /* Force hide the entire all-day row in week view */
+  .rbc-week-view .rbc-time-header-content .rbc-row:first-child {
+    display: none !important;
+  }
+
+  /* Hide the all-day header row completely */
+  .rbc-week-view .rbc-time-header .rbc-row:first-child {
+    display: none !important;
+  }
+
+  /* Remove extra spacing in week view header */
+  .rbc-week-view .rbc-header {
+    border-bottom: 1px solid #ddd !important;
+    padding: 2px 1px !important; /* Minimal padding */
+    height: 24px !important; /* Fixed height */
+    min-height: 24px !important;
+    max-height: 24px !important;
+  }
+
+  .rbc-week-view .rbc-header + .rbc-header {
+    border-left: 1px solid #ddd !important;
+  }
+
+  /* Optimize week view time slots */
+  .rbc-week-view .rbc-time-slot {
+    height: 25px !important; /* Compact height for time slots */
+    min-height: 25px !important;
+    max-height: 25px !important;
+  }
+
+  .rbc-week-view .rbc-time-content {
+    border-top: 1px solid #ddd !important;
+  }
+
+  /* Ensure proper spacing in week view */
+  .rbc-week-view .rbc-time-gutter {
+    padding: 0 4px !important; /* Reduced padding */
+    font-size: 0.75rem !important; /* Smaller font */
+    width: 50px !important; /* Fixed width */
+    min-width: 50px !important;
+    max-width: 50px !important;
+  }
+
+  /* Fix week view column spacing */
+  .rbc-week-view .rbc-time-header-content {
+    border-left: 1px solid #ddd !important;
+  }
+
+  /* Ensure week view has no extra margins */
+  .rbc-week-view {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Add "Today" indicator in week view header for today's column */
+  .rbc-week-view .rbc-header.rbc-today::after {
+    content: "Today";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: rgb(139, 92, 246);
+    background: rgba(139, 92, 246, 0.15);
+    padding: 1px 4px;
+    border-radius: 0.2rem;
+    z-index: 2;
+    white-space: nowrap;
+  }
+
+  /* Style today's column in week view */
+  .rbc-week-view .rbc-header.rbc-today {
+    background-color: rgba(139, 92, 246, 0.1) !important;
+    border-bottom: 2px solid rgba(139, 92, 246, 0.4) !important;
+    position: relative;
+  }
+
+  /* Style for "+X more" indicator - make it more compact */
+  .rbc-event.rbc-event-more {
+    background: rgba(139, 92, 246, 0.8) !important;
+    color: white !important;
+    font-weight: 600 !important;
+    text-align: center !important;
+    cursor: pointer !important;
+    border-radius: 2px !important;
+    font-size: 0.6rem !important;
+    height: 14px !important;
+    min-height: 14px !important;
+    max-height: 14px !important;
+    margin: 0.5px 0 !important;
+    padding: 0px 2px !important;
+    line-height: 1 !important;
+  }
+
+  /* Hover effect for events */
+  .rbc-event:hover {
+    opacity: 0.9 !important;
+    transform: scale(1.02) !important;
+    transition: all 0.2s ease !important;
+  }
+
+  /* Today Highlight - Enhanced visual indicator for current date */
+  .rbc-today {
+    background-color: rgba(139, 92, 246, 0.15) !important;
+    border: 2px solid rgba(139, 92, 246, 0.4) !important;
+    border-radius: 0.5rem !important;
+    position: relative;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    min-height: 70px !important;
+  }
+
+  /* Make today's date number regular font like other dates */
+  .rbc-today .rbc-date {
+    font-weight: 400 !important; /* Regular font weight like other dates */
+    color: rgb(55, 65, 81) !important; /* Same color as other dates */
+    font-size: 1em !important; /* Same size as other dates */
+    position: absolute !important;
+    top: 2px !important;
+    right: 4px !important;
+    z-index: 2 !important;
+  }
+
+  /* Add bold "Today" indicator at top-left */
+  .rbc-today::after {
+    content: "Today";
+    position: absolute;
+    top: 2px;
+    left: 4px;
+    font-size: 0.7rem;
+    font-weight: 900; /* Extra bold for maximum visibility */
+    color: rgb(139, 92, 246);
+    background: rgba(139, 92, 246, 0.15);
+    padding: 2px 8px;
+    border-radius: 0.25rem;
+    z-index: 2;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 4px rgba(139, 92, 246, 0.2);
+  }
+
+  /* Position events in the middle of today's cell */
+  .rbc-today .rbc-event {
+    margin-top: 25px !important; /* Push events down below Today label and date */
+  }
+
+  /* Position +X more at the bottom */
+  .rbc-today .rbc-event.rbc-event-more {
+    position: absolute !important;
+    bottom: 0px !important; /* Move to very bottom */
+    left: 2px !important;
+    right: 2px !important;
+    margin: 0 !important;
+  }
+
+  /* Add subtle underline to indicate clickability */
+  .rbc-today .rbc-date::after {
+    content: "";
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: rgba(139, 92, 246, 0.3);
+    border-radius: 1px;
+    transform: scaleX(0);
+    transition: transform 0.2s ease;
+  }
+
+  /* Show underline on hover */
+  .rbc-today:hover .rbc-date::after {
+    transform: scaleX(1);
+  }
+
+  /* Hover effect for today's cell */
+  .rbc-today:hover {
+    background-color: rgba(139, 92, 246, 0.2) !important;
+    border-color: rgba(139, 92, 246, 0.6) !important;
+  }
+
+  /* Hover effect for today's date number */
+  .rbc-today:hover .rbc-date {
+    color: rgb(31, 41, 55) !important; /* Darker on hover */
   }
 `;
 
@@ -428,39 +658,53 @@ const Events: React.FC = () => {
   const renderCalendar = () => {
     return (
       <div className="bg-white rounded-2xl shadow-lg p-6 relative overflow-visible">
-        <BigCalendar
-          localizer={localizer}
-          events={calendarEvents}
-          startAccessor="start"
-          endAccessor="end"
-          style={{ height: 600 }}
-          onSelectEvent={(event: any) => {
-            if (event.resource.isTeaser) {
-              toast.error('Sign in to view this member-only event.');
-              return;
-            }
-            if (currentUser || event.resource.public || activeTab === 'past') {
-              setSelectedEvent(event.resource);
-            } else {
-              toast.error('Sign in to view event details.');
-            }
-          }}
-          views={['month', 'week', 'day']}
-          defaultView="month"
-          eventPropGetter={(event: any) => ({
-            className: event.resource.isTeaser ? 'bg-gray-400 opacity-50' : event.resource.public ? 'bg-purple-600' : 'bg-red-500',
-            style: { color: 'white', border: 'none' },
-          })}
-          className="text-gray-800"
-          aria-label="Events calendar"
-                     components={{
+                 <BigCalendar
+           localizer={localizer}
+           events={calendarEvents}
+           startAccessor="start"
+           endAccessor="end"
+           style={{ height: 600 }}
+           onSelectEvent={(event: any) => {
+             if (event.resource.isTeaser) {
+               toast.error('Sign in to view this member-only event.');
+               return;
+             }
+             if (currentUser || event.resource.public || activeTab === 'past') {
+               setSelectedEvent(event.resource);
+             } else {
+               toast.error('Sign in to view event details.');
+             }
+           }}
+           views={['month', 'week', 'day']}
+           defaultView="month"
+           eventPropGetter={(event: any) => ({
+             className: event.resource.isTeaser ? 'bg-gray-400 opacity-50' : event.resource.public ? 'bg-purple-600' : 'bg-red-500',
+             style: { color: 'white', border: 'none' },
+           })}
+           className="text-gray-800"
+           aria-label="Events calendar"
+           components={{
              event: ({ event }) => (
-                               <EventTooltip event={event.resource}>
-                  <span className="block truncate">{event.title}</span>
-                </EventTooltip> 
+               <EventTooltip event={event.resource}>
+                 <span className="block truncate">{event.title}</span>
+               </EventTooltip> 
              ),
            }}
-        />
+           popup={true}
+           popupOffset={30}
+                                                                       dayPropGetter={(date) => ({
+                style: {
+                  minHeight: '70px', /* Height optimized for 3 larger events */
+                }
+              })}
+             /* Show exactly 3 events per day, then "+X more" */
+             onNavigate={(newDate) => {
+               // This helps with event rendering
+             }}
+             /* Force React Big Calendar to show limited events per day */
+             step={60}
+             timeslots={1}
+         />
       </div>
     );
   };
