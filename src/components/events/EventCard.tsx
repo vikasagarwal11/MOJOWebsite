@@ -237,7 +237,11 @@ const EventCard: React.FC<EventCardProps> = ({
           <div className="flex items-center text-gray-600">
             <Clock className="w-4 h-4 mr-2 text-purple-500" />
             <span className="text-sm">
-              {endObj ? `Ends ${format(endObj, sameDay ? 'h:mm a' : 'EEE, MMM d • h:mm a')}` : 'No end time set'}
+              {endObj
+                ? (sameDay
+                    ? `Ends ${format(endObj, 'h:mm a')}`
+                    : `Ends ${format(endObj, 'EEE, MMM d • h:mm a')}`)
+                : 'No end time set'}
             </span>
           </div>
           <div className="flex items-center text-gray-600">
