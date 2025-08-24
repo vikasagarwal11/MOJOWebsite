@@ -390,7 +390,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
           ref={videoRef} 
           poster={thumbnailUrl} 
           playsInline 
-          controls 
+          muted
           preload="metadata"
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
         >
@@ -433,7 +433,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
   }, [localMedia, onOpen, liked, thumbnailUrl, isThumbnailLoading]);
 
   return (
-    <div className="bg-white/80 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group">
+    <div className="bg-white/80 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group" data-media-card>
       <div className="relative aspect-square overflow-hidden">
         {previewEl}
         {localMedia.eventTitle && (

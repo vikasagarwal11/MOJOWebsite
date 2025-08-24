@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Share2, Download, ChevronLeft, ChevronRight, Play, Pause } from 'lucide-react';
+import { X, Share2, Download, ChevronLeft, ChevronRight, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { shareUrl } from '../../utils/share';
 import { useSwipe } from '../../hooks/useSwipe';
@@ -32,6 +32,7 @@ export default function MediaLightbox({
   const [userActive, setUserActive] = useState(false); // Replace hovering with userActive
   const [posterUrl, setPosterUrl] = useState<string>('');
   const [scale, setScale] = useState(1);
+  const [isMuted, setIsMuted] = useState(false); // Audio state for videos - start unmuted for better UX
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // DEBUG: Log component props and state
@@ -194,6 +195,13 @@ export default function MediaLightbox({
         e.preventDefault(); 
         setPlaying(p => !p); 
       }
+      if (e.key === 'm' || e.key === 'M') {
+        console.log('🔊 M key pressed, toggling audio state');
+        e.preventDefault();
+        if (item.type === 'video') {
+          setIsMuted(m => !m);
+        }
+      }
     };
     console.log('⌨️ Setting up keyboard event listeners');
     window.addEventListener('keydown', onKey);
@@ -202,6 +210,13 @@ export default function MediaLightbox({
       window.removeEventListener('keydown', onKey);
     };
   }, [onClose, onNext, onPrev]);
+
+  // Sync video muted state
+  useEffect(() => {
+    if (videoRef.current && item.type === 'video') {
+      videoRef.current.muted = isMuted;
+    }
+  }, [isMuted, item.type]);
 
   // Swipe; disable when zoomed so pan doesn't trigger slide
   const swipe = useSwipe({ 
@@ -275,6 +290,16 @@ export default function MediaLightbox({
             <X className="w-5 h-5 text-white" />
           </button>
           <div className="flex gap-2">
+            {item.type === 'video' && (
+              <button 
+                onClick={() => setIsMuted(!isMuted)} 
+                className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1"
+                title={isMuted ? 'Unmute audio' : 'Mute audio'}
+              >
+                {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                {isMuted ? 'Unmute' : 'Mute'}
+              </button>
+            )}
             <button onClick={() => shareUrl(item.url, item.title)} className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1">
               <Share2 className="w-4 h-4" /> Share
             </button>
@@ -318,18 +343,18 @@ export default function MediaLightbox({
              }} 
           >
             <TransformComponent>
-              {item.type === 'video' ? (
-                <video
-                  ref={videoRef}
-                  controls
-                  autoPlay
-                  muted
-                  playsInline
-                  preload="metadata"
-                  poster={posterUrl || undefined}
-                  className="max-h-[85vh] max-w-[85vw] rounded-2xl object-contain"
-                />
-              ) : (
+                             {item.type === 'video' ? (
+                 <video
+                   ref={videoRef}
+                   controls
+                   autoPlay
+                   muted={isMuted}
+                   playsInline
+                   preload="metadata"
+                   poster={posterUrl || undefined}
+                   className="max-h-[85vh] max-w-[85vw] rounded-2xl object-contain"
+                 />
+               ) : (
                 <img
                   src={posterUrl || item.url}
                   alt={item.title || ''}
@@ -374,6 +399,11 @@ export default function MediaLightbox({
               {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               <span className="text-sm">{playing ? 'Pause' : 'Play'}</span>
             </button>
+          )}
+          {item.type === 'video' && (
+            <div className="text-white/70 text-sm">
+              Press <kbd className="px-2 py-1 bg-white/20 rounded text-xs">M</kbd> to toggle audio
+            </div>
           )}
         </div>
       </div>

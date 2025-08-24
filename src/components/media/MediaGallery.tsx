@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import { orderBy, doc, getDoc } from 'firebase/firestore';
 import { useFirestore } from '../../hooks/useFirestore';
@@ -7,6 +7,7 @@ import MediaLightbox from './MediaLightbox';
 import MediaUploadModal from './MediaUploadModal';
 import { useMediaFilters } from '../../hooks/useMediaFilters';
 import { useLightbox } from '../../hooks/useLightbox';
+import { useFingerPreviewOnGrid } from '../../hooks/useFingerPreviewOnGrid';
 import { Image, Video, Filter, Search, Upload, X } from 'lucide-react';
 import EventTypeahead from './EventTypeahead';
 import UploaderTypeahead from './UploaderTypeahead';
@@ -17,6 +18,17 @@ const MediaGallery: React.FC = () => {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [uploaderLabel, setUploaderLabel] = useState<string>('');
+  
+  // Finger preview functionality
+  const gridRef = useRef<HTMLDivElement>(null);
+  useFingerPreviewOnGrid(gridRef, {
+    cardSelector: '[data-media-card]',
+    pressDelay: 120,
+    moveThreshold: 14,
+    moveThrottleMs: 50,
+    enableDesktopHover: true,
+    hoverDelayMs: 120
+  });
 
   const { data: mediaFiles } = useRealtimeCollection('media', [orderBy('createdAt','desc')]);
   const { data: events } = useRealtimeCollection('events', []);
@@ -257,18 +269,20 @@ const MediaGallery: React.FC = () => {
 
 
       {/* Grid with infinite scroll */}
-      <InfiniteScroll
-        dataLength={paged.length}
-        next={() => setPage(p => p+1)}
-        hasMore={paged.length < filters.filtered.length}
-        loader={<div className="text-center py-4">Loading more…</div>}
-        endMessage={<div className="text-center py-4">No more media</div>}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-      >
-        {paged.map((m:any, i:number)=> (
-          <MediaCard key={m.id} media={m} onOpen={()=>lb.open(i)} />
-        ))}
-      </InfiniteScroll>
+      <div ref={gridRef}>
+        <InfiniteScroll
+          dataLength={paged.length}
+          next={() => setPage(p => p+1)}
+          hasMore={paged.length < filters.filtered.length}
+          loader={<div className="text-center py-4">Loading more…</div>}
+          endMessage={<div className="text-center py-4">No more media</div>}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+        >
+          {paged.map((m:any, i:number)=> (
+            <MediaCard key={m.id} media={m} onOpen={()=>lb.open(i)} />
+          ))}
+        </InfiniteScroll>
+      </div>
 
       {lb.index!=null && (
         <MediaLightbox 
