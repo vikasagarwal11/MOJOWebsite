@@ -65,45 +65,35 @@ const calendarTooltipStyles = `
 
   /* Ensure calendar cells have enough height for multiple events */
   .rbc-month-view .rbc-date-content {
-    min-height: 68px !important; /* Height optimized for 4 compact events */
-    padding: 2px !important; /* Compact padding */
+    min-height: 80px !important; /* Increased for 4 events + show more */
+    padding: 4px !important; /* Better padding for events */
   }
 
-  /* Fix empty all-day events area in week view - COMPLETELY ELIMINATE */
-  .rbc-week-view .rbc-allday-cell {
-    height: 0 !important; /* Completely eliminate height */
+  /* Ensure month rows match cell height for consistency */
+  .rbc-month-row {
+    min-height: 80px !important;
+  }
+
+  /* Hide all-day row in ALL views to eliminate empty space */
+  .rbc-allday-cell, .rbc-allday-events {
+    display: none !important;
+    height: 0 !important;
     min-height: 0 !important;
     max-height: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
     overflow: hidden !important;
-    display: none !important; /* Hide completely */
   }
 
-  .rbc-week-view .rbc-allday-events {
-    height: 0 !important; /* Completely eliminate height */
-    min-height: 0 !important;
-    max-height: 0 !important;
-    margin: 0 !important;
+  /* Hide header row padding in month view */
+  .rbc-month-header {
     padding: 0 !important;
-    overflow: hidden !important;
-    display: none !important; /* Hide completely */
+    margin: 0 !important;
   }
 
-  /* Hide all-day events area completely */
-  .rbc-week-view .rbc-allday-cell,
-  .rbc-week-view .rbc-allday-events {
-    display: none !important;
-  }
-
-  /* Force hide the entire all-day row in week view */
-  .rbc-week-view .rbc-time-header-content .rbc-row:first-child {
-    display: none !important;
-  }
-
-  /* Hide the all-day header row completely */
-  .rbc-week-view .rbc-time-header .rbc-row:first-child {
-    display: none !important;
+  .rbc-month-view .rbc-header {
+    padding: 4px !important; /* Minimal padding */
+    height: 28px !important; /* Reduced height */
   }
 
   /* Remove extra spacing in week view header */
@@ -150,18 +140,43 @@ const calendarTooltipStyles = `
     padding: 0 !important;
   }
 
-  /* Add "Today" indicator in week view header for today's column */
-  .rbc-week-view .rbc-header.rbc-today::after {
+  /* Hide time gutter in month view to eliminate empty column */
+  .rbc-month-view .rbc-time-gutter {
+    display: none !important;
+  }
+
+  /* Ensure equal column widths in month view */
+  .rbc-month-view .rbc-header {
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+  }
+
+  .rbc-month-view .rbc-row-segment {
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+  }
+
+  /* Add "Today" indicator only to month view date cells */
+  .rbc-month-view .rbc-today::after {
     content: "Today";
     position: absolute;
     top: 2px;
     left: 4px;
-    font-size: 0.65rem;
-    font-weight: 700;
+    font-size: 0.7rem;
+    font-weight: 900;
     color: rgb(139, 92, 246);
     background: rgba(139, 92, 246, 0.15);
-    padding: 1px 6px;
-    border-radius: 4px;
+    padding: 2px 8px;
+    border-radius: 0.25rem;
+    z-index: 2;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 4px rgba(139, 92, 246, 0.2);
+  }
+
+  /* Remove from week view header to avoid duplicates */
+  .rbc-week-view .rbc-header.rbc-today::after {
+    content: none !important;
   }
 
   /* Style today's column in week view */
@@ -186,6 +201,10 @@ const calendarTooltipStyles = `
     margin: 0.5px 0 !important;
     padding: 0px 2px !important;
     line-height: 1 !important;
+    position: absolute !important; /* Position at bottom */
+    bottom: 2px !important;
+    left: 2px !important;
+    right: 2px !important;
   }
 
   /* The "+X more" control is a button.rbc-show-more (not .rbc-event) */
@@ -708,7 +727,7 @@ const Events: React.FC = () => {
            popupOffset={30}
                                                                                dayPropGetter={(date) => ({
           style: {
-            minHeight: '68px', /* Height optimized for 4 compact events */
+            minHeight: '80px', /* Height optimized for 4 events + show more */
           }
         })}
         onNavigate={(newDate) => {
