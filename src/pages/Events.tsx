@@ -120,7 +120,7 @@ const Events: React.FC = () => {
     } else {
       const pastQ = query(
         eventsRef,
-        where('public', '==', true),
+        where('visibility', '==', 'public'),
         where('startAt', '<', pastCutoff),
         orderBy('startAt', 'desc')
       );
@@ -149,7 +149,7 @@ const Events: React.FC = () => {
       setLoadingPublicUpcoming(true);
       const publicUpcomingQ = query(
         eventsRef,
-        where('public', '==', true),
+        where('visibility', '==', 'public'),
         where('startAt', '>=', nowTs),
         orderBy('startAt', 'asc')
       );
