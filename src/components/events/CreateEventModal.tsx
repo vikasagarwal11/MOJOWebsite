@@ -30,6 +30,8 @@ const eventSchema = z.object({
   date: z.string().min(1, 'Event date is required'),
   time: z.string().min(1, 'Event time is required'),
   endTime: z.string().optional(),
+  endDate: z.string().optional(),
+  isAllDay: z.boolean().optional(),
   location: z.string().min(1, 'Location is required'),
   maxAttendees: z.string().optional(),
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
@@ -59,7 +61,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
 
   const isEditing = !!eventToEdit;
 
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<EventFormData>({
+  const { register, handleSubmit, formState: { errors }, reset, watch } = useForm<EventFormData>({
   resolver: zodResolver(eventSchema),
   defaultValues: isEditing ? {
     title: eventToEdit.title,
@@ -67,10 +69,14 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     date: format(tsToDate(eventToEdit.startAt), 'yyyy-MM-dd'),
     time: format(tsToDate(eventToEdit.startAt), 'HH:mm'),
     endTime: eventToEdit.endAt ? format(tsToDate(eventToEdit.endAt), 'HH:mm') : undefined,
+    endDate: eventToEdit.endAt ? format(tsToDate(eventToEdit.endAt), 'yyyy-MM-dd') : undefined,
+    isAllDay: false, // Default to false for existing events
     location: eventToEdit.location,
     maxAttendees: eventToEdit.maxAttendees,
     imageUrl: eventToEdit.imageUrl || '',
-  } : {},
+  } : {
+    isAllDay: false, // Default to false for new events
+  },
 });
 
   // Set initial state for editing
@@ -169,15 +175,53 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
       toast.error('Please sign in to create an event.');
       return;
     }
-    // Robust ISO join of date + time
-    const startAt = new Date(`${data.date}T${data.time || '00:00'}`);
+    // Handle all-day vs timed events
+    let startAt: Date;
+    let endAt: Date | undefined;
+    
+    if (data.isAllDay) {
+      // All-day event: start at midnight of start date
+      startAt = new Date(`${data.date}T00:00:00`);
+      
+      // For all-day events, end date is required
+      if (data.endDate) {
+        // Multi-day all-day event: end at midnight of end date (exclusive)
+        endAt = new Date(`${data.endDate}T00:00:00`);
+        endAt.setDate(endAt.getDate() + 1); // Make it exclusive
+      } else {
+        // Single-day all-day event: end at midnight of next day
+        endAt = new Date(startAt.getTime());
+        endAt.setDate(endAt.getDate() + 1);
+      }
+    } else {
+      // Timed event: use start time
+      startAt = new Date(`${data.date}T${data.time || '00:00'}`);
+      
+      // Handle end time with optional end date for multi-day events
+      if (data.endTime) {
+        const endDateStr = data.endDate || data.date; // default to same day if no end date
+        endAt = new Date(`${endDateStr}T${data.endTime}`);
+        
+        // Validate end date/time
+        if (Number.isNaN(endAt.getTime())) {
+          toast.error('Invalid end date or time');
+          return;
+        }
+        
+        // If no end date specified and end time <= start time, assume next day
+        if (!data.endDate && endAt <= startAt) {
+          endAt = new Date(endAt.getTime());
+          endAt.setDate(endAt.getDate() + 1);
+        }
+      }
+    }
+    
     if (Number.isNaN(startAt.getTime())) {
       toast.error('Invalid start date or time');
       return;
     }
-    const endAt = data.endTime ? new Date(`${data.date}T${data.endTime}`) : undefined;
     if (endAt && Number.isNaN(endAt.getTime())) {
-      toast.error('Invalid end time');
+      toast.error('Invalid end time or date');
       return;
     }
     if (endAt && endAt <= startAt) {
@@ -199,6 +243,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         description: data.description.trim(),
         startAt,
         endAt,
+        allDay: data.isAllDay, // Add all-day flag
         location: data.location.trim(),
         imageUrl: imageUrl || (data.imageUrl?.trim() || undefined),
         maxAttendees: data.maxAttendees ? Number(data.maxAttendees) : undefined,
@@ -321,19 +366,71 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
               {errors.time && <p className="mt-1 text-sm text-red-600">{errors.time.message}</p>}
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">End Time (Optional)</label>
-            <div className="relative">
-              <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                {...register('endTime')}
-                type="time"
-                disabled={isLoading}
-                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.endTime ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
-                placeholder="End time"
-              />
+          
+          {/* All Day Event Option */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-gray-500" />
+              <h3 className="text-sm font-medium text-gray-700">Event Type</h3>
             </div>
+            <div className="flex items-center gap-3">
+              <input
+                {...register('isAllDay')}
+                type="checkbox"
+                id="isAllDay"
+                disabled={isLoading}
+                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+              />
+              <label htmlFor="isAllDay" className="text-sm font-medium text-gray-700">
+                All Day Event
+              </label>
+            </div>
+            <p className="text-xs text-gray-500">
+              Check this for events that span entire days (like conferences, workshops, or multi-day events)
+            </p>
           </div>
+
+          {/* End Time and Date Section - Only show when not all-day */}
+          {!watch('isAllDay') && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-700">Event Duration</h3>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                Set end time and optionally end date for timed events. Leave end date empty for same-day events.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">End Time (Optional)</label>
+                  <div className="relative">
+                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      {...register('endTime')}
+                      type="time"
+                      disabled={isLoading}
+                      className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.endTime ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                      placeholder="End time"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">End Date (Optional)</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      {...register('endDate')}
+                      type="date"
+                      disabled={isLoading}
+                      className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.endDate ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                      placeholder="End date"
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">Leave empty for same-day events</p>
+                </div>
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
             <div className="relative">
