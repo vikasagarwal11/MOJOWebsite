@@ -8,6 +8,7 @@ import { deleteObject, ref } from 'firebase/storage';
 import toast from 'react-hot-toast';
 import { createEvent } from 'ics';
 import { RSVPModal } from './RSVPModal';
+import { EventTeaserModal } from './EventTeaserModal';
 import { RSVPDoc } from '../../types/rsvp';
 import { useUserBlocking } from '../../hooks/useUserBlocking';
 
@@ -41,6 +42,7 @@ const EventCard: React.FC<EventCardProps> = ({
   showCalendarButton = true,
   showRsvp = true
 }) => {
+
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
 
@@ -75,6 +77,7 @@ const EventCard: React.FC<EventCardProps> = ({
 
   // RSVP management
   const [showRSVPModal, setShowRSVPModal] = useState(false);
+  const [showTeaserModal, setShowTeaserModal] = useState(false);
   const [rsvpData, setRsvpData] = useState<RSVPDoc | null>(null);
   
   // Simple RSVP status check
@@ -167,7 +170,17 @@ const EventCard: React.FC<EventCardProps> = ({
   };
 
   return (
-    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group transform hover:scale-[1.02] hover:-translate-y-1">
+    <div 
+      className={`bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group transform hover:scale-[1.02] hover:-translate-y-1 ${
+        !currentUser ? 'cursor-pointer' : ''
+      }`}
+      onClick={() => {
+        if (!currentUser) {
+          setShowTeaserModal(true);
+        }
+      }}
+    >
+
       {event.imageUrl && (
         <div className="h-48 overflow-hidden">
           <img
@@ -358,7 +371,7 @@ const EventCard: React.FC<EventCardProps> = ({
                       <Users className="w-4 h-4 text-blue-500" />
                       {rsvpData.adults} adult{rsvpData.adults !== 1 ? 's' : ''}
                     </span>
-                    {rsvpData.kids > 0 && (
+                    {rsvpData.kids && rsvpData.kids > 0 && (
                       <span className="flex items-center gap-1">
                         <Baby className="w-4 h-4 text-pink-500" />
                         {rsvpData.kids} kid{rsvpData.kids !== 1 ? 's' : ''}
@@ -386,12 +399,22 @@ const EventCard: React.FC<EventCardProps> = ({
         )}
       </div>
       
-      {/* RSVP Modal */}
-      <RSVPModal
-        open={showRSVPModal}
+      {/* RSVP Modal - Only render when open */}
+      {showRSVPModal && (
+        <RSVPModal
+          open={showRSVPModal}
+          event={event}
+          onClose={() => setShowRSVPModal(false)}
+          onRSVPUpdate={handleRSVPUpdate}
+          quickEnabled={false}
+        />
+      )}
+      
+      {/* Event Teaser Modal for non-logged-in users */}
+      <EventTeaserModal
+        open={showTeaserModal}
         event={event}
-        onClose={() => setShowRSVPModal(false)}
-        onRSVPUpdate={handleRSVPUpdate}
+        onClose={() => setShowTeaserModal(false)}
       />
     </div>
   );

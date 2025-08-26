@@ -9,7 +9,17 @@ export interface RSVPDoc {
   email?: string | null;
   status: RSVPStatus;
   adults: number;
-  kids: number;
+  kids?: number; // Legacy support
+  childCounts?: Array<{
+    ageGroup: '0-2' | '3-5' | '6-10' | '11+';
+    count: number;
+  }>;
+  guests?: Array<{
+    name: string;
+    phone: string;
+    email: string;
+    ageGroup: '0-2' | '3-5' | '6-10' | '11+';
+  }>;
   notes?: string;
   requiresPayment?: boolean;
   paymentStatus?: PaymentStatus;
