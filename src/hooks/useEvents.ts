@@ -17,6 +17,7 @@ export type EventDoc = {
   allDay?: boolean;
   location?: string;
   description?: string;
+  imageUrl?: string;
   isTeaser?: boolean;
   maxAttendees?: number;
 };

@@ -10,7 +10,7 @@ import { useDebounce } from 'use-debounce';
 
 const Events: React.FC = () => {
   const { currentUser } = useAuth();
-  const { upcomingEvents, pastEvents, upcomingTeasers, loading, error } = useEvents({ includeGuestTeasers: true });
+  const { upcomingEvents, pastEvents, loading, error } = useEvents({ includeGuestTeasers: true });
 
   const [activeTab, setActiveTab] = useState<'upcoming'|'past'>('upcoming');
   const [viewMode, setViewMode] = useState<'grid'|'calendar'>('grid');
@@ -177,12 +177,6 @@ const Events: React.FC = () => {
             <>
               <h3 className="text-lg font-semibold mb-2">Upcoming (public)</h3>
               <EventList events={filtered.filter(e => e.visibility === 'public')} loading={loading} emptyText="No public events yet." />
-              {!!upcomingTeasers.length && (
-                <>
-                  <h3 className="text-lg font-semibold mt-6 mb-2">A peek at what members see</h3>
-                  <EventList events={upcomingTeasers} loading={false} />
-                </>
-              )}
             </>
           )}
         </>
