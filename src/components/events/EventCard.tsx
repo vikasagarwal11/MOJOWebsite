@@ -7,7 +7,7 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, serverT
 import { deleteObject, ref } from 'firebase/storage';
 import toast from 'react-hot-toast';
 import { createEvent } from 'ics';
-import { RSVPDrawer } from './RSVPDrawer';
+import { RSVPModal } from './RSVPModal';
 import { RSVPDoc } from '../../types/rsvp';
 import { useUserBlocking } from '../../hooks/useUserBlocking';
 
@@ -74,7 +74,7 @@ const EventCard: React.FC<EventCardProps> = ({
   const isUpcoming = startObj.getTime() >= Date.now();
 
   // RSVP management
-  const [showRSVPDrawer, setShowRSVPDrawer] = useState(false);
+  const [showRSVPModal, setShowRSVPModal] = useState(false);
   const [rsvpData, setRsvpData] = useState<RSVPDoc | null>(null);
   
   // Simple RSVP status check
@@ -331,7 +331,7 @@ const EventCard: React.FC<EventCardProps> = ({
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium text-gray-700">Your RSVP:</div>
               <button
-                onClick={() => setShowRSVPDrawer(true)}
+                onClick={() => setShowRSVPModal(true)}
                 disabled={isBlockedFromRSVP}
                 className={`text-sm underline flex items-center gap-1 transition-all duration-200 ${
                   isBlockedFromRSVP
@@ -375,33 +375,6 @@ const EventCard: React.FC<EventCardProps> = ({
                 )}
               </div>
             )}
-            
-            {/* Quick RSVP Buttons */}
-            {!rsvpStatus && (
-              <div className="flex space-x-3">
-                {(['going', 'not-going'] as const).map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => {
-                      if (!isBlockedFromRSVP) {
-                        setShowRSVPDrawer(true);
-                      }
-                    }}
-                    disabled={isBlockedFromRSVP}
-                    className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium border transition-all duration-200 hover:scale-105 ${
-                      isBlockedFromRSVP
-                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                        : status === 'going'
-                        ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100 hover:border-green-400 hover:shadow-md'
-                        : 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 hover:border-red-400 hover:shadow-md'
-                    }`}
-                  >
-                    {getRSVPIcon(status)}
-                    <span className="ml-2 capitalize">{status === 'not-going' ? "Can't Go" : status}</span>
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
@@ -413,11 +386,11 @@ const EventCard: React.FC<EventCardProps> = ({
         )}
       </div>
       
-      {/* RSVP Drawer */}
-      <RSVPDrawer
-        open={showRSVPDrawer}
+      {/* RSVP Modal */}
+      <RSVPModal
+        open={showRSVPModal}
         event={event}
-        onClose={() => setShowRSVPDrawer(false)}
+        onClose={() => setShowRSVPModal(false)}
         onRSVPUpdate={handleRSVPUpdate}
       />
     </div>
