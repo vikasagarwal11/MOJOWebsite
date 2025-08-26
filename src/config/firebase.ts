@@ -9,7 +9,7 @@ import {
 } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
-import { getPerformance, Performance } from 'firebase/performance';
+import { getPerformance } from 'firebase/performance';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -36,11 +36,16 @@ const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager(),
+    // Set cache size to prevent SDK compatibility issues
+    cacheSizeBytes: 50 * 1024 * 1024, // 50MB cache limit
   }),
 });
 
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+
+// Note: reCAPTCHA v2 configuration is now handled in src/utils/recaptcha.ts
+// and initialized early in main.tsx to prevent Enterprise probing
 
 // Connect to emulators in dev (Auth emulator does not require reCAPTCHA)
 if (USING_EMULATORS) {
@@ -50,7 +55,7 @@ if (USING_EMULATORS) {
 }
 
 export let analytics: Analytics | undefined;
-export let perf: Performance | undefined;
+export let perf: any | undefined;
 
 if (typeof window !== 'undefined') {
   isSupported().then(ok => {

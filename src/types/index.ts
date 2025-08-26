@@ -1,7 +1,10 @@
 export interface User {
   id: string;
   email: string;
+  firstName: string;
+  lastName: string;
   displayName: string;
+  phoneNumber?: string;
   photoURL?: string;
   role: 'admin' | 'member';
   createdAt: Date;

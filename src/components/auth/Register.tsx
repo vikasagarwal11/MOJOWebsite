@@ -11,7 +11,8 @@ import { normalizeUSPhoneToE164OrNull } from '../../utils/phone';
 const phoneSchema = z.object({
   // We do strict normalization with normalizeUSPhoneToE164OrNull in onPhoneSubmit
   phoneNumber: z.string().min(7, 'Enter a phone like 5551234567 or +12025550123'),
-  displayName: z.string().min(2, 'Name must be at least 2 characters'),
+  firstName: z.string().min(2, 'First name must be at least 2 characters'),
+  lastName: z.string().min(2, 'Last name must be at least 2 characters'),
 });
 
 const codeSchema = z.object({
@@ -23,7 +24,9 @@ type CodeFormData  = z.infer<typeof codeSchema>;
 
 const Register: React.FC = () => {
   const [step, setStep] = useState<'phone' | 'code'>('phone');
-  const [displayName, setDisplayName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
 
@@ -34,17 +37,25 @@ const Register: React.FC = () => {
   const codeForm  = useForm<CodeFormData>({ resolver: zodResolver(codeSchema) });
 
   const onPhoneSubmit = async (data: PhoneFormData) => {
+    console.log('🔍 Register: onPhoneSubmit called with data:', data);
+    
     // Normalize anything the user types (US-first) to E.164
     const e164 = normalizeUSPhoneToE164OrNull(data.phoneNumber);
+    console.log('🔍 Register: Phone normalization result:', { original: data.phoneNumber, e164 });
+    
     if (!e164) {
+      console.log('🔍 Register: Phone normalization failed');
       phoneForm.setError('phoneNumber', {
         message: 'Enter a valid US number like 5551234567 or +12025550123',
       });
       return;
     }
 
+    console.log('🔍 Register: Setting state variables');
     setIsLoading(true);
-    setDisplayName(data.displayName);
+    setFirstName(data.firstName);
+    setLastName(data.lastName);
+    setPhoneNumber(e164);
 
     try {
       // IMPORTANT: Always send E.164 to Firebase
@@ -94,13 +105,33 @@ const Register: React.FC = () => {
   };
 
   const onCodeSubmit = async (data: CodeFormData) => {
-    if (!confirmationResult) return;
+    console.log('🔍 Register: onCodeSubmit called with data:', data);
+    console.log('🔍 Register: Current state:', { firstName, lastName, phoneNumber, confirmationResult: !!confirmationResult });
+    
+    if (!confirmationResult) {
+      console.log('🔍 Register: No confirmationResult, returning');
+      return;
+    }
+    
     setIsLoading(true);
     try {
-      await verifyCode(confirmationResult, data.verificationCode, displayName);
+      console.log('🔍 Register: Calling verifyCode with:', {
+        code: data.verificationCode,
+        firstName,
+        lastName,
+        phoneNumber
+      });
+      
+      await verifyCode(confirmationResult, data.verificationCode, firstName, lastName, phoneNumber, false);
+      console.log('🔍 Register: verifyCode completed successfully, navigating to home');
       navigate('/');
     } catch (err: any) {
-      console.error('Code verification error:', err);
+      console.error('🚨 Register: Code verification error:', {
+        error: err,
+        errorCode: err?.code,
+        errorMessage: err?.message,
+        errorStack: err?.stack
+      });
       const msg =
         err?.code === 'auth/code-expired'
           ? 'Verification code expired. Request a new one.'
@@ -128,23 +159,44 @@ const Register: React.FC = () => {
 
           {step === 'phone' ? (
             <form onSubmit={phoneForm.handleSubmit(onPhoneSubmit)} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    {...phoneForm.register('displayName')}
-                    type="text"
-                    autoComplete="name"
-                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
-                    placeholder="Enter your full name"
-                  />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      {...phoneForm.register('firstName')}
+                      type="text"
+                      autoComplete="given-name"
+                      className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                      placeholder="First name"
+                    />
+                  </div>
+                  {phoneForm.formState.errors.firstName && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {phoneForm.formState.errors.firstName.message}
+                    </p>
+                  )}
                 </div>
-                {phoneForm.formState.errors.displayName && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {phoneForm.formState.errors.displayName.message}
-                  </p>
-                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      {...phoneForm.register('lastName')}
+                      type="text"
+                      autoComplete="family-name"
+                      className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                      placeholder="Last name"
+                    />
+                  </div>
+                  {phoneForm.formState.errors.lastName && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {phoneForm.formState.errors.lastName.message}
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div>

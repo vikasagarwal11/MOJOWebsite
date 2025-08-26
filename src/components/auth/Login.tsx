@@ -92,15 +92,27 @@ const Login: React.FC = () => {
   };
 
   const onCodeSubmit = async (data: CodeFormData) => {
-    if (!confirmationResult) return;
+    console.log('🔍 Login: onCodeSubmit called with data:', data);
+    console.log('🔍 Login: Current state:', { confirmationResult: !!confirmationResult });
+    
+    if (!confirmationResult) {
+      console.log('🔍 Login: No confirmationResult, returning');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      await verifyCode(confirmationResult, data.verificationCode);
+      console.log('🔍 Login: Calling verifyCode with isLogin=true (will preserve existing user data)');
+      await verifyCode(confirmationResult, data.verificationCode, '', '', '', true);
+      console.log('🔍 Login: verifyCode completed successfully, navigating to home');
       navigate('/');
     } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Code verification error:', error);
+      console.error('🚨 Login: Code verification error:', {
+        error,
+        errorCode: (error as any)?.code,
+        errorMessage: (error as any)?.message,
+        errorStack: (error as any)?.stack
+      });
     } finally {
       setIsLoading(false);
     }

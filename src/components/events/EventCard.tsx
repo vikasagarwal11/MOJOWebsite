@@ -117,7 +117,7 @@ const EventCard: React.FC<EventCardProps> = ({
   const handleDelete = async () => {
     try {
       await deleteDoc(doc(db, 'events', event.id));
-      await deleteDoc(doc(db, 'event_teasers', event.id)).catch(() => {});
+      // Note: Cloud Functions handle event_teasers cleanup when events are deleted
       const rsvps = await getDocs(collection(db, 'events', event.id, 'rsvps'));
       for (const rsvp of rsvps.docs) {
         await deleteDoc(rsvp.ref);

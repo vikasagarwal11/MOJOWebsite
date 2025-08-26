@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, updateDoc, setDoc, deleteDoc, collection, query, where, orderBy, limit, onSnapshot, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, deleteDoc, collection, query, where, orderBy, limit, onSnapshot, getDocs, serverTimestamp, writeBatch, collectionGroup } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
@@ -59,12 +59,13 @@ function normalizeTag(input: string): string | null {
 }
 
 const Profile: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, listenersReady } = useAuth();
   const [activeTab, setActiveTab] = useState<'personal' | 'events' | 'rsvp' | 'admin'>('personal');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [photoURL, setPhotoURL] = useState<string | undefined>(undefined);
   const [about, setAbout] = useState('');
   const [address, setAddress] = useState<Address>({ state: '' });
@@ -120,6 +121,7 @@ const Profile: React.FC = () => {
           setLastName(d.lastName || '');
           setDisplayName(d.displayName || currentUser.displayName || '');
           setEmail(d.email || currentUser.email || '');
+          setPhoneNumber(d.phoneNumber || currentUser.phoneNumber || '');
           setPhotoURL(d.photoURL || currentUser.photoURL);
           setAbout(d.about || '');
           setAddress({
@@ -147,120 +149,239 @@ const Profile: React.FC = () => {
 
   // Load notifications
   useEffect(() => {
-    if (!currentUser) return;
-    setLoadingNotifications(true);
-    const q = query(
-      collection(db, 'notifications'),
-      where('userId', '==', currentUser.id),
-      orderBy('createdAt', 'desc'),
-      limit(PAGE_SIZE * notificationsPage)
-    );
-    const controller = new AbortController();
-    const unsubscribe = onSnapshot(q, (snap) => {
-      if (!controller.signal.aborted) {
-        setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    if (!currentUser || !listenersReady) return; // Wait for listeners to be ready
+    
+    // Add a small delay to prevent race conditions
+    const timer = setTimeout(() => {
+      setLoadingNotifications(true);
+      const q = query(
+        collection(db, 'notifications'),
+        where('userId', '==', currentUser.id),
+        orderBy('createdAt', 'desc'),
+        limit(PAGE_SIZE * notificationsPage)
+      );
+      const controller = new AbortController();
+      console.log('🔍 Profile: Setting up notifications onSnapshot listener');
+      const unsubscribe = onSnapshot(q, (snap) => {
+        console.log('🔍 Profile: Notifications onSnapshot callback fired', {
+          docCount: snap.docs.length,
+          hasData: snap.docs.length > 0
+        });
+        if (!controller.signal.aborted) {
+          setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+          setLoadingNotifications(false);
+        }
+      }, (e) => {
+        console.error('🚨 Profile: Notifications onSnapshot error:', {
+          error: e,
+          errorCode: e?.code,
+          errorMessage: e?.message,
+          errorStack: e?.stack
+        });
         setLoadingNotifications(false);
-      }
-    }, (e) => {
-      console.error('Failed to load notifications:', e);
-      setLoadingNotifications(false);
-      toast.error(e?.code === 'permission-denied' ? 'Notifications access denied' : 'Failed to load notifications');
-    });
-    return () => {
-      controller.abort();
-      unsubscribe();
-    };
-  }, [currentUser, notificationsPage]);
+        toast.error(e?.code === 'permission-denied' ? 'Notifications access denied' : 'Failed to load notifications');
+      });
+      return () => {
+        controller.abort();
+        unsubscribe();
+      };
+    }, 200); // 200ms delay to prevent race conditions
+
+    return () => clearTimeout(timer);
+  }, [currentUser, listenersReady, notificationsPage]); // Add listenersReady dependency
 
   // Load RSVPed events
   useEffect(() => {
-    if (!currentUser) return;
-    setLoadingEvents(true);
-    const q = query(
-      collection(db, 'events'),
-      where('rsvps', 'array-contains', { userId: currentUser.id, status: 'going' }),
-      limit(PAGE_SIZE * eventsPage)
-    );
-    const controller = new AbortController();
-    const unsubscribe = onSnapshot(q, (snap) => {
-      if (!controller.signal.aborted) {
-        const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setRsvpedEvents(events);
-        fetchUserNames(events.map(e => ({ id: e.createdBy })));
+    if (!currentUser || !listenersReady) return; // Wait for listeners to be ready
+    
+    // Add a small delay to prevent race conditions
+    const timer = setTimeout(() => {
+      setLoadingEvents(true);
+      
+      // Use collection group query to get RSVPs across all events
+      const rsvpsQuery = query(
+        collectionGroup(db, 'rsvps'),
+        where('userId', '==', currentUser.id), // Filter by userId field instead of __name__
+        where('status', '==', 'going'),
+        orderBy('updatedAt', 'desc'),
+        limit(PAGE_SIZE * eventsPage)
+      );
+      
+      const controller = new AbortController();
+      console.log('🔍 Profile: Setting up RSVPed events collection group query');
+      
+      const unsubscribe = onSnapshot(rsvpsQuery, async (rsvpSnap) => {
+        console.log('🔍 Profile: RSVPs collection group query fired', {
+          rsvpCount: rsvpSnap.docs.length,
+          hasRsvps: rsvpSnap.docs.length > 0
+        });
+        
+        if (!controller.signal.aborted && rsvpSnap.docs.length > 0) {
+          try {
+            // Extract event IDs from RSVPs
+            const eventIds = rsvpSnap.docs.map(rsvp => {
+              // Extract eventId from the RSVP document path: events/{eventId}/rsvps/{userId}
+              const pathParts = rsvp.ref.path.split('/');
+              return pathParts[1]; // events/{eventId}/rsvps/{userId} -> eventId is at index 1
+            });
+            
+            console.log('🔍 Profile: Extracted event IDs from RSVPs:', eventIds);
+            
+            // Fetch the corresponding events
+            const eventsQuery = query(
+              collection(db, 'events'),
+              where('__name__', 'in', eventIds),
+              orderBy('startAt', 'desc')
+            );
+            
+            const eventsSnap = await getDocs(eventsQuery);
+            console.log('🔍 Profile: Events query result:', {
+              eventCount: eventsSnap.docs.length,
+              hasEvents: eventsSnap.docs.length > 0
+            });
+            
+            if (!controller.signal.aborted) {
+              const events = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+              setRsvpedEvents(events);
+              fetchUserNames(events.map(e => ({ id: e.createdBy })));
+              setLoadingEvents(false);
+            }
+          } catch (error) {
+            console.error('🚨 Profile: Error fetching events from RSVPs:', error);
+            setLoadingEvents(false);
+            toast.error('Failed to load RSVPed events');
+          }
+        } else if (!controller.signal.aborted) {
+          // No RSVPs found
+          setRsvpedEvents([]);
+          setLoadingEvents(false);
+        }
+      }, (e) => {
+        console.error('🚨 Profile: RSVPs collection group query error:', {
+          error: e,
+          errorCode: e?.code,
+          errorMessage: e?.message,
+          errorStack: e?.stack
+        });
+        
+        // Check if it's an index error and provide helpful message
+        if (e?.code === 'failed-precondition') {
+          toast.error('RSVP index not ready yet. Please wait a moment and try again.');
+        } else if (e?.code === 'permission-denied') {
+          toast.error('RSVP access denied');
+        } else {
+          toast.error('Failed to load RSVPed events');
+        }
+        
         setLoadingEvents(false);
-      }
-    }, (e) => {
-      console.error('Failed to load RSVPed events:', e);
-      setLoadingEvents(false);
-      toast.error(e?.code === 'permission-denied' ? 'Events access denied' : 'Failed to load RSVPed events');
-    });
-    return () => {
-      controller.abort();
-      unsubscribe();
-    };
-  }, [currentUser, eventsPage]);
+      });
+      
+      return () => {
+        controller.abort();
+        unsubscribe();
+      };
+    }, 300); // 300ms delay (slightly more than notifications)
+
+    return () => clearTimeout(timer);
+  }, [currentUser, listenersReady, eventsPage]); // Add listenersReady dependency
 
   // Load user-created and all events (for admins)
   useEffect(() => {
-    if (!currentUser) return;
-    // User-created events
-    const userQ = query(
-      collection(db, 'events'),
-      where('createdBy', '==', currentUser.id),
-      orderBy('startAt', 'desc'),
-      limit(PAGE_SIZE * eventsPage)
-    );
-    const unsubUser = onSnapshot(userQ, (snap) => {
-      const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setUserEvents(events);
-      fetchUserNames(events.map(e => ({ id: e.createdBy })));
-    }, (e) => {
-      console.error('Failed to load user events:', e);
-      toast.error(e?.code === 'permission-denied' ? 'User events access denied' : 'Failed to load user events');
-    });
-    // All events for admins
-    let unsubAll: (() => void) | undefined;
-    if (currentUser.role === 'admin') {
-      setLoadingAdminEvents(true);
-      const allQ = query(collection(db, 'events'), orderBy('startAt', 'desc'), limit(PAGE_SIZE * eventsPage));
-      unsubAll = onSnapshot(allQ, async (snap) => {
-        try {
-          const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          setAllEvents(events);
-          const batchSize = 10;
-          const batches = [];
-          for (let i = 0; i < events.length; i += batchSize) {
-            batches.push(events.slice(i, i + batchSize));
-          }
-          const rsvps: { [eventId: string]: any[] } = {};
-          for (const batch of batches) {
-            await Promise.all(
-              batch.map(async (event) => {
-                const rsvpQuery = query(collection(db, 'events', event.id, 'rsvps'), orderBy('updatedAt', 'desc'));
-                const rsvpSnap = await getDocs(rsvpQuery);
-                rsvps[event.id] = rsvpSnap.docs.map(d => ({ id: d.id, eventId: event.id, ...d.data() }));
-              })
-            );
-          }
-          setRsvpsByEvent(rsvps);
-          fetchUserNames([...events.map(e => ({ id: e.createdBy })), ...Object.values(rsvps).flat()]);
-        } catch (e) {
-          console.error('Failed to load admin events:', e);
-          toast.error('Failed to load events');
-        } finally {
-          setLoadingAdminEvents(false);
-        }
+    if (!currentUser || !listenersReady) return; // Wait for listeners to be ready
+    
+    // Add a small delay to prevent race conditions
+    const timer = setTimeout(() => {
+      // User-created events
+      const userQ = query(
+        collection(db, 'events'),
+        where('createdBy', '==', currentUser.id),
+        orderBy('startAt', 'desc'),
+        limit(PAGE_SIZE * eventsPage)
+      );
+      console.log('🔍 Profile: Setting up user events onSnapshot listener');
+      const unsubUser = onSnapshot(userQ, (snap) => {
+        console.log('🔍 Profile: User events onSnapshot callback fired', {
+          docCount: snap.docs.length,
+          hasData: snap.docs.length > 0
+        });
+        const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setUserEvents(events);
+        fetchUserNames(events.map(e => ({ id: e.createdBy })));
       }, (e) => {
-        console.error('Failed to load admin events:', e);
-        toast.error(e?.code === 'permission-denied' ? 'Admin events access denied' : 'Failed to load events');
-        setLoadingAdminEvents(false);
+        console.error('🚨 Profile: User events onSnapshot error:', {
+          error: e,
+          errorCode: e?.code,
+          errorMessage: e?.message,
+          errorStack: e?.stack
+        });
+        toast.error(e?.code === 'permission-denied' ? 'Events access denied' : 'Failed to load user events');
       });
-    }
-    return () => {
-      unsubUser();
-      unsubAll?.();
-    };
-  }, [currentUser, eventsPage]);
+
+      // Admin: all events
+      let unsubAdmin: (() => void) | undefined;
+      if (currentUser.role === 'admin') {
+        setLoadingAdminEvents(true);
+        const adminQ = query(
+          collection(db, 'events'),
+          orderBy('startAt', 'desc'),
+          limit(PAGE_SIZE * eventsPage)
+        );
+        console.log('🔍 Profile: Setting up admin events onSnapshot listener');
+        unsubAdmin = onSnapshot(adminQ, async (snap) => {
+          console.log('🔍 Profile: Admin events onSnapshot callback fired', {
+            docCount: snap.docs.length,
+            hasData: snap.docs.length > 0
+          });
+          try {
+            const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setAllEvents(events);
+            const batchSize = 10;
+            const batches = [];
+            for (let i = 0; i < events.length; i += batchSize) {
+              batches.push(events.slice(i, i + batchSize));
+            }
+            const rsvps: { [eventId: string]: any[] } = {};
+            for (const batch of batches) {
+              await Promise.all(
+                batch.map(async (event) => {
+                  const rsvpQuery = query(collection(db, 'events', event.id, 'rsvps'), orderBy('updatedAt', 'desc'));
+                  const rsvpSnap = await getDocs(rsvpQuery);
+                  rsvps[event.id] = rsvpSnap.docs.map(d => ({ id: d.id, eventId: event.id, ...d.data() }));
+                })
+              );
+            }
+            setRsvpsByEvent(rsvps);
+            fetchUserNames([...events.map(e => ({ id: e.createdBy })), ...Object.values(rsvps).flat()]);
+          } catch (e) {
+            console.error('🚨 Profile: Failed to load admin events:', {
+              error: e,
+              errorMessage: (e as any)?.message,
+              errorStack: (e as any)?.stack
+            });
+            toast.error('Failed to load events');
+          } finally {
+            setLoadingAdminEvents(false);
+          }
+        }, (e) => {
+          console.error('🚨 Profile: Admin events onSnapshot error:', {
+            error: e,
+            errorCode: e?.code,
+            errorMessage: e?.message,
+            errorStack: e?.stack
+          });
+          toast.error(e?.code === 'permission-denied' ? 'Admin events access denied' : 'Failed to load events');
+          setLoadingAdminEvents(false);
+        });
+      }
+
+      return () => {
+        unsubUser();
+        unsubAdmin?.();
+      };
+    }, 400); // 400ms delay (slightly more than RSVPed events)
+
+    return () => clearTimeout(timer);
+  }, [currentUser, listenersReady, eventsPage]); // Add listenersReady dependency
 
   // Load blocked users for admins
   useEffect(() => {
@@ -758,6 +879,7 @@ const Profile: React.FC = () => {
             setDisplayName={setDisplayName}
             email={email}
             setEmail={setEmail}
+            phoneNumber={phoneNumber}
             photoURL={photoURL}
             about={about}
             setAbout={setAbout}

@@ -60,7 +60,11 @@ const Header: React.FC = () => {
 
   const handleLogout = async () => {
     try {
+      console.log('Logging out...');
       await logout();
+      console.log('Logout successful');
+      // Force a page refresh to ensure clean state
+      window.location.href = '/';
     } catch (error) {
       console.error('Logout error:', error);
     }

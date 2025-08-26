@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { X, Calendar, Clock, MapPin, Users, FileText, Tag } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStorage } from '../../hooks/useStorage';
-import { addDoc, collection, doc, setDoc, updateDoc, serverTimestamp, query, where, limit, getDocs } from 'firebase/firestore';
+import { addDoc, collection, doc, updateDoc, serverTimestamp, query, where, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -260,31 +260,15 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         // Update existing event
         await updateDoc(doc(db, 'events', eventToEdit.id), eventData);
         
-        // Handle teaser updates for private events
-        if (eventVisibility === 'private' && (!eventToEdit.visibility || eventToEdit.visibility === 'private')) {
-          // Event remains private, update teaser
-          await setDoc(doc(db, 'event_teasers', eventToEdit.id), {
-            title: eventData.title,
-            startAt,
-            createdAt: serverTimestamp(),
-          }, { merge: true });
-        } else if (eventVisibility !== 'private' && (eventToEdit.visibility === 'private' || eventToEdit.public === false)) {
-          // Event changed from private to public/members, remove teaser
-          await setDoc(doc(db, 'event_teasers', eventToEdit.id), {}, { merge: true }).catch(() => {});
-        }
+        // Note: Cloud Functions handle event_teasers collection management
+        // No need to manually manage teasers here
         
         toast.success('Event updated successfully!');
       } else {
         // Create new event
         const evRef = await addDoc(collection(db, 'events'), eventData);
-        // If private & upcoming: create a teaser with the SAME id
-        if (eventVisibility === 'private') {
-          await setDoc(doc(db, 'event_teasers', evRef.id), {
-            title: eventData.title,
-            startAt,
-            createdAt: serverTimestamp(),
-          }, { merge: true });
-        }
+        // Note: Cloud Functions handle event_teasers collection management
+        // No need to manually create teasers here
         toast.success('Event created successfully!');
       }
       
