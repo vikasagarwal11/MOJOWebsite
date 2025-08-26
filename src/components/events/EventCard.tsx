@@ -36,7 +36,7 @@ const EventCard: React.FC<EventCardProps> = ({
   onEdit, 
   onDelete, 
   onShare, 
-  showAdminActions = true, 
+  showAdminActions = false, 
   showTopActions = false, 
   showCalendarButton = true,
   showRsvp = true
