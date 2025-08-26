@@ -167,7 +167,7 @@ const EventCard: React.FC<EventCardProps> = ({
   };
 
   return (
-    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group">
+    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group transform hover:scale-[1.02] hover:-translate-y-1">
       {event.imageUrl && (
         <div className="h-48 overflow-hidden">
           <img
@@ -189,7 +189,7 @@ const EventCard: React.FC<EventCardProps> = ({
               {/* Calendar icon - always shown when showTopActions is true */}
               <button
                 onClick={handleAddToCalendar}
-                className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors"
+                className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-full transition-all duration-200 hover:scale-110"
                 title="Add to Calendar"
                 aria-label="Add to Calendar"
               >
@@ -202,7 +202,7 @@ const EventCard: React.FC<EventCardProps> = ({
                   {onShare && (
                     <button
                       onClick={onShare}
-                      className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                      className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all duration-200 hover:scale-110"
                       title="Share Event"
                       aria-label="Share Event"
                     >
@@ -212,7 +212,7 @@ const EventCard: React.FC<EventCardProps> = ({
                   {onEdit && (
                     <button
                       onClick={onEdit}
-                      className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                      className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all duration-200 hover:scale-110"
                       title="Edit Event"
                       aria-label="Edit Event"
                     >
@@ -221,8 +221,8 @@ const EventCard: React.FC<EventCardProps> = ({
                   )}
                   {onDelete && (
                     <button
-                      onClick={onDelete}
-                      className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                      onClick={handleDelete}
+                      className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-full transition-all duration-200 hover:scale-110"
                       title="Delete Event"
                       aria-label="Delete Event"
                     >
@@ -278,7 +278,7 @@ const EventCard: React.FC<EventCardProps> = ({
               {event.tags.map((tag: string) => (
                 <span
                   key={tag}
-                  className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full border border-purple-200"
+                  className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full border border-purple-200 hover:bg-purple-200 hover:scale-105 transition-all duration-200 cursor-default"
                 >
                   {tag}
                 </span>
@@ -293,7 +293,7 @@ const EventCard: React.FC<EventCardProps> = ({
           <div className="flex gap-2 mt-4">
             <button
               onClick={onEdit}
-              className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 hover:scale-105"
             >
               Edit
             </button>
@@ -306,7 +306,7 @@ const EventCard: React.FC<EventCardProps> = ({
                   }
                 }
               }}
-              className="px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700"
+              className="px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all duration-200 hover:scale-105"
             >
               Delete
             </button>
@@ -317,7 +317,7 @@ const EventCard: React.FC<EventCardProps> = ({
           <div className="space-y-3">
             {/* Blocking Warning */}
             {isBlockedFromRSVP && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg animate-pulse">
                 <div className="flex items-center gap-2 text-red-700">
                   <AlertTriangle className="w-4 h-4" />
                   <div>
@@ -333,10 +333,10 @@ const EventCard: React.FC<EventCardProps> = ({
               <button
                 onClick={() => setShowRSVPDrawer(true)}
                 disabled={isBlockedFromRSVP}
-                className={`text-sm underline flex items-center gap-1 ${
+                className={`text-sm underline flex items-center gap-1 transition-all duration-200 ${
                   isBlockedFromRSVP
                     ? 'text-gray-400 cursor-not-allowed'
-                    : 'text-purple-600 hover:text-purple-700'
+                    : 'text-purple-600 hover:text-purple-700 hover:scale-105'
                 }`}
               >
                 <MessageSquare className="w-4 h-4" />
@@ -346,7 +346,7 @@ const EventCard: React.FC<EventCardProps> = ({
             
             {/* Current RSVP Status Display */}
             {rsvpStatus && (
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border">
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border hover:bg-gray-100 transition-colors duration-200">
                 <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${getRSVPColor(rsvpStatus)}`}>
                   {getRSVPIcon(rsvpStatus)}
                   <span className="capitalize">{rsvpStatus === 'not-going' ? "Can't Go" : rsvpStatus}</span>
@@ -378,7 +378,7 @@ const EventCard: React.FC<EventCardProps> = ({
             
             {/* Quick RSVP Buttons */}
             {!rsvpStatus && (
-              <div className="flex space-x-2">
+              <div className="flex space-x-3">
                 {(['going', 'not-going'] as const).map((status) => (
                   <button
                     key={status}
@@ -388,14 +388,16 @@ const EventCard: React.FC<EventCardProps> = ({
                       }
                     }}
                     disabled={isBlockedFromRSVP}
-                    className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium border transition-all duration-200 ${
+                    className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium border transition-all duration-200 hover:scale-105 ${
                       isBlockedFromRSVP
                         ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                        : status === 'going'
+                        ? 'bg-green-50 text-green-700 border-green-300 hover:bg-green-100 hover:border-green-400 hover:shadow-md'
+                        : 'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 hover:border-red-400 hover:shadow-md'
                     }`}
                   >
                     {getRSVPIcon(status)}
-                    <span className="ml-1 capitalize">{status === 'not-going' ? "Can't Go" : status}</span>
+                    <span className="ml-2 capitalize">{status === 'not-going' ? "Can't Go" : status}</span>
                   </button>
                 ))}
               </div>
