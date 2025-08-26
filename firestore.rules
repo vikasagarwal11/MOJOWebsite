@@ -190,7 +190,7 @@ service cloud.firestore {
           // Members can see members-only events
           (isMember() && (('visibility' in resource.data) && resource.data.visibility == 'members')) ||
           // Invited users can see private events
-          (('invitedUsers' in resource.data) && request.auth.uid in resource.data.invitedUsers)
+          (('invitedUserIds' in resource.data) && request.auth.uid in resource.data.invitedUserIds)
         ));
       
       // Enhanced create/update/delete permissions
@@ -227,8 +227,8 @@ service cloud.firestore {
             // Members-only events: only members can RSVP
             (isSignedIn() && (isMember() || isAdmin()) && 
              (('visibility' in resource.data) && resource.data.visibility == 'members')) ||
-            // Private events: only invited users can RSVP
-            (('invitedUsers' in resource.data) && request.auth.uid in resource.data.invitedUsers) ||
+                      // Private events: only invited users can RSVP
+          (('invitedUserIds' in resource.data) && request.auth.uid in resource.data.invitedUserIds) ||
             // Event creator can always RSVP
             request.auth.uid == resource.data.createdBy
           );
@@ -262,11 +262,23 @@ service cloud.firestore {
     // Allow users to read/write their own RSVP docs across all events
     match /{path=**}/rsvps/{rsvpId} {
       allow read, get, list: if request.auth != null
-                              && resource.data.userId == request.auth.uid;
+                              && (resource.data.userId == request.auth.uid || 
+                                  // Allow event creators to read RSVPs for their events
+                                  (resource.data.eventId != null && 
+                                   exists(/databases/$(database)/documents/events/$(resource.data.eventId)) &&
+                                   get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.createdBy == request.auth.uid));
       
       // Allow users to create/update their own RSVPs
-      allow create, update, delete: if request.auth != null
-                                     && request.resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null
+                     && request.resource.data.userId == request.auth.uid
+                     && request.resource.data.eventId != null;
+      
+      allow update: if request.auth != null
+                     && resource.data.userId == request.auth.uid
+                     && request.resource.data.userId == request.auth.uid;
+      
+      allow delete: if request.auth != null
+                     && resource.data.userId == request.auth.uid;
     }
     
     // --- POSTS ---

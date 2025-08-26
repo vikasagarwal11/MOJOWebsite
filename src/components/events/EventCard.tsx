@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, CalendarDays, MapPin, Users, Clock, CheckCircle, XCircle, HelpCircle, Edit, Trash2, CalendarPlus, Share2 } from 'lucide-react';
+import { Calendar, CalendarDays, MapPin, Users, Clock, CheckCircle, XCircle, HelpCircle, Edit, Trash2, CalendarPlus, Share2, MessageSquare, Baby } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 import { db, storage } from '../../config/firebase';
@@ -7,6 +7,9 @@ import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, serverT
 import { deleteObject, ref } from 'firebase/storage';
 import toast from 'react-hot-toast';
 import { createEvent } from 'ics';
+import { RSVPDrawer } from './RSVPDrawer';
+import { RSVPDoc } from '../../types/rsvp';
+import { useRSVP } from '../../hooks/useRSVP';
 
 interface EventCardProps {
   event: any;
@@ -64,21 +67,13 @@ const EventCard: React.FC<EventCardProps> = ({
 
   const isUpcoming = startObj.getTime() >= Date.now();
 
-  // My RSVP (load my doc once)
-  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | null>(null);
-  useEffect(() => {
-    let cancel = false;
-    async function fetchMyRsvp() {
-      if (!currentUser || !event?.id) return;
-      const rsvpRef = doc(db, 'events', String(event.id), 'rsvps', currentUser.id);
-      const snap = await getDoc(rsvpRef);
-      if (!cancel) setRsvpStatus((snap.data()?.status as any) ?? null);
-    }
-    fetchMyRsvp();
-    return () => { cancel = true; };
-  }, [currentUser?.id, event?.id]);
+  // RSVP management
+  const [showRSVPDrawer, setShowRSVPDrawer] = useState(false);
+  const { myRSVP, attendanceStats } = useRSVP(event?.id || '', currentUser?.id);
+  
+  const rsvpStatus = myRSVP?.status || null;
 
-  const attendingCount: number = event.attendingCount ?? 0;
+  const attendingCount: number = attendanceStats.totalAttendees;
 
   const getRSVPIcon = (status: string) =>
     status === 'going' ? <CheckCircle className="w-4 h-4" /> :
@@ -89,29 +84,9 @@ const EventCard: React.FC<EventCardProps> = ({
     status === 'not-going' ? 'bg-red-100 text-red-700 border-red-200' :
     'bg-gray-100 text-gray-700 border-gray-200';
 
-  const handleRSVP = async (status: 'going' | 'not-going') => {
-    if (!currentUser || !event?.id) return;
-    setRsvpStatus(status);
-    try {
-      const rsvpRef = doc(db, 'events', String(event.id), 'rsvps', currentUser.id);
-      const snap = await getDoc(rsvpRef);
-      const existing = snap.exists() ? snap.data() : { statusHistory: [] };
-      const newHistory = [
-        ...(existing.statusHistory || []),
-        {
-          status,
-          changedAt: new Date(), // ✅ Fixed: Use Date instead of serverTimestamp() for array elements
-          changedBy: currentUser.id,
-        }
-      ];
-      if (snap.exists()) {
-        await updateDoc(rsvpRef, { status, updatedAt: serverTimestamp(), statusHistory: newHistory });
-      } else {
-        await setDoc(rsvpRef, { status, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), statusHistory: newHistory });
-      }
-    } catch (e) {
-      console.error('RSVP write failed', e);
-    }
+  const handleRSVPUpdate = () => {
+    // The useRSVP hook will automatically refresh the data
+    // No need to manually update since we're using real-time listeners
   };
 
   const handleDelete = async () => {
@@ -251,11 +226,33 @@ const EventCard: React.FC<EventCardProps> = ({
           <div className="flex items-center text-gray-600">
             <Users className="w-4 h-4 mr-2 text-purple-500" />
             <span className="text-sm">
-              {attendingCount} attending{event.maxAttendees ? ` • ${event.maxAttendees} max` : ''}
+              {attendingCount} attending
+              {event.maxAttendees && (
+                <span className={`ml-1 ${attendingCount >= event.maxAttendees ? 'text-red-600 font-medium' : ''}`}>
+                  • {event.maxAttendees} max
+                  {attendingCount >= event.maxAttendees && ' (FULL)'}
+                </span>
+              )}
             </span>
           </div>
         </div>
         <p className="text-gray-600 text-sm mb-6 line-clamp-3">{event.description}</p>
+        
+        {/* Tags Display */}
+        {event.tags && event.tags.length > 0 && (
+          <div className="mb-4">
+            <div className="flex flex-wrap gap-2">
+              {event.tags.map((tag: string) => (
+                <span
+                  key={tag}
+                  className="px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full border border-purple-200"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         
         {/* Admin/Event Creator Actions - Only show when showAdminActions is true */}
@@ -285,21 +282,75 @@ const EventCard: React.FC<EventCardProps> = ({
 
         {showRsvp && currentUser && isUpcoming && (
           <div className="space-y-3">
-            <div className="text-sm font-medium text-gray-700 mb-2">Your RSVP:</div>
-            <div className="flex space-x-2">
-              {(['going', 'not-going'] as const).map((status) => (
-                <button
-                  key={status}
-                  onClick={() => handleRSVP(status)}
-                  className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium border transition-all duration-200 ${
-                    rsvpStatus === status ? getRSVPColor(status) : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  {getRSVPIcon(status)}
-                  <span className="ml-1 capitalize">{status === 'not-going' ? "Can't Go" : status}</span>
-                </button>
-              ))}
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-medium text-gray-700">Your RSVP:</div>
+              <button
+                onClick={() => setShowRSVPDrawer(true)}
+                className="text-sm text-purple-600 hover:text-purple-700 underline flex items-center gap-1"
+              >
+                <MessageSquare className="w-4 h-4" />
+                {rsvpStatus ? 'Update RSVP' : 'RSVP Now'}
+              </button>
             </div>
+            
+            {/* Current RSVP Status Display */}
+            {rsvpStatus && (
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border">
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${getRSVPColor(rsvpStatus)}`}>
+                  {getRSVPIcon(rsvpStatus)}
+                  <span className="capitalize">{rsvpStatus === 'not-going' ? "Can't Go" : rsvpStatus}</span>
+                </div>
+                
+                {rsvpStatus === 'going' && myRSVP && (
+                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                    <span className="flex items-center gap-1">
+                      <Users className="w-4 h-4 text-blue-500" />
+                      {myRSVP.adults} adult{myRSVP.adults !== 1 ? 's' : ''}
+                    </span>
+                    {myRSVP.kids > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Baby className="w-4 h-4 text-pink-500" />
+                        {myRSVP.kids} kid{myRSVP.kids !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                )}
+                
+                {myRSVP?.notes && (
+                  <div className="flex items-start gap-2 text-sm text-gray-600">
+                    <MessageSquare className="w-4 h-4 text-gray-400 mt-0.5" />
+                    <span className="italic">"{myRSVP.notes}"</span>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Quick RSVP Buttons */}
+            {!rsvpStatus && (
+              <div className="flex space-x-2">
+                {(['going', 'not-going'] as const).map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => {
+                      setShowRSVPDrawer(true);
+                      // Pre-select the status in the drawer
+                      setTimeout(() => {
+                        const drawer = document.querySelector('[data-rsvp-status]');
+                        if (drawer) {
+                          // This will be handled by the drawer component
+                        }
+                      }, 100);
+                    }}
+                    className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium border transition-all duration-200 ${
+                      'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    {getRSVPIcon(status)}
+                    <span className="ml-1 capitalize">{status === 'not-going' ? "Can't Go" : status}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -310,6 +361,14 @@ const EventCard: React.FC<EventCardProps> = ({
           </div>
         )}
       </div>
+      
+      {/* RSVP Drawer */}
+      <RSVPDrawer
+        open={showRSVPDrawer}
+        event={event}
+        onClose={() => setShowRSVPDrawer(false)}
+        onRSVPUpdate={handleRSVPUpdate}
+      />
     </div>
   );
 };
