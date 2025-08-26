@@ -19,17 +19,10 @@ service cloud.firestore {
       return userDoc() != null && userDoc().role == 'member';
     }
     
-    function tokenPhone() { 
-      return isSignedIn() ? request.auth.token.phone_number : null; 
-    }
-    
-    function isBlockedPhone() {
-      return isSignedIn() && request.auth.token.phone_number == "+10000000000";
-    }
-    
     // Enhanced user blocking functions
     function isUserBlockedFromRsvp(userId) { 
-      return get(/databases/$(database)/documents/users/$(userId)).data.blockedFromRsvp == true; 
+      return exists(/databases/$(database)/documents/users/$(userId)) &&
+        get(/databases/$(database)/documents/users/$(userId)).data.blockedFromRsvp == true; 
     }
     
     function isUserBlocked(currentUserId, targetUserId) {
@@ -42,9 +35,19 @@ service cloud.firestore {
       return blockDoc != null && blockDoc.data.isActive == true;
     }
     
-    function canInteract(currentUserId, targetUserId, interactionType) {
+    // Check if users can interact (not blocked by each other)
+    function canInteract(currentUserId, targetUserId) {
       return currentUserId == targetUserId || 
         (!isUserBlocked(currentUserId, targetUserId) && !isUserBlockedBy(currentUserId, targetUserId));
+    }
+    
+    // Phone number utilities (may be used in future rules)
+    function tokenPhone() { 
+      return isSignedIn() ? request.auth.token.phone_number : null; 
+    }
+    
+    function isBlockedPhone() {
+      return isSignedIn() && request.auth.token.phone_number == "+10000000000";
     }
     
     function isNonEmptyString(v) {
@@ -109,14 +112,16 @@ service cloud.firestore {
       return history is list
         && history.size() > 0
         && history[0] is map
-        && ('status' in history[0]) && history[0].status in ['going', 'maybe', 'not-going']
+        && ('status' in history[0]) && history[0].status in ['going',  'not-going']
         && ('changedAt' in history[0]) && history[0].changedAt is timestamp
         && ('changedBy' in history[0]) && isNonEmptyString(history[0].changedBy);
     }
     
     // --- USERS ---
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() || 
+        // Allow public read for basic user info (same as shown in events)
+        (resource.data.keys().hasOnly(['displayName', 'photoURL', 'displayNameLower', 'firstName', 'lastName']));
       allow create: if isSignedIn() && 
         request.auth.uid == userId && 
         (!('role' in request.resource.data) || (request.resource.data.role == 'member' && !isBlockedPhone())) && 
@@ -170,19 +175,21 @@ service cloud.firestore {
     // --- EVENTS (Enhanced) ---
     match /events/{eventId} {
       allow read: if
-        // Past events are always readable (for history)
+        // Past events: always readable by everyone (for history)
         resource.data.startAt < request.time ||
-        // Public events are readable by everyone
+        // Public events: readable by everyone
         (('visibility' in resource.data) && resource.data.visibility == 'public') ||
         // Legacy support: old 'public' field
         (('public' in resource.data) && resource.data.public == true) ||
-        // Members-only events: visible to signed-in members/admins
-        (isSignedIn() && (isMember() || isAdmin()) && 
-         (('visibility' in resource.data) && resource.data.visibility == 'members')) ||
-        // Private events: only for creator, invited users, or admins
+        // Authenticated users can see events they're allowed to access
         (isSignedIn() && (
-          request.auth.uid == resource.data.createdBy ||
+          // Event creator can see their own events
+          resource.data.createdBy == request.auth.uid ||
+          // Admin can see all events
           isAdmin() ||
+          // Members can see members-only events
+          (isMember() && (('visibility' in resource.data) && resource.data.visibility == 'members')) ||
+          // Invited users can see private events
           (('invitedUsers' in resource.data) && request.auth.uid in resource.data.invitedUsers)
         ));
       
@@ -207,7 +214,7 @@ service cloud.firestore {
           request.auth.uid == userId && 
           !isUserBlockedFromRsvp(request.auth.uid) &&
           request.resource.data.keys().hasOnly(['status', 'createdAt', 'updatedAt', 'statusHistory']) && 
-          request.resource.data.status in ['going', 'maybe', 'not-going'] &&
+          request.resource.data.status in ['going', 'not-going'] &&
           validStatusHistory(request.resource.data.statusHistory) &&
           request.resource.data.statusHistory.size() == 1 &&
           request.resource.data.statusHistory[0].status == request.resource.data.status &&
@@ -230,7 +237,7 @@ service cloud.firestore {
           (request.auth.uid == userId || isAdmin()) &&
           !isUserBlockedFromRsvp(userId) &&
           request.resource.data.diff(resource.data).changedKeys().hasOnly(['status', 'updatedAt', 'statusHistory']) && 
-          request.resource.data.status in ['going', 'maybe', 'not-going'] &&
+          request.resource.data.status in ['going', 'not-going'] &&
           validStatusHistory(request.resource.data.statusHistory) &&
           (request.auth.uid == userId
               ? request.resource.data.statusHistory.size() == resource.data.statusHistory.size() + 1
@@ -243,6 +250,17 @@ service cloud.firestore {
         allow delete: if (isMember() || isAdmin()) && 
           (request.auth.uid == userId || isAdmin());
       }
+    }
+    
+    // --- RSVPs Collection Group Access ---
+    // Allow users to read/write their own RSVP docs across all events
+    match /{path=**}/rsvps/{rsvpId} {
+      allow read, get, list: if request.auth != null
+                              && resource.data.userId == request.auth.uid;
+      
+      // Allow users to create/update their own RSVPs
+      allow create, update, delete: if request.auth != null
+                                     && request.resource.data.userId == request.auth.uid;
     }
     
     // --- POSTS ---
@@ -341,7 +359,7 @@ service cloud.firestore {
       // Allow users to update only their own notifications (mark as read)
       allow update: if request.auth != null && 
         request.auth.uid == resource.data.userId && 
-        request.resource.data.diff(resource.data).changedKeys().hasOnly(['read']);
+        request.resource.data.diff(resource.data).changedKeys().hasOnly(['read', 'updatedAt']);
       
       // Allow admins to delete notifications
       allow delete: if isAdmin();

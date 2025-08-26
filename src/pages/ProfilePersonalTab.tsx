@@ -25,6 +25,7 @@ type ProfilePersonalTabProps = {
   setDisplayName: (value: string) => void;
   email: string;
   setEmail: (value: string) => void;
+  phoneNumber: string;
   photoURL: string | undefined;
   about: string;
   setAbout: (value: string) => void;
@@ -57,6 +58,7 @@ export const ProfilePersonalTab: React.FC<ProfilePersonalTabProps> = ({
   setDisplayName,
   email,
   setEmail,
+  phoneNumber,
   photoURL,
   about,
   setAbout,
@@ -142,6 +144,23 @@ export const ProfilePersonalTab: React.FC<ProfilePersonalTabProps> = ({
       <p className="mt-1 text-xs text-gray-500">
         Used for notifications and profile; phone sign-in remains your login method.
       </p>
+    </div>
+    
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+      <input
+        type="tel"
+        value={phoneNumber}
+        readOnly
+        className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-gray-50 text-gray-600 cursor-not-allowed"
+        placeholder="Phone number"
+      />
+      <div className="mt-2 flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+        <p className="text-xs text-blue-700">
+          To change your phone number, please contact an administrator.
+        </p>
+      </div>
     </div>
     <div className="grid gap-4">
       <h2 className="text-sm font-semibold text-gray-700">Address (optional)</h2>

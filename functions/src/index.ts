@@ -207,7 +207,8 @@ export const onEventTeaserSync = onDocumentWritten("events/{eventId}", async (ev
     return;
   }
   const data = event.data.after.data()!;
-  const isPublic = !!data.public;
+    // Check if post is public (hybrid approach for backward compatibility)
+    const isPublic = data.visibility === 'public' || !!data.public;
   const raw = data.startAt;
   const startAtDate: Date =
     raw instanceof Timestamp ? raw.toDate() :

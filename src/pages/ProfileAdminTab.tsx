@@ -218,7 +218,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                 if (!confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)) return;
                 try {
                   await deleteDoc(doc(db, 'events', event.id));
-                  await deleteDoc(doc(db, 'event_teasers', event.id)).catch(() => {});
+                  // Note: Cloud Functions handle event_teasers cleanup when events are deleted
                   const rsvps = await getDocs(collection(db, 'events', event.id, 'rsvps'));
                   for (const rsvp of rsvps.docs) {
                     await deleteDoc(rsvp.ref);
@@ -255,7 +255,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                   if (!confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)) return;
                   try {
                     await deleteDoc(doc(db, 'events', event.id));
-                    await deleteDoc(doc(db, 'event_teasers', event.id)).catch(() => {});
+                    // Note: Cloud Functions handle event_teasers cleanup when events are deleted
                     const rsvps = await getDocs(collection(db, 'events', event.id, 'rsvps'));
                     for (const rsvp of rsvps.docs) {
                       await deleteDoc(rsvp.ref);

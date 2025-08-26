@@ -173,7 +173,43 @@ export const useFirestore = () => {
 
     useEffect(() => {
       const authed = !!currentUser;
-      const safeConstraints = enforceGuestPolicy(collectionName, authed, queryConstraints);
+      let safeConstraints = enforceGuestPolicy(collectionName, authed, queryConstraints);
+      
+      // Special handling for events collection to ensure proper constraints
+      if (collectionName === 'events' && authed) {
+        // Always enforce visibility constraints for authenticated users
+        const hasVisibilityConstraint = queryConstraints.some(c => 
+          c.type === 'where' && 
+          (c.fieldPath === 'visibility' || c.fieldPath === 'public')
+        );
+        const hasCreatorConstraint = queryConstraints.some(c => 
+          c.type === 'where' && c.fieldPath === 'createdBy'
+        );
+        const hasInvitedConstraint = queryConstraints.some(c => 
+          c.type === 'where' && c.fieldPath === 'invitedUsers'
+        );
+        
+        // If no proper constraints, add default ones based on user role
+        if (!hasVisibilityConstraint && !hasCreatorConstraint && !hasInvitedConstraint) {
+          if (currentUser?.role === 'admin') {
+            // Admin can see all events - no additional constraints needed
+          } else if (currentUser?.role === 'member') {
+            // Members can see public, members-only, and their own events
+            safeConstraints = [
+              ...safeConstraints,
+              where('visibility', 'in', ['public', 'members']),
+              where('createdBy', '==', currentUser.id)
+            ];
+          } else {
+            // Regular authenticated users can only see public events and their own
+            safeConstraints = [
+              ...safeConstraints,
+              where('visibility', '==', 'public'),
+              where('createdAt', '<=', new Date()) // Past events
+            ];
+          }
+        }
+      }
       
       // Debug logging for events collection
       if (collectionName === 'events') {
@@ -181,7 +217,8 @@ export const useFirestore = () => {
           isAuthed: authed,
           originalConstraints: queryConstraints,
           safeConstraints: safeConstraints,
-          userRole: currentUser?.role
+          userRole: currentUser?.role,
+          enforcedConstraints: collectionName === 'events' && authed
         });
       }
 
