@@ -35,7 +35,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "invitedUsers",
+          "fieldPath": "invitedUserIds",
           "arrayConfig": "CONTAINS"
         },
         {
@@ -54,7 +54,7 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "invitedUsers",
+          "fieldPath": "invitedUserIds",
           "arrayConfig": "CONTAINS"
         },
         {
@@ -337,6 +337,21 @@
       "collectionGroup": "event_teasers",
       "queryScope": "COLLECTION",
       "fields": [
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "invitedUserIds",
+          "arrayConfig": "CONTAINS"
+        },
         {
           "fieldPath": "startAt",
           "order": "ASCENDING"

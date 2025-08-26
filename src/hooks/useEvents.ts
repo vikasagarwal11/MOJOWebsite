@@ -12,12 +12,13 @@ export type EventDoc = {
   duration?: number;
   visibility?: 'public' | 'members' | 'private';
   createdBy?: string;
-  invitedUsers?: string[];
+  invitedUserIds?: string[];
   tags?: string[];
   allDay?: boolean;
   location?: string;
   description?: string;
   isTeaser?: boolean;
+  maxAttendees?: number;
 };
 
 type UseEventsOptions = { skewMs?: number; includeGuestTeasers?: boolean; };
@@ -51,7 +52,7 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
     return [
       query(eventsRef, where('visibility', 'in', ['public', 'members']), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
       query(eventsRef, where('createdBy', '==', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
-      query(eventsRef, where('invitedUsers', 'array-contains', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+      query(eventsRef, where('invitedUserIds', 'array-contains', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
     ];
   };
 
@@ -62,7 +63,7 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
     return [
       query(eventsRef, where('visibility', 'in', ['public', 'members']), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc')),
       query(eventsRef, where('createdBy', '==', currentUser.id), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc')),
-      query(eventsRef, where('invitedUsers', 'array-contains', currentUser.id), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc')),
+      query(eventsRef, where('invitedUserIds', 'array-contains', currentUser.id), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc')),
     ];
   };
 
