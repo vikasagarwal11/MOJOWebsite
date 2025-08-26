@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Users, Baby, FileText, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { X, Users, Baby, FileText, CheckCircle, XCircle } from 'lucide-react';
 import { RSVPStatus, RSVPDoc } from '../../types/rsvp';
 import { EventDoc } from '../../hooks/useEvents';
 import { useAuth } from '../../contexts/AuthContext';
 import { doc, setDoc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import toast from 'react-hot-toast';
-import { useUserBlocking } from '../../hooks/useUserBlocking';
 
 interface Props {
   open: boolean;
@@ -17,19 +16,11 @@ interface Props {
 
 export const RSVPDrawer: React.FC<Props> = ({ open, event, onClose, onRSVPUpdate }) => {
   const { currentUser } = useAuth();
-  const { blockedUsers } = useUserBlocking();
-  
   const [status, setStatus] = useState<RSVPStatus>('going');
   const [adults, setAdults] = useState(1);
   const [kids, setKids] = useState(0);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
-  const [existingRSVP, setExistingRSVP] = useState<RSVPDoc | null>(null);
-
-  // Check if user is blocked from RSVP (has any rsvp_only blocks against them)
-  const isBlockedFromRSVP = blockedUsers.some(block => 
-    block.blockCategory === 'rsvp_only' && block.isActive
-  );
 
   useEffect(() => {
     if (open && event) {
@@ -126,7 +117,7 @@ export const RSVPDrawer: React.FC<Props> = ({ open, event, onClose, onRSVPUpdate
   if (!open || !event || !currentUser) return null;
 
   const totalAttendees = adults + kids;
-  const isCapacityExceeded = event.maxAttendees ? totalAttendees > event.maxAttendees : false;
+  const isCapacityExceeded = event.maxAttendees && totalAttendees > event.maxAttendees;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[999] flex justify-end">
@@ -150,19 +141,6 @@ export const RSVPDrawer: React.FC<Props> = ({ open, event, onClose, onRSVPUpdate
           </p>
         </div>
 
-        {/* Blocking Warning */}
-        {isBlockedFromRSVP && (
-          <div className="p-4 border-b border-red-200 bg-red-50">
-            <div className="flex items-center gap-2 text-red-700">
-              <AlertTriangle className="w-5 h-5" />
-              <div>
-                <p className="font-medium">RSVP Access Blocked</p>
-                <p className="text-sm">You are currently blocked from RSVP functionality. Please contact an administrator if you believe this is an error.</p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* RSVP Form */}
         <div className="flex-1 p-4 space-y-6 overflow-y-auto">
           {/* Status Selection */}
@@ -173,11 +151,8 @@ export const RSVPDrawer: React.FC<Props> = ({ open, event, onClose, onRSVPUpdate
                 <button
                   key={statusOption}
                   onClick={() => setStatus(statusOption)}
-                  disabled={isBlockedFromRSVP}
                   className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 transition-all duration-200 ${
-                    isBlockedFromRSVP
-                      ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : status === statusOption
+                    status === statusOption
                       ? statusOption === 'going'
                         ? 'border-green-500 bg-green-50 text-green-700'
                         : 'border-red-500 bg-red-50 text-red-700'
@@ -197,8 +172,8 @@ export const RSVPDrawer: React.FC<Props> = ({ open, event, onClose, onRSVPUpdate
             </div>
           </div>
 
-          {/* Attendee Counts - Only show when going and not blocked */}
-          {status === 'going' && !isBlockedFromRSVP && (
+          {/* Attendee Counts - Only show when going */}
+          {status === 'going' && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -286,16 +261,16 @@ export const RSVPDrawer: React.FC<Props> = ({ open, event, onClose, onRSVPUpdate
             </button>
             <button
               onClick={handleSubmit}
-              disabled={loading || isBlockedFromRSVP || (status === 'going' && isCapacityExceeded)}
+              disabled={loading || (status === 'going' && isCapacityExceeded)}
               className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
-                loading || isBlockedFromRSVP || (status === 'going' && isCapacityExceeded)
+                loading || (status === 'going' && isCapacityExceeded)
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : status === 'going'
                   ? 'bg-green-600 text-white hover:bg-green-700'
                   : 'bg-red-600 text-white hover:bg-red-700'
               }`}
             >
-              {loading ? 'Saving...' : isBlockedFromRSVP ? 'RSVP Blocked' : 'Submit RSVP'}
+              {loading ? 'Saving...' : 'Submit RSVP'}
             </button>
           </div>
         </div>
