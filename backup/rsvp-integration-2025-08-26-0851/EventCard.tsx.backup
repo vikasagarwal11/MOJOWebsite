@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, CalendarDays, MapPin, Users, Clock, CheckCircle, XCircle, HelpCircle, Edit, Trash2, CalendarPlus, Share2, MessageSquare, Baby, AlertTriangle } from 'lucide-react';
+import { Calendar, CalendarDays, MapPin, Users, Clock, CheckCircle, XCircle, HelpCircle, Edit, Trash2, CalendarPlus, Share2, MessageSquare, Baby } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 import { db, storage } from '../../config/firebase';
@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 import { createEvent } from 'ics';
 import { RSVPDrawer } from './RSVPDrawer';
 import { RSVPDoc } from '../../types/rsvp';
-import { useUserBlocking } from '../../hooks/useUserBlocking';
+import { useRSVP } from '../../hooks/useRSVP';
 
 interface EventCardProps {
   event: any;
@@ -42,12 +42,6 @@ const EventCard: React.FC<EventCardProps> = ({
   showRsvp = true
 }) => {
   const { currentUser } = useAuth();
-  const { blockedUsers } = useUserBlocking();
-
-  // Check if user is blocked from RSVP
-  const isBlockedFromRSVP = blockedUsers.some(block => 
-    block.blockCategory === 'rsvp_only' && block.isActive
-  );
 
   // Prefer startAt
   const startObj: Date = useMemo(() => {
@@ -75,10 +69,11 @@ const EventCard: React.FC<EventCardProps> = ({
 
   // RSVP management
   const [showRSVPDrawer, setShowRSVPDrawer] = useState(false);
-  const [rsvpData, setRsvpData] = useState<RSVPDoc | null>(null);
+  const { myRSVP, attendanceStats } = useRSVP(event?.id || '', currentUser?.id);
   
-  // Simple RSVP status check
-  const rsvpStatus = rsvpData?.status || null;
+  const rsvpStatus = myRSVP?.status || null;
+
+  const attendingCount: number = attendanceStats.totalAttendees;
 
   const getRSVPIcon = (status: string) =>
     status === 'going' ? <CheckCircle className="w-4 h-4" /> :
@@ -90,37 +85,9 @@ const EventCard: React.FC<EventCardProps> = ({
     'bg-gray-100 text-gray-700 border-gray-200';
 
   const handleRSVPUpdate = () => {
-    // Refresh RSVP data when updated
-    if (event?.id && currentUser?.id) {
-      loadRSVPData();
-    }
+    // The useRSVP hook will automatically refresh the data
+    // No need to manually update since we're using real-time listeners
   };
-
-  const loadRSVPData = async () => {
-    if (!event?.id || !currentUser?.id) return;
-    
-    try {
-      const rsvpRef = doc(db, 'events', event.id, 'rsvps', currentUser.id);
-      const snap = await getDoc(rsvpRef);
-      
-      if (snap.exists()) {
-        setRsvpData({ id: snap.id, ...snap.data() } as RSVPDoc);
-      } else {
-        setRsvpData(null);
-      }
-    } catch (error) {
-      console.error('Failed to load RSVP data:', error);
-    }
-  };
-
-  // Load RSVP data when component mounts or event changes
-  useEffect(() => {
-    if (event?.id && currentUser?.id) {
-      loadRSVPData();
-    }
-  }, [event?.id, currentUser?.id]);
-
-  const attendingCount: number = 0; // No longer using attendanceStats from useRSVP
 
   const handleDelete = async () => {
     try {
@@ -315,29 +282,11 @@ const EventCard: React.FC<EventCardProps> = ({
 
         {showRsvp && currentUser && isUpcoming && (
           <div className="space-y-3">
-            {/* Blocking Warning */}
-            {isBlockedFromRSVP && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex items-center gap-2 text-red-700">
-                  <AlertTriangle className="w-4 h-4" />
-                  <div>
-                    <p className="text-sm font-medium">RSVP Access Blocked</p>
-                    <p className="text-xs">You are currently blocked from RSVP functionality.</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium text-gray-700">Your RSVP:</div>
               <button
                 onClick={() => setShowRSVPDrawer(true)}
-                disabled={isBlockedFromRSVP}
-                className={`text-sm underline flex items-center gap-1 ${
-                  isBlockedFromRSVP
-                    ? 'text-gray-400 cursor-not-allowed'
-                    : 'text-purple-600 hover:text-purple-700'
-                }`}
+                className="text-sm text-purple-600 hover:text-purple-700 underline flex items-center gap-1"
               >
                 <MessageSquare className="w-4 h-4" />
                 {rsvpStatus ? 'Update RSVP' : 'RSVP Now'}
@@ -352,25 +301,25 @@ const EventCard: React.FC<EventCardProps> = ({
                   <span className="capitalize">{rsvpStatus === 'not-going' ? "Can't Go" : rsvpStatus}</span>
                 </div>
                 
-                {rsvpStatus === 'going' && rsvpData && (
+                {rsvpStatus === 'going' && myRSVP && (
                   <div className="flex items-center gap-4 text-sm text-gray-600">
                     <span className="flex items-center gap-1">
                       <Users className="w-4 h-4 text-blue-500" />
-                      {rsvpData.adults} adult{rsvpData.adults !== 1 ? 's' : ''}
+                      {myRSVP.adults} adult{myRSVP.adults !== 1 ? 's' : ''}
                     </span>
-                    {rsvpData.kids > 0 && (
+                    {myRSVP.kids > 0 && (
                       <span className="flex items-center gap-1">
                         <Baby className="w-4 h-4 text-pink-500" />
-                        {rsvpData.kids} kid{rsvpData.kids !== 1 ? 's' : ''}
+                        {myRSVP.kids} kid{myRSVP.kids !== 1 ? 's' : ''}
                       </span>
                     )}
                   </div>
                 )}
                 
-                {rsvpData?.notes && (
+                {myRSVP?.notes && (
                   <div className="flex items-start gap-2 text-sm text-gray-600">
                     <MessageSquare className="w-4 h-4 text-gray-400 mt-0.5" />
-                    <span className="italic">"{rsvpData.notes}"</span>
+                    <span className="italic">"{myRSVP.notes}"</span>
                   </div>
                 )}
               </div>
@@ -383,15 +332,17 @@ const EventCard: React.FC<EventCardProps> = ({
                   <button
                     key={status}
                     onClick={() => {
-                      if (!isBlockedFromRSVP) {
-                        setShowRSVPDrawer(true);
-                      }
+                      setShowRSVPDrawer(true);
+                      // Pre-select the status in the drawer
+                      setTimeout(() => {
+                        const drawer = document.querySelector('[data-rsvp-status]');
+                        if (drawer) {
+                          // This will be handled by the drawer component
+                        }
+                      }, 100);
                     }}
-                    disabled={isBlockedFromRSVP}
                     className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium border transition-all duration-200 ${
-                      isBlockedFromRSVP
-                        ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
                     }`}
                   >
                     {getRSVPIcon(status)}
@@ -406,7 +357,7 @@ const EventCard: React.FC<EventCardProps> = ({
         {!isUpcoming && (
           <div className="flex items-center justify-between">
             <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-sm font-medium">Past Event</span>
-            <span className="text-sm text-gray-500">Event completed</span>
+            <span className="text-sm text-gray-500">{attendingCount} attended</span>
           </div>
         )}
       </div>
