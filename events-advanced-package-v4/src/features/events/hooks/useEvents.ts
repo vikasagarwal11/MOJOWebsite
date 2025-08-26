@@ -1,8 +1,9 @@
+
 import { useEffect, useRef, useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { collection, onSnapshot, orderBy, query, where, Timestamp, Query, FirestoreError } from 'firebase/firestore';
-import { db } from '../config/firebase';
-import { toMillis } from './useEventsUtils';
+import { db } from '@/config/firebase';
+import { toMillis } from '../lib/firestore';
 
 export type EventDoc = {
   id: string;

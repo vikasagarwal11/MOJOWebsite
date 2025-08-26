@@ -1,13 +1,14 @@
+
 import React, { useMemo, useState } from 'react';
-import { useEvents } from '../hooks/useEvents';
-import EventList from '../components/events/EventList';
-import EventCalendar from '../components/events/EventCalendar';
-import EventFormModal from '../components/events/EventFormModal';
-import { useAuth } from '../contexts/AuthContext';
+import { useEvents } from './hooks/useEvents';
+import EventList from './components/EventList';
+import EventCalendar from './components/EventCalendar';
+import EventFormModal from './components/EventFormModal';
+import { useAuth } from '@/contexts/AuthContext';
 import { Calendar, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const Events: React.FC = () => {
+const EventsPage: React.FC = () => {
   const { currentUser } = useAuth();
   const { upcomingEvents, pastEvents, upcomingTeasers, loading, error } = useEvents({ includeGuestTeasers: true });
 
@@ -96,4 +97,4 @@ const Events: React.FC = () => {
   );
 };
 
-export default Events;
+export default EventsPage;
