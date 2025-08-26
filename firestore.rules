@@ -251,6 +251,12 @@ service cloud.firestore {
           (request.auth.uid == userId || isAdmin());
       }
     }
+
+    // --- EVENT TEASERS ---
+    match /event_teasers/{teaserId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
     
     // --- RSVPs Collection Group Access ---
     // Allow users to read/write their own RSVP docs across all events
