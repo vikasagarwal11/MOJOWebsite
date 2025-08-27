@@ -178,8 +178,8 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
               </div>
             </div>
 
-            {/* Event Image - Enhanced display */}
-            {event.imageUrl ? (
+            {/* Event Image - Only show when image exists */}
+            {event.imageUrl && (
               <div className="relative w-full h-56 overflow-hidden bg-gradient-to-br from-purple-50 to-blue-50">
                 <motion.img
                   src={event.imageUrl}
@@ -189,36 +189,13 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ duration: 0.4, ease: "easeOut" }}
                   onError={(e) => {
-                    // Fallback to placeholder if image fails to load
+                    // Hide image if it fails to load
                     const target = e.target as HTMLImageElement;
                     target.style.display = 'none';
-                    target.nextElementSibling?.classList.remove('hidden');
                   }}
                 />
                 {/* Enhanced overlay for better visual appeal */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
-                
-                {/* Fallback placeholder (hidden by default) */}
-                <div className="absolute inset-0 hidden flex items-center justify-center bg-gradient-to-br from-purple-100 to-blue-100">
-                  <div className="text-center text-gray-500">
-                    <Calendar className="w-16 h-16 mx-auto mb-3 opacity-60" />
-                    <p className="text-base font-medium">Event Image</p>
-                    <p className="text-sm opacity-75">Visual preview</p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="w-full h-40 bg-gradient-to-br from-purple-100 via-blue-50 to-purple-50 flex items-center justify-center border-b border-purple-100">
-                <div className="text-center text-gray-500">
-                  <div className="relative">
-                    <Calendar className="w-20 h-20 mx-auto mb-3 opacity-50" />
-                    <div className="absolute -top-1 -right-1 w-6 h-6 bg-purple-200 rounded-full flex items-center justify-center">
-                      <span className="text-xs text-purple-700 font-medium">📸</span>
-                    </div>
-                  </div>
-                  <p className="text-base font-medium mb-1">Event Preview</p>
-                  <p className="text-sm opacity-75">Add an image to make it stand out</p>
-                </div>
               </div>
             )}
 

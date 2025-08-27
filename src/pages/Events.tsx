@@ -1,40 +1,129 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useEvents } from '../hooks/useEvents';
+import { useRealTimeEvents } from '../hooks/useRealTimeEvents';
 import EventList from '../components/events/EventList';
 import EventCalendar from '../components/events/EventCalendar';
 import EventFormModal from '../components/events/EventFormModal';
 import { useAuth } from '../contexts/AuthContext';
-import { Calendar, Plus, Search } from 'lucide-react';
+import { Calendar, Plus, Search, Filter, RefreshCw, Share2, Bell, TrendingUp, Clock, MapPin, Users, Tag } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useDebounce } from 'use-debounce';
 
 const Events: React.FC = () => {
   const { currentUser } = useAuth();
   const { upcomingEvents, pastEvents, loading, error } = useEvents({ includeGuestTeasers: true });
+  
+  // Real-time updates
+  const { 
+    events: realTimeEvents, 
+    lastUpdate, 
+    refreshEvents: refreshRealTime 
+  } = useRealTimeEvents({
+    enableNotifications: true,
+    enableRealTimeUpdates: true,
+    userId: currentUser?.id
+  });
 
   const [activeTab, setActiveTab] = useState<'upcoming'|'past'>('upcoming');
   const [viewMode, setViewMode] = useState<'grid'|'calendar'>('grid');
   const [showModal, setShowModal] = useState(false);
   const [searchInput, setSearchInput] = useState('');
   const [tag, setTag] = useState<string| null>(null);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [locationFilter, setLocationFilter] = useState('');
+  const [dateRangeFilter, setDateRangeFilter] = useState<{
+    startDate: string;
+    endDate: string;
+    enabled: boolean;
+  }>({
+    startDate: '',
+    endDate: '',
+    enabled: false
+  });
+  const [capacityFilter, setCapacityFilter] = useState<{
+    min: string;
+    max: string;
+    enabled: boolean;
+  }>({
+    min: '',
+    max: '',
+    enabled: false
+  });
+  const [sortBy, setSortBy] = useState<'date' | 'title' | 'location' | 'popularity'>('date');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Debounce search input - only search after user stops typing for 300ms
   const [debouncedSearch] = useDebounce(searchInput, 300);
 
-  const baseList = activeTab === 'upcoming' ? upcomingEvents : pastEvents;
+  // Use real-time events if available, fallback to regular events
+  const baseList = useMemo(() => {
+    if (realTimeEvents.length > 0 && activeTab === 'upcoming') {
+      return realTimeEvents;
+    }
+    return activeTab === 'upcoming' ? upcomingEvents : pastEvents;
+  }, [realTimeEvents, upcomingEvents, pastEvents, activeTab]);
 
   const allTags = useMemo(() => [...new Set(baseList.flatMap(e => e.tags || []))], [baseList]);
 
+  // Advanced filtering and sorting
   const filtered = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    const list = baseList.filter(e => {
+    let list = baseList.filter(e => {
+      // Basic search filter
+      const q = debouncedSearch.trim().toLowerCase();
       const okTitle = q ? (e.title || '').toLowerCase().includes(q) : true;
       const okTag = tag ? (e.tags || []).includes(tag) : true;
-      return okTitle && okTag;
+      
+      if (!okTitle || !okTag) return false;
+
+      // Location filter
+      if (locationFilter && e.location) {
+        const locationMatch = e.location.toLowerCase().includes(locationFilter.toLowerCase());
+        if (!locationMatch) return false;
+      }
+
+      // Date range filter
+      if (dateRangeFilter.enabled && dateRangeFilter.startDate && dateRangeFilter.endDate) {
+        const eventDate = new Date(e.startAt.seconds * 1000);
+        const startDate = new Date(dateRangeFilter.startDate);
+        const endDate = new Date(dateRangeFilter.endDate);
+        
+        if (eventDate < startDate || eventDate > endDate) return false;
+      }
+
+      // Capacity filter
+      if (capacityFilter.enabled && e.maxAttendees) {
+        const min = capacityFilter.min ? parseInt(capacityFilter.min) : 0;
+        const max = capacityFilter.max ? parseInt(capacityFilter.max) : Infinity;
+        
+        if (e.maxAttendees < min || e.maxAttendees > max) return false;
+      }
+
+      return true;
     });
+
+    // Remove duplicates and sort
     const map = new Map(list.map(e => [e.id, e]));
-    return Array.from(map.values());
-  }, [baseList, debouncedSearch, tag]);
+    list = Array.from(map.values());
+
+    // Sorting
+    list.sort((a, b) => {
+      switch (sortBy) {
+        case 'title':
+          return (a.title || '').localeCompare(b.title || '');
+        case 'location':
+          return (a.location || '').localeCompare(b.location || '');
+        case 'popularity':
+          // Sort by maxAttendees (higher capacity = more popular)
+          return (b.maxAttendees || 0) - (a.maxAttendees || 0);
+        case 'date':
+        default:
+          return a.startAt.seconds - b.startAt.seconds;
+      }
+    });
+
+    return list;
+  }, [baseList, debouncedSearch, tag, locationFilter, dateRangeFilter, capacityFilter, sortBy]);
 
   const onSelectCalEvent = (e: any) => {
     if (!currentUser && e.visibility !== 'public' && activeTab !== 'past') {
@@ -44,121 +133,397 @@ const Events: React.FC = () => {
     // TODO: open details modal/drawer
   };
 
+  // Handle refresh with loading state
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await refreshRealTime();
+      toast.success('Events refreshed!');
+    } catch (error) {
+      toast.error('Failed to refresh events');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refreshRealTime]);
+
+  // Share current events page
+  const shareEventsPage = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Fitness Events',
+          text: 'Check out these amazing fitness events!',
+          url: window.location.href
+        });
+      } catch (error) {
+        console.log('Error sharing:', error);
+      }
+    } else {
+      // Fallback: copy to clipboard
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success('Page link copied to clipboard!');
+    }
+  };
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    setSearchInput('');
+    setTag(null);
+    setLocationFilter('');
+    setDateRangeFilter({ startDate: '', endDate: '', enabled: false });
+    setCapacityFilter({ min: '', max: '', enabled: false });
+    setSortBy('date');
+    toast.success('All filters cleared!');
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters = searchInput || tag || locationFilter || 
+    dateRangeFilter.enabled || capacityFilter.enabled || sortBy !== 'date';
+
   return (
     <div className="max-w-7xl mx-auto p-6">
-      <div className="flex items-start justify-between mb-6">
+      {/* Header Section */}
+      <motion.div 
+        className="flex items-start justify-between mb-6"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
         <div>
-          <h1 className="text-3xl font-bold">Fitness Events</h1>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+            Fitness Events
+          </h1>
           <p className="text-gray-600">Join our community events and transform your fitness journey.</p>
+          
+          {/* Real-time status indicator */}
+          {lastUpdate && (
+            <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span>Live updates • Last updated {lastUpdate.toLocaleTimeString()}</span>
+            </div>
+          )}
         </div>
-                 {currentUser?.role === 'admin' && (
-           <button onClick={() => setShowModal(true)} className="inline-flex items-center px-4 py-2 rounded-full bg-purple-600 text-white hover:bg-purple-700">
-             <Plus className="w-4 h-4 mr-2" /> Create Event
-           </button>
-         )}
-      </div>
+        
+        <div className="flex items-center gap-3">
+          {/* Share button */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={shareEventsPage}
+            className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-full transition-all duration-200"
+            title="Share Events Page"
+          >
+            <Share2 className="w-5 h-5" />
+          </motion.button>
+
+          {/* Refresh button */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className={`p-2 rounded-full transition-all duration-200 ${
+              isRefreshing 
+                ? 'text-gray-400 cursor-not-allowed' 
+                : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
+            }`}
+            title="Refresh Events"
+          >
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </motion.button>
+
+          {/* Create Event button (admin only) */}
+          {currentUser?.role === 'admin' && (
+            <motion.button 
+              onClick={() => setShowModal(true)} 
+              className="inline-flex items-center px-4 py-2 rounded-full bg-purple-600 text-white hover:bg-purple-700 hover:shadow-lg transition-all duration-200"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Plus className="w-4 h-4 mr-2" /> Create Event
+            </motion.button>
+          )}
+        </div>
+      </motion.div>
 
       {/* Tabs for Upcoming/Past Events */}
-      <div className="flex border-b border-gray-200 mb-6">
+      <motion.div 
+        className="flex border-b border-gray-200 mb-6"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+      >
         <button
           onClick={() => setActiveTab('upcoming')}
-          className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+          className={`px-4 py-2 font-medium border-b-2 transition-all duration-200 ${
             activeTab === 'upcoming'
               ? 'border-purple-500 text-purple-600'
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          Upcoming Events
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4" />
+            Upcoming Events
+            {activeTab === 'upcoming' && (
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="bg-purple-100 text-purple-600 text-xs px-2 py-1 rounded-full"
+              >
+                {filtered.length}
+              </motion.span>
+            )}
+          </div>
         </button>
         <button
           onClick={() => setActiveTab('past')}
-          className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+          className={`px-4 py-2 font-medium border-b-2 transition-all duration-200 ${
             activeTab === 'past'
               ? 'border-purple-500 text-purple-600'
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          Past Events
-        </button>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <div className="flex-1 relative">
-          <input 
-            value={searchInput} 
-            onChange={e => setSearchInput(e.target.value)} 
-            placeholder="Search events by title…" 
-            className="w-full px-4 py-2 rounded border pr-10" 
-          />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-            {searchInput && (
-              <button
-                onClick={() => setSearchInput('')}
-                className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                title="Clear search"
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" />
+            Past Events
+            {activeTab === 'past' && (
+              <motion.span
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="bg-purple-100 text-purple-600 text-xs px-2 py-1 rounded-full"
               >
-                ×
-              </button>
+                {filtered.length}
+              </motion.span>
             )}
-            <Search className="w-4 h-4 text-gray-400" />
           </div>
-        </div>
-        <select value={tag || ''} onChange={e => setTag(e.target.value || null)} className="px-4 py-2 rounded border">
-          <option value="">All Tags</option>
-          {allTags.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <button onClick={() => setViewMode(viewMode === 'grid' ? 'calendar' : 'grid')} className="px-4 py-2 rounded border">
-          {viewMode === 'grid' ? 'Calendar View' : 'Grid View'}
         </button>
-      </div>
-      
-      {/* Search Status and Tag Statistics */}
-      {(debouncedSearch || tag) && (
-        <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Search className="w-4 h-4 text-blue-600" />
-              <span className="text-sm font-medium text-blue-800">
-                {debouncedSearch && `Searching for "${debouncedSearch}"`}
-                {debouncedSearch && tag && ' • '}
-                {tag && `Filtered by tag "${tag}"`}
-              </span>
+      </motion.div>
+
+      {/* Search and Filter Controls */}
+      <motion.div 
+        className="space-y-4 mb-6"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+      >
+        {/* Main Search and View Controls */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1 relative">
+            <input
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              placeholder="Search events by title, location, or tags…"
+              className="w-full px-4 py-2 rounded-lg border pr-10 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+            />
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+              {searchInput && (
+                <motion.button
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setSearchInput('')}
+                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                  title="Clear search"
+                >
+                  ×
+                </motion.button>
+              )}
+              <Search className="w-4 h-4 text-gray-400" />
             </div>
-            <button
-              onClick={() => {
-                setSearchInput('');
-                setTag(null);
-              }}
-              className="text-sm text-blue-600 hover:text-blue-800 underline"
-            >
-              Clear all filters
-            </button>
           </div>
-          {filtered.length > 0 && (
-            <div className="mt-2 text-sm text-blue-700">
-              Found {filtered.length} event{filtered.length !== 1 ? 's' : ''}
-            </div>
-          )}
+          
+          <select 
+            value={tag || ''} 
+            onChange={e => setTag(e.target.value || null)} 
+            className="px-4 py-2 rounded-lg border focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+          >
+            <option value="">All Tags</option>
+            {allTags.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          
+          <button 
+            onClick={() => setViewMode(viewMode === 'grid' ? 'calendar' : 'grid')} 
+            className="px-4 py-2 rounded-lg border hover:bg-gray-50 transition-all duration-200 flex items-center gap-2"
+          >
+            {viewMode === 'grid' ? <Calendar className="w-4 h-4" /> : <div className="w-4 h-4">⊞</div>}
+            {viewMode === 'grid' ? 'Calendar View' : 'Grid View'}
+          </button>
+
+          {/* Advanced Filters Toggle */}
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className={`px-4 py-2 rounded-lg border transition-all duration-200 flex items-center gap-2 ${
+              showAdvancedFilters 
+                ? 'bg-purple-100 text-purple-700 border-purple-300' 
+                : 'hover:bg-gray-50'
+            }`}
+          >
+            <Filter className="w-4 h-4" />
+            Advanced
+          </motion.button>
         </div>
-      )}
+
+        {/* Advanced Filters Panel */}
+        <AnimatePresence>
+          {showAdvancedFilters && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.3 }}
+              className="bg-gray-50 rounded-lg p-4 space-y-4"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Location Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
+                  <input
+                    type="text"
+                    value={locationFilter}
+                    onChange={e => setLocationFilter(e.target.value)}
+                    placeholder="Filter by location..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Date Range Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
+                  <div className="space-y-2">
+                    <input
+                      type="date"
+                      value={dateRangeFilter.startDate}
+                      onChange={e => setDateRangeFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    />
+                    <input
+                      type="date"
+                      value={dateRangeFilter.endDate}
+                      onChange={e => setDateRangeFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                {/* Capacity Filter */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Capacity</label>
+                  <div className="space-y-2">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      value={capacityFilter.min}
+                      onChange={e => setCapacityFilter(prev => ({ ...prev, min: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      value={capacityFilter.max}
+                      onChange={e => setCapacityFilter(prev => ({ ...prev, max: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                {/* Sort Options */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
+                  <select
+                    value={sortBy}
+                    onChange={e => setSortBy(e.target.value as any)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  >
+                    <option value="date">Date (Soonest)</option>
+                    <option value="title">Title (A-Z)</option>
+                    <option value="location">Location (A-Z)</option>
+                    <option value="popularity">Popularity</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Filter Actions */}
+              <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+                <span className="text-sm text-gray-600">
+                  {hasActiveFilters ? `${filtered.length} events found` : 'All events shown'}
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={clearAllFilters}
+                    className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 underline"
+                  >
+                    Clear all filters
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* Search Status and Tag Statistics */}
+      <AnimatePresence>
+        {(debouncedSearch || tag || hasActiveFilters) && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Search className="w-4 h-4 text-blue-600" />
+                <span className="text-sm font-medium text-blue-800">
+                  {debouncedSearch && `Searching for "${debouncedSearch}"`}
+                  {debouncedSearch && tag && ' • '}
+                  {tag && `Filtered by tag "${tag}"`}
+                  {hasActiveFilters && ' • Advanced filters applied'}
+                </span>
+              </div>
+              <button
+                onClick={clearAllFilters}
+                className="text-sm text-blue-600 hover:text-blue-800 underline"
+              >
+                Clear all filters
+              </button>
+            </div>
+            {filtered.length > 0 && (
+              <div className="mt-2 text-sm text-blue-700">
+                Found {filtered.length} event{filtered.length !== 1 ? 's' : ''}
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Tag Statistics and Quick Filters */}
       {allTags.length > 0 && (
-        <div className="mb-6">
+        <motion.div 
+          className="mb-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+        >
           <h3 className="text-sm font-medium text-gray-700 mb-3">Popular Tags:</h3>
           <div className="flex flex-wrap gap-2">
             {allTags.slice(0, 10).map(tagName => (
-              <button
+              <motion.button
                 key={tagName}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
                 onClick={() => setTag(tag === tagName ? null : tagName)}
-                className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+                className={`px-3 py-1 text-sm rounded-full border transition-all duration-200 ${
                   tag === tagName
-                    ? 'bg-purple-600 text-white border-purple-600'
-                    : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100'
+                    ? 'bg-purple-600 text-white border-purple-600 shadow-lg'
+                    : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 hover:border-gray-400'
                 }`}
               >
+                <Tag className="w-3 h-3 inline mr-1" />
                 {tagName}
-              </button>
+              </motion.button>
             ))}
             {allTags.length > 10 && (
               <span className="px-3 py-1 text-sm text-gray-500">
@@ -166,27 +531,54 @@ const Events: React.FC = () => {
               </span>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
 
-      {viewMode === 'grid' ? (
-        <>
-          {currentUser ? (
-            <EventList events={filtered} loading={loading} emptyText="No events yet." />
-          ) : (
-            <>
-              <h3 className="text-lg font-semibold mb-2">Upcoming (public)</h3>
-              <EventList events={filtered.filter(e => e.visibility === 'public')} loading={loading} emptyText="No public events yet." />
-            </>
-          )}
-        </>
-      ) : (
-        <EventCalendar events={filtered} onSelect={onSelectCalEvent} />
-      )}
+      {/* Events Display */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.4 }}
+      >
+        {viewMode === 'grid' ? (
+          <>
+            {currentUser ? (
+              <EventList events={filtered} loading={loading} emptyText="No events yet." />
+            ) : (
+              <>
+                <h3 className="text-lg font-semibold mb-2">Upcoming (public)</h3>
+                <EventList events={filtered.filter(e => e.visibility === 'public')} loading={loading} emptyText="No public events yet." />
+              </>
+            )}
+          </>
+        ) : (
+          <EventCalendar events={filtered} onSelect={onSelectCalEvent} />
+        )}
+      </motion.div>
 
-      {error && <div className="mt-6 rounded border border-red-200 bg-red-50 text-red-700 px-3 py-2">{error}</div>}
+      {/* Error Display */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mt-6 rounded-lg border border-red-200 bg-red-50 text-red-700 px-4 py-3"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+              {error}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {showModal && <EventFormModal onClose={() => setShowModal(false)} />}
+      {/* Event Form Modal */}
+      <AnimatePresence>
+        {showModal && (
+          <EventFormModal onClose={() => setShowModal(false)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
