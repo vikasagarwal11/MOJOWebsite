@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { X, Users, Baby, FileText, CheckCircle, XCircle, AlertTriangle, Calendar, MapPin, Clock, Star } from 'lucide-react';
+import { X, Users, Baby, FileText, CheckCircle, XCircle, AlertTriangle, Calendar, MapPin, Clock, Star, ChevronDown, ChevronUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RSVPStatus, RSVPDoc } from '../../types/rsvp';
 
@@ -87,12 +87,12 @@ export const RSVPModal: React.FC<RSVPModalProps> = ({ open, event, onClose, onRS
   const [guests, setGuests] = useState<GuestInfo[]>([]);
   const [showGuestSection, setShowGuestSection] = useState(false);
 
-  // If quickEnabled is false, immediately show details
+  // If quickEnabled is false or there's an existing RSVP, immediately show details
   useEffect(() => {
-    if (!quickEnabled) {
+    if (!quickEnabled || existingRSVP) {
       setShowDetails(true);
     }
-  }, [quickEnabled]);
+  }, [quickEnabled, existingRSVP]);
 
   // Check if user is blocked from RSVP
   const isBlockedFromRSVP = blockedUsers.some(block => 
@@ -369,6 +369,65 @@ export const RSVPModal: React.FC<RSVPModalProps> = ({ open, event, onClose, onRS
               </div>
             </div>
 
+            {/* Event Image - Show when available */}
+            {event.imageUrl && (
+              <div className="relative w-full h-48 overflow-hidden bg-gradient-to-br from-purple-50 to-blue-50">
+                <motion.img
+                  src={event.imageUrl}
+                  alt={event.title}
+                  className="w-full h-full object-cover"
+                  initial={{ scale: 1.05, opacity: 0.8 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.4, ease: "easeOut" }}
+                  onError={(e) => {
+                    // Hide image if it fails to load
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                  }}
+                />
+                {/* Enhanced overlay for better visual appeal */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
+              </div>
+            )}
+
+            {/* Event Details Section */}
+            <div className="px-6 py-4 bg-gray-50 border-b border-gray-100">
+              <div className="space-y-3">
+                {/* Event Description */}
+                {event.description && (
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Event Description</h4>
+                    <p className="text-sm text-gray-600 leading-relaxed">{event.description}</p>
+                  </div>
+                )}
+
+                {/* Event Tags */}
+                {event.tags && event.tags.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Event Categories</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {event.tags.map((tag, index) => (
+                        <span
+                          key={index}
+                          className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full border border-purple-200"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Capacity Info */}
+                {event.maxAttendees && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Users className="w-4 h-4" />
+                    <span>Capacity: {event.maxAttendees} attendees</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Blocking Warning */}
             <AnimatePresence>
               {isBlockedFromRSVP && (
@@ -443,19 +502,63 @@ export const RSVPModal: React.FC<RSVPModalProps> = ({ open, event, onClose, onRS
               </motion.div>
             )}
 
-                         {/* Detailed RSVP Form */}
-             {((showDetails || existingRSVP || !quickEnabled) && !isBlockedFromRSVP) && (
-               <motion.div
-                 className="flex-1 overflow-y-auto p-4 border-t border-gray-100"
-                 initial={{ opacity: 0, y: 20 }}
-                 animate={{ opacity: 1, y: 0 }}
-                 transition={{ delay: 0.3 }}
-               >
+            {/* RSVP Form Toggle Section */}
+            {!isBlockedFromRSVP && (
+              <motion.div
+                className="px-6 py-4 border-t border-gray-100 bg-gray-50"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900">
+                      {existingRSVP ? 'Update Your RSVP' : 'RSVP Options'}
+                    </h4>
+                    <p className="text-sm text-gray-600">
+                      {existingRSVP 
+                        ? 'Modify your attendance details and guest information'
+                        : 'Choose your attendance status and provide additional details'
+                      }
+                    </p>
+                  </div>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setShowDetails(!showDetails)}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 ${
+                      showDetails
+                        ? 'bg-purple-600 text-white hover:bg-purple-700'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    {showDetails ? 'Collapse Form' : 'Expand Form'}
+                    {showDetails ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </motion.button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Detailed RSVP Form */}
+            <AnimatePresence>
+              {showDetails && !isBlockedFromRSVP && (
+                <motion.div
+                  className="flex-1 overflow-y-auto border-t border-gray-100"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                >
+                  <div className="p-4">
                 <h4 className="text-lg font-semibold text-gray-900 mb-6">
                   {existingRSVP ? 'Update RSVP' : 'Detailed RSVP Options'}
                 </h4>
                 
-                                 <div className="space-y-4">
+                                 {/*<div className="space-y-4">ccc</div>*/}
                   {/* Status Selection */}
                   <div className="space-y-3">
                     <label className="text-sm font-medium text-gray-700">RSVP Status</label>
@@ -743,12 +846,13 @@ export const RSVPModal: React.FC<RSVPModalProps> = ({ open, event, onClose, onRS
                         </div>
                       </motion.div>
                     )}
-                </div>
-              </motion.div>
-            )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-            {/* Footer Actions */}
-            {!isBlockedFromRSVP && (showDetails || existingRSVP || !quickEnabled) && (
+                        {/* Footer Actions */}
+             {!isBlockedFromRSVP && showDetails && (
               <motion.div
                 className="p-6 border-t border-gray-100 bg-gray-50"
                 initial={{ opacity: 0, y: 20 }}

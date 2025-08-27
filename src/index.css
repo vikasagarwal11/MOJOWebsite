@@ -2,6 +2,118 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom line-clamp utilities for text truncation */
+.line-clamp-1 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.line-clamp-3 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.line-clamp-4 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+/* Event Card specific fixes */
+.event-card {
+  border-left: none !important;
+  border-right: none !important;
+}
+
+.event-card::before,
+.event-card::after {
+  display: none !important;
+}
+
+/* Ensure no green lines appear */
+.event-card * {
+  border-left: none !important;
+  border-right: none !important;
+}
+
+/* Additional aggressive fixes for green lines */
+.event-card,
+.event-card > *,
+.event-card > * > * {
+  border-left: none !important;
+  border-right: none !important;
+  border-left-color: transparent !important;
+  border-right-color: transparent !important;
+}
+
+/* Remove any pseudo-elements that might cause green lines */
+.event-card::before,
+.event-card::after,
+.event-card > *::before,
+.event-card > *::after {
+  display: none !important;
+  content: none !important;
+  border: none !important;
+}
+
+/* Ensure no left borders on any child elements */
+.event-card div,
+.event-card span,
+.event-card button,
+.event-card h3,
+.event-card p {
+  border-left: none !important;
+  border-right: none !important;
+}
+
+/* Custom scrollbar styles */
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom scrollbar for purple theme */
+.scrollbar-thumb-purple-300::-webkit-scrollbar-thumb {
+  background: #c4b5fd;
+}
+
+.scrollbar-thumb-purple-300::-webkit-scrollbar-thumb:hover {
+  background: #a78bfa;
+}
+
+.scrollbar-track-purple-100::-webkit-scrollbar-track {
+  background: #f3e8ff;
+}
+
 /* Custom tooltip styles */
 .tooltip-container {
   z-index: 9999;
