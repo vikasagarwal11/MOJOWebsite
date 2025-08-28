@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import { Calendar, MapPin, Users, Share2, Heart, MessageCircle, Eye, CheckCircle, XCircle, ThumbsUp, ThumbsDown, Clock, Link } from 'lucide-react';
@@ -35,35 +35,66 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     rootMargin: '50px'
   });
 
+  // Cleanup modals when event changes
+  useEffect(() => {
+    setShowRSVPModal(false);
+    setShowTeaserModal(false);
+    setShowPastEventModal(false);
+  }, [event.id]);
+
   // Check if user is blocked from RSVP
   const isBlockedFromRSVP = blockedUsers.some(block => 
     block.blockCategory === 'rsvp_only' && block.isActive
   );
 
+  // Add a time-based dependency to update past status in real-time
+  const [currentTime, setCurrentTime] = useState(new Date());
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+    
+    return () => clearInterval(interval);
+  }, []);
+
   // Check if event is past (no RSVP allowed for past events)
-  const isEventPast = () => {
+  const isEventPast = useMemo(() => {
     if (!event.startAt) return false;
     const eventDate = event.startAt.toDate ? event.startAt.toDate() : new Date(event.startAt);
-    return eventDate < new Date();
-  };
+    return eventDate < currentTime;
+  }, [event.startAt, currentTime]);
 
   // Handle card click
   const handleCardClick = () => {
+    console.log('🔍 EventCard handleCardClick called for event:', {
+      id: event.id,
+      title: event.title,
+      isEventPast: isEventPast,
+      hasOnClick: !!onClick
+    });
+
+    // If onClick is provided, use it (for admin edit functionality)
     if (onClick) {
+      console.log('🔍 Using onClick handler');
       onClick();
       return;
     }
 
-    if (!currentUser) {
-      if (!isEventPast()) {
-        setShowTeaserModal(true);
-      } else {
-        setShowPastEventModal(true);
-      }
-    } else if (!isEventPast()) {
-      setShowRSVPModal(true);
-    } else {
+    // For past events, always show past event modal
+    if (isEventPast) {
+      console.log('🔍 Opening PastEventModal for past event:', event.title);
       setShowPastEventModal(true);
+      return;
+    }
+
+    // For non-past events, handle based on user authentication
+    if (!currentUser) {
+      console.log('🔍 Opening EventTeaserModal for non-authenticated user');
+      setShowTeaserModal(true);
+    } else {
+      console.log('🔍 Opening RSVPModal for authenticated user');
+      setShowRSVPModal(true);
     }
   };
 
@@ -153,13 +184,13 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
           damping: 30
         }}
         whileHover={{ 
-          y: isEventPast() ? 0 : -4,
-          scale: isEventPast() ? 1 : 1.01,
+          y: isEventPast ? 0 : -4,
+          scale: isEventPast ? 1 : 1.01,
           transition: { duration: 0.2 }
         }}
         whileTap={{ scale: 0.98 }}
         className={`group event-card relative bg-white rounded-xl shadow-lg transition-all duration-300 overflow-hidden h-[480px] flex flex-col ${
-          isEventPast() ? 'opacity-75 grayscale cursor-default hover:shadow-lg' : 'cursor-pointer hover:shadow-2xl'
+          isEventPast ? 'opacity-75 grayscale cursor-default hover:shadow-lg' : 'cursor-pointer hover:shadow-2xl'
         }`}
         onClick={handleCardClick}
       >
@@ -320,7 +351,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
             )}
 
             {/* Past Event Notice */}
-            {isEventPast() && (
+            {isEventPast && (
               <div className="mb-3 p-2 bg-gray-50 border border-gray-200 rounded-lg">
                 <div className="flex items-center gap-2 text-gray-600">
                   <Clock className="w-4 h-4 text-gray-500" />
@@ -335,7 +366,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
             )}
 
             {/* Quick RSVP Status Icons with Going Count and Share - All in one row */}
-            {currentUser && !isBlockedFromRSVP && !isEventPast() && (
+            {currentUser && !isBlockedFromRSVP && !isEventPast && (
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
@@ -403,7 +434,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
         <div className="mt-auto pt-3 border-t border-gray-100 flex-shrink-0 px-4 pb-3">
           <div className="flex gap-3">
             {currentUser ? (
-              isEventPast() ? (
+              isEventPast ? (
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -431,7 +462,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                 </motion.button>
               )
             ) : (
-              isEventPast() ? (
+              isEventPast ? (
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -475,7 +506,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       </motion.div>
 
       {/* RSVP Modal - Only show for non-past events */}
-      {showRSVPModal && !isEventPast() && (
+      {showRSVPModal && !isEventPast && (
         <RSVPModal
           open={showRSVPModal}
           event={event}
@@ -488,7 +519,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       )}
 
       {/* Event Teaser Modal - Only show for non-past events */}
-      {showTeaserModal && !isEventPast() && (
+      {showTeaserModal && !isEventPast && (
         <EventTeaserModal
           open={showTeaserModal}
           event={event}
@@ -497,7 +528,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       )}
 
       {/* Past Event Modal - Only show for past events */}
-      {showPastEventModal && isEventPast() && (
+      {showPastEventModal && isEventPast && (
         <PastEventModal
           open={showPastEventModal}
           event={event}
