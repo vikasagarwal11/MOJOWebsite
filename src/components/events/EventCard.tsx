@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
-import { Calendar, MapPin, Users, Share2, Heart, MessageCircle, Eye, CheckCircle, XCircle, ThumbsUp, ThumbsDown, Clock } from 'lucide-react';
+import { Calendar, MapPin, Users, Share2, Heart, MessageCircle, Eye, CheckCircle, XCircle, ThumbsUp, ThumbsDown, Clock, Link } from 'lucide-react';
 import { format } from 'date-fns';
 import { EventDoc } from '../../hooks/useEvents';
 import { RSVPModal } from './RSVPModal';
 import { EventTeaserModal } from './EventTeaserModal';
+import { PastEventModal } from './PastEventModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserBlocking } from '../../hooks/useUserBlocking';
 
@@ -20,6 +21,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const { blockedUsers } = useUserBlocking();
   const [showRSVPModal, setShowRSVPModal] = useState(false);
   const [showTeaserModal, setShowTeaserModal] = useState(false);
+  const [showPastEventModal, setShowPastEventModal] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
@@ -55,12 +57,14 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     if (!currentUser) {
       if (!isEventPast()) {
         setShowTeaserModal(true);
+      } else {
+        setShowPastEventModal(true);
       }
-      // For past events, clicking the card does nothing (no teaser modal)
     } else if (!isEventPast()) {
       setShowRSVPModal(true);
+    } else {
+      setShowPastEventModal(true);
     }
-    // For past events, clicking the card does nothing (no RSVP modal)
   };
 
   // Handle image load
@@ -161,7 +165,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       >
         {/* Smart Image Section - Only render when image exists */}
         {event.imageUrl && !imageError ? (
-          <div className="relative overflow-hidden flex-shrink-0 h-64">
+          <div className="relative overflow-hidden flex-shrink-0 h-56">
             {inView && (
               <motion.img
                 src={event.imageUrl}
@@ -241,104 +245,75 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                     onClick={copyEventLink}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 rounded transition-colors flex items-center gap-2 text-gray-700 hover:text-purple-600"
                   >
-                    <MessageCircle className="w-4 h-4" />
+                    <Link className="w-4 h-4" />
                     Copy Link
                   </button>
                 </motion.div>
               )}
             </AnimatePresence>
-
-
           </div>
         ) : (
-          /* No image - show compact header with visibility badge */
-          <div className="relative bg-gradient-to-r from-purple-50 to-blue-50 px-6 py-6 border-b border-gray-100 flex-shrink-0">
-            
-            {/* Quick preview info */}
-            <div className="flex items-center gap-3">
-              <Calendar className="w-12 h-12 text-purple-400" />
-              <div>
-                <div className="text-purple-600 font-semibold text-lg">
-                  {format(new Date(event.startAt.seconds * 1000), 'MMM dd')}
-                </div>
-                <div className="text-purple-400 text-sm">
-                  {event.title.slice(0, 25)}...
-                </div>
-              </div>
-            </div>
+          // Calendar icon placeholder when no image
+          <div className="flex-shrink-0 h-24 bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
+            <Calendar className="w-12 h-12 text-purple-400" />
           </div>
         )}
 
-                          {/* Event Content - Flexible height but constrained */}
-        <div className="flex-1 flex flex-col p-3 min-h-0 justify-between">
-            {/* Event Title - Always 2 lines for consistency */}
-            <h3 className="text-base font-bold text-gray-900 mb-2 group-hover:text-purple-600 transition-colors duration-200 leading-tight line-clamp-2 min-h-[2.5rem]">
-              {event.title}
-            </h3>
+        {/* Scrollable Content Area */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-3">
+          {/* Event Title */}
+          <h3 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2 group-hover:text-purple-600 transition-colors duration-200">
+            {event.title}
+          </h3>
 
-            {/* Event Description - Always 3 lines for consistency */}
-            {event.description ? (
-              <div className="mb-3 min-h-[3.5rem]">
-                <p className="text-gray-600 text-sm leading-relaxed line-clamp-3">
-                  {event.description}
-                </p>
-              </div>
-            ) : (
-              <div className="mb-3 min-h-[3.5rem]">
-                <p className="text-gray-400 text-sm italic">No description available</p>
-              </div>
-            )}
+          {/* Event Description */}
+          {event.description && (
+            <p className="text-gray-600 text-sm leading-relaxed mb-3 line-clamp-3">
+              {event.description}
+            </p>
+          )}
 
-            {/* Event Details with compact styling */}
-            <div className="space-y-2 mb-3">
-            {/* Date & Time with compact styling */}
-            <div className="flex items-center gap-2 text-gray-700 bg-gradient-to-r from-purple-50 to-blue-50 px-2 py-1.5 rounded-lg border border-purple-100">
-              <Calendar className="w-4 h-4 text-purple-500 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-gray-800 truncate">
-                  {format(new Date(event.startAt.seconds * 1000), 'EEEE, MMMM d, yyyy')}
-                </div>
-                {event.endAt && (
-                  <div className="text-xs text-purple-600 font-medium">
-                    {/* {getEventDuration()} */}
-                  </div>
-                )}
-              </div>
+          {/* Event Details */}
+          <div className="space-y-2 mb-3">
+            {/* Date and Duration */}
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Calendar className="w-4 h-4 text-purple-500" />
+              <span>
+                {event.startAt ? format(new Date(event.startAt.seconds * 1000), 'EEEE, MMMM d, yyyy') : 'Date TBD'}
+                {getEventDuration() && <span className="text-gray-500 ml-1">{getEventDuration()}</span>}
+              </span>
             </div>
 
-            {/* Location with compact styling */}
+            {/* Location */}
             {event.location && (
-              <div className="flex items-center gap-2 text-gray-700 bg-gradient-to-r from-red-50 to-pink-50 px-2 py-1.5 rounded-lg border border-red-100">
-                <MapPin className="w-4 h-4 text-red-500 flex-shrink-0" />
-                <span className="text-xs font-medium text-gray-800 truncate">{event.location}</span>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <MapPin className="w-4 h-4 text-red-500" />
+                <span>{event.location}</span>
               </div>
             )}
 
-            {/* Capacity with compact styling */}
+            {/* Capacity */}
             {event.maxAttendees && (
-              <div className="flex items-center gap-2 text-gray-700 bg-gradient-to-r from-blue-50 to-indigo-50 px-2 py-1.5 rounded-lg border border-blue-100">
-                <Users className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                <span className="text-xs font-medium text-gray-800">
-                  Capacity: {event.maxAttendees} attendees
-                </span>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Users className="w-4 h-4 text-blue-500" />
+                <span>Capacity: {event.maxAttendees} attendees</span>
               </div>
             )}
-          </div>
 
-                      {/* Tags with compact styling */}
+            {/* Tags */}
             {event.tags && event.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {event.tags.slice(0, 2).map((tag, index) => (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {event.tags.slice(0, 3).map((tag, index) => (
                   <span
                     key={index}
-                    className="px-2.5 py-1 bg-gradient-to-r from-purple-100 to-purple-200 text-purple-700 text-xs font-medium rounded-full border border-purple-300"
+                    className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full font-medium"
                   >
                     #{tag}
                   </span>
                 ))}
-                {event.tags.length > 2 && (
-                  <span className="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-full border border-gray-300">
-                    +{event.tags.length - 2}
+                {event.tags.length > 3 && (
+                  <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
+                    +{event.tags.length - 3} more
                   </span>
                 )}
               </div>
@@ -421,88 +396,80 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                 </motion.button>
               </div>
             )}
+          </div>
+        </div>
 
-
-
-          {/* Action Buttons - Pushed to bottom */}
-          <div className="mt-auto pt-3 border-t border-gray-100 flex-shrink-0">
-            <div className="flex gap-3">
-              {currentUser ? (
-                isEventPast() ? (
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    disabled={true}
-                    className="flex-1 px-3 py-2 bg-gray-300 text-gray-500 rounded-lg font-medium text-sm cursor-not-allowed"
-                  >
-                    Event Ended
-                  </motion.button>
-                ) : (
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowRSVPModal(true);
-                    }}
-                    disabled={isBlockedFromRSVP}
-                    className={`flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-all duration-200 ${
-                      isBlockedFromRSVP
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 hover:shadow-lg'
-                    }`}
-                  >
-                    {isBlockedFromRSVP ? 'RSVP Blocked' : 'RSVP Details'}
-                  </motion.button>
-                )
+        {/* Action Buttons - Pushed to bottom */}
+        <div className="mt-auto pt-3 border-t border-gray-100 flex-shrink-0 px-4 pb-3">
+          <div className="flex gap-3">
+            {currentUser ? (
+              isEventPast() ? (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  disabled={true}
+                  className="flex-1 px-3 py-2 bg-gray-300 text-gray-500 rounded-lg font-medium text-sm cursor-not-allowed"
+                >
+                  Event Ended
+                </motion.button>
               ) : (
-                isEventPast() ? (
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    disabled={true}
-                    className="flex-1 px-3 py-2 bg-gray-300 text-gray-500 rounded-lg font-medium text-sm cursor-not-allowed"
-                  >
-                    Event Ended
-                  </motion.button>
-                ) : (
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowTeaserModal(true);
-                    }}
-                    className="flex-1 px-3 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg font-medium text-sm hover:from-purple-700 hover:to-purple-800 hover:shadow-lg transition-all duration-200"
-                  >
-                    View Details
-                  </motion.button>
-                )
-              )}
-
-
-
-              {currentUser?.role === 'admin' && onEdit && (
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onEdit();
+                    setShowRSVPModal(true);
                   }}
-                  className="px-3 py-2 border-2 border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50 hover:border-purple-400 transition-all duration-200 font-medium text-sm"
+                  disabled={isBlockedFromRSVP}
+                  className={`flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-all duration-200 ${
+                    isBlockedFromRSVP
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 hover:shadow-lg'
+                  }`}
                 >
-                  Edit
+                  {isBlockedFromRSVP ? 'RSVP Blocked' : 'RSVP Details'}
                 </motion.button>
-              )}
-            </div>
+              )
+            ) : (
+              isEventPast() ? (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  disabled={true}
+                  className="flex-1 px-3 py-2 bg-gray-300 text-gray-500 rounded-lg font-medium text-sm cursor-not-allowed"
+                >
+                  Event Ended
+                </motion.button>
+              ) : (
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowTeaserModal(true);
+                  }}
+                  className="flex-1 px-3 py-2 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg font-medium text-sm hover:from-purple-700 hover:to-purple-800 hover:shadow-lg transition-all duration-200"
+                >
+                  View Details
+                </motion.button>
+              )
+            )}
+
+            {currentUser?.role === 'admin' && onEdit && (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit();
+                }}
+                className="px-3 py-2 border-2 border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50 hover:border-purple-400 transition-all duration-200 font-medium text-sm"
+              >
+                Edit
+              </motion.button>
+            )}
           </div>
         </div>
-
-        {/* Enhanced hover effect border - NO GREEN LINES */}
-        <div className={`absolute inset-0 border-2 border-transparent rounded-xl transition-colors duration-300 pointer-events-none ${
-          isEventPast() ? 'group-hover:border-gray-300' : 'group-hover:border-purple-200'
-        }`} />
         
 
       </motion.div>
@@ -517,7 +484,6 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
             setShowRSVPModal(false);
             // You could trigger a refresh here
           }}
-          quickEnabled={false}
         />
       )}
 
@@ -527,6 +493,15 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
           open={showTeaserModal}
           event={event}
           onClose={() => setShowTeaserModal(false)}
+        />
+      )}
+
+      {/* Past Event Modal - Only show for past events */}
+      {showPastEventModal && isEventPast() && (
+        <PastEventModal
+          open={showPastEventModal}
+          event={event}
+          onClose={() => setShowPastEventModal(false)}
         />
       )}
     </>

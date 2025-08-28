@@ -4,6 +4,8 @@ import { format as dfFormat, parse as dfParse, startOfWeek as dfStartOfWeek, get
 import { enUS } from 'date-fns/locale';
 import { EventDoc } from '../../hooks/useEvents';
 import { tsToDate } from '../../hooks/useEventsUtils';
+import { useAuth } from '../../contexts/AuthContext';
+import { useUserRSVPs } from '../../hooks/useUserRSVPs';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 const localizer = dateFnsLocalizer({
@@ -14,9 +16,19 @@ const localizer = dateFnsLocalizer({
   locales: { 'en-US': enUS },
 });
 
-type Props = { events: EventDoc[]; onSelect?: (e: EventDoc) => void; };
+type Props = { 
+  events: EventDoc[]; 
+  onSelect?: (e: EventDoc) => void; 
+};
 
 const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
+  const { currentUser } = useAuth();
+  
+  // Extract event IDs for RSVP fetching
+  const eventIds = useMemo(() => events.map(e => e.id || '').filter(id => id), [events]);
+  
+  // Fetch user RSVPs for all events
+  const { getRSVPStatus } = useUserRSVPs(eventIds);
   
   const calendarEvents = useMemo(() => events.map((e) => {
     const start = tsToDate(e.startAt);
@@ -29,13 +41,18 @@ const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
     } else {
       end = new Date(start.getTime() + 60 * 60 * 1000);
     }
-    return { title: e.title, start, end, allDay: !!e.allDay, resource: e };
+    
+    // Enhanced title with capacity info (simplified for now)
+    let title = e.title;
+    if (e.maxAttendees) {
+      title = `${e.title} (Max: ${e.maxAttendees})`;
+    }
+    
+    return { title, start, end, allDay: !!e.allDay, resource: e };
   }), [events]);
 
   return (
     <div className="bg-white rounded-2xl shadow-lg p-4 relative overflow-visible">
-
-
       {/* Custom CSS to hide all-day row in time views for cleaner appearance */}
       <style>{`
         /* Hide all-day row in time views (week/day) */
@@ -83,12 +100,36 @@ const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
         timeslots={2}
         dayLayoutAlgorithm="no-overlap"
         eventPropGetter={(ev: any) => {
-          const r: EventDoc = ev.resource;
-          const isTeaser = !!r.isTeaser;
-          const isPublic = r.visibility === 'public';
+          const event: EventDoc = ev.resource;
+          const isTeaser = !!event.isTeaser;
+          const isPublic = event.visibility === 'public';
+          
+          // Get user's RSVP status for color coding
+          const userRSVPStatus = getRSVPStatus(event.id || '');
+          
+          // Color coding based on RSVP status and event type
+          let backgroundColor = '#6b7280'; // Default gray for teasers
+          
+          if (!isTeaser) {
+            if (userRSVPStatus === 'going') {
+              backgroundColor = '#10b981'; // Green for "Going"
+            } else if (userRSVPStatus === 'not-going') {
+              backgroundColor = '#ef4444'; // Red for "Not Going"
+            } else if (isPublic) {
+              backgroundColor = '#8b5cf6'; // Purple for public events (no RSVP)
+            } else {
+              backgroundColor = '#dc2626'; // Red for members-only events (no RSVP)
+            }
+          }
+          
           return {
-            className: isTeaser ? 'bg-gray-400 opacity-70' : isPublic ? 'bg-purple-600' : 'bg-red-500',
-            style: { color: 'white', border: 'none' },
+            className: isTeaser ? 'bg-gray-400 opacity-70' : '',
+            style: { 
+              color: 'white', 
+              backgroundColor,
+              fontWeight: '500',
+              fontSize: '0.875rem'
+            },
           };
         }}
         onSelectEvent={(ev: any) => onSelect && onSelect(ev.resource as EventDoc)}
@@ -96,4 +137,5 @@ const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
     </div>
   );
 };
+
 export default EventCalendar;
