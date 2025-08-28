@@ -1,12 +1,17 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Filter, Calendar, Share2, RefreshCw, Plus, X, TrendingUp, Clock, MapPin, Users, Tag } from 'lucide-react';
+import EventCalendar from '../components/events/EventCalendar';
+import EventList from '../components/events/EventList';
+import CreateEventModal from '../components/events/CreateEventModal';
 import { useEvents } from '../hooks/useEvents';
 import { useRealTimeEvents } from '../hooks/useRealTimeEvents';
-import EventList from '../components/events/EventList';
-import EventCalendar from '../components/events/EventCalendar';
-import CreateEventModal from '../components/events/CreateEventModal';
 import { useAuth } from '../contexts/AuthContext';
-import { Calendar, Plus, Search, Filter, RefreshCw, Share2, Bell, TrendingUp, Clock, MapPin, Users, Tag } from 'lucide-react';
+import { useUserBlocking } from '../hooks/useUserBlocking';
+import { EventDoc } from '../hooks/useEvents';
+import { RSVPModal } from '../components/events/RSVPModal';
+import { EventTeaserModal } from '../components/events/EventTeaserModal';
+import { PastEventModal } from '../components/events/PastEventModal';
 import toast from 'react-hot-toast';
 import { useDebounce } from 'use-debounce';
 
@@ -53,6 +58,13 @@ const Events: React.FC = () => {
   const [sortBy, setSortBy] = useState<'date' | 'title' | 'location' | 'popularity'>('date');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Modal states for calendar events
+  const [selectedEvent, setSelectedEvent] = useState<EventDoc | null>(null);
+  const [showRSVPModal, setShowRSVPModal] = useState(false);
+  const [showTeaserModal, setShowTeaserModal] = useState(false);
+  const [selectedPastEvent, setSelectedPastEvent] = useState<EventDoc | null>(null);
+  const [showPastEventModal, setShowPastEventModal] = useState(false);
+
   // Debounce search input - only search after user stops typing for 300ms
   const [debouncedSearch] = useDebounce(searchInput, 300);
 
@@ -77,6 +89,8 @@ const Events: React.FC = () => {
   }, [activeTab, upcomingEvents, pastEvents, realTimeEvents, baseList]);
 
   const allTags = useMemo(() => [...new Set(baseList.flatMap(e => e.tags || []))], [baseList]);
+
+  const { blockedUsers } = useUserBlocking();
 
   // Advanced filtering and sorting
   const filtered = useMemo(() => {
@@ -137,12 +151,47 @@ const Events: React.FC = () => {
     return list;
   }, [baseList, debouncedSearch, tag, locationFilter, dateRangeFilter, capacityFilter, sortBy]);
 
-  const onSelectCalEvent = (e: any) => {
-    if (!currentUser && e.visibility !== 'public' && activeTab !== 'past') {
-      toast.error('Sign in to view event details.');
+  const onSelectCalEvent = (e: EventDoc) => {
+    console.log('🔍 Calendar event clicked:', {
+      id: e.id,
+      title: e.title,
+      visibility: e.visibility,
+      currentUser: !!currentUser,
+      activeTab
+    });
+
+    // Check if user is blocked from RSVP
+    const isBlockedFromRSVP = blockedUsers.some((block: any) => 
+      block.blockCategory === 'rsvp_only' && block.isActive
+    );
+
+    // Check if event is past
+    const isEventPast = () => {
+      if (!e.startAt) return false;
+      const eventDate = e.startAt.toDate ? e.startAt.toDate() : new Date(e.startAt);
+      return eventDate < new Date();
+    };
+
+    const eventIsPast = isEventPast();
+
+    // For past events, always show past event modal
+    if (eventIsPast) {
+      console.log('🔍 Opening PastEventModal for past event from calendar:', e.title);
+      setSelectedPastEvent(e);
+      setShowPastEventModal(true);
       return;
     }
-    // TODO: open details modal/drawer
+
+    // For non-past events, handle based on user authentication
+    if (!currentUser) {
+      console.log('🔍 Opening EventTeaserModal for non-authenticated user from calendar');
+      setSelectedEvent(e);
+      setShowTeaserModal(true);
+    } else {
+      console.log('🔍 Opening RSVPModal for authenticated user from calendar');
+      setSelectedEvent(e);
+      setShowRSVPModal(true);
+    }
   };
 
   // Handle refresh with loading state
@@ -274,7 +323,7 @@ const Events: React.FC = () => {
           }`}
         >
           <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4" />
+            <Calendar className="w-4 h-4" />
             Upcoming Events
             {activeTab === 'upcoming' && (
               <motion.span
@@ -591,6 +640,44 @@ const Events: React.FC = () => {
           <CreateEventModal 
             onClose={() => setShowModal(false)} 
             onEventCreated={() => setShowModal(false)} 
+          />
+        )}
+      </AnimatePresence>
+
+      {/* RSVP Modal */}
+      <AnimatePresence>
+        {showRSVPModal && selectedEvent && (
+          <RSVPModal
+            open={showRSVPModal}
+            event={selectedEvent}
+            onClose={() => setShowRSVPModal(false)}
+            onRSVPUpdate={() => {
+              console.log('RSVP Updated from calendar');
+              setShowRSVPModal(false);
+              setSelectedEvent(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Event Teaser Modal */}
+      <AnimatePresence>
+        {showTeaserModal && selectedEvent && (
+          <EventTeaserModal
+            open={showTeaserModal}
+            event={selectedEvent}
+            onClose={() => setShowTeaserModal(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Past Event Modal */}
+      <AnimatePresence>
+        {showPastEventModal && selectedPastEvent && (
+          <PastEventModal
+            open={showPastEventModal}
+            event={selectedPastEvent}
+            onClose={() => setShowPastEventModal(false)}
           />
         )}
       </AnimatePresence>
