@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Calendar, MapPin, Users, Share2, Clock, Link } from 'lucide-react';
 import { format } from 'date-fns';
@@ -45,24 +46,69 @@ const backdropVariants = {
 };
 
 export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onClose }) => {
-  if (!event) return null;
+  console.log('🔍 PastEventModal render:', {
+    open,
+    eventId: event?.id,
+    eventTitle: event?.title,
+    eventStartAt: event?.startAt,
+    eventEndAt: event?.endAt
+  });
 
-  // Calculate event duration
+  // Prevent unnecessary re-renders
+  const memoizedEvent = React.useMemo(() => event, [event?.id]);
+
+  if (!memoizedEvent) return null;
+
+  // Calculate event duration with better date handling
   const getEventDuration = () => {
-    if (!event.startAt || !event.endAt) return '';
+    if (!memoizedEvent.startAt || !memoizedEvent.endAt) return '';
     
-    const start = new Date(event.startAt.seconds * 1000);
-    const end = new Date(event.endAt.seconds * 1000);
-    const diffMs = end.getTime() - start.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    
-    if (diffDays > 0) {
-      return diffHours > 0 ? `(${diffDays}d ${diffHours}h)` : `(${diffDays} days)`;
-    } else if (diffHours > 0) {
-      return `(${diffHours} hours)`;
-    } else {
-      return '(1 hour)';
+    try {
+      const start = memoizedEvent.startAt.toDate ? memoizedEvent.startAt.toDate() : new Date(memoizedEvent.startAt);
+      const end = memoizedEvent.endAt.toDate ? memoizedEvent.endAt.toDate() : new Date(memoizedEvent.endAt);
+      
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) return '';
+      
+      const diffMs = end.getTime() - start.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      
+      if (diffDays > 0) {
+        return diffHours > 0 ? `(${diffDays}d ${diffHours}h)` : `(${diffDays} days)`;
+      } else if (diffHours > 0) {
+        return `(${diffHours} hours)`;
+      } else {
+        return '(1 hour)';
+      }
+    } catch (error) {
+      console.error('Error calculating event duration:', error);
+      return '';
+    }
+  };
+
+  // Format date safely
+  const formatEventDate = (date: any) => {
+    try {
+      if (!date) return 'Date not available';
+      const eventDate = date.toDate ? date.toDate() : new Date(date);
+      if (isNaN(eventDate.getTime())) return 'Invalid date';
+      return format(eventDate, 'EEEE, MMMM d, yyyy');
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Date not available';
+    }
+  };
+
+  // Format end date safely
+  const formatEndDate = (date: any) => {
+    try {
+      if (!date) return 'End date not available';
+      const eventDate = date.toDate ? date.toDate() : new Date(date);
+      if (isNaN(eventDate.getTime())) return 'Invalid end date';
+      return format(eventDate, 'MMM d, yyyy h:mm a');
+    } catch (error) {
+      console.error('Error formatting end date:', error);
+      return 'End date not available';
     }
   };
 
@@ -71,16 +117,16 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
     if (navigator.share) {
       try {
         await navigator.share({
-          title: event.title,
-          text: `Check out this past event: ${event.title}`,
-          url: `${window.location.origin}/events/${event.id}`
+          title: memoizedEvent.title,
+          text: `Check out this past event: ${memoizedEvent.title}`,
+          url: `${window.location.origin}/events/${memoizedEvent.id}`
         });
       } catch (error) {
         console.log('Error sharing:', error);
       }
     } else {
       // Fallback: copy to clipboard
-      const url = `${window.location.origin}/events/${event.id}`;
+      const url = `${window.location.origin}/events/${memoizedEvent.id}`;
       await navigator.clipboard.writeText(url);
       // You could show a toast here
     }
@@ -88,12 +134,12 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
 
   // Copy event link
   const copyEventLink = async () => {
-    const url = `${window.location.origin}/events/${event.id}`;
+    const url = `${window.location.origin}/events/${memoizedEvent.id}`;
     await navigator.clipboard.writeText(url);
     // You could show a toast here
   };
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -137,11 +183,11 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
               </div>
 
               {/* Event Image */}
-              {event.imageUrl && (
+              {memoizedEvent.imageUrl && (
                 <div className="relative h-56 overflow-hidden">
                   <img
-                    src={event.imageUrl}
-                    alt={event.title}
+                    src={memoizedEvent.imageUrl}
+                    alt={memoizedEvent.title}
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
@@ -152,15 +198,15 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
               <div className="p-6 overflow-y-auto max-h-96">
                 {/* Event Title */}
                 <h3 className="text-2xl font-bold text-gray-900 mb-3">
-                  {event.title}
+                  {memoizedEvent.title}
                 </h3>
 
                 {/* Event Description */}
-                {event.description && (
+                {memoizedEvent.description && (
                   <div className="mb-6">
                     <h4 className="text-lg font-semibold text-gray-800 mb-2">Event Description</h4>
                     <p className="text-gray-600 leading-relaxed">
-                      {event.description}
+                      {memoizedEvent.description}
                     </p>
                   </div>
                 )}
@@ -172,51 +218,51 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
                     <Calendar className="w-5 h-5 text-purple-500 mt-0.5 flex-shrink-0" />
                     <div>
                       <div className="font-medium text-gray-900">
-                        {event.startAt ? format(new Date(event.startAt.seconds * 1000), 'EEEE, MMMM d, yyyy') : 'Date TBD'}
+                        {memoizedEvent.startAt ? formatEventDate(memoizedEvent.startAt) : 'Date TBD'}
                       </div>
                       {getEventDuration() && (
                         <div className="text-sm text-gray-600 mt-1">
                           Duration: {getEventDuration()}
                         </div>
                       )}
-                      {event.endAt && (
+                      {memoizedEvent.endAt && (
                         <div className="text-sm text-gray-500 mt-1">
-                          Ended: {format(new Date(event.endAt.seconds * 1000), 'MMM dd, yyyy h:mm a')}
+                          Ended: {formatEndDate(memoizedEvent.endAt)}
                         </div>
                       )}
                     </div>
                   </div>
 
                   {/* Location */}
-                  {event.location && (
+                  {memoizedEvent.location && (
                     <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
                       <MapPin className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
                       <div>
                         <div className="font-medium text-gray-900">Location</div>
-                        <div className="text-gray-600">{event.location}</div>
+                        <div className="text-gray-600">{memoizedEvent.location}</div>
                       </div>
                     </div>
                   )}
 
                   {/* Capacity */}
-                  {event.maxAttendees && (
+                  {memoizedEvent.maxAttendees && (
                     <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
                       <Users className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
                       <div>
                         <div className="font-medium text-gray-900">Capacity</div>
-                        <div className="text-gray-600">{event.maxAttendees} attendees</div>
+                        <div className="text-gray-600">{memoizedEvent.maxAttendees} attendees</div>
                       </div>
                     </div>
                   )}
 
                   {/* Tags */}
-                  {event.tags && event.tags.length > 0 && (
+                  {memoizedEvent.tags && memoizedEvent.tags.length > 0 && (
                     <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
                       <div className="w-5 h-5 mt-0.5 flex-shrink-0" />
                       <div>
                         <div className="font-medium text-gray-900 mb-2">Event Tags</div>
                         <div className="flex flex-wrap gap-2">
-                          {event.tags.map((tag, index) => (
+                          {memoizedEvent.tags.map((tag, index) => (
                             <span
                               key={index}
                               className="px-3 py-1 bg-purple-100 text-purple-700 text-sm rounded-full font-medium"
@@ -257,6 +303,7 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };

@@ -64,6 +64,18 @@ const Events: React.FC = () => {
     return activeTab === 'upcoming' ? upcomingEvents : pastEvents;
   }, [realTimeEvents, upcomingEvents, pastEvents, activeTab]);
 
+  // Debug logging for event data
+  useEffect(() => {
+    console.log('🔍 Events.tsx - Event data debug:', {
+      activeTab,
+      upcomingEventsCount: upcomingEvents.length,
+      pastEventsCount: pastEvents.length,
+      realTimeEventsCount: realTimeEvents.length,
+      baseListCount: baseList.length,
+      pastEvents: pastEvents.map(e => ({ id: e.id, title: e.title, startAt: e.startAt }))
+    });
+  }, [activeTab, upcomingEvents, pastEvents, realTimeEvents, baseList]);
+
   const allTags = useMemo(() => [...new Set(baseList.flatMap(e => e.tags || []))], [baseList]);
 
   // Advanced filtering and sorting
