@@ -98,7 +98,13 @@ service cloud.firestore {
         (!('endAt' in newData) || newData.endAt is timestamp) &&
         (!('tags' in newData) || (newData.tags is list && newData.tags.size() <= 10)) &&
         (!('location' in newData) || isNonEmptyString(newData.location)) &&
-        (!('maxAttendees' in newData) || (newData.maxAttendees is number && newData.maxAttendees > 0));
+        (!('maxAttendees' in newData) || (newData.maxAttendees is number && newData.maxAttendees > 0)) &&
+        (!('attendingCount' in newData) || (newData.attendingCount is number && newData.attendingCount >= 0)) &&
+        (!('invitedUserIds' in newData) || (newData.invitedUserIds is list && newData.invitedUserIds.size() <= 100)) &&
+        (!('titleLower' in newData) || isNonEmptyString(newData.titleLower)) &&
+        (!('allDay' in newData) || newData.allDay is bool) &&
+        (!('imageUrl' in newData) || (newData.imageUrl is string || newData.imageUrl == null)) &&
+        (!('visibility' in newData) || newData.visibility in ['public', 'members', 'private']);
     }
     
     // Check if user is event creator
@@ -108,11 +114,31 @@ service cloud.firestore {
         get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid;
     }
     
+    // Enhanced RSVP validation functions
+    function validRSVPData(data) {
+      return data is map &&
+        ('eventId' in data) && isNonEmptyString(data.eventId) &&
+        ('userId' in data) && isNonEmptyString(data.userId) &&
+        ('status' in data) && data.status in ['going', 'not-going'] &&
+        ('adults' in data) && data.adults is number && data.adults >= 0 &&
+        (!('childCounts' in data) || (
+          data.childCounts is list &&
+          data.childCounts.size() <= 4
+        )) &&
+        (!('guests' in data) || (
+          data.guests is list &&
+          data.guests.size() <= 20
+        )) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
+        (!('displayName' in data) || (data.displayName is string || data.displayName == null)) &&
+        (!('email' in data) || (data.email is string || data.email == null));
+    }
+    
     function validStatusHistory(history) {
       return history is list
         && history.size() > 0
         && history[0] is map
-        && ('status' in history[0]) && history[0].status in ['going',  'not-going']
+        && ('status' in history[0]) && history[0].status in ['going', 'not-going']
         && ('changedAt' in history[0]) && history[0].changedAt is timestamp
         && ('changedBy' in history[0]) && isNonEmptyString(history[0].changedBy);
     }
@@ -213,8 +239,7 @@ service cloud.firestore {
         allow create: if (isMember() || isAdmin()) && 
           request.auth.uid == userId && 
           !isUserBlockedFromRsvp(request.auth.uid) &&
-          request.resource.data.keys().hasOnly(['status', 'createdAt', 'updatedAt', 'statusHistory']) && 
-          request.resource.data.status in ['going', 'not-going'] &&
+          validRSVPData(request.resource.data) &&
           validStatusHistory(request.resource.data.statusHistory) &&
           request.resource.data.statusHistory.size() == 1 &&
           request.resource.data.statusHistory[0].status == request.resource.data.status &&
@@ -236,8 +261,7 @@ service cloud.firestore {
         allow update: if (isMember() || isAdmin()) && 
           (request.auth.uid == userId || isAdmin()) &&
           !isUserBlockedFromRsvp(userId) &&
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['status', 'updatedAt', 'statusHistory']) && 
-          request.resource.data.status in ['going', 'not-going'] &&
+          validRSVPData(request.resource.data) &&
           validStatusHistory(request.resource.data.statusHistory) &&
           (request.auth.uid == userId
               ? request.resource.data.statusHistory.size() == resource.data.statusHistory.size() + 1
@@ -251,14 +275,8 @@ service cloud.firestore {
           (request.auth.uid == userId || isAdmin());
       }
     }
-
-    // --- EVENT TEASERS ---
-    match /event_teasers/{teaserId} {
-      allow read: if true;
-      allow create, update, delete: if isAdmin();
-    }
     
-    // --- RSVPs Collection Group Access ---
+    // --- RSVPs Collection Group Access (for cross-event queries) ---
     // Allow users to read/write their own RSVP docs across all events
     match /{path=**}/rsvps/{rsvpId} {
       allow read, get, list: if request.auth != null
@@ -268,17 +286,10 @@ service cloud.firestore {
                                    exists(/databases/$(database)/documents/events/$(resource.data.eventId)) &&
                                    get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.createdBy == request.auth.uid));
       
-      // Allow users to create/update their own RSVPs
-      allow create: if request.auth != null
-                     && request.resource.data.userId == request.auth.uid
-                     && request.resource.data.eventId != null;
-      
-      allow update: if request.auth != null
-                     && resource.data.userId == request.auth.uid
-                     && request.resource.data.userId == request.auth.uid;
-      
-      allow delete: if request.auth != null
-                     && resource.data.userId == request.auth.uid;
+      // Allow users to create/update their own RSVPs (delegated to subcollection rules)
+      allow create: if false; // Use specific subcollection rules instead
+      allow update: if false; // Use specific subcollection rules instead
+      allow delete: if false; // Use specific subcollection rules instead
     }
     
     // --- POSTS ---

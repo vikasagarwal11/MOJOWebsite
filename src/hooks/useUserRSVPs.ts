@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { RSVPDoc } from '../types/rsvp';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,19 +21,19 @@ export const useUserRSVPs = (eventIds: string[]) => {
       setError(null);
 
       try {
-        const rsvpsRef = collection(db, 'rsvps');
-        const q = query(
-          rsvpsRef,
-          where('userId', '==', currentUser.id),
-          where('eventId', 'in', eventIds)
-        );
-
-        const querySnapshot = await getDocs(q);
+        // Query RSVPs from the correct subcollection path: events/{eventId}/rsvps/{userId}
         const rsvps: RSVPDoc[] = [];
         
-        querySnapshot.forEach((doc) => {
-          rsvps.push({ id: doc.id, ...doc.data() } as RSVPDoc);
-        });
+        for (const eventId of eventIds) {
+          if (eventId) {
+            const rsvpRef = doc(db, 'events', eventId, 'rsvps', currentUser.id);
+            const rsvpSnap = await getDoc(rsvpRef);
+            
+            if (rsvpSnap.exists()) {
+              rsvps.push({ id: rsvpSnap.id, ...rsvpSnap.data() } as RSVPDoc);
+            }
+          }
+        }
 
         setUserRSVPs(rsvps);
       } catch (err) {
