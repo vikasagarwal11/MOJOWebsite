@@ -58,10 +58,25 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const [isSearching, setIsSearching] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
+  const [imageRemoved, setImageRemoved] = useState(false); // Track if image was removed
 
   const isEditing = !!eventToEdit;
 
-  const { register, handleSubmit, formState: { errors }, reset, watch } = useForm<EventFormData>({
+  const handleClose = () => {
+    reset();
+    setSelectedFile(null);
+    setTags([]);
+    setTagInput('');
+    setImageRemoved(false);
+    setInvitedUsers([]);
+    setInvitedUserDetails({});
+    setUserSearchQuery('');
+    setSearchResults([]);
+    setEventVisibility('members');
+    onClose();
+  };
+
+  const { register, handleSubmit, formState: { errors }, reset, watch, setValue } = useForm<EventFormData>({
   resolver: zodResolver(eventSchema),
   defaultValues: isEditing ? {
     title: eventToEdit.title,
@@ -83,6 +98,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   useEffect(() => {
     if (eventToEdit) {
       setTags(eventToEdit.tags || []);
+      setImageRemoved(false); // Reset image removal flag when editing
       // Convert old 'public' field to new 'visibility' system
       if (eventToEdit.visibility) {
         setEventVisibility(eventToEdit.visibility);
@@ -175,6 +191,11 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
       toast.error('Please sign in to create an event.');
       return;
     }
+    if (currentUser.role !== 'admin') {
+      toast.error('Only admins can create events');
+      return;
+    }
+    
     // Handle all-day vs timed events
     let startAt: Date;
     let endAt: Date | undefined;
@@ -230,12 +251,49 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     }
     setIsLoading(true);
     try {
-      // Optional image upload
-      let imageUrl = eventToEdit?.imageUrl || '';
-      if (selectedFile) {
-        const imagePath = getStoragePath('events', selectedFile.name);
-        imageUrl = await uploadFile(selectedFile, imagePath);
+      // Handle image management
+      let imageUrl: string | undefined = undefined;
+      
+      console.log('🔍 Image Management Debug:', {
+        isEditing,
+        imageRemoved,
+        selectedFile: !!selectedFile,
+        dataImageUrl: data.imageUrl,
+        eventToEditImageUrl: eventToEdit?.imageUrl,
+        currentImageRemoved: imageRemoved
+      });
+      
+      if (isEditing) {
+        // When editing, check if image was removed or changed
+        if (imageRemoved) {
+          // Image was explicitly removed (soft delete) - ALWAYS clear it
+          imageUrl = undefined; // This will clear the image
+        } else if (selectedFile) {
+          // New file uploaded
+          const imagePath = getStoragePath('events', selectedFile.name);
+          imageUrl = await uploadFile(selectedFile, imagePath);
+        } else if (data.imageUrl?.trim()) {
+          // URL provided
+          imageUrl = data.imageUrl.trim();
+        } else if (eventToEdit?.imageUrl && !data.imageUrl?.trim()) {
+          // Image was removed by clearing the URL field
+          imageUrl = undefined; // This will clear the image
+        } else {
+          // Keep existing image
+          imageUrl = eventToEdit?.imageUrl;
+        }
+      } else {
+        // Creating new event
+        if (selectedFile) {
+          const imagePath = getStoragePath('events', selectedFile.name);
+          imageUrl = await uploadFile(selectedFile, imagePath);
+        } else if (data.imageUrl?.trim()) {
+          imageUrl = data.imageUrl.trim();
+        }
       }
+      
+      console.log('🔍 Final imageUrl value:', imageUrl);
+      
       // Build event payload (no undefineds)
       const eventData = stripUndefined({
         title: data.title.trim(),
@@ -245,7 +303,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         endAt,
         allDay: data.isAllDay, // Add all-day flag
         location: data.location.trim(),
-        imageUrl: imageUrl || (data.imageUrl?.trim() || undefined),
+        imageUrl: imageUrl === undefined ? null : imageUrl, // Convert undefined to null for Firestore
         maxAttendees: data.maxAttendees ? Number(data.maxAttendees) : undefined,
         tags: tags.length > 0 ? tags : undefined,
         createdBy: currentUser.id,
@@ -255,6 +313,8 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         createdAt: eventToEdit?.createdAt ?? serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+       
+      console.log('🔍 Final eventData:', eventData);
 
       if (isEditing) {
         // Update existing event
@@ -272,10 +332,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         toast.success('Event created successfully!');
       }
       
-      reset();
-      setSelectedFile(null);
-      setTags([]);
-      setTagInput('');
+      handleClose(); // Use the centralized close function
       onEventCreated();
     } catch (e: any) {
       console.error('Error saving event:', e);
@@ -291,7 +348,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900">{isEditing ? 'Edit Event' : 'Create New Event'}</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+          <button onClick={handleClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
             <X className="w-6 h-6 text-gray-500" />
           </button>
         </div>
@@ -470,6 +527,81 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Event Image (Optional)</label>
+              
+              {/* Current Image Display (when editing) */}
+              {isEditing && eventToEdit?.imageUrl && (
+                <div className="mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-gray-700">Current Image:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        console.log('🔍 Remove Image clicked!');
+                        console.log('🔍 Before removal - imageRemoved:', imageRemoved);
+                        console.log('🔍 Before removal - eventToEdit.imageUrl:', eventToEdit?.imageUrl);
+                        
+                        // Soft delete - clear the imageUrl but don't delete from storage
+                        setSelectedFile(null);
+                        setImageRemoved(true); // Mark that image was removed
+                        // Clear the imageUrl field using React Hook Form
+                        setValue('imageUrl', '');
+                        // Update the eventToEdit object to reflect the change
+                        if (eventToEdit) {
+                          eventToEdit.imageUrl = '';
+                        }
+                        
+                        console.log('🔍 After removal - imageRemoved:', true);
+                        console.log('🔍 After removal - eventToEdit.imageUrl:', eventToEdit?.imageUrl);
+                        
+                        toast.success('Image removed from event (will be saved when you update)');
+                      }}
+                      className="px-3 py-1.5 text-sm bg-red-100 text-red-700 rounded-md hover:bg-red-200 transition-colors flex items-center gap-1"
+                    >
+                      <X className="w-4 h-4" />
+                      Remove Image
+                    </button>
+                  </div>
+                  <div className="relative w-full h-48 overflow-hidden rounded-lg bg-gradient-to-br from-purple-50 to-blue-50">
+                    <img
+                      src={eventToEdit.imageUrl}
+                      alt={eventToEdit.title}
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                      }}
+                    />
+                    {/* Overlay when image is marked for removal */}
+                    {imageRemoved && (
+                      <div className="absolute inset-0 bg-red-500 bg-opacity-90 flex items-center justify-center rounded-lg">
+                        <div className="text-center text-white">
+                          <div className="mb-2">
+                            <svg className="w-12 h-12 mx-auto" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                          <div className="font-bold text-lg mb-1">Image Removed</div>
+                          <div className="text-sm opacity-90">This image will be deleted when you save</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {imageRemoved 
+                      ? (
+                        <span className="flex items-center gap-2 text-red-600 font-medium">
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          ⚠️ Image has been removed and will be deleted when you update the event.
+                        </span>
+                      )
+                      : 'Click "Remove Image" to remove this image from the event. The image file will remain in storage.'
+                    }
+                  </p>
+                </div>
+              )}
+              
               <div className="space-y-3">
                 <input
                   type="file"
@@ -478,6 +610,25 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                   onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
+                
+                {/* File Preview */}
+                {selectedFile && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-blue-700">
+                        📎 {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFile(null)}
+                        className="text-blue-600 hover:text-blue-800"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
                 <div className="text-center text-gray-500">or</div>
                 <input
                   {...register('imageUrl')}
@@ -486,6 +637,19 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                   className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   placeholder="Enter image URL..."
                 />
+                
+                {/* Image Management Help */}
+                <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
+                  <p className="font-medium mb-1">💡 Image Management Tips:</p>
+                  <ul className="space-y-1">
+                    <li>• <strong>Upload new image:</strong> Select a file above</li>
+                    <li>• <strong>Use URL:</strong> Enter an external image URL</li>
+                    {isEditing && eventToEdit?.imageUrl && (
+                      <li>• <strong>Remove current image:</strong> Click "Remove Image" above</li>
+                    )}
+                    <li>• <strong>Recommended:</strong> Use JPG/PNG files under 5MB for best performance</li>
+                  </ul>
+                </div>
               </div>
             </div>
           </div>
@@ -651,7 +815,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
           <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={isLoading}
               className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
             >

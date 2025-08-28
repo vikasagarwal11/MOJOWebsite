@@ -4,7 +4,7 @@ import { useEvents } from '../hooks/useEvents';
 import { useRealTimeEvents } from '../hooks/useRealTimeEvents';
 import EventList from '../components/events/EventList';
 import EventCalendar from '../components/events/EventCalendar';
-import EventFormModal from '../components/events/EventFormModal';
+import CreateEventModal from '../components/events/CreateEventModal';
 import { useAuth } from '../contexts/AuthContext';
 import { Calendar, Plus, Search, Filter, RefreshCw, Share2, Bell, TrendingUp, Clock, MapPin, Users, Tag } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -576,7 +576,10 @@ const Events: React.FC = () => {
       {/* Event Form Modal */}
       <AnimatePresence>
         {showModal && (
-          <EventFormModal onClose={() => setShowModal(false)} />
+          <CreateEventModal 
+            onClose={() => setShowModal(false)} 
+            onEventCreated={() => setShowModal(false)} 
+          />
         )}
       </AnimatePresence>
     </div>

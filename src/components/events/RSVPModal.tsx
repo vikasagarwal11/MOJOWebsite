@@ -355,11 +355,11 @@ export const RSVPModal: React.FC<RSVPModalProps> = ({ open, event, onClose, onRS
 
             {/* Event Image - Matching EventTeaserModal height */}
             {event.imageUrl && (
-              <div className="relative w-full h-56 overflow-hidden bg-gradient-to-br from-purple-50 to-blue-50">
+              <div className="relative w-full h-80 overflow-hidden bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
                 <motion.img
                   src={event.imageUrl}
                   alt={event.title}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain"
                   initial={{ scale: 1.05, opacity: 0.8 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={{ duration: 0.4, ease: "easeOut" }}
@@ -370,7 +370,7 @@ export const RSVPModal: React.FC<RSVPModalProps> = ({ open, event, onClose, onRS
                   }}
                 />
                 {/* Enhanced overlay for better visual appeal */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
               </div>
             )}
 
