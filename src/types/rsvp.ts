@@ -13,23 +13,23 @@ export interface RSVPDoc {
   childCounts?: Array<{
     ageGroup: '0-2' | '3-5' | '6-10' | '11+';
     count: number;
-  }>;
+  }> | null;
   guests?: Array<{
     name: string;
     phone: string;
     email: string;
     ageGroup: '0-2' | '3-5' | '6-10' | '11+';
-  }>;
-  notes?: string;
+  }> | null;
+  notes?: string | null;
   requiresPayment?: boolean;
   paymentStatus?: PaymentStatus;
   createdAt?: any;
   updatedAt?: any;
   statusHistory?: Array<{
     status: RSVPStatus;
-    changedAt: Date;
+    changedAt: any; // Accept both Date and Firestore Timestamp
     changedBy: string;
-  }>;
+  }> | null;
 }
 
 export interface EventCapacity {

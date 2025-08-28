@@ -157,9 +157,9 @@ export const RSVPModal: React.FC<RSVPModalProps> = ({ open, event, onClose, onRS
         email: currentUser.email || null,
         status,
         adults,
-        childCounts,
-        guests: guests.length > 0 ? guests : undefined,
-        notes: notes.trim() || undefined,
+        childCounts: childCounts.some(child => child.count > 0) ? childCounts : null,
+        guests: guests.length > 0 ? guests : null,
+        notes: notes.trim() || null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -171,7 +171,7 @@ export const RSVPModal: React.FC<RSVPModalProps> = ({ open, event, onClose, onRS
           ...(existing.statusHistory || []),
           {
             status,
-            changedAt: new Date(),
+            changedAt: serverTimestamp(),
             changedBy: currentUser.id,
           }
         ];
@@ -186,7 +186,7 @@ export const RSVPModal: React.FC<RSVPModalProps> = ({ open, event, onClose, onRS
           ...rsvpData,
           statusHistory: [{
             status,
-            changedAt: new Date(),
+            changedAt: serverTimestamp(),
             changedBy: currentUser.id,
           }],
         });
