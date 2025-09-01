@@ -14,6 +14,8 @@ import { useAttendees } from '../../hooks/useAttendees';
 import { doc, setDoc, updateDoc, getDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { CreateAttendeeData, AttendeeStatus } from '../../types/attendee';
+import { getEventAttendeeCount } from '../../services/attendeeService';
+import toast from 'react-hot-toast';
 
 interface EventCardProps {
   event: EventDoc;
@@ -32,6 +34,11 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const [showPastEventModal, setShowPastEventModal] = useState(false);
   const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [totalAttendeeCount, setTotalAttendeeCount] = useState<number>(0);
+  
+  // Overflow detection for description
+  const descRef = useRef<HTMLParagraphElement | null>(null);
+  const [isClamped, setIsClamped] = useState(false);
   
   // Intersection Observer for lazy loading
   const [ref, inView] = useInView({
@@ -46,6 +53,43 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     setShowTeaserModal(false);
     setShowPastEventModal(false);
   }, [event.id]);
+
+  // Function to refresh total attendee count
+  const refreshTotalAttendeeCount = async () => {
+    try {
+      console.log('🔍 DEBUG: Refreshing total attendee count for event:', event.id);
+      const count = await getEventAttendeeCount(event.id);
+      console.log('🔍 DEBUG: Total attendee count updated to:', count);
+      setTotalAttendeeCount(count);
+    } catch (error) {
+      console.error('Failed to fetch total attendee count:', error);
+      setTotalAttendeeCount(0);
+    }
+  };
+
+  // Fetch total attendee count for the event
+  useEffect(() => {
+    refreshTotalAttendeeCount();
+  }, [event.id]);
+
+  // Overflow detection for description
+  useEffect(() => {
+    const el = descRef.current;
+    if (!el) return;
+
+    const check = () => setIsClamped(el.scrollHeight > el.clientHeight + 1);
+    check();
+
+    if ('ResizeObserver' in window) {
+      const ro = new ResizeObserver(check);
+      ro.observe(el);
+      return () => ro.disconnect();
+    } else {
+      // Fallback for older browsers
+      (window as any).addEventListener('resize', check);
+      return () => (window as any).removeEventListener('resize', check);
+    }
+  }, [event.description]);
 
   // Sync RSVP status from attendees
   useEffect(() => {
@@ -88,13 +132,13 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     return eventDate < currentTime;
   }, [event.startAt, currentTime]);
 
-  // Handle card click
-  const handleCardClick = () => {
-    console.log('🔍 EventCard handleCardClick called for event:', {
+  // Handle view event details click
+  const handleViewEventDetails = (e: React.SyntheticEvent) => {
+    e.stopPropagation();
+    console.log('🔍 View Event Details clicked for event:', {
       id: event.id,
       title: event.title,
       isEventPast: isEventPast,
-      hasOnClick: !!onClick,
       currentUser: currentUser?.id
     });
     
@@ -119,7 +163,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       status,
       eventId: event.id,
       currentUser: currentUser.id,
-      currentRSVPStatus: rsvpStatus
+      currentRSVPStatus: rsvpStatus,
+      currentTotalCount: totalAttendeeCount
     });
     
     setIsUpdating(true);
@@ -130,35 +175,61 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
         a.userId === currentUser.id && a.attendeeType === 'primary'
       );
       
-      if (existingAttendee) {
-        // Update existing attendee status
-        console.log('🔍 DEBUG: Updating existing primary attendee status to:', status);
-        await setAttendeeStatus(existingAttendee.attendeeId, status);
-      } else {
-        // Create new primary attendee
-        console.log('🔍 DEBUG: Creating new primary attendee with status:', status);
-        const attendeeData: CreateAttendeeData = {
-          eventId: event.id,
-          userId: currentUser.id,
-          attendeeType: 'primary',
-          relationship: 'self',
-          name: currentUser.displayName || 'Primary User',
-          ageGroup: '11+',
-          rsvpStatus: status
-        };
-        
-        await addAttendee(attendeeData);
-      }
+             if (existingAttendee) {
+         // Update existing attendee status
+         console.log('🔍 DEBUG: Updating existing primary attendee status to:', status);
+         await setAttendeeStatus(existingAttendee.attendeeId, status);
+         
+         // If primary member is changing to "not-going", update all family members to "not-going" as well
+         if (status === 'not-going') {
+           console.log('🔍 DEBUG: Primary member is not going, updating all family members to not-going');
+           const familyMembers = attendees.filter(a => 
+             a.userId === currentUser.id && 
+             a.attendeeType === 'family_member' && 
+             a.rsvpStatus === 'going'
+           );
+           
+           for (const familyMember of familyMembers) {
+             console.log('🔍 DEBUG: Updating family member to not-going:', familyMember.name);
+             await setAttendeeStatus(familyMember.attendeeId, 'not-going');
+           }
+           
+           if (familyMembers.length > 0) {
+             toast.success(`${familyMembers.length} family member${familyMembers.length > 1 ? 's' : ''} automatically marked as "Not Going" since you cannot attend.`);
+           }
+         }
+       } else {
+         // Create new primary attendee
+         console.log('🔍 DEBUG: Creating new primary attendee with status:', status);
+         const attendeeData: CreateAttendeeData = {
+           eventId: event.id,
+           userId: currentUser.id,
+           attendeeType: 'primary',
+           relationship: 'self',
+           name: currentUser.displayName || 'Primary User',
+           ageGroup: '11+',
+           rsvpStatus: status
+         };
+         
+         await addAttendee(attendeeData);
+       }
       
       // Update local state - only set if status is 'going' or 'not-going'
       if (status === 'going' || status === 'not-going') {
         setRsvpStatus(status);
       }
       
-      // Refresh attendees to get updated counts
-      await refreshAttendees();
-      
-      console.log('🔍 DEBUG: Quick RSVP completed successfully');
+             // Refresh attendees to get updated counts
+       await refreshAttendees();
+       
+       // Add a small delay to ensure Firestore update has propagated
+       await new Promise(resolve => setTimeout(resolve, 500));
+       
+               // Refresh total attendee count immediately after RSVP action
+        console.log('🔍 DEBUG: About to refresh total attendee count...');
+        await refreshTotalAttendeeCount();
+        
+        console.log('🔍 DEBUG: Quick RSVP completed successfully. New total count should be updated.');
       
     } catch (error) {
       console.error('❌ Error in quick RSVP:', error);
@@ -173,6 +244,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     setShowRSVPModal(false);
     // Refresh data when modal closes
     refreshAttendees();
+    // Refresh total attendee count
+    refreshTotalAttendeeCount();
   };
 
   // Handle RSVP modal open
@@ -239,8 +312,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
          initial={{ opacity: 0, y: 20 }}
          animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
          transition={{ duration: 0.5 }}
-                   className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 h-[450px] md:h-[500px] flex flex-col"
-         onClick={handleCardClick}
+                                                                                         className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 h-[420px] md:h-[470px] flex flex-col mb-4 scroll-mt-20"
        >
                  {/* Event Image - Always show image section for consistent height */}
          <div className="relative h-48 overflow-hidden">
@@ -278,21 +350,52 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
              {event.title}
            </h3>
 
-                     {/* Event Description - Adjusted height to compensate for title */}
-           <div className="mb-4 h-[60px] md:h-[72px]">
-             {event.description ? (
-               <p className="text-gray-600 line-clamp-2 md:line-clamp-3 h-full">
-                 {event.description}
-               </p>
-             ) : (
-               <p className="text-gray-400 italic text-sm h-full flex items-center">
-                 No description available
-               </p>
-             )}
-           </div>
+                                                                                                                                                                                                                                                                                                                                                               {/* Event Description - Adjusted height to compensate for title */}
+             <div className="mb-4 relative flex flex-col min-h-[64px] md:min-h-[96px]">
+               {(() => {
+                 const hasDesc = !!event.description?.trim();
+                 return hasDesc ? (
+                   <>
+                     <p
+                       ref={descRef}
+                       className="text-gray-600 text-sm md:text-base leading-5 md:leading-6 line-clamp-2 md:line-clamp-3 overflow-hidden"
+                     >
+                       {event.description}
+                     </p>
 
-                     {/* Event Details - Adaptive height */}
-           <div className="space-y-2 mb-4 h-[100px] md:h-[120px]">
+                     {/* Fade above the reserved link row */}
+                     {isClamped && (
+                       <div className="pointer-events-none absolute inset-x-0 bottom-6 h-6 bg-gradient-to-t from-white to-transparent" />
+                     )}
+
+                     {/* Reserve the link row height always */}
+                     <div className="mt-1 self-end h-6 flex items-center">
+                       {isClamped && (
+                         <button
+                           type="button"
+                           onClick={handleViewEventDetails}
+                           role="link"
+                           aria-label={`View details for ${event.title}`}
+                           className="text-blue-600 hover:text-blue-800 font-medium hover:underline bg-white px-1 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 whitespace-nowrap"
+                           onKeyDown={(e) => {
+                             if (e.key === 'Enter' || e.key === ' ') handleViewEventDetails(e);
+                           }}
+                         >
+                           View details…
+                         </button>
+                       )}
+                     </div>
+                   </>
+                 ) : (
+                   <p className="text-gray-400 italic text-sm h-full flex items-center">
+                     No description available
+                   </p>
+                 );
+               })()}
+             </div>
+
+                                           {/* Event Details - Adaptive height */}
+            <div className="space-y-2 mb-6 h-[80px] md:h-[100px]">
             {/* Date & Time */}
             <div className="flex items-center text-gray-600">
               <Calendar className="w-4 h-4 mr-2 text-purple-500" />
@@ -328,33 +431,33 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
             <div className="flex items-center text-gray-600">
               <Users className="w-4 h-4 mr-2 text-purple-500" />
               <span>
-                {counts.totalGoing} attending
+                {totalAttendeeCount} attending
                 {event.maxAttendees && ` / ${event.maxAttendees} max`}
               </span>
             </div>
           </div>
 
           {/* Action Buttons - Always at bottom */}
-          <div className="flex items-center justify-between mt-auto">
+          <div className="flex items-center justify-between mt-auto pb-4 relative z-10" style={{ minHeight: '60px' }}>
             {/* Quick RSVP Buttons - Made much smaller to fit Manage button */}
             <div className="flex gap-1 flex-1">
               {/* Going Button */}
-              <motion.button
-                whileHover={!isGoingButtonDisabled ? { scale: 1.05 } : {}}
-                whileTap={!isGoingButtonDisabled ? { scale: 0.95 } : {}}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleQuickRSVP('going');
-                }}
-                disabled={isGoingButtonDisabled}
-                className={`flex items-center gap-1 px-2 py-2 rounded-lg font-medium transition-all duration-200 text-xs ${
-                  rsvpStatus === 'going'
-                    ? 'bg-green-100 text-green-700 cursor-not-allowed'
-                    : isGoingButtonDisabled
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-green-600 text-white hover:bg-green-700'
-                }`}
-              >
+                             <motion.button
+                 whileHover={!isGoingButtonDisabled ? { scale: 1.05 } : {}}
+                 whileTap={!isGoingButtonDisabled ? { scale: 0.95 } : {}}
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   handleQuickRSVP('going');
+                 }}
+                 disabled={isGoingButtonDisabled}
+                 className={`flex items-center gap-1 px-2 py-2 rounded-lg font-medium transition-all duration-200 text-xs relative z-50 pointer-events-auto ${
+                   rsvpStatus === 'going'
+                     ? 'bg-green-100 text-green-700 cursor-not-allowed'
+                     : isGoingButtonDisabled
+                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                     : 'bg-green-600 text-white hover:bg-green-700'
+                 }`}
+               >
                 {isUpdating ? (
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
                 ) : (
@@ -364,22 +467,22 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
               </motion.button>
 
               {/* Not Going Button */}
-              <motion.button
-                whileHover={!isNotGoingButtonDisabled ? { scale: 1.05 } : {}}
-                whileTap={!isNotGoingButtonDisabled ? { scale: 0.95 } : {}}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleQuickRSVP('not-going');
-                }}
-                disabled={isNotGoingButtonDisabled}
-                className={`flex items-center gap-1 px-2 py-2 rounded-lg font-medium transition-all duration-200 text-xs ${
-                  rsvpStatus === 'not-going'
-                    ? 'bg-red-100 text-red-700 cursor-not-allowed'
-                    : isNotGoingButtonDisabled
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-red-600 text-white hover:bg-red-700'
-                }`}
-              >
+                             <motion.button
+                 whileHover={!isNotGoingButtonDisabled ? { scale: 1.05 } : {}}
+                 whileTap={!isNotGoingButtonDisabled ? { scale: 0.95 } : {}}
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   handleQuickRSVP('not-going');
+                 }}
+                 disabled={isNotGoingButtonDisabled}
+                 className={`flex items-center gap-1 px-2 py-2 rounded-lg font-medium transition-all duration-200 text-xs relative z-50 pointer-events-auto ${
+                   rsvpStatus === 'not-going'
+                     ? 'bg-red-100 text-red-700 cursor-not-allowed'
+                     : isNotGoingButtonDisabled
+                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                     : 'bg-red-600 text-white hover:bg-red-700'
+                 }`}
+               >
                 {isUpdating ? (
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
                 ) : (

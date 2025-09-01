@@ -1,6 +1,36 @@
 ﻿{
   "indexes": [
     {
+      "collectionGroup": "attendees",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "invitedUsers",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
       "collectionGroup": "events",
       "queryScope": "COLLECTION",
       "fields": [
@@ -36,6 +66,51 @@
       "fields": [
         {
           "fieldPath": "invitedUserIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "invitedUserIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "invitedUsers",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "invitedUsers",
           "arrayConfig": "CONTAINS"
         },
         {
@@ -261,60 +336,6 @@
       "density": "SPARSE_ALL"
     },
     {
-      "collectionGroup": "userBlocks",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "blockedByUserId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "isActive",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "userBlocks",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "blockedUserId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "isActive",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "userBlocks",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "blockedByUserId", "order": "ASCENDING" },
-        { "fieldPath": "isActive",        "order": "ASCENDING" },
-        { "fieldPath": "createdAt",       "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "userBlocks",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "blockedUserId", "order": "ASCENDING" },
-        { "fieldPath": "isActive",      "order": "ASCENDING" },
-        { "fieldPath": "createdAt",     "order": "DESCENDING" }
-            ]
-    },
-    {
       "collectionGroup": "rsvps",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -334,27 +355,77 @@
       "density": "SPARSE_ALL"
     },
     {
-      "collectionGroup": "event_teasers",
+      "collectionGroup": "userBlocks",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "startAt",
+          "fieldPath": "blockedByUserId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isActive",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
           "order": "ASCENDING"
         }
       ],
       "density": "SPARSE_ALL"
     },
     {
-      "collectionGroup": "events",
+      "collectionGroup": "userBlocks",
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "invitedUserIds",
-          "arrayConfig": "CONTAINS"
+          "fieldPath": "blockedByUserId",
+          "order": "ASCENDING"
         },
         {
-          "fieldPath": "startAt",
+          "fieldPath": "isActive",
           "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "userBlocks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "blockedUserId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isActive",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "userBlocks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "blockedUserId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "isActive",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
         }
       ],
       "density": "SPARSE_ALL"

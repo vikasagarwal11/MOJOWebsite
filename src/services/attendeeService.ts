@@ -131,6 +131,23 @@ export const getUserAttendees = async (eventId: string, userId: string): Promise
   })) as Attendee[];
 };
 
+// Get total attendee count for an event (all users)
+export const getEventAttendeeCount = async (eventId: string): Promise<number> => {
+  console.log('🔍 DEBUG: getEventAttendeeCount called for eventId:', eventId);
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
+  const snapshot = await getDocs(q);
+  
+  // Filter to only count attendees with 'going' status
+  const goingAttendees = snapshot.docs.filter(doc => {
+    const data = doc.data();
+    return data.rsvpStatus === 'going';
+  });
+  
+  console.log('🔍 DEBUG: getEventAttendeeCount result:', goingAttendees.length, 'going attendees out of', snapshot.docs.length, 'total attendees');
+  return goingAttendees.length;
+};
+
 // Bulk upsert attendees (for family members)
 export const bulkUpsertAttendees = async (eventId: string, attendees: CreateAttendeeData[]): Promise<string[]> => {
   const batch = writeBatch(db);
@@ -160,7 +177,9 @@ export const setAttendeeStatus = async (
   attendeeId: string, 
   status: AttendeeStatus
 ): Promise<void> => {
+  console.log('🔍 DEBUG: setAttendeeStatus called:', { eventId, attendeeId, status });
   await updateAttendee(eventId, attendeeId, { rsvpStatus: status });
+  console.log('🔍 DEBUG: setAttendeeStatus completed successfully');
 };
 
 // Calculate attendee counts for an event
