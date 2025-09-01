@@ -508,6 +508,13 @@ const Profile: React.FC = () => {
     }
   }, [currentUser?.role]);
 
+  // Redirect non-admin users from RSVP tab to events tab
+  useEffect(() => {
+    if (currentUser && currentUser.role !== 'admin' && activeTab === 'rsvp') {
+      setActiveTab('events');
+    }
+  }, [currentUser, activeTab]);
+
   // Listen for enhanced blocking modal requests
   useEffect(() => {
     const handleOpenBlockModal = (event: CustomEvent) => {
@@ -969,13 +976,15 @@ const Profile: React.FC = () => {
           >
             {currentUser?.role === 'admin' ? 'My Events' : 'Events I\'m Attending'}
           </button>
-          <button
-            onClick={() => setActiveTab('rsvp')}
-            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'rsvp' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
-            aria-selected={activeTab === 'rsvp'}
-          >
-            {currentUser?.role === 'admin' ? 'RSVP Management' : 'My RSVPs'}
-          </button>
+          {currentUser?.role === 'admin' && (
+            <button
+              onClick={() => setActiveTab('rsvp')}
+              className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'rsvp' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
+              aria-selected={activeTab === 'rsvp'}
+            >
+              RSVP Management
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('family')}
             className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'family' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
@@ -1052,34 +1061,26 @@ const Profile: React.FC = () => {
             currentUser={currentUser}
           />
         )}
-        {activeTab === 'rsvp' && (
-          currentUser?.role === 'admin' ? (
-            <ProfileRSVPAdminTab
-              rsvpsByEvent={rsvpsByEvent}
-              allEvents={allEvents}
-              userNames={userNames}
-              updateRsvp={updateRsvp}
-              exportRsvps={exportRsvps}
-              exportingRsvps={exportingRsvps}
-              adjustAttendingCount={adjustAttendingCount}
-              blockUserFromRsvp={blockUserFromRsvp}
-              analyzeLastMinuteChanges={analyzeLastMinuteChanges}
-              rsvpFilter={rsvpFilter}
-              setRsvpFilter={setRsvpFilter}
-              eventsPage={eventsPage}
-              setEventsPage={setEventsPage}
+        {activeTab === 'rsvp' && currentUser?.role === 'admin' && (
+          <ProfileRSVPAdminTab
+            rsvpsByEvent={rsvpsByEvent}
+            allEvents={allEvents}
+            userNames={userNames}
+            updateRsvp={updateRsvp}
+            exportRsvps={exportRsvps}
+            exportingRsvps={exportingRsvps}
+            adjustAttendingCount={adjustAttendingCount}
+            blockUserFromRsvp={blockUserFromRsvp}
+            analyzeLastMinuteChanges={analyzeLastMinuteChanges}
+            rsvpFilter={rsvpFilter}
+            setRsvpFilter={setRsvpFilter}
+            eventsPage={eventsPage}
+            setEventsPage={setEventsPage}
               PAGE_SIZE={PAGE_SIZE}
               loadingAdminEvents={loadingAdminEvents}
               currentUser={currentUser}
             />
-          ) : (
-            <ProfileRSVPPersonalTab
-              rsvpedEvents={rsvpedEvents}
-              loadingEvents={loadingEvents}
-              currentUser={currentUser}
-            />
-          )
-        )}
+          )}
         {activeTab === 'admin' && currentUser?.role === 'admin' && (
           <ProfileAdminTab
             allEvents={allEvents}

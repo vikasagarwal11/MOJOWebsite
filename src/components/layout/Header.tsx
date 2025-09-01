@@ -83,12 +83,7 @@ const Header: React.FC = () => {
         <div className="flex items-center gap-4 h-16">
           {/* Brand */}
           <Link to="/" className="flex items-center gap-3 shrink-0">
-            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-              <Dumbbell className="w-6 h-6 text-white" />
-            </div>
-            <div className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              Moms Fitness Mojo
-            </div>
+            <img src="/logo.svg" alt="Moms Fitness Mojo" className="h-12 w-auto" />
           </Link>
 
           {/* Center nav (kept stable; user area won’t push this) */}
