@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Calendar, Share2, Eye } from 'lucide-react';
+import { Bell, Calendar, Eye } from 'lucide-react';
 import EventCardNew from '../components/events/EventCardNew';
 
 interface Event {
@@ -32,7 +32,7 @@ type ProfileEventsTabProps = {
   userEvents: Event[];
   allEvents: Event[];
   userNames: { [userId: string]: string };
-  shareEvent: (event: Event) => Promise<void>;
+
   setIsCreateModalOpen: (value: boolean) => void;
   setEventToEdit: (value: Event | null) => void;
   notificationsPage: number;
@@ -55,7 +55,6 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
   userEvents,
   allEvents,
   userNames,
-  shareEvent,
   setIsCreateModalOpen,
   setEventToEdit,
   notificationsPage,
@@ -207,13 +206,6 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
                   setIsCreateModalOpen(true);
                 } : undefined}
               />
-              <button
-                onClick={() => shareEvent(event)}
-                className="absolute top-4 right-4 p-2 bg-purple-600 text-white rounded-full hover:bg-purple-700"
-                aria-label={`Share ${event.title}`}
-              >
-                <Share2 className="w-4 h-4" />
-              </button>
             </div>
           ))}
         </div>
@@ -243,13 +235,6 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
                   setIsCreateModalOpen(true);
                 }}
               />
-              <button
-                onClick={() => shareEvent(event)}
-                className="absolute top-4 right-4 p-2 bg-purple-600 text-white rounded-full hover:bg-purple-700"
-                aria-label={`Share ${event.title}`}
-              >
-                <Share2 className="w-4 h-4" />
-              </button>
             </div>
           ))}
         </div>

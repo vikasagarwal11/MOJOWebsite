@@ -200,138 +200,194 @@ const Profile: React.FC = () => {
     const timer = setTimeout(() => {
       setLoadingEvents(true);
       
-      // Try collection group query first, fallback to manual approach if it fails
+            // Since collection group queries on attendees require special permissions,
+      // we'll use a different approach that works with current security rules
       const loadRSVPedEvents = async () => {
         try {
-          // Use collection group query to get RSVPs across all events
-          const rsvpsQuery = query(
-            collectionGroup(db, 'rsvps'),
-            where('userId', '==', currentUser.id),
-            where('status', '==', 'going'),
-            orderBy('updatedAt', 'desc'),
-            limit(PAGE_SIZE * eventsPage)
-          );
+          console.log('🔍 Profile: Using alternative approach for loading RSVPed events');
           
-          const controller = new AbortController();
-          console.log('🔍 Profile: Setting up RSVPed events collection group query');
-          
-          const unsubscribe = onSnapshot(rsvpsQuery, async (rsvpSnap) => {
-            console.log('🔍 Profile: RSVPs collection group query fired', {
-              rsvpCount: rsvpSnap.docs.length,
-              hasRsvps: rsvpSnap.docs.length > 0,
-              rsvpDocs: rsvpSnap.docs.map(d => ({ id: d.id, path: d.ref.path, data: d.data() }))
-            });
-            
-            if (!controller.signal.aborted && rsvpSnap.docs.length > 0) {
-              try {
-                // Extract event IDs from RSVPs
-                const eventIds = rsvpSnap.docs.map(rsvp => {
-                  // Extract eventId from the RSVP document path: events/{eventId}/rsvps/{userId}
-                  const pathParts = rsvp.ref.path.split('/');
-                  return pathParts[1]; // events/{eventId}/rsvps/{userId} -> eventId is at index 1
-                });
-                
-                console.log('🔍 Profile: Extracted event IDs from RSVPs:', eventIds);
-                
-                // Fetch the corresponding events
-                const eventsQuery = query(
-                  collection(db, 'events'),
-                  where('__name__', 'in', eventIds),
-                  orderBy('startAt', 'desc')
-                );
-                
-                const eventsSnap = await getDocs(eventsQuery);
-                console.log('🔍 Profile: Events query result:', {
-                  eventCount: eventsSnap.docs.length,
-                  hasEvents: eventsSnap.docs.length > 0
-                });
-                
-                if (!controller.signal.aborted) {
-                  const events = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                  setRsvpedEvents(events);
-                  fetchUserNames(events.map(e => ({ id: e.createdBy })));
-                  setLoadingEvents(false);
-                }
-              } catch (error) {
-                console.error('🚨 Profile: Error fetching events from RSVPs:', error);
-                setLoadingEvents(false);
-                toast.error('Failed to load RSVPed events');
-              }
-            } else if (!controller.signal.aborted) {
-              // No RSVPs found
-              setRsvpedEvents([]);
-              setLoadingEvents(false);
-            }
-          }, (e) => {
-            console.error('🚨 Profile: RSVPs collection group query error:', {
-              error: e,
-              errorCode: e?.code,
-              errorMessage: e?.message,
-              errorStack: e?.stack
-            });
-            
-            // Check if it's an index error and provide helpful message
-            if (e?.code === 'failed-precondition') {
-              console.log('🔄 Profile: Collection group query failed, trying fallback approach...');
-              // Fallback: manually check for RSVPs in events
-              loadRSVPedEventsFallback();
-            } else if (e?.code === 'permission-denied') {
-              toast.error('RSVP access denied');
-              setLoadingEvents(false);
-            } else {
-              toast.error('Failed to load RSVPed events');
-              setLoadingEvents(false);
-            }
-          });
-          
-          return () => {
-            controller.abort();
-            unsubscribe();
-          };
+          // Instead of collection group query, we'll use the fallback approach directly
+          // This works with current security rules and doesn't require special permissions
+          await loadRSVPedEventsFallback();
         } catch (error) {
-          console.error('🚨 Profile: Error setting up collection group query:', error);
-          // Fallback: manually check for RSVPs in events
-          loadRSVPedEventsFallback();
+          console.error('🚨 Profile: Error in alternative approach:', error);
+          setLoadingEvents(false);
+          toast.error('Failed to load RSVPed events');
         }
       };
       
-      // Fallback approach: manually check events for user RSVPs
-      const loadRSVPedEventsFallback = async () => {
-        try {
-          console.log('🔄 Profile: Using fallback approach to load RSVPed events');
-          
-          // Get all events and check if user has RSVPed to them
-          const eventsQuery = query(
-            collection(db, 'events'),
-            orderBy('startAt', 'desc'),
-            limit(50) // Limit to recent events for performance
-          );
-          
-          const eventsSnap = await getDocs(eventsQuery);
-          const events = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-          
-          // Check each event for user's RSVP
-          const rsvpedEventIds: string[] = [];
-          for (const event of events) {
-            try {
-              const rsvpRef = doc(db, 'events', event.id, 'rsvps', currentUser.id);
-              const rsvpSnap = await getDoc(rsvpRef);
-              
-              if (rsvpSnap.exists() && rsvpSnap.data()?.status === 'going') {
-                rsvpedEventIds.push(event.id);
-              }
-            } catch (rsvpError) {
-              console.log(`⚠️ Profile: Could not check RSVP for event ${event.id}:`, rsvpError);
+             // Fallback approach: manually check events for user RSVPs
+       const loadRSVPedEventsFallback = async () => {
+         try {
+           console.log('🔄 Profile: Using fallback approach to load RSVPed events');
+           
+           // For non-admin users, we can't read all events due to security rules
+           // Instead, let's try to get events from the user's RSVP collection if it exists
+           // or check if we can find any events the user has interacted with
+           
+           console.log('🔄 Profile: Non-admin user detected, using limited fallback approach');
+           
+                                   // Try to get events from user's attendee collection (if it exists)
+             // This is a workaround for permission restrictions
+             try {
+               const userAttendeeQuery = query(
+                 collection(db, 'users', currentUser.id, 'attendees'),
+                 where('rsvpStatus', '==', 'going'),
+                 orderBy('updatedAt', 'desc')
+               );
+               
+               const userAttendeeSnap = await getDocs(userAttendeeQuery);
+               console.log('🔍 Profile: User attendee collection query result:', {
+                 docCount: userAttendeeSnap.docs.length,
+                 hasData: userAttendeeSnap.docs.length > 0
+               });
+               
+               if (userAttendeeSnap.docs.length > 0) {
+                 // Extract event IDs from user's attendee collection
+                 const eventIds = userAttendeeSnap.docs.map(doc => doc.data().eventId).filter(Boolean);
+                 console.log('🔍 Profile: Found event IDs in user attendee collection:', eventIds);
+                 
+                 if (eventIds.length > 0) {
+                   // Fetch these specific events
+                   const eventsQuery = query(
+                     collection(db, 'events'),
+                     where('__name__', 'in', eventIds),
+                     orderBy('startAt', 'desc')
+                   );
+                   
+                   const eventsSnap = await getDocs(eventsQuery);
+                   const events = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                   
+                   console.log('🔍 Profile: Successfully fetched events from user attendee collection:', {
+                     eventCount: events.length,
+                     eventIds: events.map(e => e.id)
+                   });
+                   
+                   setRsvpedEvents(events);
+                   fetchUserNames(events.map(e => ({ id: e.createdBy })));
+                   setLoadingEvents(false);
+                   return;
+                 }
+               }
+             } catch (userAttendeeError) {
+               console.log('⚠️ Profile: User attendee collection approach failed:', userAttendeeError);
+               console.log('🔍 Profile: This is expected if the subcollection doesn\'t exist yet');
+             }
+           
+           // If user RSVP collection approach fails, try to get events the user has permission to read
+           // For non-admin users, this might be limited to events they're invited to or have RSVPed to
+           console.log('🔄 Profile: Trying alternative approach - checking for events user can access');
+           
+                                               // Since the user attendee collection approach failed, let's try a different strategy
+             // We'll query for events that the user might have access to and then check their attendees
+             console.log('🔄 Profile: Trying to find events user can access...');
+             
+             let events: any[] = [];
+             
+             // Try multiple approaches to find events
+             try {
+               // Approach 1: Try public events first (this should work with current security rules)
+               const publicEventsQuery = query(
+                 collection(db, 'events'),
+                 where('visibility', '==', 'public'),
+                 orderBy('startAt', 'desc'),
+                 limit(50)
+               );
+               const publicEventsSnap = await getDocs(publicEventsQuery);
+               events = publicEventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+               console.log('🔍 Profile: Found events with public events query:', events.length);
+             } catch (publicEventsError) {
+               console.log('⚠️ Profile: Public events query failed:', publicEventsError);
+               
+               // Approach 2: Try legacy 'public' field (for backward compatibility)
+               try {
+                 const legacyPublicQuery = query(
+                   collection(db, 'events'),
+                   where('public', '==', true),
+                   orderBy('startAt', 'desc'),
+                   limit(50)
+                 );
+                 const legacyPublicSnap = await getDocs(legacyPublicQuery);
+                 events = legacyPublicSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                 console.log('🔍 Profile: Found events with legacy public query:', events.length);
+               } catch (legacyPublicError) {
+                 console.log('⚠️ Profile: Legacy public query failed:', legacyPublicError);
+                 
+                 // Approach 3: Try events created by the user
+                 try {
+                   const userEventsQuery = query(
+                     collection(db, 'events'),
+                     where('createdBy', '==', currentUser.id),
+                     orderBy('startAt', 'desc'),
+                     limit(20)
+                   );
+                   const userEventsSnap = await getDocs(userEventsQuery);
+                   events = userEventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                   console.log('🔍 Profile: Found events with user events query:', events.length);
+                 } catch (userEventsError) {
+                   console.log('⚠️ Profile: User events query failed:', userEventsError);
+                   
+                   // Approach 4: Try events where user is invited
+                   try {
+                     const invitedEventsQuery = query(
+                       collection(db, 'events'),
+                       where('invitedUserIds', 'array-contains', currentUser.id),
+                       orderBy('startAt', 'desc'),
+                       limit(20)
+                     );
+                     const invitedEventsSnap = await getDocs(invitedEventsQuery);
+                     events = invitedEventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                     console.log('🔍 Profile: Found events with invited events query:', events.length);
+                   } catch (invitedEventsError) {
+                     console.log('⚠️ Profile: Invited events query failed:', invitedEventsError);
+                     events = [];
+                   }
+                 }
+               }
+             }
+            
+            if (events.length === 0) {
+              console.log('⚠️ Profile: No events found with any approach');
+              setRsvpedEvents([]);
+              setLoadingEvents(false);
+              return;
             }
-          }
-          
-          console.log('🔍 Profile: Fallback found RSVPed events:', rsvpedEventIds);
-          
-          // Filter events to only show RSVPed ones
-          const rsvpedEvents = events.filter(event => rsvpedEventIds.includes(event.id));
-          setRsvpedEvents(rsvpedEvents);
-          fetchUserNames(rsvpedEvents.map(e => ({ id: e.createdBy })));
-          setLoadingEvents(false);
+            
+            // Check each event for user's attendees
+            const rsvpedEventIds: string[] = [];
+            console.log(`🔍 Profile: Checking ${events.length} events for attendees...`);
+            
+            for (const event of events) {
+              try {
+                // Check if user has any attendees with 'going' status for this event
+                const attendeesQuery = query(
+                  collection(db, 'events', event.id, 'attendees'),
+                  where('userId', '==', currentUser.id),
+                  where('rsvpStatus', '==', 'going')
+                );
+                const attendeesSnap = await getDocs(attendeesQuery);
+                
+                console.log(`🔍 Profile: Checking attendees for event ${event.id} (${event.title}):`, {
+                  attendeeCount: attendeesSnap.docs.length,
+                  hasGoingAttendees: attendeesSnap.docs.length > 0
+                });
+                
+                if (attendeesSnap.docs.length > 0) {
+                  rsvpedEventIds.push(event.id);
+                  console.log(`✅ Profile: Found going attendees for event ${event.id}`);
+                }
+              } catch (attendeeError) {
+                console.log(`⚠️ Profile: Could not check attendees for event ${event.id}:`, attendeeError);
+              }
+            }
+            
+            console.log('🔍 Profile: Fallback found events with going attendees:', rsvpedEventIds);
+            
+            // Filter events to only show ones with going attendees
+            const rsvpedEvents = events.filter(event => rsvpedEventIds.includes(event.id));
+            setRsvpedEvents(rsvpedEvents);
+            fetchUserNames(rsvpedEvents.map(e => ({ id: e.createdBy })));
+            setLoadingEvents(false);
           
         } catch (error) {
           console.error('🚨 Profile: Fallback approach also failed:', error);
