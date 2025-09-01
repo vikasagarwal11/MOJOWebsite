@@ -200,88 +200,148 @@ const Profile: React.FC = () => {
     const timer = setTimeout(() => {
       setLoadingEvents(true);
       
-      // Use collection group query to get RSVPs across all events
-      const rsvpsQuery = query(
-        collectionGroup(db, 'rsvps'),
-        where('userId', '==', currentUser.id), // Filter by userId field instead of __name__
-        where('status', '==', 'going'),
-        orderBy('updatedAt', 'desc'),
-        limit(PAGE_SIZE * eventsPage)
-      );
-      
-      const controller = new AbortController();
-      console.log('🔍 Profile: Setting up RSVPed events collection group query');
-      
-      const unsubscribe = onSnapshot(rsvpsQuery, async (rsvpSnap) => {
-        console.log('🔍 Profile: RSVPs collection group query fired', {
-          rsvpCount: rsvpSnap.docs.length,
-          hasRsvps: rsvpSnap.docs.length > 0
-        });
-        
-        if (!controller.signal.aborted && rsvpSnap.docs.length > 0) {
-          try {
-            // Extract event IDs from RSVPs
-            const eventIds = rsvpSnap.docs.map(rsvp => {
-              // Extract eventId from the RSVP document path: events/{eventId}/rsvps/{userId}
-              const pathParts = rsvp.ref.path.split('/');
-              return pathParts[1]; // events/{eventId}/rsvps/{userId} -> eventId is at index 1
+      // Try collection group query first, fallback to manual approach if it fails
+      const loadRSVPedEvents = async () => {
+        try {
+          // Use collection group query to get RSVPs across all events
+          const rsvpsQuery = query(
+            collectionGroup(db, 'rsvps'),
+            where('userId', '==', currentUser.id),
+            where('status', '==', 'going'),
+            orderBy('updatedAt', 'desc'),
+            limit(PAGE_SIZE * eventsPage)
+          );
+          
+          const controller = new AbortController();
+          console.log('🔍 Profile: Setting up RSVPed events collection group query');
+          
+          const unsubscribe = onSnapshot(rsvpsQuery, async (rsvpSnap) => {
+            console.log('🔍 Profile: RSVPs collection group query fired', {
+              rsvpCount: rsvpSnap.docs.length,
+              hasRsvps: rsvpSnap.docs.length > 0,
+              rsvpDocs: rsvpSnap.docs.map(d => ({ id: d.id, path: d.ref.path, data: d.data() }))
             });
             
-            console.log('🔍 Profile: Extracted event IDs from RSVPs:', eventIds);
-            
-            // Fetch the corresponding events
-            const eventsQuery = query(
-              collection(db, 'events'),
-              where('__name__', 'in', eventIds),
-              orderBy('startAt', 'desc')
-            );
-            
-            const eventsSnap = await getDocs(eventsQuery);
-            console.log('🔍 Profile: Events query result:', {
-              eventCount: eventsSnap.docs.length,
-              hasEvents: eventsSnap.docs.length > 0
-            });
-            
-            if (!controller.signal.aborted) {
-              const events = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-              setRsvpedEvents(events);
-              fetchUserNames(events.map(e => ({ id: e.createdBy })));
+            if (!controller.signal.aborted && rsvpSnap.docs.length > 0) {
+              try {
+                // Extract event IDs from RSVPs
+                const eventIds = rsvpSnap.docs.map(rsvp => {
+                  // Extract eventId from the RSVP document path: events/{eventId}/rsvps/{userId}
+                  const pathParts = rsvp.ref.path.split('/');
+                  return pathParts[1]; // events/{eventId}/rsvps/{userId} -> eventId is at index 1
+                });
+                
+                console.log('🔍 Profile: Extracted event IDs from RSVPs:', eventIds);
+                
+                // Fetch the corresponding events
+                const eventsQuery = query(
+                  collection(db, 'events'),
+                  where('__name__', 'in', eventIds),
+                  orderBy('startAt', 'desc')
+                );
+                
+                const eventsSnap = await getDocs(eventsQuery);
+                console.log('🔍 Profile: Events query result:', {
+                  eventCount: eventsSnap.docs.length,
+                  hasEvents: eventsSnap.docs.length > 0
+                });
+                
+                if (!controller.signal.aborted) {
+                  const events = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                  setRsvpedEvents(events);
+                  fetchUserNames(events.map(e => ({ id: e.createdBy })));
+                  setLoadingEvents(false);
+                }
+              } catch (error) {
+                console.error('🚨 Profile: Error fetching events from RSVPs:', error);
+                setLoadingEvents(false);
+                toast.error('Failed to load RSVPed events');
+              }
+            } else if (!controller.signal.aborted) {
+              // No RSVPs found
+              setRsvpedEvents([]);
               setLoadingEvents(false);
             }
-          } catch (error) {
-            console.error('🚨 Profile: Error fetching events from RSVPs:', error);
-            setLoadingEvents(false);
-            toast.error('Failed to load RSVPed events');
+          }, (e) => {
+            console.error('🚨 Profile: RSVPs collection group query error:', {
+              error: e,
+              errorCode: e?.code,
+              errorMessage: e?.message,
+              errorStack: e?.stack
+            });
+            
+            // Check if it's an index error and provide helpful message
+            if (e?.code === 'failed-precondition') {
+              console.log('🔄 Profile: Collection group query failed, trying fallback approach...');
+              // Fallback: manually check for RSVPs in events
+              loadRSVPedEventsFallback();
+            } else if (e?.code === 'permission-denied') {
+              toast.error('RSVP access denied');
+              setLoadingEvents(false);
+            } else {
+              toast.error('Failed to load RSVPed events');
+              setLoadingEvents(false);
+            }
+          });
+          
+          return () => {
+            controller.abort();
+            unsubscribe();
+          };
+        } catch (error) {
+          console.error('🚨 Profile: Error setting up collection group query:', error);
+          // Fallback: manually check for RSVPs in events
+          loadRSVPedEventsFallback();
+        }
+      };
+      
+      // Fallback approach: manually check events for user RSVPs
+      const loadRSVPedEventsFallback = async () => {
+        try {
+          console.log('🔄 Profile: Using fallback approach to load RSVPed events');
+          
+          // Get all events and check if user has RSVPed to them
+          const eventsQuery = query(
+            collection(db, 'events'),
+            orderBy('startAt', 'desc'),
+            limit(50) // Limit to recent events for performance
+          );
+          
+          const eventsSnap = await getDocs(eventsQuery);
+          const events = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          
+          // Check each event for user's RSVP
+          const rsvpedEventIds: string[] = [];
+          for (const event of events) {
+            try {
+              const rsvpRef = doc(db, 'events', event.id, 'rsvps', currentUser.id);
+              const rsvpSnap = await getDoc(rsvpRef);
+              
+              if (rsvpSnap.exists() && rsvpSnap.data()?.status === 'going') {
+                rsvpedEventIds.push(event.id);
+              }
+            } catch (rsvpError) {
+              console.log(`⚠️ Profile: Could not check RSVP for event ${event.id}:`, rsvpError);
+            }
           }
-        } else if (!controller.signal.aborted) {
-          // No RSVPs found
+          
+          console.log('🔍 Profile: Fallback found RSVPed events:', rsvpedEventIds);
+          
+          // Filter events to only show RSVPed ones
+          const rsvpedEvents = events.filter(event => rsvpedEventIds.includes(event.id));
+          setRsvpedEvents(rsvpedEvents);
+          fetchUserNames(rsvpedEvents.map(e => ({ id: e.createdBy })));
+          setLoadingEvents(false);
+          
+        } catch (error) {
+          console.error('🚨 Profile: Fallback approach also failed:', error);
           setRsvpedEvents([]);
           setLoadingEvents(false);
-        }
-      }, (e) => {
-        console.error('🚨 Profile: RSVPs collection group query error:', {
-          error: e,
-          errorCode: e?.code,
-          errorMessage: e?.message,
-          errorStack: e?.stack
-        });
-        
-        // Check if it's an index error and provide helpful message
-        if (e?.code === 'failed-precondition') {
-          toast.error('RSVP index not ready yet. Please wait a moment and try again.');
-        } else if (e?.code === 'permission-denied') {
-          toast.error('RSVP access denied');
-        } else {
           toast.error('Failed to load RSVPed events');
         }
-        
-        setLoadingEvents(false);
-      });
-      
-      return () => {
-        controller.abort();
-        unsubscribe();
       };
+      
+      loadRSVPedEvents();
     }, 300); // 300ms delay (slightly more than notifications)
 
     return () => clearTimeout(timer);
