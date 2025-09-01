@@ -8,6 +8,7 @@ import { NJ_CITIES } from '../data/nj-cities';
 import { ProfilePersonalTab } from './ProfilePersonalTab';
 import { ProfileEventsTab } from './ProfileEventsTab';
 import { ProfileRSVPAdminTab } from './ProfileRSVPAdminTab';
+import { ProfileRSVPPersonalTab } from './ProfileRSVPPersonalTab';
 import { ProfileAdminTab } from './ProfileAdminTab';
 import CreateEventModal from '../components/events/CreateEventModal';
 import { useUserBlocking } from '../hooks/useUserBlocking';
@@ -850,14 +851,14 @@ const Profile: React.FC = () => {
             className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'events' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
             aria-selected={activeTab === 'events'}
           >
-            My Events
+            {currentUser?.role === 'admin' ? 'My Events' : 'Events I\'m Attending'}
           </button>
-                  <button
+          <button
             onClick={() => setActiveTab('rsvp')}
             className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'rsvp' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
             aria-selected={activeTab === 'rsvp'}
           >
-            RSVP Management
+            {currentUser?.role === 'admin' ? 'RSVP Management' : 'My RSVPs'}
           </button>
           <button
             onClick={() => setActiveTab('family')}
@@ -875,7 +876,7 @@ const Profile: React.FC = () => {
               Admin
             </button>
           )}
-          </div>
+        </div>
         {/* Content */}
         {activeTab === 'personal' && (
           <ProfilePersonalTab
@@ -936,24 +937,32 @@ const Profile: React.FC = () => {
           />
         )}
         {activeTab === 'rsvp' && (
-          <ProfileRSVPAdminTab
-            rsvpsByEvent={rsvpsByEvent}
-            allEvents={allEvents}
-            userNames={userNames}
-            updateRsvp={updateRsvp}
-            exportRsvps={exportRsvps}
-            exportingRsvps={exportingRsvps}
-            adjustAttendingCount={adjustAttendingCount}
-            blockUserFromRsvp={blockUserFromRsvp}
-            analyzeLastMinuteChanges={analyzeLastMinuteChanges}
-            rsvpFilter={rsvpFilter}
-            setRsvpFilter={setRsvpFilter}
-            eventsPage={eventsPage}
-            setEventsPage={setEventsPage}
-            PAGE_SIZE={PAGE_SIZE}
-            loadingAdminEvents={loadingAdminEvents}
-            currentUser={currentUser}
-          />
+          currentUser?.role === 'admin' ? (
+            <ProfileRSVPAdminTab
+              rsvpsByEvent={rsvpsByEvent}
+              allEvents={allEvents}
+              userNames={userNames}
+              updateRsvp={updateRsvp}
+              exportRsvps={exportRsvps}
+              exportingRsvps={exportingRsvps}
+              adjustAttendingCount={adjustAttendingCount}
+              blockUserFromRsvp={blockUserFromRsvp}
+              analyzeLastMinuteChanges={analyzeLastMinuteChanges}
+              rsvpFilter={rsvpFilter}
+              setRsvpFilter={setRsvpFilter}
+              eventsPage={eventsPage}
+              setEventsPage={setEventsPage}
+              PAGE_SIZE={PAGE_SIZE}
+              loadingAdminEvents={loadingAdminEvents}
+              currentUser={currentUser}
+            />
+          ) : (
+            <ProfileRSVPPersonalTab
+              rsvpedEvents={rsvpedEvents}
+              loadingEvents={loadingEvents}
+              currentUser={currentUser}
+            />
+          )
         )}
         {activeTab === 'admin' && currentUser?.role === 'admin' && (
           <ProfileAdminTab
