@@ -1,0 +1,36 @@
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF8C42;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FF6B35;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="figures" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F5F5DC;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E8E4C9;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="32" height="32" fill="url(#bg)" rx="4"/>
+  
+  <!-- Simplified center figure -->
+  <g transform="translate(8, 8)">
+    <!-- Hair -->
+    <path d="M6 2 Q8 0 10 2 Q12 4 10 6 Q8 8 6 6 Q4 4 6 2" fill="url(#figures)"/>
+    <!-- Head -->
+    <circle cx="8" cy="5" r="3" fill="url(#figures)"/>
+    <!-- Body -->
+    <rect x="5" y="8" width="6" height="8" fill="url(#figures)" rx="1"/>
+    <!-- Arms -->
+    <rect x="3" y="9" width="1" height="4" fill="url(#figures)" rx="0.5"/>
+    <rect x="12" y="9" width="1" height="4" fill="url(#figures)" rx="0.5"/>
+    <!-- Legs -->
+    <rect x="6" y="16" width="1" height="6" fill="url(#figures)" rx="0.5"/>
+    <rect x="9" y="16" width="1" height="6" fill="url(#figures)" rx="0.5"/>
+  </g>
+  
+  <!-- Small text -->
+  <text x="16" y="28" font-family="Arial, sans-serif" font-size="6" font-weight="bold" text-anchor="middle" fill="white">
+    MFM
+  </text>
+</svg>

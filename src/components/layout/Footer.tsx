@@ -10,14 +10,7 @@ const Footer: React.FC = () => {
           {/* Logo and Description */}
           <div className="col-span-1 md:col-span-2">
             <div className="flex items-center space-x-3 mb-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-                <Dumbbell className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <div className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                  Moms Fitness Mojo
-                </div>
-              </div>
+              <img src="/logo.svg" alt="Moms Fitness Mojo" className="h-10 w-auto" />
             </div>
             <p className="text-gray-400 mb-6 max-w-md">
               Empowering mothers to prioritize their health and wellness through fitness, community, and support. 

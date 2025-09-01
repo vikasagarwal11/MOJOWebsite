@@ -67,7 +67,38 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
   loadingNotifications,
   loadingEvents,
   currentUser,
-}) => (
+}) => {
+  const [dateFilter, setDateFilter] = React.useState<'all' | 'upcoming' | 'past'>('all');
+  const [rsvpFilter, setRsvpFilter] = React.useState<'all' | 'going' | 'not-going' | 'pending'>('all');
+
+  // Filter events based on current filters
+  const filteredEvents = rsvpedEvents.filter(event => {
+    // Date filter
+    if (dateFilter === 'all') return true;
+    
+    const eventDate = event.startAt?.toDate?.() ? new Date(event.startAt.toDate()) : new Date();
+    const now = new Date();
+    
+    if (dateFilter === 'upcoming') {
+      return eventDate >= now;
+    } else if (dateFilter === 'past') {
+      return eventDate < now;
+    }
+    return true;
+  }).filter(event => {
+    // Status filter - since all events shown are "going", we can filter by status
+    if (rsvpFilter === 'all') return true;
+    
+    // For now, all events shown are "going" status
+    // In the future, this could be enhanced to show actual RSVP status from database
+    if (rsvpFilter === 'going') return true;
+    if (rsvpFilter === 'not-going') return false; // No "not-going" events shown in this view
+    if (rsvpFilter === 'pending') return false;  // No "pending" events shown in this view
+    
+    return true;
+  });
+
+  return (
   <div className="grid gap-6">
     {/* Notifications - Only show for event creators */}
     {currentUser?.role === 'admin' && (
@@ -175,29 +206,76 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
       </div>
     )}
     
+    {/* Event Filtering and Quick Actions - For non-admin users */}
+    {currentUser?.role !== 'admin' && rsvpedEvents.length > 0 && (
+      <>
+        {/* Event Filtering */}
+        <div className="grid gap-4">
+          <div className="flex items-center gap-4">
+            <h2 className="text-sm font-semibold text-gray-700">Filter Events</h2>
+            
+            {/* Date Filter */}
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value as 'all' | 'upcoming' | 'past')}
+              className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-sm"
+            >
+              <option value="all">All Dates</option>
+              <option value="upcoming">Upcoming</option>
+              <option value="past">Past</option>
+            </select>
+
+            {/* Status Filter */}
+            <div className="flex items-center gap-2">
+              <select
+                value={rsvpFilter}
+                onChange={(e) => setRsvpFilter(e.target.value as 'all' | 'going' | 'not-going' | 'pending')}
+                className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-sm"
+              >
+                <option value="all">All Statuses</option>
+                <option value="going">Going</option>
+                <option value="not-going">Not Going</option>
+                <option value="pending">Pending</option>
+              </select>
+              <span className="text-xs text-gray-500">(Currently shows only "Going" events)</span>
+            </div>
+          </div>
+        </div>
+
+
+      </>
+    )}
+
     {/* RSVPed Events - Main content for all users */}
     <div className="grid gap-4">
       <h2 className="text-sm font-semibold text-gray-700">
         {currentUser?.role === 'admin' ? 'My RSVPed Events' : 'Events I\'m Attending'}
+        {currentUser?.role !== 'admin' && (
+          <span className="ml-2 text-sm font-normal text-gray-500">
+            ({filteredEvents.length} of {rsvpedEvents.length})
+          </span>
+        )}
       </h2>
       {loadingEvents ? (
         <div className="text-center py-8 bg-gray-50 rounded-lg">
           <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-2"></div>
           <p className="text-gray-500">Loading events...</p>
         </div>
-      ) : rsvpedEvents.length === 0 ? (
+      ) : filteredEvents.length === 0 ? (
         <div className="text-center py-8 bg-gray-50 rounded-lg">
           <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
           <p className="text-gray-500">
-            {currentUser?.role === 'admin' 
-              ? 'You haven\'t RSVPed to any events yet.' 
-              : 'You haven\'t joined any events yet.'}
+            {dateFilter === 'upcoming' 
+              ? 'No upcoming events found.' 
+              : dateFilter === 'past' 
+              ? 'No past events found.' 
+              : 'No events match your current filters.'}
           </p>
-          <p className="text-sm text-gray-400">Find events to join in the Events section!</p>
+          <p className="text-sm text-gray-400">Try adjusting your filters or join more events!</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {rsvpedEvents.map(event => (
+          {filteredEvents.map(event => (
             <div key={event.id} className="relative">
               <EventCardNew
                 event={event}
@@ -210,7 +288,7 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
           ))}
         </div>
       )}
-      {rsvpedEvents.length >= PAGE_SIZE * eventsPage && (
+      {filteredEvents.length >= PAGE_SIZE * eventsPage && (
         <button
           onClick={() => setEventsPage(eventsPage + 1)}
           className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-full hover:bg-purple-700"
@@ -250,4 +328,5 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
       </div>
     )}
   </div>
-);
+  );
+};

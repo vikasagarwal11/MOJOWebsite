@@ -1,7 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, MapPin, Clock, Users, TrendingUp, TrendingDown } from 'lucide-react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import React, { useState } from 'react';
+import { Calendar, MapPin, Clock, Users } from 'lucide-react';
 import EventCardNew from '../components/events/EventCardNew';
 
 interface Event {
@@ -41,12 +39,18 @@ export const ProfileRSVPPersonalTab: React.FC<ProfileRSVPPersonalTabProps> = ({
 }) => {
   const [rsvpFilter, setRsvpFilter] = useState<'all' | 'going' | 'not-going' | 'pending'>('all');
   const [dateFilter, setDateFilter] = useState<'all' | 'upcoming' | 'past'>('all');
-  const [showAdvancedStats, setShowAdvancedStats] = useState(false);
 
   // Filter events based on current filters
   const filteredEvents = rsvpedEvents.filter(event => {
-    // Status filter (this would need to be implemented with actual RSVP data)
-    // For now, we'll show all events
+    // Status filter - since all events shown are "going", we can filter by status
+    if (rsvpFilter === 'all') return true;
+    
+    // For now, all events shown are "going" status
+    // In the future, this could be enhanced to show actual RSVP status from database
+    if (rsvpFilter === 'going') return true;
+    if (rsvpFilter === 'not-going') return false; // No "not-going" events shown in this view
+    if (rsvpFilter === 'pending') return false;  // No "pending" events shown in this view
+    
     return true;
   }).filter(event => {
     // Date filter
@@ -63,91 +67,11 @@ export const ProfileRSVPPersonalTab: React.FC<ProfileRSVPPersonalTabProps> = ({
     return true;
   });
 
-  // Calculate basic stats
-  const totalEvents = rsvpedEvents.length;
-  const upcomingEvents = rsvpedEvents.filter(event => {
-    const eventDate = event.startAt?.toDate?.() ? new Date(event.startAt.toDate()) : new Date();
-    return eventDate >= new Date();
-  }).length;
-  const pastEvents = totalEvents - upcomingEvents;
 
-  // Calculate attendance rate (assuming all shown events are ones user RSVPed to)
-  const attendanceRate = totalEvents > 0 ? Math.round((upcomingEvents / totalEvents) * 100) : 0;
 
   return (
     <div className="grid gap-6">
-      {/* RSVP Analytics */}
-      <div className="grid gap-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-700">My RSVP Analytics</h2>
-          <button
-            onClick={() => setShowAdvancedStats(!showAdvancedStats)}
-            className="text-xs text-purple-600 hover:underline"
-          >
-            {showAdvancedStats ? 'Hide' : 'Show'} Advanced Stats
-          </button>
-        </div>
-        
-        {/* Basic Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-purple-600" />
-              <span className="text-sm font-medium text-gray-600">Total Events</span>
-            </div>
-            <p className="text-2xl font-bold text-gray-900 mt-2">{totalEvents}</p>
-          </div>
-          
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-green-600" />
-              <span className="text-sm font-medium text-gray-600">Upcoming</span>
-            </div>
-            <p className="text-2xl font-bold text-green-600 mt-2">{upcomingEvents}</p>
-          </div>
-          
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center gap-2">
-              <TrendingDown className="w-5 h-5 text-gray-600" />
-              <span className="text-sm font-medium text-gray-600">Past</span>
-            </div>
-            <p className="text-2xl font-bold text-gray-600 mt-2">{pastEvents}</p>
-          </div>
-          
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <div className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-blue-600" />
-              <span className="text-sm font-medium text-gray-600">Attendance Rate</span>
-            </div>
-            <p className="text-2xl font-bold text-blue-600 mt-2">{attendanceRate}%</p>
-          </div>
-        </div>
 
-        {/* Advanced Stats */}
-        {showAdvancedStats && (
-          <div className="bg-white p-4 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-medium text-gray-700 mb-3">Advanced Statistics</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-gray-600">Most Active Month:</p>
-                <p className="font-medium">Coming soon...</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Favorite Event Type:</p>
-                <p className="font-medium">Coming soon...</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Average Events per Month:</p>
-                <p className="font-medium">Coming soon...</p>
-              </div>
-              <div>
-                <p className="text-gray-600">Last RSVP Change:</p>
-                <p className="font-medium">Coming soon...</p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Event Filtering */}
       <div className="grid gap-4">
@@ -165,17 +89,20 @@ export const ProfileRSVPPersonalTab: React.FC<ProfileRSVPPersonalTabProps> = ({
             <option value="past">Past</option>
           </select>
 
-          {/* Status Filter - Placeholder for future implementation */}
-          <select
-            value={rsvpFilter}
-            onChange={(e) => setRsvpFilter(e.target.value as 'all' | 'going' | 'not-going' | 'pending')}
-            className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-sm"
-          >
-            <option value="all">All Statuses</option>
-            <option value="going">Going</option>
-            <option value="not-going">Not Going</option>
-            <option value="pending">Pending</option>
-          </select>
+          {/* Status Filter */}
+          <div className="flex items-center gap-2">
+            <select
+              value={rsvpFilter}
+              onChange={(e) => setRsvpFilter(e.target.value as 'all' | 'going' | 'not-going' | 'pending')}
+              className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-sm"
+            >
+              <option value="all">All Statuses</option>
+              <option value="going">Going</option>
+              <option value="not-going">Not Going</option>
+              <option value="pending">Pending</option>
+            </select>
+            <span className="text-xs text-gray-500">(Currently shows only "Going" events)</span>
+          </div>
         </div>
       </div>
 
@@ -207,22 +134,7 @@ export const ProfileRSVPPersonalTab: React.FC<ProfileRSVPPersonalTabProps> = ({
             {filteredEvents.map(event => (
               <div key={event.id} className="relative">
                 <EventCardNew event={event} />
-                <div className="absolute top-4 right-4 flex gap-2">
-                  {/* Event Status Badge */}
-                  <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full font-medium">
-                    Going
-                  </span>
-                  
-                  {/* Event Date Badge */}
-                  {event.startAt?.toDate && (
-                    <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full font-medium">
-                      {new Date(event.startAt.toDate()).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric'
-                      })}
-                    </span>
-                  )}
-                </div>
+                {/* Removed redundant badges - information already shown in event card */}
               </div>
             ))}
           </div>
