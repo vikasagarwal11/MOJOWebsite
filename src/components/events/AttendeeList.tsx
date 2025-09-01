@@ -1,15 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Plus, 
   Users, 
   Search, 
-  Filter, 
-  RefreshCw,
-  UserPlus,
-  Baby,
-  Star,
-  User,
   CheckCircle,
   XCircle,
   Clock,
@@ -17,15 +10,11 @@ import {
   Trash2,
   Heart
 } from 'lucide-react';
-import { AttendeeItem } from './AttendeeItem';
+// Note: row rendering is inline for performance; no AttendeeItem import needed
 import { useAttendees } from '../../hooks/useAttendees';
 import { 
   Attendee, 
-  CreateAttendeeData, 
-  AttendeeStatus, 
-  AgeGroup, 
-  Relationship,
-  AttendeeType 
+  AttendeeStatus
 } from '../../types/attendee';
 import { useAuth } from '../../contexts/AuthContext';
 import { familyMemberService } from '../../services/familyMemberService';
@@ -44,13 +33,10 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   const { currentUser } = useAuth();
   const { 
     attendees, 
-    counts, 
     loading, 
     error, 
-    addAttendee, 
     updateAttendee, 
     removeAttendee, 
-    setAttendeeStatus,
     refreshAttendees 
   } = useAttendees(eventId, currentUser?.id || '');
 
@@ -68,13 +54,39 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   const [addingToFamily, setAddingToFamily] = useState<Set<string>>(new Set());
 
   // Get family members to check if attendees are already linked
-  const { familyMembers: userFamilyMembers } = useFamilyMembers();
+  const { familyMembers: userFamilyMembers, refreshFamilyMembers } = useFamilyMembers();
+
+  // Build a quick lookup so we can show live names/ages when family records are renamed
+  const familyMemberById = useMemo(() => {
+    const map = new Map<string, { name: string; ageGroup?: string }>();
+    userFamilyMembers.forEach(m => map.set(m.id, { name: m.name, ageGroup: m.ageGroup }));
+    return map;
+  }, [userFamilyMembers]);
+
+  const getDisplayName = (attendee: Attendee): string => {
+    if (attendee.familyMemberId) {
+      const fm = familyMemberById.get(attendee.familyMemberId);
+      if (fm?.name) return fm.name;
+    }
+    return attendee.name;
+  };
+
+  const getDisplayAge = (attendee: Attendee): string | undefined => {
+    const age = attendee.familyMemberId ? familyMemberById.get(attendee.familyMemberId)?.ageGroup : undefined;
+    return age || attendee.ageGroup;
+  };
 
   // Check if an attendee is already linked to a family member
   const isAttendeeLinkedToFamily = (attendee: Attendee): boolean => {
-    // Check if attendee has a familyMemberId (direct link)
+    // Check if this is the logged-in user's own entry
+    if (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary') {
+      return true; // Always consider the user as "linked" to their own family
+    }
+    
+    // Check if attendee has a familyMemberId (direct link) and that member actually exists
     if (attendee.familyMemberId) {
-      return true;
+      const exists = userFamilyMembers.some(m => m.id === attendee.familyMemberId);
+      if (exists) return true;
     }
     
     // Check if attendee name matches an existing family member
@@ -87,7 +99,8 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
 
   // Filter attendees based on search and status
   const filteredAttendees = attendees.filter(attendee => {
-    const matchesSearch = attendee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const displayName = getDisplayName(attendee);
+    const matchesSearch = displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          attendee.relationship.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || attendee.rsvpStatus === statusFilter;
     
@@ -119,14 +132,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     }
   };
 
-  const handleStatusChange = async (attendeeId: string, status: AttendeeStatus) => {
-    try {
-      await setAttendeeStatus(attendeeId, status);
-      onAttendeeUpdate?.();
-    } catch (error) {
-      console.error('Failed to change attendee status:', error);
-    }
-  };
+  // Status changes are handled inline via handleUpdateAttendee
 
   // Handle adding attendee to family profile
   const handleAddToFamily = async (attendee: Attendee) => {
@@ -134,17 +140,24 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
 
     try {
       setAddingToFamily(prev => new Set(prev).add(attendee.attendeeId));
-      
-      await familyMemberService.createFromAttendee(currentUser.id, {
+      // Create or get existing family member
+      const fm = await familyMemberService.createFromAttendee(currentUser.id, {
         name: attendee.name,
         ageGroup: attendee.ageGroup,
         relationship: attendee.relationship
       });
 
-      // Show success message
-      toast.success(`${attendee.name} added to family profile!`);
-      
-      // Refresh attendees to update UI
+      // Link attendee -> familyMemberId and sync name/age for future consistency
+      await handleUpdateAttendee(attendee.attendeeId, {
+        familyMemberId: fm.id,
+        name: fm.name,
+        ageGroup: (fm.ageGroup as any) || attendee.ageGroup
+      });
+
+      toast.success(`${fm.name} added to family and linked!`);
+      // Refresh family members so any UI that depends on the list updates
+      try { await refreshFamilyMembers(); } catch {}
+      // Let parent refresh counts if provided
       onAttendeeUpdate?.();
       
     } catch (error) {
@@ -274,13 +287,13 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                <div className="grid grid-cols-12 gap-2 items-center">
                                  {/* Name */}
                                  <div className="col-span-4">
-                                   <span className="font-medium text-gray-900 text-sm">{attendee.name}</span>
+                                   <span className="font-medium text-gray-900 text-sm">{getDisplayName(attendee)}</span>
                                  </div>
                                  
                                  {/* Age */}
                                  <div className="col-span-3">
                                    <span className="text-xs text-gray-500">
-                                     {attendee.ageGroup ? `${attendee.ageGroup} years` : 'Not set'}
+                                     {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
                                    </span>
                                  </div>
                                  
@@ -311,17 +324,27 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          {/* Add to Family Button */}
                                          <button
                                            onClick={() => handleAddToFamily(attendee)}
-                                           disabled={addingToFamily.has(attendee.attendeeId) || isAttendeeLinkedToFamily(attendee)}
+                                           disabled={
+                                             addingToFamily.has(attendee.attendeeId) || 
+                                             isAttendeeLinkedToFamily(attendee) ||
+                                             (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                           }
                                            className={`px-2 py-1 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
-                                             isAttendeeLinkedToFamily(attendee) 
+                                             isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
                                                ? 'bg-green-100 text-green-600 cursor-not-allowed' 
                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
                                            }`}
-                                           title={isAttendeeLinkedToFamily(attendee) ? "Already in Family Profile" : "Add to Family Profile"}
+                                           title={
+                                             (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                               ? "This is you - cannot add yourself to family profile"
+                                               : isAttendeeLinkedToFamily(attendee) 
+                                               ? "Already in Family Profile" 
+                                               : "Add to Family Profile"
+                                           }
                                          >
                                            {addingToFamily.has(attendee.attendeeId) ? (
                                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                           ) : isAttendeeLinkedToFamily(attendee) ? (
+                                           ) : isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary') ? (
                                              <CheckCircle className="w-3 h-3" />
                                            ) : (
                                              <Heart className="w-3 h-3" />
@@ -407,13 +430,13 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                <div className="grid grid-cols-12 gap-2 items-center">
                                  {/* Name */}
                                  <div className="col-span-4">
-                                   <span className="font-medium text-gray-900 text-sm">{attendee.name}</span>
+                                   <span className="font-medium text-gray-900 text-sm">{getDisplayName(attendee)}</span>
                                  </div>
                                  
                                  {/* Age */}
                                  <div className="col-span-3">
                                    <span className="text-xs text-gray-500">
-                                     {attendee.ageGroup ? `${attendee.ageGroup} years` : 'Not set'}
+                                     {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
                                    </span>
                                  </div>
                                  
@@ -444,17 +467,27 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          {/* Add to Family Button */}
                                          <button
                                            onClick={() => handleAddToFamily(attendee)}
-                                           disabled={addingToFamily.has(attendee.attendeeId) || isAttendeeLinkedToFamily(attendee)}
+                                           disabled={
+                                             addingToFamily.has(attendee.attendeeId) || 
+                                             isAttendeeLinkedToFamily(attendee) ||
+                                             (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                           }
                                            className={`px-2 py-1 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
-                                             isAttendeeLinkedToFamily(attendee) 
+                                             isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
                                                ? 'bg-green-100 text-green-600 cursor-not-allowed' 
                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
                                            }`}
-                                           title={isAttendeeLinkedToFamily(attendee) ? "Already in Family Profile" : "Add to Family Profile"}
+                                           title={
+                                             (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                               ? "This is you - cannot add yourself to family profile"
+                                               : isAttendeeLinkedToFamily(attendee) 
+                                               ? "Already in Family Profile" 
+                                               : "Add to Family Profile"
+                                           }
                                          >
                                            {addingToFamily.has(attendee.attendeeId) ? (
                                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                           ) : isAttendeeLinkedToFamily(attendee) ? (
+                                           ) : isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary') ? (
                                              <CheckCircle className="w-3 h-3" />
                                            ) : (
                                              <Heart className="w-3 h-3" />
@@ -540,13 +573,13 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                <div className="grid grid-cols-12 gap-2 items-center">
                                  {/* Name */}
                                  <div className="col-span-4">
-                                   <span className="font-medium text-gray-900 text-sm">{attendee.name}</span>
+                                   <span className="font-medium text-gray-900 text-sm">{getDisplayName(attendee)}</span>
                                  </div>
                                  
                                  {/* Age */}
                                  <div className="col-span-3">
                                    <span className="text-xs text-gray-500">
-                                     {attendee.ageGroup ? `${attendee.ageGroup} years` : 'Not set'}
+                                     {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
                                    </span>
                                  </div>
                                  
@@ -577,17 +610,27 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          {/* Add to Family Button */}
                                          <button
                                            onClick={() => handleAddToFamily(attendee)}
-                                           disabled={addingToFamily.has(attendee.attendeeId) || isAttendeeLinkedToFamily(attendee)}
+                                           disabled={
+                                             addingToFamily.has(attendee.attendeeId) || 
+                                             isAttendeeLinkedToFamily(attendee) ||
+                                             (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                           }
                                            className={`px-2 py-1 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
-                                             isAttendeeLinkedToFamily(attendee) 
+                                             isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
                                                ? 'bg-green-100 text-green-600 cursor-not-allowed' 
                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
                                            }`}
-                                           title={isAttendeeLinkedToFamily(attendee) ? "Already in Family Profile" : "Add to Family Profile"}
+                                           title={
+                                             (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                               ? "This is you - cannot add yourself to family profile"
+                                               : isAttendeeLinkedToFamily(attendee) 
+                                               ? "Already in Family Profile" 
+                                               : "Add to Family Profile"
+                                           }
                                          >
                                            {addingToFamily.has(attendee.attendeeId) ? (
                                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                           ) : isAttendeeLinkedToFamily(attendee) ? (
+                                           ) : isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary') ? (
                                              <CheckCircle className="w-3 h-3" />
                                            ) : (
                                              <Heart className="w-3 h-3" />

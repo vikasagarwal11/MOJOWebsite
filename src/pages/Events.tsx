@@ -231,7 +231,7 @@ const Events: React.FC = () => {
     dateRangeFilter.enabled || capacityFilter.enabled || sortBy !== 'date';
 
     return (
-    <div className="max-w-7xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto p-6 pb-32">
       {/* Header Section */}
       <motion.div 
         className="flex items-start justify-between mb-6"

@@ -550,6 +550,49 @@ export const onMediaFileFinalize = onObjectFinalized(
   }
 );
 
+// ───────────────── FAMILY MEMBER: Clean up linked attendees ─────────────────
+export const onFamilyMemberDeleted = onDocumentDeleted("users/{userId}/familyMembers/{familyMemberId}", async (event) => {
+  const { userId, familyMemberId } = event.params;
+  
+  console.log(`🧹 Family member deleted: ${familyMemberId} for user ${userId}`);
+  
+  try {
+    // Find all events where this user has attendees linked to this family member
+    const eventsSnapshot = await db.collection('events').get();
+    
+    const batch = db.batch();
+    let totalUpdated = 0;
+    
+    for (const eventDoc of eventsSnapshot.docs) {
+      const attendeesSnapshot = await db.collection('events')
+        .doc(eventDoc.id)
+        .collection('attendees')
+        .where('userId', '==', userId)
+        .where('familyMemberId', '==', familyMemberId)
+        .get();
+      
+      attendeesSnapshot.docs.forEach(attendeeDoc => {
+        // Option 1: Clear the familyMemberId but keep the attendee record
+        batch.update(attendeeDoc.ref, {
+          familyMemberId: null,
+          updatedAt: FieldValue.serverTimestamp()
+        });
+        totalUpdated++;
+        
+        // Option 2: Delete the attendee entirely (uncomment if preferred)
+        // batch.delete(attendeeDoc.ref);
+        // totalUpdated++;
+      });
+    }
+    
+    await batch.commit();
+    console.log(`✅ Updated ${totalUpdated} attendee records after family member deletion`);
+    
+  } catch (error) {
+    console.error('❌ Failed to clean up attendees after family member deletion:', error);
+  }
+});
+
 // ───────────────── MANUAL FIX: Reset Stuck Processing Videos ─────────────────
 export const resetStuckProcessing = onDocumentCreated("manual_fixes/{fixId}", async (event) => {
   const data = event.data?.data();
