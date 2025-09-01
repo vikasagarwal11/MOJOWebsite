@@ -87,7 +87,7 @@ const Header: React.FC = () => {
               <Dumbbell className="w-6 h-6 text-white" />
             </div>
             <div className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              Mom&apos;s Fitness Mojo
+              Moms Fitness Mojo
             </div>
           </Link>
 

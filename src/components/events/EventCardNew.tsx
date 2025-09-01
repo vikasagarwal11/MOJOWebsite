@@ -24,7 +24,7 @@ interface EventCardProps {
 const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
-  const { attendees, counts, addAttendee, setAttendeeStatus, refreshAttendees } = useAttendees(event.id);
+  const { attendees, counts, addAttendee, setAttendeeStatus, refreshAttendees } = useAttendees(event.id, currentUser?.id || '');
   
   // State
   const [showRSVPModal, setShowRSVPModal] = useState(false);

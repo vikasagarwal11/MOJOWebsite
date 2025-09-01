@@ -32,7 +32,7 @@ interface UseAttendeesReturn {
   refreshAttendees: () => Promise<void>;
 }
 
-export const useAttendees = (eventId: string): UseAttendeesReturn => {
+export const useAttendees = (eventId: string, userId: string): UseAttendeesReturn => {
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [counts, setCounts] = useState<AttendeeCounts>({
     goingCount: 0,
@@ -51,13 +51,13 @@ export const useAttendees = (eventId: string): UseAttendeesReturn => {
 
   // Load attendees on mount
   useEffect(() => {
-    if (!eventId) return;
+    if (!eventId || !userId) return;
 
     const loadAttendees = async () => {
       try {
         setLoading(true);
         setError(null);
-        const eventAttendees = await listAttendees(eventId);
+        const eventAttendees = await listAttendees(eventId, userId);
         setAttendees(eventAttendees);
         
         const eventCounts = calculateAttendeeCounts(eventAttendees);
@@ -71,20 +71,20 @@ export const useAttendees = (eventId: string): UseAttendeesReturn => {
     };
 
     loadAttendees();
-  }, [eventId]);
+  }, [eventId, userId]);
 
   // Set up real-time listener
   useEffect(() => {
-    if (!eventId) return;
+    if (!eventId || !userId) return;
 
-    const unsubscribe = subscribeToAttendees(eventId, (eventAttendees) => {
+    const unsubscribe = subscribeToAttendees(eventId, userId, (eventAttendees) => {
       setAttendees(eventAttendees);
       const eventCounts = calculateAttendeeCounts(eventAttendees);
       setCounts(eventCounts);
     });
 
     return () => unsubscribe();
-  }, [eventId]);
+  }, [eventId, userId]);
 
   // Add single attendee
   const addAttendee = useCallback(async (attendeeData: CreateAttendeeData): Promise<string> => {
@@ -195,7 +195,7 @@ export const useAttendees = (eventId: string): UseAttendeesReturn => {
     try {
       setLoading(true);
       setError(null);
-      const eventAttendees = await listAttendees(eventId);
+      const eventAttendees = await listAttendees(eventId, userId);
       setAttendees(eventAttendees);
       
       const eventCounts = calculateAttendeeCounts(eventAttendees);
@@ -206,7 +206,7 @@ export const useAttendees = (eventId: string): UseAttendeesReturn => {
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [eventId, userId]);
 
   return {
     attendees,

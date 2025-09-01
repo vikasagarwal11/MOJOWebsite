@@ -32,7 +32,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({
     addAttendee, 
     bulkAddAttendees, 
     refreshAttendees 
-  } = useAttendees(event.id);
+  } = useAttendees(event.id, currentUser?.id || '');
   const { familyMembers, loading: familyLoading } = useFamilyMembers();
   
   // State

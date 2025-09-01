@@ -15,7 +15,7 @@ const Footer: React.FC = () => {
               </div>
               <div>
                 <div className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                  Mom's Fitness Mojo
+                  Moms Fitness Mojo
                 </div>
               </div>
             </div>
