@@ -130,12 +130,12 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-gray-700">Choose Files</label>
               {selectedFiles.length > 0 && (
-                <span className="text-sm text-purple-600 font-medium bg-purple-50 px-3 py-1 rounded-full">
+                <span className="text-sm text-[#F25129] font-medium bg-[#F25129]/10 px-3 py-1 rounded-full">
                   {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
                 </span>
               )}
             </div>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-purple-400">
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-[#F25129]">
               <input
                 type="file"
                 accept="image/*,video/*"
@@ -178,7 +178,7 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
                      {previews.length > 1 && (
                        <div className="flex gap-2 overflow-x-auto pb-1">
                          {previews.map((u, i) => (
-                           <div key={i} className={`relative flex-none w-20 h-16 rounded-md overflow-hidden border ${i === selectedIdx ? 'border-purple-500' : 'border-transparent hover:border-gray-300'}`}>
+                           <div key={i} className={`relative flex-none w-20 h-16 rounded-md overflow-hidden border ${i === selectedIdx ? 'border-[#F25129]' : 'border-transparent hover:border-gray-300'}`}>
                              <button
                                type="button"
                                onClick={(e) => { e.preventDefault(); setSelectedIdx(i); }}
@@ -220,7 +220,7 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
             <div className="relative">
               <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"/>
               <input {...register('title')} type="text"
-                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.title?'border-red-300':'border-gray-300'} focus:ring-2 focus:ring-purple-500`}
+                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.title?'border-red-300':'border-gray-300'} focus:ring-2 focus:ring-[#F25129]`}
                 placeholder="Enter media title"/>
             </div>
             {errors.title && <p className="mt-1 text-sm text-red-600">{String(errors.title.message)}</p>}
@@ -229,7 +229,7 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Description (Optional)</label>
             <textarea {...register('description')} rows={3}
-              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500"
+              className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129]"
               placeholder="Describe your media..."/>
           </div>
 
@@ -251,7 +251,7 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
                       <span>{pct}%</span>
                     </div>
                     <div className="h-1.5 bg-gray-200 rounded">
-                      <div className="h-1.5 bg-purple-500 rounded" style={{ width: `${pct}%` }} />
+                      <div className="h-1.5 bg-[#F25129] rounded" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
                 ))}
@@ -261,7 +261,7 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
 
           <div className="flex justify-end gap-3 pt-6 border-t border-gray-200">
             <button type="button" onClick={onClose} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={loading} className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-lg disabled:opacity-50">
+            <button type="submit" disabled={loading} className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-lg disabled:opacity-50 hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300">
               {loading ? 'Uploading…' : 'Upload'}
             </button>
           </div>

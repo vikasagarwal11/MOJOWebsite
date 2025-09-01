@@ -91,12 +91,12 @@ const MediaGallery: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Media Gallery</h1>
+          <h1 className="text-3xl md:text-4xl font-bold text-[#F25129] mb-2">Media Gallery</h1>
           <p className="text-gray-600 text-lg">Share and explore moments from our fitness community</p>
         </div>
         <button
           onClick={() => setIsUploadModalOpen(true)}
-          className="mt-4 md:mt-0 flex items-center px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-full hover:from-purple-700 hover:to-pink-700 transition-all duration-300 transform hover:scale-105 shadow-lg"
+          className="mt-4 md:mt-0 flex items-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg"
         >
           <Upload className="w-5 h-5 mr-2" /> Upload Media
         </button>
@@ -104,21 +104,21 @@ const MediaGallery: React.FC = () => {
 
       {/* NEW: Processing Status Bar */}
       {(processingStats.processing > 0 || processingStats.enhancing > 0 || processingStats.failed > 0) && (
-        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
+        <div className="mb-6 p-4 bg-gradient-to-r from-[#F25129]/10 to-[#FF6B35]/10 rounded-xl border border-[#F25129]/20">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               {processingStats.processing > 0 && (
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium text-blue-700">
+                                  <div className="w-3 h-3 bg-[#F25129] rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-[#F25129]">
                     {processingStats.processing} processing
                   </span>
                 </div>
               )}
               {processingStats.enhancing > 0 && (
                 <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium text-purple-700">
+                                  <div className="w-3 h-3 bg-[#FF6B35] rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-[#FF6B35]">
                     {processingStats.enhancing} enhancing
                   </span>
                 </div>
@@ -158,8 +158,8 @@ const MediaGallery: React.FC = () => {
                     onClick={() => filters.setType(f.key as any)}
                     className={`px-3 md:px-4 rounded-lg text-sm font-medium transition ${
                       filters.type===f.key
-                        ? 'bg-white text-purple-600 shadow-sm'
-                        : 'text-gray-600 hover:text-purple-600'
+                                      ? 'bg-white text-[#F25129] shadow-sm'
+              : 'text-gray-600 hover:text-[#F25129]'
                     }`}
                   >
                     {f.label}
@@ -217,7 +217,7 @@ const MediaGallery: React.FC = () => {
               <select
                 value={filters.sort}
                 onChange={(e)=>filters.setSort(e.target.value as any)}
-                className="h-11 w-full rounded-xl border border-gray-300 bg-white px-3 focus:ring-2 focus:ring-purple-500"
+                className="h-11 w-full rounded-xl border border-gray-300 bg-white px-3 focus:ring-2 focus:ring-[#F25129]"
                 title="Sort by date or popularity"
               >
                 <option value="date_desc">Newest</option>
@@ -234,7 +234,7 @@ const MediaGallery: React.FC = () => {
                              {filters.eventId!=='all' && (
                  <button
                    onClick={()=>filters.setEventId('all')}
-                   className="px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-sm font-medium hover:bg-purple-100 transition-colors"
+                   className="px-3 py-1 rounded-full bg-[#F25129]/10 text-[#F25129] text-sm font-medium hover:bg-[#F25129]/20 transition-colors"
                  >
                    Event: {eventsForFilter.find(ev => ev.id === filters.eventId)?.title || filters.eventId} ×
                  </button>
@@ -242,7 +242,7 @@ const MediaGallery: React.FC = () => {
                {filters.uploader!=='all' && (
                  <button
                    onClick={()=>filters.setUploader('all')}
-                   className="px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-sm font-medium hover:bg-purple-100 transition-colors"
+                   className="px-3 py-1 rounded-full bg-[#F25129]/10 text-[#F25129] text-sm font-medium hover:bg-[#F25129]/20 transition-colors"
                  >
                    Uploader: {uploaderLabel || '…'} ×
                  </button>
@@ -250,7 +250,7 @@ const MediaGallery: React.FC = () => {
               {filters.search && (
                 <button
                   onClick={()=>filters.setSearch('')}
-                  className="px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-sm font-medium hover:bg-purple-100 transition-colors"
+                  className="px-3 py-1 rounded-full bg-[#F25129]/10 text-[#F25129] text-sm font-medium hover:bg-[#F25129]/20 transition-colors"
                 >
                   "{filters.search}" ×
                 </button>

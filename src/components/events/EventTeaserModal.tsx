@@ -132,7 +132,7 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
             exit="exit"
           >
             {/* Header - Reduced height */}
-            <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4">
+            <div className="bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-xl font-bold">{event.title}</h2>
                 <button
@@ -151,7 +151,7 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
               {/* Event Info - Compact layout */}
               <div className="space-y-2">
                 {/* Date and Time - Single row */}
-                <div className="flex items-center gap-4 text-purple-100 text-sm">
+                <div className="flex items-center gap-4 text-white/80 text-sm">
                   <div className="flex items-center gap-2">
                     <Calendar className="w-4 h-4" />
                     <span>{formattedDate}</span>
@@ -160,17 +160,17 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
                     <Clock className="w-4 h-4" />
                     <span>{formattedTime}</span>
                     {eventEndDate && (
-                      <span className="text-purple-200">
+                      <span className="text-white/70">
                         - {format(eventEndDate, 'h:mm a')}
                       </span>
                     )}
-                    {durationText && <span className="text-purple-200">{durationText}</span>}
+                    {durationText && <span className="text-white/70">{durationText}</span>}
                   </div>
                 </div>
                 
                 {/* Location - Inline with smaller font */}
                 {event.location && (
-                  <div className="flex items-center gap-2 text-purple-200 text-xs">
+                  <div className="flex items-center gap-2 text-white/70 text-xs">
                     <MapPin className="w-3 h-3" />
                     <span>{event.location}</span>
                   </div>
@@ -180,7 +180,7 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
 
             {/* Event Image - Only show when image exists */}
             {event.imageUrl && (
-              <div className="relative w-full h-80 overflow-hidden bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
+              <div className="relative w-full h-80 overflow-hidden bg-gradient-to-br from-[#F25129]/10 to-[#FF6B35]/10 flex items-center justify-center">
                 <motion.img
                   src={event.imageUrl}
                   alt={event.title}
@@ -218,7 +218,7 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
                       {event.tags.map((tag, index) => (
                         <span
                           key={index}
-                          className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full border border-purple-200"
+                          className="px-2 py-0.5 bg-[#F25129]/10 text-[#F25129] text-xs rounded-full border border-[#F25129]/20"
                         >
                           {tag}
                         </span>
@@ -236,12 +236,12 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
                 )}
 
                 {/* Call-to-Action - Optimized and Compact */}
-                <div className="p-3 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg">
+                <div className="p-3 bg-gradient-to-r from-[#F25129]/10 to-[#FF6B35]/10 border border-[#F25129]/20 rounded-lg">
                   <div className="flex items-start gap-2.5">
-                    <Star className="w-4 h-4 text-purple-500 mt-0.5 flex-shrink-0" />
+                    <Star className="w-4 h-4 text-[#F25129] mt-0.5 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <h5 className="font-semibold text-purple-800 text-sm mb-1">Ready to Join?</h5>
-                      <p className="text-xs text-purple-700 mb-2.5 leading-tight">
+                      <h5 className="font-semibold text-[#F25129] text-sm mb-1">Ready to Join?</h5>
+                      <p className="text-xs text-[#F25129]/80 mb-2.5 leading-tight">
                         Sign up for a free account to RSVP and join our fitness community!
                       </p>
                       <div className="flex gap-2">
@@ -250,7 +250,7 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
                             // Navigate to signup page
                             window.location.href = '/register';
                           }}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-purple-600 text-white text-xs font-medium rounded-md hover:bg-purple-700 transition-all duration-200 hover:scale-105"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-[#F25129] text-white text-xs font-medium rounded-md hover:bg-[#E0451F] transition-all duration-200 hover:scale-105"
                         >
                           Join Community
                           <ArrowRight className="w-3 h-3" />
@@ -260,7 +260,7 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
                             // Navigate to login page
                             window.location.href = '/login';
                           }}
-                          className="px-2.5 py-1.5 text-purple-600 border border-purple-600 text-xs font-medium rounded-md hover:bg-purple-50 transition-all duration-200"
+                          className="px-2.5 py-1.5 text-[#F25129] border border-[#F25129] text-xs font-medium rounded-md hover:bg-[#F25129]/10 transition-all duration-200"
                         >
                           Sign In
                         </button>

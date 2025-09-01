@@ -99,8 +99,8 @@ const EventTypeahead: React.FC<Props> = ({
     >
       <div
         className={`flex items-center gap-2 w-full h-11 px-3 rounded-xl border ${
-          open ? 'border-purple-400 ring-2 ring-purple-200' : 'border-gray-300'
-        } bg-white cursor-text hover:border-purple-400 transition-colors`}
+          open ? 'border-[#F25129] ring-2 ring-[#F25129]/20' : 'border-gray-300'
+        } bg-white cursor-text hover:border-[#F25129] transition-colors`}
         onClick={() => setOpen(true)}
       >
         <Tag className="w-4 h-4 text-gray-400" />
@@ -177,8 +177,8 @@ const EventTypeahead: React.FC<Props> = ({
                 type="button"
                 role="option"
                 aria-selected={idx === activeIndex}
-                className={`w-full text-left px-3 py-2 hover:bg-purple-50 ${
-                  idx === activeIndex ? 'bg-purple-50' : ''
+                className={`w-full text-left px-3 py-2 hover:bg-[#F25129]/10 ${
+                  idx === activeIndex ? 'bg-[#F25129]/10' : ''
                 }`}
                 onMouseEnter={() => setActiveIndex(idx)}
                 onClick={() => pick(ev)}

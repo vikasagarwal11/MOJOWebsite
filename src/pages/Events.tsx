@@ -240,7 +240,7 @@ const Events: React.FC = () => {
         transition={{ duration: 0.5 }}
       >
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent">
             Fitness Events
           </h1>
           <p className="text-gray-600">Join our community events and transform your fitness journey.</p>
@@ -260,7 +260,7 @@ const Events: React.FC = () => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={shareEventsPage}
-            className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-full transition-all duration-200"
+            className="p-2 text-gray-600 hover:text-[#F25129] hover:bg-[#F25129]/10 rounded-full transition-all duration-200"
             title="Share Events Page"
           >
             <Share2 className="w-5 h-5" />
@@ -272,7 +272,7 @@ const Events: React.FC = () => {
           {currentUser?.role === 'admin' && (
             <motion.button 
               onClick={() => setShowModal(true)} 
-              className="inline-flex items-center px-4 py-2 rounded-full bg-purple-600 text-white hover:bg-purple-700 hover:shadow-lg transition-all duration-200"
+              className="inline-flex items-center px-4 py-2 rounded-full bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white hover:from-[#E0451F] hover:to-[#E55A2A] hover:shadow-lg transition-all duration-200"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
@@ -291,9 +291,9 @@ const Events: React.FC = () => {
       >
         <button
           onClick={() => setActiveTab('upcoming')}
-          className={`px-4 py-2 font-medium border-b-2 transition-all duration-200 ${
+                      className={`px-4 py-2 font-medium border-b-2 transition-all duration-200 ${
             activeTab === 'upcoming'
-              ? 'border-purple-500 text-purple-600'
+              ? 'border-[#F25129] text-[#F25129]'
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -304,7 +304,7 @@ const Events: React.FC = () => {
               <motion.span
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                className="bg-purple-100 text-purple-600 text-xs px-2 py-1 rounded-full"
+                className="bg-[#F25129]/10 text-[#F25129] text-xs px-2 py-1 rounded-full"
               >
                 {filtered.length}
               </motion.span>
@@ -313,9 +313,9 @@ const Events: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('past')}
-          className={`px-4 py-2 font-medium border-b-2 transition-all duration-200 ${
+                      className={`px-4 py-2 font-medium border-b-2 transition-all duration-200 ${
             activeTab === 'past'
-              ? 'border-purple-500 text-purple-600'
+              ? 'border-[#F25129] text-[#F25129]'
               : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -326,7 +326,7 @@ const Events: React.FC = () => {
               <motion.span
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                className="bg-purple-100 text-purple-600 text-xs px-2 py-1 rounded-full"
+                className="bg-[#F25129]/10 text-[#F25129] text-xs px-2 py-1 rounded-full"
               >
                 {filtered.length}
               </motion.span>
@@ -349,7 +349,7 @@ const Events: React.FC = () => {
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
               placeholder="Search events by title, location, or tags…"
-              className="w-full px-4 py-2 rounded-lg border pr-10 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+              className="w-full px-4 py-2 rounded-lg border pr-10 focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200"
             />
             <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
               {searchInput && (
@@ -372,7 +372,7 @@ const Events: React.FC = () => {
           <select 
             value={tag || ''} 
             onChange={e => setTag(e.target.value || null)} 
-            className="px-4 py-2 rounded-lg border focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+            className="px-4 py-2 rounded-lg border focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200"
           >
             <option value="">All Tags</option>
             {allTags.map(t => <option key={t} value={t}>{t}</option>)}
@@ -393,7 +393,7 @@ const Events: React.FC = () => {
             onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
             className={`px-4 py-2 rounded-lg border transition-all duration-200 flex items-center gap-2 ${
               showAdvancedFilters 
-                ? 'bg-purple-100 text-purple-700 border-purple-300' 
+                ? 'bg-[#F25129]/10 text-[#F25129] border-[#F25129]/30' 
                 : 'hover:bg-gray-50'
             }`}
           >
@@ -421,7 +421,7 @@ const Events: React.FC = () => {
                     value={locationFilter}
                     onChange={e => setLocationFilter(e.target.value)}
                     placeholder="Filter by location..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
          />
       </div>
 
@@ -433,13 +433,13 @@ const Events: React.FC = () => {
                       type="date"
                       value={dateRangeFilter.startDate}
                       onChange={e => setDateRangeFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                     />
                     <input
                       type="date"
                       value={dateRangeFilter.endDate}
                       onChange={e => setDateRangeFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                     />
         </div>
       </div>
@@ -453,14 +453,14 @@ const Events: React.FC = () => {
                       placeholder="Min"
                       value={capacityFilter.min}
                       onChange={e => setCapacityFilter(prev => ({ ...prev, min: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                     />
           <input
                       type="number"
                       placeholder="Max"
                       value={capacityFilter.max}
                       onChange={e => setCapacityFilter(prev => ({ ...prev, max: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                     />
             </div>
         </div>
@@ -471,7 +471,7 @@ const Events: React.FC = () => {
         <select
                     value={sortBy}
                     onChange={e => setSortBy(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                   >
                     <option value="date">Date (Soonest)</option>
                     <option value="title">Title (A-Z)</option>
@@ -507,12 +507,12 @@ const Events: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg"
+            className="mb-6 p-4 bg-gradient-to-r from-[#F25129]/10 to-[#FF6B35]/10 border border-[#F25129]/20 rounded-lg"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Search className="w-4 h-4 text-blue-600" />
-                <span className="text-sm font-medium text-blue-800">
+                <Search className="w-4 h-4 text-[#F25129]" />
+                <span className="text-sm font-medium text-[#F25129]">
                   {debouncedSearch && `Searching for "${debouncedSearch}"`}
                   {debouncedSearch && tag && ' • '}
                   {tag && `Filtered by tag "${tag}"`}
@@ -521,13 +521,13 @@ const Events: React.FC = () => {
         </div>
         <button
                 onClick={clearAllFilters}
-                className="text-sm text-blue-600 hover:text-blue-800 underline"
+                className="text-sm text-[#F25129] hover:text-[#E0451F] underline"
         >
                 Clear all filters
         </button>
       </div>
             {filtered.length > 0 && (
-              <div className="mt-2 text-sm text-blue-700">
+                              <div className="mt-2 text-sm text-[#F25129]">
                 Found {filtered.length} event{filtered.length !== 1 ? 's' : ''}
               </div>
             )}
@@ -553,7 +553,7 @@ const Events: React.FC = () => {
                 onClick={() => setTag(tag === tagName ? null : tagName)}
                 className={`px-3 py-1 text-sm rounded-full border transition-all duration-200 ${
                   tag === tagName
-                    ? 'bg-purple-600 text-white border-purple-600 shadow-lg'
+                    ? 'bg-[#F25129] text-white border-[#F25129] shadow-lg'
                     : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 hover:border-gray-400'
                 }`}
               >

@@ -68,7 +68,7 @@ export default function UploaderTypeahead({
     <div className="relative" ref={boxRef}>
       <button
         onClick={() => setOpen(o => !o)}
-        className="w-full h-11 px-3 rounded-xl border border-gray-300 bg-white flex items-center justify-between hover:border-purple-400 focus:border-purple-500 transition-colors"
+        className="w-full h-11 px-3 rounded-xl border border-gray-300 bg-white flex items-center justify-between hover:border-[#F25129] focus:border-[#F25129] transition-colors"
       >
         <span className="truncate text-left">{selectedLabel}</span>
         <Search className="w-4 h-4 text-gray-400 ml-3 flex-shrink-0" />
