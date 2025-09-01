@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { FixedSizeList as List } from 'react-window';
 import { useInView } from 'react-intersection-observer';
 import { motion, AnimatePresence } from 'framer-motion';
-import EventCard from './EventCard';
+import EventCardNew from './EventCardNew';
 import { EventDoc } from '../../hooks/useEvents';
 
 type Props = {
@@ -56,7 +56,7 @@ const EventItem = React.memo(({
             whileTap={{ scale: 0.98 }}
             className="h-full"
           >
-            <EventCard 
+            <EventCardNew 
               event={event} 
               onEdit={onEdit ? () => onEdit(event) : undefined} 
               onClick={onClick ? () => onClick(event) : undefined} 
@@ -106,7 +106,7 @@ const EventList: React.FC<Props> = ({ events, loading, onEdit, onClick, emptyTex
   // Loading skeleton with enhanced shimmer effect
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
         {Array.from({ length: 12 }).map((_, i) => (
           <motion.div
             key={i}
@@ -171,7 +171,7 @@ const EventList: React.FC<Props> = ({ events, loading, onEdit, onClick, emptyTex
   // For small lists, use regular grid with enhanced spacing
   if (events.length <= 20) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
         {events.map((event, index) => (
           <motion.div
             key={event.id}
@@ -191,7 +191,7 @@ const EventList: React.FC<Props> = ({ events, loading, onEdit, onClick, emptyTex
             whileTap={{ scale: 0.98 }}
             className="h-full"
           >
-            <EventCard 
+            <EventCardNew 
               event={event} 
               onEdit={onEdit ? () => onEdit(event) : undefined} 
               onClick={onClick ? () => onClick(event) : undefined} 

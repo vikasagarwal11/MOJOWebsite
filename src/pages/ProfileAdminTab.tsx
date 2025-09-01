@@ -4,7 +4,7 @@ import { deleteDoc, doc, getDocs, getDoc, collection, query, where, limit, addDo
 import { ref, deleteObject } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
-import EventCard from '../components/events/EventCard';
+import EventCardNew from '../components/events/EventCardNew';
 import { useAuth } from '../contexts/AuthContext';
 
 interface Event {
@@ -208,33 +208,12 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
             }`}
           >
             {/* EventCard for consistent display - WITH top action icons in Admin tab */}
-            <EventCard
+            <EventCardNew
               event={event}
               onEdit={() => {
                 setEventToEdit(event);
                 setIsCreateModalOpen(true);
               }}
-              onDelete={async () => {
-                if (!confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)) return;
-                try {
-                  await deleteDoc(doc(db, 'events', event.id));
-                  // Note: Cloud Functions handle event_teasers cleanup when events are deleted
-                  const rsvps = await getDocs(collection(db, 'events', event.id, 'rsvps'));
-                  for (const rsvp of rsvps.docs) {
-                    await deleteDoc(rsvp.ref);
-                  }
-                  if (event.imageUrl) {
-                    const imageRef = ref(storage, `events/${event.id}/${event.imageUrl.split('/').pop()}`);
-                    await deleteObject(imageRef).catch(() => {});
-                  }
-                  toast.success('Event deleted');
-                } catch (e: any) {
-                  toast.error(e?.message || 'Failed to delete event');
-                }
-              }}
-              onShare={() => shareEvent(event)}
-              showAdminActions={false} // Hide the buttons below since we have top icons
-              showTopActions={true} // Show action icons at top-right
             />
             
             {/* Top action icons are now displayed in the EventCard header */}

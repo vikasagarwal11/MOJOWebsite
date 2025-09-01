@@ -1,0 +1,240 @@
+import { 
+  collection, 
+  doc, 
+  getDocs, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  query, 
+  where, 
+  orderBy, 
+  writeBatch,
+  onSnapshot,
+  DocumentData,
+  QuerySnapshot
+} from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { 
+  Attendee, 
+  CreateAttendeeData, 
+  UpdateAttendeeData, 
+  AttendeeCounts, 
+  AttendeeStatus,
+  AgeGroup,
+  BulkAttendeeOperation
+} from '../types/attendee';
+
+// Generate unique attendee ID
+const generateAttendeeId = (): string => {
+  return `attendee_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+};
+
+// Validate attendee data
+export const validateAttendee = (data: CreateAttendeeData): { isValid: boolean; errors: string[] } => {
+  const errors: string[] = [];
+
+  if (!data.eventId) errors.push('Event ID is required');
+  if (!data.userId) errors.push('User ID is required');
+  if (!data.name || data.name.trim().length < 2) errors.push('Name must be at least 2 characters');
+  if (!data.attendeeType) errors.push('Attendee type is required');
+  if (!data.relationship) errors.push('Relationship is required');
+  if (!data.ageGroup) errors.push('Age group is required');
+  if (!data.rsvpStatus) errors.push('RSVP status is required');
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
+// Create or update a single attendee
+export const upsertAttendee = async (attendeeData: CreateAttendeeData): Promise<string> => {
+  const validation = validateAttendee(attendeeData);
+  if (!validation.isValid) {
+    throw new Error(`Invalid attendee data: ${validation.errors.join(', ')}`);
+  }
+
+  const attendeeId = generateAttendeeId();
+  const attendee: Attendee = {
+    attendeeId,
+    ...attendeeData,
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
+
+  const attendeeRef = doc(db, 'events', attendeeData.eventId, 'attendees', attendeeId);
+  await setDoc(attendeeRef, attendee);
+
+  return attendeeId;
+};
+
+// Update existing attendee
+export const updateAttendee = async (
+  eventId: string, 
+  attendeeId: string, 
+  updateData: UpdateAttendeeData
+): Promise<void> => {
+  const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
+  
+  await updateDoc(attendeeRef, {
+    ...updateData,
+    updatedAt: new Date()
+  });
+};
+
+// Delete attendee
+export const deleteAttendee = async (eventId: string, attendeeId: string): Promise<void> => {
+  const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
+  await deleteDoc(attendeeRef);
+};
+
+// Get all attendees for an event
+export const listAttendees = async (eventId: string): Promise<Attendee[]> => {
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
+  const snapshot = await getDocs(q);
+  
+  return snapshot.docs.map(doc => ({
+    attendeeId: doc.id,
+    ...doc.data()
+  })) as Attendee[];
+};
+
+// Get attendees by user for an event
+export const getUserAttendees = async (eventId: string, userId: string): Promise<Attendee[]> => {
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  const q = query(
+    attendeesRef, 
+    where('userId', '==', userId),
+    orderBy('createdAt', 'asc')
+  );
+  const snapshot = await getDocs(q);
+  
+  return snapshot.docs.map(doc => ({
+    attendeeId: doc.id,
+    ...doc.data()
+  })) as Attendee[];
+};
+
+// Bulk upsert attendees (for family members)
+export const bulkUpsertAttendees = async (eventId: string, attendees: CreateAttendeeData[]): Promise<string[]> => {
+  const batch = writeBatch(db);
+  const attendeeIds: string[] = [];
+
+  attendees.forEach(attendeeData => {
+    const attendeeId = generateAttendeeId();
+    const attendee: Attendee = {
+      attendeeId,
+      ...attendeeData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
+    batch.set(attendeeRef, attendee);
+    attendeeIds.push(attendeeId);
+  });
+
+  await batch.commit();
+  return attendeeIds;
+};
+
+// Set attendee status
+export const setAttendeeStatus = async (
+  eventId: string, 
+  attendeeId: string, 
+  status: AttendeeStatus
+): Promise<void> => {
+  await updateAttendee(eventId, attendeeId, { rsvpStatus: status });
+};
+
+// Calculate attendee counts for an event
+export const calculateAttendeeCounts = (attendees: Attendee[]): AttendeeCounts => {
+  const counts: AttendeeCounts = {
+    goingCount: 0,
+    notGoingCount: 0,
+    pendingCount: 0,
+    totalGoingByAgeGroup: {
+      '0-2': 0,
+      '3-5': 0,
+      '6-10': 0,
+      '11+': 0
+    },
+    totalGoing: 0
+  };
+
+  attendees.forEach(attendee => {
+    switch (attendee.rsvpStatus) {
+      case 'going':
+        counts.goingCount++;
+        counts.totalGoing++;
+        counts.totalGoingByAgeGroup[attendee.ageGroup]++;
+        break;
+      case 'not-going':
+        counts.notGoingCount++;
+        break;
+      case 'pending':
+        counts.pendingCount++;
+        break;
+    }
+  });
+
+  return counts;
+};
+
+// Recompute event attendee count (for cloud functions)
+export const recomputeEventAttendeeCount = async (eventId: string): Promise<number> => {
+  const attendees = await listAttendees(eventId);
+  const counts = calculateAttendeeCounts(attendees);
+  return counts.totalGoing;
+};
+
+// Real-time listener for attendees
+export const subscribeToAttendees = (
+  eventId: string, 
+  callback: (attendees: Attendee[]) => void
+): (() => void) => {
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
+  
+  const unsubscribe = onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
+    const attendees = snapshot.docs.map(doc => ({
+      attendeeId: doc.id,
+      ...doc.data()
+    })) as Attendee[];
+    
+    callback(attendees);
+  });
+
+  return unsubscribe;
+};
+
+// Get attendees by status
+export const getAttendeesByStatus = async (
+  eventId: string, 
+  status: AttendeeStatus
+): Promise<Attendee[]> => {
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  const q = query(
+    attendeesRef, 
+    where('rsvpStatus', '==', status),
+    orderBy('createdAt', 'asc')
+  );
+  const snapshot = await getDocs(q);
+  
+  return snapshot.docs.map(doc => ({
+    attendeeId: doc.id,
+    ...doc.data()
+  })) as Attendee[];
+};
+
+// Search attendees by name
+export const searchAttendees = async (eventId: string, searchTerm: string): Promise<Attendee[]> => {
+  const attendees = await listAttendees(eventId);
+  const term = searchTerm.toLowerCase();
+  
+  return attendees.filter(attendee => 
+    attendee.name.toLowerCase().includes(term) ||
+    attendee.relationship.toLowerCase().includes(term)
+  );
+};

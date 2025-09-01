@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Calendar, Eye, EyeOff } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import EventCard from '../components/events/EventCard';
+import EventCardNew from '../components/events/EventCardNew';
 
 interface Event {
   id: string;
@@ -714,15 +714,10 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
             }`}
           >
             {/* EventCard for consistent display - WITH top action icons in RSVP tab */}
-            <EventCard
-              event={event}
-              onEdit={undefined} // RSVP tab doesn't need edit functionality
-              onDelete={undefined} // RSVP tab doesn't need delete functionality
-              onShare={undefined} // RSVP tab doesn't need share functionality
-              showAdminActions={false} // Hide Edit/Delete buttons in RSVP tab
-              showTopActions={true} // Show action icons at top-right (calendar only)
-              showCalendarButton={false} // Hide the large Add to Calendar button
-            />
+                                                   <EventCardNew
+                event={event}
+                onEdit={undefined} // RSVP tab doesn't need edit functionality
+              />
             
 
             {/* RSVP Management Section */}

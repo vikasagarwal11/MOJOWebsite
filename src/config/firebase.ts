@@ -55,16 +55,17 @@ if (USING_EMULATORS) {
 }
 
 export let analytics: Analytics | undefined;
-export let perf: any | undefined;
+// export let perf: any | undefined;
 
 if (typeof window !== 'undefined') {
   isSupported().then(ok => {
     if (ok) analytics = getAnalytics(app);
   }).catch(() => {});
 
-  try {
-    perf = getPerformance(app);
-  } catch {}
+  // Disabled Firebase Performance to prevent invalid attribute errors
+  // try {
+  //   perf = getPerformance(app);
+  // } catch {}
 }
 
 export default app;

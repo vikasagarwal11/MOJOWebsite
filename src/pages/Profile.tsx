@@ -12,6 +12,7 @@ import { ProfileAdminTab } from './ProfileAdminTab';
 import CreateEventModal from '../components/events/CreateEventModal';
 import { useUserBlocking } from '../hooks/useUserBlocking';
 import { UserBlockModal } from '../components/user/UserBlockModal';
+import { FamilyMemberList } from '../components/family/FamilyMemberList';
 
 type Address = {
   street?: string;
@@ -60,7 +61,7 @@ function normalizeTag(input: string): string | null {
 
 const Profile: React.FC = () => {
   const { currentUser, listenersReady } = useAuth();
-  const [activeTab, setActiveTab] = useState<'personal' | 'events' | 'rsvp' | 'admin'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'events' | 'rsvp' | 'admin' | 'family'>('personal');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -857,7 +858,14 @@ const Profile: React.FC = () => {
             aria-selected={activeTab === 'rsvp'}
           >
             RSVP Management
-                  </button>
+          </button>
+          <button
+            onClick={() => setActiveTab('family')}
+            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'family' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
+            aria-selected={activeTab === 'family'}
+          >
+            Family Management
+          </button>
           {currentUser?.role === 'admin' && (
             <button
               onClick={() => setActiveTab('admin')}
@@ -963,6 +971,17 @@ const Profile: React.FC = () => {
             blockedUsers={blockedUsers}
             loadingBlockedUsers={loadingBlockedUsers}
           />
+        )}
+        {activeTab === 'family' && (
+          <div className="space-y-6">
+            <div className="border-b border-gray-200 pb-4">
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Family Member Management</h2>
+              <p className="text-gray-600">
+                Manage your family members to streamline RSVP processes and event planning.
+              </p>
+            </div>
+            <FamilyMemberList />
+          </div>
         )}
         </div>
       {/* Create/Edit Event Modal */}

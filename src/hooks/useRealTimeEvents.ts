@@ -79,6 +79,20 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
       newEvents.set(doc.id, eventData);
     });
 
+    // Debug logging for event updates
+    newEvents.forEach((event, id) => {
+      const previousEvent = previousEventsRef.current.get(id);
+      if (previousEvent && previousEvent.attendingCount !== event.attendingCount) {
+        console.log('🔍 Event attendingCount changed:', {
+          eventId: id,
+          eventTitle: event.title,
+          oldCount: previousEvent.attendingCount,
+          newCount: event.attendingCount,
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
     // Merge events from all queries
     setEvents(prevEvents => {
       const mergedEvents = new Map(prevEvents.map(e => [e.id, e]));
