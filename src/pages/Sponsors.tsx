@@ -150,7 +150,7 @@ const Sponsors: React.FC = () => {
           Want to Become a Sponsor?
         </h2>
         <p className="text-purple-100 mb-6 max-w-2xl mx-auto">
-          Partner with Mom's Fitness Mojo to reach an engaged community of health-conscious mothers. 
+          Partner with Moms Fitness Mojo to reach an engaged community of health-conscious mothers. 
           Let's create meaningful partnerships that benefit our members.
         </p>
         <a

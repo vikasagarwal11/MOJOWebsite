@@ -89,15 +89,30 @@ export const deleteAttendee = async (eventId: string, attendeeId: string): Promi
 };
 
 // Get all attendees for an event
-export const listAttendees = async (eventId: string): Promise<Attendee[]> => {
+export const listAttendees = async (eventId: string, userId: string): Promise<Attendee[]> => {
+  console.log('🔍 listAttendees called with:', { eventId, userId });
+  
   const attendeesRef = collection(db, 'events', eventId, 'attendees');
-  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
+  const q = query(
+    attendeesRef, 
+    where('userId', '==', userId),
+    orderBy('createdAt', 'asc')
+  );
   const snapshot = await getDocs(q);
   
-  return snapshot.docs.map(doc => ({
+  const attendees = snapshot.docs.map(doc => ({
     attendeeId: doc.id,
     ...doc.data()
   })) as Attendee[];
+  
+  console.log('🔍 listAttendees result:', { 
+    eventId, 
+    userId, 
+    attendeeCount: attendees.length,
+    attendeeNames: attendees.map(a => a.name)
+  });
+  
+  return attendees;
 };
 
 // Get attendees by user for an event
@@ -184,7 +199,15 @@ export const calculateAttendeeCounts = (attendees: Attendee[]): AttendeeCounts =
 
 // Recompute event attendee count (for cloud functions)
 export const recomputeEventAttendeeCount = async (eventId: string): Promise<number> => {
-  const attendees = await listAttendees(eventId);
+  // For cloud functions, we need to get ALL attendees for the event
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
+  const snapshot = await getDocs(q);
+  const attendees = snapshot.docs.map(doc => ({
+    attendeeId: doc.id,
+    ...doc.data()
+  })) as Attendee[];
+  
   const counts = calculateAttendeeCounts(attendees);
   return counts.totalGoing;
 };
@@ -192,10 +215,15 @@ export const recomputeEventAttendeeCount = async (eventId: string): Promise<numb
 // Real-time listener for attendees
 export const subscribeToAttendees = (
   eventId: string, 
+  userId: string,
   callback: (attendees: Attendee[]) => void
 ): (() => void) => {
   const attendeesRef = collection(db, 'events', eventId, 'attendees');
-  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
+  const q = query(
+    attendeesRef, 
+    where('userId', '==', userId),
+    orderBy('createdAt', 'asc')
+  );
   
   const unsubscribe = onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
     const attendees = snapshot.docs.map(doc => ({
@@ -212,11 +240,13 @@ export const subscribeToAttendees = (
 // Get attendees by status
 export const getAttendeesByStatus = async (
   eventId: string, 
+  userId: string,
   status: AttendeeStatus
 ): Promise<Attendee[]> => {
   const attendeesRef = collection(db, 'events', eventId, 'attendees');
   const q = query(
     attendeesRef, 
+    where('userId', '==', userId),
     where('rsvpStatus', '==', status),
     orderBy('createdAt', 'asc')
   );
@@ -229,8 +259,8 @@ export const getAttendeesByStatus = async (
 };
 
 // Search attendees by name
-export const searchAttendees = async (eventId: string, searchTerm: string): Promise<Attendee[]> => {
-  const attendees = await listAttendees(eventId);
+export const searchAttendees = async (eventId: string, userId: string, searchTerm: string): Promise<Attendee[]> => {
+  const attendees = await listAttendees(eventId, userId);
   const term = searchTerm.toLowerCase();
   
   return attendees.filter(attendee => 

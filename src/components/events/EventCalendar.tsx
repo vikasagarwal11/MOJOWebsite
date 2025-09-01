@@ -28,7 +28,7 @@ const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
   // This is a simplified approach - in a full implementation, you might want to
   // fetch attendees for all events or use a different strategy
   const firstEventId = events[0]?.id;
-  const { attendees: firstEventAttendees } = useAttendees(firstEventId || '');
+  const { attendees: firstEventAttendees } = useAttendees(firstEventId || '', currentUser?.id || '');
   
   // Helper function to get RSVP status for an event
   const getRSVPStatus = useCallback((eventId: string): 'going' | 'not-going' | null => {

@@ -52,7 +52,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     removeAttendee, 
     setAttendeeStatus,
     refreshAttendees 
-  } = useAttendees(eventId);
+  } = useAttendees(eventId, currentUser?.id || '');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<AttendeeStatus | 'all'>('all');
