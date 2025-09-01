@@ -123,7 +123,7 @@ const Login: React.FC = () => {
       <div className="max-w-md w-full">
         <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl p-8 border border-[#F25129]/20">
           <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent">
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent leading-relaxed pb-1">
               Welcome Back
             </h2>
             <p className="text-gray-600 mt-2">
