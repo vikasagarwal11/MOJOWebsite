@@ -20,11 +20,108 @@ interface GuestInfo {
 }
 import { EventDoc } from '../../hooks/useEvents';
 import { useAuth } from '../../contexts/AuthContext';
-import { doc, setDoc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, getDoc, serverTimestamp, collection, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import { useUserBlocking } from '../../hooks/useUserBlocking';
 import { format } from 'date-fns';
+
+// Utility function to recalculate total attendee count from all RSVPs
+const recalculateEventAttendeeCount = async (eventId: string): Promise<number> => {
+  try {
+    console.log('🔍 DEBUG: Starting attendee count recalculation for event:', eventId);
+    
+    const rsvpsRef = collection(db, 'events', eventId, 'rsvps');
+    const rsvpsSnapshot = await getDocs(rsvpsRef);
+    
+    console.log('🔍 DEBUG: Found', rsvpsSnapshot.size, 'RSVP documents');
+    
+    let totalAttendees = 0;
+    let rsvpDetails: any[] = [];
+    
+    rsvpsSnapshot.forEach((doc) => {
+      const rsvpData = doc.data();
+      console.log('🔍 DEBUG: Processing RSVP document:', {
+        docId: doc.id,
+        userId: rsvpData.userId,
+        status: rsvpData.status,
+        adults: rsvpData.adults,
+        childCounts: rsvpData.childCounts,
+        guests: rsvpData.guests,
+        rawData: rsvpData
+      });
+      
+      if (rsvpData.status === 'going') {
+        let rsvpContribution = 0;
+        
+        // Count additional adults (handle corrupted data)
+        const adults = typeof rsvpData.adults === 'number' ? rsvpData.adults : 0;
+        const cleanAdults = Math.max(0, adults);
+        rsvpContribution += cleanAdults;
+        if (cleanAdults > 0) {
+          console.log('🔍 DEBUG: +', cleanAdults, 'for additional adults, running total:', totalAttendees + rsvpContribution);
+        }
+        
+        // Count children (handle corrupted data)
+        if (rsvpData.childCounts && Array.isArray(rsvpData.childCounts)) {
+          rsvpData.childCounts.forEach((child: any, index: number) => {
+            if (child && typeof child.count === 'number' && !isNaN(child.count)) {
+              const cleanChildCount = Math.max(0, child.count);
+              rsvpContribution += cleanChildCount;
+              if (cleanChildCount > 0) {
+                console.log('🔍 DEBUG: +', cleanChildCount, 'for child', index, '(', child.ageGroup, '), running total:', totalAttendees + rsvpContribution);
+              }
+            }
+          });
+        }
+        
+        // Count guests (handle corrupted data)
+        if (rsvpData.guests && Array.isArray(rsvpData.guests)) {
+          const guestCount = rsvpData.guests.length;
+          rsvpContribution += guestCount;
+          if (guestCount > 0) {
+            console.log('🔍 DEBUG: +', guestCount, 'for guests, running total:', totalAttendees + rsvpContribution);
+          }
+        }
+        
+        totalAttendees += rsvpContribution;
+        
+        rsvpDetails.push({
+          userId: rsvpData.userId,
+          status: rsvpData.status,
+          contribution: rsvpContribution,
+          breakdown: {
+            primary: 0, // FIXED: Changed from 1 to 0 since we're not adding +1 separately
+            adults: cleanAdults,
+            children: rsvpData.childCounts ? Object.values(rsvpData.childCounts).reduce((sum: number, count: any) => sum + Math.max(0, count || 0), 0) : 0,
+            guests: rsvpData.guests ? rsvpData.guests.length : 0
+          }
+        });
+        
+        console.log('🔍 DEBUG: RSVP contribution:', rsvpContribution, 'Total so far:', totalAttendees);
+      } else {
+        console.log('🔍 DEBUG: Skipping RSVP with status:', rsvpData.status);
+      }
+    });
+    
+    // FIXED: Ensure total is never negative
+    const finalTotal = Math.max(0, totalAttendees);
+    
+    console.log('🔍 DEBUG: Final calculation breakdown:', {
+      eventId: eventId,
+      totalRSVPs: rsvpDetails.length,
+      rsvpDetails: rsvpDetails,
+      rawTotal: totalAttendees,
+      finalTotal: finalTotal
+    });
+    
+    console.log('🔍 Recalculated attendee count for event:', eventId, 'Total:', finalTotal);
+    return finalTotal;
+  } catch (error) {
+    console.error('❌ Error recalculating attendee count:', error);
+    return 0;
+  }
+};
 
 interface RSVPModalProps {
   open: boolean;
@@ -127,7 +224,7 @@ export const RSVPModal: React.FC<RSVPModalProps> = ({ open, event, onClose, onRS
       } else {
                  // Reset to defaults for new RSVP
          setStatus('going');
-         setAdults(0);
+         setAdults(0); // ✅ FIX: Start with 1 adult (primary user)
          setChildCounts([
            { ageGroup: '0-2', count: 0 },
            { ageGroup: '3-5', count: 0 },
@@ -145,58 +242,146 @@ export const RSVPModal: React.FC<RSVPModalProps> = ({ open, event, onClose, onRS
   const handleSubmit = async () => {
     if (!currentUser || !event?.id) return;
     
+    // Ensure event is not null
+    if (!event) {
+      toast.error('Event data is missing. Please try again.');
+      return;
+    }
+    
     setLoading(true);
     try {
       const rsvpRef = doc(db, 'events', event.id, 'rsvps', currentUser.id);
+      const eventRef = doc(db, 'events', event.id);
       const snap = await getDoc(rsvpRef);
       
-      const rsvpData: Omit<RSVPDoc, 'id'> = {
+      const rsvpData = {
         eventId: event.id,
         userId: currentUser.id,
-        displayName: currentUser.displayName || null,
-        email: currentUser.email || null,
+        displayName: currentUser.displayName,
+        email: currentUser.email,
         status,
         adults,
-        childCounts: childCounts.some(child => child.count > 0) ? childCounts : null,
+        childCounts: childCounts.some(c => c.count > 0) ? childCounts : null,
         guests: guests.length > 0 ? guests : null,
         notes: notes.trim() || null,
+        statusHistory: [{
+          status,
+          changedAt: new Date(),
+          changedBy: currentUser.id,
+        }],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
 
+      // Calculate total attendees for this RSVP
+      const rsvpAttendees = status === 'going' ? 
+        (1 + adults + childCounts.reduce((total, child) => total + child.count, 0)) : 0;
+
+      console.log('🔍 RSVP Debug:', {
+        eventId: event.id,
+        status,
+        adults,
+        childCounts,
+        rsvpAttendees,
+        currentEventAttendingCount: event.attendingCount || 0
+      });
+
+      // Debug: Log complete event structure for permission analysis
+      console.log('🔍 Event Structure Debug:', {
+        eventId: event.id,
+        eventTitle: event.title,
+        eventVisibility: event.visibility,
+        eventPublic: (event as any).public, // Legacy field
+        eventInvitedUserIds: event.invitedUserIds,
+        eventInvitedUsers: (event as any).invitedUsers, // Legacy field
+        eventCreatedBy: event.createdBy,
+        currentUserId: currentUser.id,
+        isAdmin: currentUser.role === 'admin',
+        isMember: currentUser.role === 'member',
+        eventKeys: Object.keys(event),
+        hasInvitedUserIds: 'invitedUserIds' in event,
+        hasInvitedUsers: 'invitedUsers' in event,
+        invitedUserIdsType: typeof event.invitedUserIds,
+        invitedUsersType: typeof (event as any).invitedUsers,
+        invitedUserIdsValue: event.invitedUserIds,
+        invitedUsersValue: (event as any).invitedUsers
+      });
+
       if (snap.exists()) {
         // Update existing RSVP
         const existing = snap.data();
+        const oldStatus = existing.status;
+        const oldAttendees = oldStatus === 'going' ? 
+          (1 + (existing.adults || 0) + (existing.childCounts?.reduce((sum: number, child: any) => sum + (child.count || 0), 0) || 0)) : 0;
+        
+        console.log('🔍 Updating existing RSVP:', {
+          oldStatus,
+          oldAttendees,
+          newStatus: status,
+          newAttendees: rsvpAttendees
+        });
+        
         const newHistory = [
           ...(existing.statusHistory || []),
           {
             status,
-            changedAt: serverTimestamp(),
+            changedAt: new Date(), // Use regular Date instead of serverTimestamp() for arrays
             changedBy: currentUser.id,
           }
         ];
         
+        // Update RSVP
         await updateDoc(rsvpRef, {
           ...rsvpData,
           statusHistory: newHistory,
         });
+
+        // Recalculate total attendee count from all RSVPs instead of incrementing/decrementing
+        if (event?.id) {
+          const recalculatedCount = await recalculateEventAttendeeCount(event.id);
+          
+          if (event) {
+            await updateDoc(eventRef, {
+              attendingCount: recalculatedCount,
+              updatedAt: serverTimestamp()
+            });
+            
+            console.log('✅ Event attendingCount recalculated to:', recalculatedCount);
+          }
+        }
       } else {
         // Create new RSVP
+        console.log('🔍 Creating new RSVP with attendees:', rsvpAttendees);
+        
         await setDoc(rsvpRef, {
           ...rsvpData,
           statusHistory: [{
             status,
-            changedAt: serverTimestamp(),
+            changedAt: new Date(), // Use regular Date instead of serverTimestamp() for arrays
             changedBy: currentUser.id,
           }],
         });
+
+        // Recalculate total attendee count from all RSVPs instead of incrementing/decrementing
+        if (event?.id) {
+          const recalculatedCount = await recalculateEventAttendeeCount(event.id);
+          
+          if (event) {
+            await updateDoc(eventRef, {
+              attendingCount: recalculatedCount,
+              updatedAt: serverTimestamp()
+            });
+            
+            console.log('✅ Event attendingCount recalculated to:', recalculatedCount);
+          }
+        }
       }
 
       toast.success(`RSVP updated: ${status === 'going' ? 'Going' : "Can't Go"}`);
       onRSVPUpdate();
       onClose();
     } catch (error) {
-      console.error('Failed to submit RSVP:', error);
+      console.error('❌ Failed to submit RSVP:', error);
       toast.error('Failed to submit RSVP. Please try again.');
     } finally {
       setLoading(false);
@@ -208,11 +393,11 @@ export const RSVPModal: React.FC<RSVPModalProps> = ({ open, event, onClose, onRS
 
 
   const totalAttendees = 1 + adults + childCounts.reduce((total, child) => total + child.count, 0); // +1 for primary user
-  const isCapacityExceeded = event.maxAttendees ? totalAttendees > event.maxAttendees : false;
+  const isCapacityExceeded = event?.maxAttendees ? totalAttendees > event.maxAttendees : false;
 
   // Format event date and calculate duration
-  const eventDate = event.startAt ? new Date(event.startAt.seconds * 1000) : new Date();
-  const eventEndDate = event.endAt ? new Date(event.endAt.seconds * 1000) : null;
+  const eventDate = event?.startAt ? new Date(event.startAt.seconds * 1000) : new Date();
+  const eventEndDate = event?.endAt ? new Date(event.endAt.seconds * 1000) : null;
   
   const formattedDate = format(eventDate, 'EEEE, MMMM d, yyyy');
   const formattedTime = format(eventDate, 'h:mm a');

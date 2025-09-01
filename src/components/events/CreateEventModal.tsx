@@ -50,8 +50,8 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const { uploadFile, getStoragePath } = useStorage();
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [eventVisibility, setEventVisibility] = useState<'public' | 'members' | 'private'>('members'); // Default to members-only
-  const [invitedUsers, setInvitedUsers] = useState<string[]>([]);
+  const [eventVisibility, setEventVisibility] = useState<'public' | 'members' | 'private'>('public'); // Default to public
+  const [invitedUserIds, setInvitedUserIds] = useState<string[]>([]);
   const [invitedUserDetails, setInvitedUserDetails] = useState<{[key: string]: any}>({});
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -68,11 +68,11 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     setTags([]);
     setTagInput('');
     setImageRemoved(false);
-    setInvitedUsers([]);
+    setInvitedUserIds([]);
     setInvitedUserDetails({});
     setUserSearchQuery('');
     setSearchResults([]);
-    setEventVisibility('members');
+    setEventVisibility('public');
     onClose();
   };
 
@@ -94,36 +94,52 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   },
 });
 
-  // Set initial state for editing
+  // Load existing event data for editing
   useEffect(() => {
     if (eventToEdit) {
-      setTags(eventToEdit.tags || []);
-      setImageRemoved(false); // Reset image removal flag when editing
-      // Convert old 'public' field to new 'visibility' system
-      if (eventToEdit.visibility) {
-        setEventVisibility(eventToEdit.visibility);
-      } else if (eventToEdit.public !== undefined) {
-        setEventVisibility(eventToEdit.public ? 'public' : 'members');
-      }
-      setInvitedUsers(eventToEdit.invitedUsers || []);
+      // Load form data from existing event
+      setValue('title', eventToEdit.title);
+      setValue('description', eventToEdit.description);
+      setValue('location', eventToEdit.location);
+      setValue('maxAttendees', eventToEdit.maxAttendees?.toString() || '');
       
-      // Load invited user details if editing a private event
-      if (eventToEdit.invitedUsers && eventToEdit.invitedUsers.length > 0) {
-        // This would ideally fetch user details from Firestore
-        // For now, we'll set placeholder data
-        const placeholderDetails: {[key: string]: any} = {};
-        eventToEdit.invitedUsers.forEach((userId: string) => {
-          placeholderDetails[userId] = {
-            id: userId,
-            displayName: `User ${userId.slice(0, 8)}...`,
-            email: 'Loading...',
-            photoURL: null
-          };
+      // Set dates
+      if (eventToEdit.startAt) {
+        const startDate = eventToEdit.startAt.toDate ? eventToEdit.startAt.toDate() : new Date(eventToEdit.startAt);
+        setValue('date', format(startDate, 'yyyy-MM-dd'));
+        setValue('time', format(startDate, 'HH:mm'));
+        
+        if (eventToEdit.endAt) {
+          const endDate = eventToEdit.endAt.toDate ? eventToEdit.endAt.toDate() : new Date(eventToEdit.endAt);
+          setValue('endTime', format(endDate, 'HH:mm'));
+        }
+      }
+      
+      // Set tags
+      if (eventToEdit.tags && eventToEdit.tags.length > 0) {
+        setTags(eventToEdit.tags);
+      }
+      
+      // Set visibility
+      setEventVisibility(eventToEdit.visibility || 'public');
+      
+      // Set invited users - Updated to use invitedUserIds
+      setInvitedUserIds(eventToEdit.invitedUserIds || []);
+      
+      // Load existing invited users for display
+      if (eventToEdit.invitedUserIds && eventToEdit.invitedUserIds.length > 0) {
+        // Fetch user details for display
+        eventToEdit.invitedUserIds.forEach((userId: string) => {
+          // You might want to fetch user details here for display
         });
-        setInvitedUserDetails(placeholderDetails);
+      }
+      
+      // Set image
+      if (eventToEdit.imageUrl) {
+        setValue('imageUrl', eventToEdit.imageUrl);
       }
     }
-  }, [eventToEdit]);
+  }, [eventToEdit, setValue]);
 
   const addTag = (raw: string) => {
     const t = raw.trim().toLowerCase().replace(/\s+/g, '-');
@@ -164,8 +180,8 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
 
   // Add user to invitation list
   const handleInviteUser = (user: any) => {
-    if (!invitedUsers.includes(user.id)) {
-      setInvitedUsers([...invitedUsers, user.id]);
+    if (!invitedUserIds.includes(user.id)) {
+      setInvitedUserIds([...invitedUserIds, user.id]);
       setInvitedUserDetails(prev => ({
         ...prev,
         [user.id]: user
@@ -178,7 +194,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
 
   // Remove user from invitation list
   const handleRemoveInvitedUser = (userId: string) => {
-    setInvitedUsers(invitedUsers.filter(id => id !== userId));
+    setInvitedUserIds(invitedUserIds.filter(id => id !== userId));
     setInvitedUserDetails(prev => {
       const newDetails = { ...prev };
       delete newDetails[userId];
@@ -308,7 +324,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         tags: tags.length > 0 ? tags : undefined,
         createdBy: currentUser.id,
         visibility: eventVisibility,
-        invitedUsers: eventVisibility === 'private' ? invitedUsers : undefined,
+        invitedUserIds: eventVisibility === 'private' ? invitedUserIds : undefined,
         attendingCount: eventToEdit?.attendingCount ?? 0,
         createdAt: eventToEdit?.createdAt ?? serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -656,6 +672,11 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
           {/* Event Visibility Selection */}
           <div className="space-y-4 pt-4">
             <label className="block text-sm font-medium text-gray-700">Event Visibility</label>
+            {currentUser?.role !== 'admin' && (
+              <p className="text-xs text-gray-500 bg-blue-50 p-2 rounded-lg border border-blue-200">
+                💡 Events are public by default. Only administrators can change visibility settings.
+              </p>
+            )}
             <div className="space-y-3">
               <label className="flex items-center gap-3">
                 <input
@@ -680,12 +701,12 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                   value="members"
                   checked={eventVisibility === 'members'}
                   onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
-                  disabled={isLoading}
-                  className="h-4 w-4 text-purple-600 focus:ring-purple-500"
+                  disabled={isLoading || currentUser?.role !== 'admin'}
+                  className="h-4 w-4 text-purple-600 focus:ring-purple-500 disabled:opacity-50"
                 />
                 <div>
                   <span className="text-sm font-medium text-gray-700">👥 Members Only</span>
-                  <p className="text-xs text-gray-500">Visible to platform members only</p>
+                  <p className="text-xs text-gray-500">Visible to platform members only {currentUser?.role !== 'admin' && '(Admin only)'}</p>
                 </div>
               </label>
               
@@ -696,12 +717,12 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                   value="private"
                   checked={eventVisibility === 'private'}
                   onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
-                  disabled={isLoading}
-                  className="h-4 w-4 text-purple-600 focus:ring-purple-500"
+                  disabled={isLoading || currentUser?.role !== 'admin'}
+                  className="h-4 w-4 text-purple-600 focus:ring-purple-500 disabled:opacity-50"
                 />
                 <div>
                   <span className="text-sm font-medium text-gray-700">🔒 Private Event</span>
-                  <p className="text-xs text-gray-500">Invitation only, select specific users</p>
+                  <p className="text-xs text-gray-500">Invitation only, select specific users {currentUser?.role !== 'admin' && '(Admin only)'}</p>
                 </div>
               </label>
             </div>
@@ -752,15 +773,15 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                           </div>
                           <button
                             onClick={() => handleInviteUser(user)}
-                            disabled={invitedUsers.includes(user.id)}
+                            disabled={invitedUserIds.includes(user.id)}
                             className={`px-3 py-1 text-xs rounded transition-colors ${
-                              invitedUsers.includes(user.id)
+                              invitedUserIds.includes(user.id)
                                 ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
                                 : 'bg-green-600 text-white hover:bg-green-700'
                             }`}
-                            title={invitedUsers.includes(user.id) ? 'Already invited' : 'Invite user'}
+                            title={invitedUserIds.includes(user.id) ? 'Already invited' : 'Invite user'}
                           >
-                            {invitedUsers.includes(user.id) ? 'Invited' : 'Invite'}
+                            {invitedUserIds.includes(user.id) ? 'Invited' : 'Invite'}
                           </button>
                         </div>
                       ))}
@@ -769,13 +790,13 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                 )}
                 
                 {/* Invited Users List */}
-                {invitedUsers.length > 0 && (
+                {invitedUserIds.length > 0 && (
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-gray-700">
-                      Invited Users ({invitedUsers.length}):
+                      Invited Users ({invitedUserIds.length}):
                     </label>
                     <div className="space-y-2">
-                      {invitedUsers.map((userId, index) => {
+                      {invitedUserIds.map((userId, index) => {
                         const userDetails = invitedUserDetails[userId] || 
                                           { id: userId, displayName: 'Loading...', email: 'Loading...' };
                         

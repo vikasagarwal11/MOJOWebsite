@@ -12,6 +12,7 @@ import Sponsors from './pages/Sponsors';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import Profile from './pages/Profile';
+import FamilyManagement from './pages/FamilyManagement';
 
 /** Simple error boundary so a crash doesn't white-screen the app */
 class SimpleErrorBoundary extends React.Component<
@@ -80,6 +81,7 @@ function App() {
                 <Route path="posts" element={<Posts />} />
                 <Route path="sponsors" element={<Sponsors />} />
                 <Route path="profile" element={<Profile />} />
+                <Route path="family-management" element={<FamilyManagement />} />
               </Route>
             </Routes>
           </div>

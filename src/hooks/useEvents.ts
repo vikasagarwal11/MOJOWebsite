@@ -20,6 +20,7 @@ export type EventDoc = {
   imageUrl?: string;
   isTeaser?: boolean;
   maxAttendees?: number;
+  attendingCount?: number;
 };
 
 type UseEventsOptions = { skewMs?: number; includeGuestTeasers?: boolean; };
@@ -53,7 +54,9 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
     return [
       query(eventsRef, where('visibility', 'in', ['public', 'members']), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
       query(eventsRef, where('createdBy', '==', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+      // Check for both new and legacy field names
       query(eventsRef, where('invitedUserIds', 'array-contains', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+      query(eventsRef, where('invitedUsers', 'array-contains', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
     ];
   };
 
@@ -64,7 +67,9 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
     return [
       query(eventsRef, where('visibility', 'in', ['public', 'members']), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc')),
       query(eventsRef, where('createdBy', '==', currentUser.id), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc')),
+      // Check for both new and legacy field names
       query(eventsRef, where('invitedUserIds', 'array-contains', currentUser.id), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc')),
+      query(eventsRef, where('invitedUsers', 'array-contains', currentUser.id), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc')),
     ];
   };
 

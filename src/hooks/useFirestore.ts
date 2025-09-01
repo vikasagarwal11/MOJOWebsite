@@ -178,15 +178,15 @@ export const useFirestore = () => {
       // Special handling for events collection to ensure proper constraints
       if (collectionName === 'events' && authed) {
         // Always enforce visibility constraints for authenticated users
-        const hasVisibilityConstraint = queryConstraints.some(c => 
-          c.type === 'where' && 
-          (c.fieldPath === 'visibility' || c.fieldPath === 'public')
+        const hasVisibilityConstraint = queryConstraints.some((c: any) => 
+          c?.type === 'where' && 
+          (c?.field?.toString?.() === 'visibility' || c?.field?.toString?.() === 'public')
         );
-        const hasCreatorConstraint = queryConstraints.some(c => 
-          c.type === 'where' && c.fieldPath === 'createdBy'
+        const hasCreatorConstraint = queryConstraints.some((c: any) => 
+          c?.type === 'where' && c?.field?.toString?.() === 'createdBy'
         );
-        const hasInvitedConstraint = queryConstraints.some(c => 
-          c.type === 'where' && c.fieldPath === 'invitedUsers'
+        const hasInvitedConstraint = queryConstraints.some((c: any) => 
+          c?.type === 'where' && (c?.field?.toString?.() === 'invitedUserIds' || c?.field?.toString?.() === 'invitedUsers')
         );
         
         // If no proper constraints, add default ones based on user role

@@ -121,35 +121,17 @@ service cloud.firestore {
         ('userId' in data) && isNonEmptyString(data.userId) &&
         ('status' in data) && data.status in ['going', 'not-going'] &&
         ('adults' in data) && data.adults is number && data.adults >= 0 &&
-        // childCounts can be:
-        //  (A) list of maps: [{ageGroup:'0-2', count:1}, ...] (max 4), OR
-        //  (B) map keyed by age group: {'0-2':1,'3-5':0,'6-10':2,'11':0}
-        (!('childCounts' in data) ||
-          (data.childCounts is list &&
-           data.childCounts.size() <= 4 &&
-           data.childCounts.size() >= 0 &&
-           (data.childCounts.size() == 0 ||
-             (data.childCounts[0] is map &&
-              ('ageGroup' in data.childCounts[0]) &&
-              ('count' in data.childCounts[0])))) ||
-          (data.childCounts is map)) &&
-        (!('guests' in data) || (data.guests is list && data.guests.size() <= 20)) &&
+        (!('childCounts' in data) || (
+          data.childCounts is list &&
+          data.childCounts.size() <= 4
+        )) &&
+        (!('guests' in data) || (
+          data.guests is list &&
+          data.guests.size() <= 20
+        )) &&
         (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
         (!('displayName' in data) || (data.displayName is string || data.displayName == null)) &&
         (!('email' in data) || (data.email is string || data.email == null));
-    }
-    
-    // Enhanced attendee validation functions
-    function validAttendeeData(data) {
-      return data is map &&
-        ('eventId' in data) && isNonEmptyString(data.eventId) &&
-        ('userId' in data) && isNonEmptyString(data.userId) &&
-        ('attendeeType' in data) && data.attendeeType in ['primary', 'family_member', 'guest'] &&
-        ('relationship' in data) && data.relationship in ['self', 'spouse', 'child', 'guest'] &&
-        ('name' in data) && isNonEmptyString(data.name) && data.name.size() >= 2 &&
-        ('ageGroup' in data) && data.ageGroup in ['0-2', '3-5', '6-10', '11+'] &&
-        ('rsvpStatus' in data) && data.rsvpStatus in ['going', 'not-going', 'pending'] &&
-        (!('familyMemberId' in data) || (data.familyMemberId is string || data.familyMemberId == null));
     }
     
     function validStatusHistory(history) {
@@ -178,11 +160,6 @@ service cloud.firestore {
         (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['blockedFromRsvp', 'updatedAt', 'fcmToken'])) &&
         (!('fcmToken' in request.resource.data) || request.resource.data.fcmToken is string);
       allow delete: if isSignedIn() && request.auth.uid == userId;
-      
-      // --- FAMILY MEMBERS ---
-      match /familyMembers/{memberId} {
-        allow read, write: if isSignedIn() && request.auth.uid == userId;
-      }
     }
     
     // --- EVENT TEASERS ---
@@ -265,74 +242,45 @@ service cloud.firestore {
         
         allow create: if (isMember() || isAdmin()) && 
           request.auth.uid == userId && 
-          request.resource.data.eventId == eventId &&
-          request.resource.data.userId == userId &&
-          // Simple permission check: allow RSVP if user can see the event
+          !isUserBlockedFromRsvp(request.auth.uid) &&
+          validRSVPData(request.resource.data) &&
+          validStatusHistory(request.resource.data.statusHistory) &&
+          request.resource.data.statusHistory.size() == 1 &&
+          request.resource.data.statusHistory[0].status == request.resource.data.status &&
+          request.resource.data.statusHistory[0].changedBy == request.auth.uid &&
           (
-            // Public events: anyone can RSVP
-            get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+            // Public events: anyone can RSVP (including events with missing fields)
+            (('visibility' in get(/databases/$(database)/documents/events/$(eventId)).data) && get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public') ||
+            // Legacy support: old 'public' field
+            (('public' in get(/databases/$(database)/documents/events/$(eventId)).data) && get(/databases/$(database)/documents/events/$(eventId)).data.public == true) ||
+            // Members-only events: only members can RSVP
+            (isSignedIn() && (isMember() || isAdmin()) && 
+             (('visibility' in get(/databases/$(database)/documents/events/$(eventId)).data) && get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members')) ||
+            // Private events: only invited users can RSVP
+            (('invitedUserIds' in get(/databases/$(database)/documents/events/$(eventId)).data) && request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds) ||
+            // Legacy support: old invitedUsers field
+            (('invitedUsers' in get(/databases/$(database)/documents/events/$(eventId)).data) && request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUsers) ||
             // Event creator can always RSVP
             request.auth.uid == get(/databases/$(database)/documents/events/$(eventId)).data.createdBy ||
-            // Invited users can RSVP to private events
-            (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'private' && 
-             request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds)
+            // Default: Allow RSVP for events with visibility 'public' even if other fields are missing
+            (('visibility' in get(/databases/$(database)/documents/events/$(eventId)).data) && get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public')
           );
         
-        allow update: if (isMember() || isAdmin()) &&
+        allow update: if (isMember() || isAdmin()) && 
           (request.auth.uid == userId || isAdmin()) &&
-          request.resource.data.eventId == eventId &&
-          request.resource.data.userId == userId;
+          !isUserBlockedFromRsvp(userId) &&
+          validRSVPData(request.resource.data) &&
+          validStatusHistory(request.resource.data.statusHistory) &&
+          (request.auth.uid == userId
+              ? request.resource.data.statusHistory.size() == resource.data.statusHistory.size() + 1
+                && request.resource.data.statusHistory[request.resource.data.statusHistory.size() - 1].status == request.resource.data.status
+                && request.resource.data.statusHistory[request.resource.data.statusHistory.size() - 1].changedBy == request.auth.uid
+              : request.resource.data.statusHistory.size() == resource.data.statusHistory.size() + 1
+                && request.resource.data.statusHistory[request.resource.data.statusHistory.size() - 1].changedBy == request.auth.uid);
         
         // Enhanced: Allow admins to modify any RSVP
         allow delete: if (isMember() || isAdmin()) && 
           (request.auth.uid == userId || isAdmin());
-      }
-
-      // Attendees subcollection - NEW!
-      match /attendees/{attendeeId} {
-        allow read: if isSignedIn() && (
-          // Event creator can read all attendees
-          get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
-          // Admin can read all attendees
-          isAdmin() ||
-          // User can read attendees for events they can access
-          (
-            // Public events: anyone can read
-            get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
-            // Members can read members-only events
-            (isMember() && get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members') ||
-            // Invited users can read private events
-            (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'private' && 
-             request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds)
-          )
-        );
-        
-        allow create: if isSignedIn() && (
-          // User can manage their own household attendees
-          request.resource.data.userId == request.auth.uid ||
-          // Event creator can manage all attendees
-          get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
-          // Admin can manage all attendees
-          isAdmin()
-        ) && validAttendeeData(request.resource.data);
-        
-        allow update: if isSignedIn() && (
-          // User can manage their own household attendees
-          request.resource.data.userId == request.auth.uid ||
-          // Event creator can manage all attendees
-          get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
-          // Admin can manage all attendees
-          isAdmin()
-        ) && validAttendeeData(request.resource.data);
-        
-        allow delete: if isSignedIn() && (
-          // User can manage their own household attendees
-          resource.data.userId == request.auth.uid ||
-          // Event creator can manage all attendees
-          get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
-          // Admin can manage all attendees
-          isAdmin()
-        );
       }
     }
     

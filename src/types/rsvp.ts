@@ -1,35 +1,26 @@
-export type RSVPStatus = 'going' | 'not-going';
+// Legacy RSVP types - kept for backward compatibility
+// Note: New attendee system uses AttendeeStatus from types/attendee.ts
+export type RSVPStatus = 'going' | 'not-going' | 'pending';
 export type PaymentStatus = 'unpaid' | 'paid' | 'refunded';
 
 export interface RSVPDoc {
-  id?: string;
+  id: string;
   eventId: string;
   userId: string;
-  displayName?: string | null;
-  email?: string | null;
+  displayName: string | null;
+  email: string | null;
   status: RSVPStatus;
   adults: number;
-  kids?: number; // Legacy support
-  childCounts?: Array<{
-    ageGroup: '0-2' | '3-5' | '6-10' | '11+';
-    count: number;
-  }> | null;
-  guests?: Array<{
-    name: string;
-    phone: string;
-    email: string;
-    ageGroup: '0-2' | '3-5' | '6-10' | '11+';
-  }> | null;
-  notes?: string | null;
-  requiresPayment?: boolean;
-  paymentStatus?: PaymentStatus;
-  createdAt?: any;
-  updatedAt?: any;
-  statusHistory?: Array<{
+  childCounts: Array<{ ageGroup: string; count: number }> | null;
+  guests: Array<{ name: string; phone: string; email: string; ageGroup: string }> | null;
+  notes: string | null;
+  createdAt: any; // Firestore Timestamp
+  updatedAt: any; // Firestore Timestamp
+  statusHistory: Array<{
     status: RSVPStatus;
-    changedAt: any; // Accept both Date and Firestore Timestamp
+    changedAt: Date; // Changed from 'any' to 'Date' since we're using new Date()
     changedBy: string;
-  }> | null;
+  }>;
 }
 
 export interface EventCapacity {

@@ -12,9 +12,16 @@ import ffmpegStatic from 'ffmpeg-static';
 import ffprobe from '@ffprobe-installer/ffprobe';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
-
-// Init
+import * as functions from 'firebase-functions';
+// Initialize Firebase Admin BEFORE importing modules that use it
 initializeApp();
+
+import { onAttendeeChange, manualRecalculateCount, bulkAttendeeOperation } from './attendeeCounts';
+
+// Export the new attendee count management functions
+export { onAttendeeChange, manualRecalculateCount, bulkAttendeeOperation };
+
+// Get Firestore instance
 const db = getFirestore();
 
 // Helper

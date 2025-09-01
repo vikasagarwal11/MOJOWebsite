@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
-import { Calendar, MapPin, Users, Share2, Heart, MessageCircle, Eye, CheckCircle, XCircle, ThumbsUp, ThumbsDown, Clock, Link } from 'lucide-react';
+import { Calendar, MapPin, Users, Share2, Heart, MessageCircle, Eye, CheckCircle, XCircle, ThumbsUp, ThumbsDown, Clock, Link, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { EventDoc } from '../../hooks/useEvents';
 import { RSVPModal } from './RSVPModal';
@@ -9,6 +9,9 @@ import { EventTeaserModal } from './EventTeaserModal';
 import { PastEventModal } from './PastEventModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserBlocking } from '../../hooks/useUserBlocking';
+import { useUserRSVPs } from '../../hooks/useUserRSVPs';
+import { doc, setDoc, updateDoc, getDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 
 interface EventCardProps {
   event: EventDoc;
@@ -16,9 +19,174 @@ interface EventCardProps {
   onClick?: () => void;
 }
 
+// Utility function to recalculate total attendee count from all RSVPs
+const recalculateEventAttendeeCount = async (eventId: string): Promise<number> => {
+  try {
+    console.log('🔍 DEBUG: Starting attendee count recalculation for event:', eventId);
+    
+    const rsvpsRef = collection(db, 'events', eventId, 'rsvps');
+    const rsvpsSnapshot = await getDocs(rsvpsRef);
+    
+    console.log('🔍 DEBUG: Found', rsvpsSnapshot.size, 'RSVP documents');
+    
+    let totalAttendees = 0;
+    let rsvpDetails: any[] = [];
+    
+    rsvpsSnapshot.forEach((doc) => {
+      const rsvpData = doc.data();
+      console.log('🔍 DEBUG: Processing RSVP document:', {
+        docId: doc.id,
+        userId: rsvpData.userId,
+        status: rsvpData.status,
+        adults: rsvpData.adults,
+        childCounts: rsvpData.childCounts,
+        guests: rsvpData.guests,
+        rawData: rsvpData
+      });
+      
+      if (rsvpData.status === 'going') {
+        let rsvpContribution = 0;
+        
+        // Count additional adults (handle corrupted data)
+        const adults = typeof rsvpData.adults === 'number' ? rsvpData.adults : 0;
+        const cleanAdults = Math.max(0, adults);
+        rsvpContribution += cleanAdults;
+        if (cleanAdults > 0) {
+          console.log('🔍 DEBUG: +', cleanAdults, 'for additional adults, running total:', totalAttendees + rsvpContribution);
+        }
+        
+        // Count children (handle corrupted data)
+        if (rsvpData.childCounts && Array.isArray(rsvpData.childCounts)) {
+          rsvpData.childCounts.forEach((child: any, index: number) => {
+            if (child && typeof child.count === 'number' && !isNaN(child.count)) {
+              const cleanChildCount = Math.max(0, child.count);
+              rsvpContribution += cleanChildCount;
+              if (cleanChildCount > 0) {
+                console.log('🔍 DEBUG: +', cleanChildCount, 'for child', index, '(', child.ageGroup, '), running total:', totalAttendees + rsvpContribution);
+              }
+            }
+          });
+        }
+        
+        // Count guests (handle corrupted data)
+        if (rsvpData.guests && Array.isArray(rsvpData.guests)) {
+          const guestCount = rsvpData.guests.length;
+          rsvpContribution += guestCount;
+          if (guestCount > 0) {
+            console.log('🔍 DEBUG: +', guestCount, 'for guests, running total:', totalAttendees + rsvpContribution);
+          }
+        }
+        
+        totalAttendees += rsvpContribution;
+        
+        rsvpDetails.push({
+          userId: rsvpData.userId,
+          status: rsvpData.status,
+          contribution: rsvpContribution,
+          breakdown: {
+            primary: 0, // FIXED: Changed from 1 to 0 since we're not adding +1 separately
+            adults: cleanAdults,
+            children: rsvpData.childCounts ? Object.values(rsvpData.childCounts).reduce((sum: number, count: any) => sum + Math.max(0, count || 0), 0) : 0,
+            guests: rsvpData.guests ? rsvpData.guests.length : 0
+          }
+        });
+        
+        console.log('🔍 DEBUG: RSVP contribution:', rsvpContribution, 'Total so far:', totalAttendees);
+      } else {
+        console.log('🔍 DEBUG: Skipping RSVP with status:', rsvpData.status);
+      }
+    });
+    
+    // FIXED: Ensure total is never negative
+    const finalTotal = Math.max(0, totalAttendees);
+    
+    console.log('🔍 DEBUG: Final calculation breakdown:', {
+      eventId: eventId,
+      totalRSVPs: rsvpDetails.length,
+      rsvpDetails: rsvpDetails,
+      rawTotal: totalAttendees,
+      finalTotal: finalTotal
+    });
+    
+    console.log('🔍 Recalculated attendee count for event:', eventId, 'Total:', finalTotal);
+    return finalTotal;
+  } catch (error) {
+    console.error('❌ Error recalculating attendee count:', error);
+    return 0;
+  }
+};
+
+// Utility function to clean up corrupted RSVP data
+const cleanupCorruptedRSVPData = async (eventId: string): Promise<void> => {
+  try {
+    console.log('🧹 Starting cleanup of corrupted RSVP data for event:', eventId);
+    
+    const rsvpsRef = collection(db, 'events', eventId, 'rsvps');
+    const rsvpsSnapshot = await getDocs(rsvpsRef);
+    
+    const batch = writeBatch(db);
+    let cleanupCount = 0;
+    
+    rsvpsSnapshot.forEach((doc) => {
+      const rsvpData = doc.data();
+      let needsUpdate = false;
+      const cleanedData: any = { ...rsvpData };
+      
+      // Clean up corrupted adults field
+      if (typeof rsvpData.adults !== 'number' || isNaN(rsvpData.adults)) {
+        cleanedData.adults = 0;
+        needsUpdate = true;
+      }
+      
+      // Clean up corrupted childCounts
+      if (rsvpData.childCounts && Array.isArray(rsvpData.childCounts)) {
+        const cleanedChildCounts = rsvpData.childCounts.map((child: any) => {
+          if (child && typeof child.count === 'number' && !isNaN(child.count)) {
+            return child;
+          } else {
+            return { ageGroup: child?.ageGroup || '11+', count: 0 };
+          }
+        });
+        cleanedData.childCounts = cleanedChildCounts;
+        needsUpdate = true;
+      }
+      
+      // Clean up corrupted guests
+      if (rsvpData.guests && !Array.isArray(rsvpData.guests)) {
+        cleanedData.guests = [];
+        needsUpdate = true;
+      }
+      
+      if (needsUpdate) {
+        batch.update(doc.ref, cleanedData);
+        cleanupCount++;
+      }
+    });
+    
+    if (cleanupCount > 0) {
+      await batch.commit();
+      console.log('✅ Cleaned up', cleanupCount, 'corrupted RSVP documents');
+      
+      // Recalculate the event count after cleanup
+      const recalculatedCount = await recalculateEventAttendeeCount(eventId);
+      const eventRef = doc(db, 'events', eventId);
+      await updateDoc(eventRef, {
+        attendingCount: recalculatedCount,
+        updatedAt: new Date()
+      });
+      console.log('✅ Event count updated to:', recalculatedCount);
+    } else {
+      console.log('✅ No corrupted RSVP data found');
+    }
+  } catch (error) {
+    console.error('❌ Error cleaning up corrupted RSVP data:', error);
+  }
+};
+
 const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
+  const { userRSVPs } = useUserRSVPs([event.id]);
   const [showRSVPModal, setShowRSVPModal] = useState(false);
   const [showTeaserModal, setShowTeaserModal] = useState(false);
   const [showPastEventModal, setShowPastEventModal] = useState(false);
@@ -27,6 +195,9 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const [isLiked, setIsLiked] = useState(false);
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | null>(null);
+  
+  // State to track if attendee count needs attention
+  const [attendeeCountNeedsAttention, setAttendeeCountNeedsAttention] = useState(false);
   
   // Intersection Observer for lazy loading
   const [ref, inView] = useInView({
@@ -41,6 +212,61 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     setShowTeaserModal(false);
     setShowPastEventModal(false);
   }, [event.id]);
+
+  // Sync RSVP status from database
+  useEffect(() => {
+    if (currentUser && userRSVPs.length > 0) {
+      const rsvp = userRSVPs.find(r => r.eventId === event.id);
+      const status = rsvp ? rsvp.status : null;
+      setRsvpStatus(status);
+    } else if (currentUser) {
+      setRsvpStatus(null);
+    }
+  }, [currentUser, event.id, userRSVPs]);
+
+  // Check if attendee count needs attention (for debugging)
+  useEffect(() => {
+    const checkAttendeeCount = async () => {
+      if (currentUser?.role === 'admin') {
+        try {
+          console.log('🔍 DEBUG: Checking attendee count mismatch for event:', event.id);
+          console.log('🔍 DEBUG: Current displayed count:', event.attendingCount);
+          
+          const actualCount = await recalculateEventAttendeeCount(event.id);
+          const displayedCount = event.attendingCount || 0;
+          
+          console.log('🔍 DEBUG: Comparison values:', {
+            displayedCount: displayedCount,
+            actualCount: actualCount,
+            difference: displayedCount - actualCount
+          });
+          
+          // FIXED: Ensure both counts are non-negative for comparison
+          const cleanActualCount = Math.max(0, actualCount);
+          const cleanDisplayedCount = Math.max(0, displayedCount);
+          
+          if (cleanActualCount !== cleanDisplayedCount) {
+            console.log('⚠️ Attendee count mismatch detected:', {
+              eventId: event.id,
+              displayedCount: cleanDisplayedCount,
+              actualCount: cleanActualCount,
+              difference: cleanDisplayedCount - cleanActualCount,
+              originalDisplayed: displayedCount,
+              originalActual: actualCount
+            });
+            setAttendeeCountNeedsAttention(true);
+          } else {
+            console.log('🔍 DEBUG: Attendee counts match, no attention needed');
+            setAttendeeCountNeedsAttention(false);
+          }
+        } catch (error) {
+          console.error('Error checking attendee count:', error);
+        }
+      }
+    };
+    
+    checkAttendeeCount();
+  }, [currentUser?.role, event.id, event.attendingCount]);
 
   // Check if user is blocked from RSVP
   const isBlockedFromRSVP = blockedUsers.some(block => 
@@ -110,12 +336,225 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   };
 
   // Quick RSVP handlers
-  const handleQuickRSVP = (status: 'going' | 'not-going') => {
-    if (isBlockedFromRSVP) return;
+  const handleQuickRSVP = async (status: 'going' | 'not-going') => {
+    if (isBlockedFromRSVP || !currentUser) return;
     
-    setRsvpStatus(status);
-    // Here you could integrate with backend to save RSVP
-    // For now, just update local state
+    console.log('🔍 DEBUG: Quick RSVP started:', {
+      status,
+      eventId: event.id,
+      currentUser: currentUser.id,
+      currentRSVPStatus: rsvpStatus,
+      currentEventCount: event.attendingCount
+    });
+    
+    try {
+      // Get current RSVP to calculate correct attendee difference
+      const currentRSVPRef = doc(db, 'events', event.id, 'rsvps', currentUser.id);
+      
+      // Calculate attendee count for previous status
+      let previousAttendeeCount = 0;
+      if (rsvpStatus === 'going') {
+        // Try to get actual attendee count from existing RSVP
+        try {
+          const existingRSVP = await getDoc(currentRSVPRef);
+          if (existingRSVP.exists()) {
+            const data = existingRSVP.data();
+            previousAttendeeCount = (data.adults || 0) + 
+              (data.childCounts ? Object.values(data.childCounts).reduce((sum: number, count: any) => sum + (count || 0), 0) : 0) +
+              (data.guests ? data.guests.length : 0);
+            console.log('🔍 DEBUG: Found existing RSVP with attendee count:', previousAttendeeCount, 'data:', data);
+          }
+        } catch (error) {
+          console.log('⚠️ Could not fetch existing RSVP, assuming 1 attendee');
+          previousAttendeeCount = 1;
+        }
+      }
+      
+      console.log('🔍 DEBUG: Previous attendee count:', previousAttendeeCount);
+      
+      // For Quick RSVP, we need to check if there's an existing RSVP with more attendees
+      let newAttendeeCount = 0;
+      let rsvpData;
+      
+      if (status === 'going') {
+        // Check if there's an existing RSVP with children/guests
+        try {
+          const existingRSVP = await getDoc(currentRSVPRef);
+          if (existingRSVP.exists()) {
+            const data = existingRSVP.data();
+            console.log('🔍 DEBUG: Existing RSVP data found:', data);
+            
+            // If existing RSVP has children or guests, preserve them
+            if (data.childCounts || data.guests) {
+              rsvpData = {
+                eventId: event.id,
+                userId: currentUser.id,
+                displayName: currentUser.displayName,
+                email: currentUser.email,
+                status: status,
+                adults: data.adults || 0, // FIXED: Changed from 1 to 0 for simple RSVPs
+                childCounts: data.childCounts || null,
+                guests: data.guests || null,
+                notes: data.notes || null,
+                createdAt: data.createdAt || new Date(),
+                updatedAt: new Date(),
+                statusHistory: [
+                  ...(data.statusHistory || []),
+                  {
+                    status: status,
+                    changedAt: new Date(),
+                    changedBy: currentUser.id
+                  }
+                ]
+              };
+              // Calculate total attendees including existing children/guests
+              newAttendeeCount = (rsvpData.adults || 0) + 
+                (rsvpData.childCounts ? Object.values(rsvpData.childCounts).reduce((sum: number, count: any) => sum + (count || 0), 0) : 0) +
+                (rsvpData.guests ? rsvpData.guests.length : 0);
+              console.log('🔍 DEBUG: Preserving existing children/guests, new attendee count:', newAttendeeCount);
+            } else {
+              // No existing children/guests, just primary user
+              rsvpData = {
+                eventId: event.id,
+                userId: currentUser.id,
+                displayName: currentUser.displayName,
+                email: currentUser.email,
+                status: status,
+                adults: 0, // FIXED: Changed from 1 to 0 for simple RSVPs
+                childCounts: null,
+                guests: null,
+                notes: null,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                statusHistory: [{
+                  status: status,
+                  changedAt: new Date(),
+                  changedBy: currentUser.id
+                }]
+              };
+              newAttendeeCount = 0; // FIXED: Primary user is not an additional attendee
+              console.log('🔍 DEBUG: No existing children/guests, new attendee count:', newAttendeeCount);
+            }
+          } else {
+            // No existing RSVP, create new with just primary user
+            rsvpData = {
+              eventId: event.id,
+              userId: currentUser.id,
+              displayName: currentUser.displayName,
+              email: currentUser.email,
+              status: status,
+              adults: 0, // FIXED: Changed from 1 to 0 for simple RSVPs
+              childCounts: null,
+              guests: null,
+              notes: null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              statusHistory: [{
+                status: status,
+                changedAt: new Date(),
+                changedBy: currentUser.id
+              }]
+            };
+            newAttendeeCount = 0; // FIXED: Primary user is not an additional attendee
+            console.log('🔍 DEBUG: No existing RSVP, creating new with attendee count:', newAttendeeCount);
+          }
+        } catch (error) {
+          console.log('⚠️ Could not fetch existing RSVP, creating new with 1 attendee');
+          rsvpData = {
+            eventId: event.id,
+            userId: currentUser.id,
+            displayName: currentUser.displayName,
+            email: currentUser.email,
+            status: status,
+            adults: 0, // FIXED: Changed from 1 to 0 for simple RSVPs
+            childCounts: null,
+            guests: null,
+            notes: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            statusHistory: [{
+              status: status,
+              changedAt: new Date(),
+              changedBy: currentUser.id
+            }]
+          };
+          newAttendeeCount = 0; // FIXED: Primary user is not an additional attendee
+        }
+      } else {
+        // Not going - no attendees
+        rsvpData = {
+          eventId: event.id,
+          userId: currentUser.id,
+          displayName: currentUser.displayName,
+          email: currentUser.email,
+          status: status,
+          adults: 0,
+          childCounts: null,
+          guests: null,
+          notes: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          statusHistory: [{
+            status: status,
+            changedAt: new Date(),
+            changedBy: currentUser.id
+          }]
+        };
+        newAttendeeCount = 0;
+        console.log('🔍 DEBUG: Not going, new attendee count:', newAttendeeCount);
+      }
+      
+      console.log('🔍 DEBUG: RSVP data prepared:', {
+        status: rsvpData.status,
+        adults: rsvpData.adults,
+        childCounts: rsvpData.childCounts,
+        guests: rsvpData.guests,
+        newAttendeeCount: newAttendeeCount
+      });
+      
+      // Update local state immediately for responsive UI
+      setRsvpStatus(status);
+      
+      // Submit RSVP to database
+      const rsvpRef = doc(db, 'events', event.id, 'rsvps', currentUser.id);
+      console.log('🔍 DEBUG: Submitting RSVP to database...');
+      await setDoc(rsvpRef, rsvpData);
+      console.log('🔍 DEBUG: RSVP submitted successfully to database');
+
+      // Recalculate total attendee count from all RSVPs instead of incrementing/decrementing
+      console.log('🔍 DEBUG: Starting attendee count recalculation...');
+      const recalculatedCount = await recalculateEventAttendeeCount(event.id);
+      
+      // FIXED: Prevent negative counts
+      const finalCount = Math.max(0, recalculatedCount);
+      
+      console.log('🔍 DEBUG: Count recalculation complete:', {
+        recalculatedCount: recalculatedCount,
+        finalCount: finalCount,
+        expectedCount: newAttendeeCount
+      });
+      
+      // Update event with recalculated count
+      const eventRef = doc(db, 'events', event.id);
+      console.log('🔍 DEBUG: Updating event with new count:', finalCount);
+      await updateDoc(eventRef, {
+        attendingCount: finalCount,
+        updatedAt: new Date()
+      });
+      console.log('🔍 DEBUG: Event updated successfully');
+
+      console.log('✅ Quick RSVP submitted successfully:', {
+        status,
+        previousAttendees: previousAttendeeCount,
+        newAttendees: newAttendeeCount,
+        recalculatedTotalCount: finalCount,
+        rsvpData: rsvpData
+      });
+    } catch (error) {
+      console.error('❌ Quick RSVP failed:', error);
+      // Revert local state on error
+      setRsvpStatus(rsvpStatus);
+    }
   };
 
   // Share event
@@ -151,6 +590,34 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const toggleLike = () => {
     setIsLiked(!isLiked);
     // Here you could integrate with a backend to persist likes
+  };
+
+  // Debug function to manually fix attendee count (useful for fixing corrupted data)
+  const debugFixAttendeeCount = async () => {
+    if (currentUser?.role !== 'admin') return;
+    
+    try {
+      console.log('🔧 Debug: Starting comprehensive fix for event:', event.id);
+      
+      // Step 1: Clean up corrupted RSVP data
+      await cleanupCorruptedRSVPData(event.id);
+      
+      // Step 2: Recalculate attendee count from clean data
+      const recalculatedCount = await recalculateEventAttendeeCount(event.id);
+      const eventRef = doc(db, 'events', event.id);
+      
+      await updateDoc(eventRef, {
+        attendingCount: recalculatedCount,
+        updatedAt: new Date()
+      });
+      
+      console.log('✅ Debug: Event completely fixed. New count:', recalculatedCount);
+      
+      // Force a refresh of the component
+      window.location.reload();
+    } catch (error) {
+      console.error('❌ Debug: Failed to fix event:', error);
+    }
   };
 
   // Calculate event duration
@@ -365,68 +832,80 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
               </div>
             )}
 
-            {/* Quick RSVP Status Icons with Going Count and Share - All in one row */}
-            {currentUser && !isBlockedFromRSVP && !isEventPast && (
-              <div className="mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleQuickRSVP('going');
-                      }}
-                      className={`p-2 rounded-full transition-all duration-200 ${
-                        rsvpStatus === 'going'
-                          ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg'
-                          : 'bg-gradient-to-r from-green-50 to-emerald-50 text-green-600 hover:from-green-100 hover:to-emerald-100 border border-green-200 hover:border-green-300'
-                      }`}
-                      title="Going"
-                    >
-                      <ThumbsUp className="w-4 h-4" />
-                    </motion.button>
-                    
-                    {/* Going count next to the going icon */}
-                    <span className="flex items-center gap-1 text-xs text-purple-600 font-semibold bg-purple-100 px-2 py-1 rounded-full border border-purple-200">
-                      <Users className="w-3 h-3" />
-                      {Math.floor(Math.random() * 15) + 3}
-                    </span>
-                  </div>
-                  
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleQuickRSVP('not-going');
-                    }}
-                    className={`p-2 rounded-full transition-all duration-200 ${
-                      rsvpStatus === 'not-going'
-                        ? 'bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-lg'
-                        : 'bg-gradient-to-r from-red-50 to-rose-50 text-red-600 hover:from-red-100 hover:to-rose-100 border border-red-200 hover:border-red-300'
-                    }`}
-                    title="Not Going"
-                  >
-                    <ThumbsDown className="w-4 h-4" />
-                  </motion.button>
-                </div>
-                
-                {/* Share button - aligned to the right in the same row */}
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShareMenuOpen(!shareMenuOpen);
-                  }}
-                  className="p-2 text-purple-600 hover:text-purple-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50 rounded-full transition-all duration-200 border border-purple-200 hover:border-purple-300"
-                  title="Share Event"
-                >
-                  <Share2 className="w-4 h-4" />
-                </motion.button>
-              </div>
-            )}
+                         {/* Quick RSVP Status Icons with Single Attendee Count and Share */}
+             {currentUser && !isBlockedFromRSVP && !isEventPast && (
+               <div className="mb-3 flex items-center justify-between">
+                 <div className="flex items-center gap-3">
+                   {/* Going Button */}
+                   <motion.button
+                     whileHover={{ scale: 1.05 }}
+                     whileTap={{ scale: 0.95 }}
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       handleQuickRSVP('going');
+                     }}
+                     disabled={rsvpStatus === 'going'} // FIXED: Disable when already going
+                     className={`p-2 rounded-full transition-all duration-200 ${
+                       rsvpStatus === 'going'
+                         ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg cursor-not-allowed opacity-75'
+                         : 'bg-gradient-to-r from-green-50 to-emerald-50 text-green-600 hover:from-green-100 hover:to-emerald-100 border border-green-200 hover:border-green-300'
+                     }`}
+                     title={rsvpStatus === 'going' ? 'Already Going' : 'Going'}
+                   >
+                     <ThumbsUp className="w-4 h-4" />
+                   </motion.button>
+                   
+                   {/* Single Attendee Count - Total people RSVP'd as Going */}
+                   <span className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full border text-purple-600 bg-purple-100 border-purple-200">
+                     <Users className="w-3 h-3" />
+                     {Math.max(0, event.attendingCount || 0)} {/* FIXED: Prevent negative display */}
+                     <span className="text-xs opacity-75 ml-1">Going</span>
+                     {/* Warning indicator for admins when count needs attention */}
+                     {attendeeCountNeedsAttention && currentUser?.role === 'admin' && (
+                       <div className="relative group">
+                         <AlertTriangle className="w-3 h-3 text-orange-500 cursor-help" />
+                         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                           Attendee count may be incorrect - click 'Fix Count' to recalculate
+                         </div>
+                       </div>
+                     )}
+                   </span>
+                   
+                   {/* Not Going Button */}
+                   <motion.button
+                     whileHover={{ scale: 1.05 }}
+                     whileTap={{ scale: 0.95 }}
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       handleQuickRSVP('not-going');
+                     }}
+                     disabled={rsvpStatus === 'not-going'} // FIXED: Disable when already not going
+                     className={`p-2 rounded-full transition-all duration-200 ${
+                       rsvpStatus === 'not-going'
+                         ? 'bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-lg cursor-not-allowed opacity-75'
+                         : 'bg-gradient-to-r from-red-50 to-rose-50 text-red-600 hover:from-red-100 hover:to-rose-100 border border-red-200 hover:border-red-300'
+                     }`}
+                     title={rsvpStatus === 'not-going' ? 'Already Not Going' : 'Not Going'}
+                   >
+                     <ThumbsDown className="w-4 h-4" />
+                   </motion.button>
+                 </div>
+                 
+                 {/* Share button - aligned to the right in the same row */}
+                 <motion.button
+                   whileHover={{ scale: 1.05 }}
+                   whileTap={{ scale: 0.95 }}
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     setShareMenuOpen(!shareMenuOpen);
+                   }}
+                   className="p-2 text-purple-600 hover:text-purple-700 hover:bg-gradient-to-r hover:from-purple-50 hover:to-blue-50 rounded-full transition-all duration-200 border border-purple-200 hover:border-purple-300"
+                   title="Share Event"
+                 >
+                   <Share2 className="w-4 h-4" />
+                 </motion.button>
+               </div>
+             )}
           </div>
         </div>
 
@@ -444,22 +923,36 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                   Event Ended
                 </motion.button>
               ) : (
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowRSVPModal(true);
-                  }}
-                  disabled={isBlockedFromRSVP}
-                  className={`flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-all duration-200 ${
-                    isBlockedFromRSVP
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 hover:shadow-lg'
-                  }`}
-                >
-                  {isBlockedFromRSVP ? 'RSVP Blocked' : 'RSVP Details'}
-                </motion.button>
+                                 <motion.button
+                   whileHover={{ scale: 1.02 }}
+                   whileTap={{ scale: 0.98 }}
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     console.log('🔍 RSVP Button clicked - opening modal');
+                     setShowRSVPModal(true);
+                   }}
+                   disabled={isBlockedFromRSVP}
+                   className={`flex-1 px-3 py-2 rounded-lg font-medium text-sm transition-all duration-200 flex items-center justify-center relative z-10 ${
+                     isBlockedFromRSVP
+                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                       : rsvpStatus === 'going'
+                       ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-600 hover:to-emerald-600'
+                       : rsvpStatus === 'not-going'
+                       ? 'bg-gradient-to-r from-red-500 to-rose-500 text-white hover:from-red-600 hover:to-rose-600'
+                       : 'bg-gradient-to-r from-purple-600 to-purple-700 text-white hover:from-purple-700 hover:to-purple-800 hover:shadow-lg'
+                   }`}
+                 >
+                   <span className="flex items-center justify-center w-full h-full">
+                     {isBlockedFromRSVP 
+                       ? 'RSVP Blocked' 
+                       : rsvpStatus === 'going'
+                       ? '✅ You\'re Going'
+                       : rsvpStatus === 'not-going'
+                       ? '❌ You\'re Not Going'
+                       : 'RSVP Details'
+                     }
+                   </span>
+                 </motion.button>
               )
             ) : (
               isEventPast ? (
@@ -499,6 +992,22 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                 Edit
               </motion.button>
             )}
+
+            {/* Debug button for admins to fix attendee count */}
+            {currentUser?.role === 'admin' && (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  debugFixAttendeeCount();
+                }}
+                className="px-3 py-2 border-2 border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 hover:border-orange-400 transition-all duration-200 font-medium text-sm"
+                title="Fix attendee count (recalculate from RSVPs)"
+              >
+                Fix Count
+              </motion.button>
+            )}
           </div>
         </div>
         
@@ -513,7 +1022,11 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
           onClose={() => setShowRSVPModal(false)}
           onRSVPUpdate={() => {
             setShowRSVPModal(false);
-            // You could trigger a refresh here
+            // Refresh RSVP status after update
+            if (currentUser) {
+              const status = userRSVPs.find(r => r.eventId === event.id)?.status || null;
+              setRsvpStatus(status);
+            }
           }}
         />
       )}

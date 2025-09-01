@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, Calendar, Share2, RefreshCw, Plus, X, TrendingUp, Clock, MapPin, Users, Tag } from 'lucide-react';
+import { Search, Filter, Calendar, Share2, Plus, X, TrendingUp, Clock, MapPin, Users, Tag } from 'lucide-react';
 import EventCalendar from '../components/events/EventCalendar';
 import EventList from '../components/events/EventList';
 import CreateEventModal from '../components/events/CreateEventModal';
@@ -9,7 +9,7 @@ import { useRealTimeEvents } from '../hooks/useRealTimeEvents';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserBlocking } from '../hooks/useUserBlocking';
 import { EventDoc } from '../hooks/useEvents';
-import { RSVPModal } from '../components/events/RSVPModal';
+import { RSVPModalNew as RSVPModal } from '../components/events/RSVPModalNew';
 import { EventTeaserModal } from '../components/events/EventTeaserModal';
 import { PastEventModal } from '../components/events/PastEventModal';
 import toast from 'react-hot-toast';
@@ -56,7 +56,7 @@ const Events: React.FC = () => {
     enabled: false
   });
   const [sortBy, setSortBy] = useState<'date' | 'title' | 'location' | 'popularity'>('date');
-  const [isRefreshing, setIsRefreshing] = useState(false);
+
 
   // Modal states for calendar events
   const [selectedEvent, setSelectedEvent] = useState<EventDoc | null>(null);
@@ -194,18 +194,7 @@ const Events: React.FC = () => {
     }
   };
 
-  // Handle refresh with loading state
-  const handleRefresh = useCallback(async () => {
-    setIsRefreshing(true);
-    try {
-      await refreshRealTime();
-      toast.success('Events refreshed!');
-    } catch (error) {
-      toast.error('Failed to refresh events');
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [refreshRealTime]);
+
 
   // Share current events page
   const shareEventsPage = async () => {
@@ -219,7 +208,7 @@ const Events: React.FC = () => {
       } catch (error) {
         console.log('Error sharing:', error);
       }
-    } else {
+        } else {
       // Fallback: copy to clipboard
       await navigator.clipboard.writeText(window.location.href);
       toast.success('Page link copied to clipboard!');
@@ -241,7 +230,7 @@ const Events: React.FC = () => {
   const hasActiveFilters = searchInput || tag || locationFilter || 
     dateRangeFilter.enabled || capacityFilter.enabled || sortBy !== 'date';
 
-  return (
+    return (
     <div className="max-w-7xl mx-auto p-6">
       {/* Header Section */}
       <motion.div 
@@ -261,9 +250,9 @@ const Events: React.FC = () => {
             <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
               <span>Live updates • Last updated {lastUpdate.toLocaleTimeString()}</span>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
+          </div>
         
         <div className="flex items-center gap-3">
           {/* Share button */}
@@ -277,21 +266,7 @@ const Events: React.FC = () => {
             <Share2 className="w-5 h-5" />
           </motion.button>
 
-          {/* Refresh button */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className={`p-2 rounded-full transition-all duration-200 ${
-              isRefreshing 
-                ? 'text-gray-400 cursor-not-allowed' 
-                : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
-            }`}
-            title="Refresh Events"
-          >
-            <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
-          </motion.button>
+
 
           {/* Create Event button (admin only) */}
           {currentUser?.role === 'admin' && (
@@ -334,7 +309,7 @@ const Events: React.FC = () => {
                 {filtered.length}
               </motion.span>
             )}
-          </div>
+            </div>
         </button>
         <button
           onClick={() => setActiveTab('past')}
@@ -356,7 +331,7 @@ const Events: React.FC = () => {
                 {filtered.length}
               </motion.span>
             )}
-          </div>
+            </div>
         </button>
       </motion.div>
 
@@ -391,8 +366,8 @@ const Events: React.FC = () => {
                 </motion.button>
               )}
               <Search className="w-4 h-4 text-gray-400" />
-            </div>
           </div>
+        </div>
           
           <select 
             value={tag || ''} 
@@ -425,7 +400,7 @@ const Events: React.FC = () => {
             <Filter className="w-4 h-4" />
             Advanced
           </motion.button>
-        </div>
+          </div>
 
         {/* Advanced Filters Panel */}
         <AnimatePresence>
@@ -447,11 +422,11 @@ const Events: React.FC = () => {
                     onChange={e => setLocationFilter(e.target.value)}
                     placeholder="Filter by location..."
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  />
-                </div>
+         />
+      </div>
 
                 {/* Date Range Filter */}
-                <div>
+        <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
                   <div className="space-y-2">
                     <input
@@ -466,8 +441,8 @@ const Events: React.FC = () => {
                       onChange={e => setDateRangeFilter(prev => ({ ...prev, endDate: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     />
-                  </div>
-                </div>
+        </div>
+      </div>
 
                 {/* Capacity Filter */}
                 <div>
@@ -480,20 +455,20 @@ const Events: React.FC = () => {
                       onChange={e => setCapacityFilter(prev => ({ ...prev, min: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     />
-                    <input
+          <input
                       type="number"
                       placeholder="Max"
                       value={capacityFilter.max}
                       onChange={e => setCapacityFilter(prev => ({ ...prev, max: e.target.value }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                     />
-                  </div>
-                </div>
+            </div>
+        </div>
 
                 {/* Sort Options */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
-                  <select
+        <select
                     value={sortBy}
                     onChange={e => setSortBy(e.target.value as any)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
@@ -502,8 +477,8 @@ const Events: React.FC = () => {
                     <option value="title">Title (A-Z)</option>
                     <option value="location">Location (A-Z)</option>
                     <option value="popularity">Popularity</option>
-                  </select>
-                </div>
+        </select>
+      </div>
               </div>
 
               {/* Filter Actions */}
@@ -512,12 +487,12 @@ const Events: React.FC = () => {
                   {hasActiveFilters ? `${filtered.length} events found` : 'All events shown'}
                 </span>
                 <div className="flex gap-2">
-                  <button
+          <button
                     onClick={clearAllFilters}
                     className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 underline"
                   >
                     Clear all filters
-                  </button>
+          </button>
                 </div>
               </div>
             </motion.div>
@@ -543,14 +518,14 @@ const Events: React.FC = () => {
                   {tag && `Filtered by tag "${tag}"`}
                   {hasActiveFilters && ' • Advanced filters applied'}
                 </span>
-              </div>
-              <button
+        </div>
+        <button
                 onClick={clearAllFilters}
                 className="text-sm text-blue-600 hover:text-blue-800 underline"
-              >
+        >
                 Clear all filters
-              </button>
-            </div>
+        </button>
+      </div>
             {filtered.length > 0 && (
               <div className="mt-2 text-sm text-blue-700">
                 Found {filtered.length} event{filtered.length !== 1 ? 's' : ''}
@@ -637,7 +612,7 @@ const Events: React.FC = () => {
       {/* Event Form Modal */}
       <AnimatePresence>
         {showModal && (
-          <CreateEventModal 
+        <CreateEventModal
             onClose={() => setShowModal(false)} 
             onEventCreated={() => setShowModal(false)} 
           />
@@ -648,10 +623,9 @@ const Events: React.FC = () => {
       <AnimatePresence>
         {showRSVPModal && selectedEvent && (
           <RSVPModal
-            open={showRSVPModal}
             event={selectedEvent}
             onClose={() => setShowRSVPModal(false)}
-            onRSVPUpdate={() => {
+            onAttendeeUpdate={() => {
               console.log('RSVP Updated from calendar');
               setShowRSVPModal(false);
               setSelectedEvent(null);
@@ -665,7 +639,7 @@ const Events: React.FC = () => {
         {showTeaserModal && selectedEvent && (
           <EventTeaserModal
             open={showTeaserModal}
-            event={selectedEvent}
+                event={selectedEvent} 
             onClose={() => setShowTeaserModal(false)}
           />
         )}

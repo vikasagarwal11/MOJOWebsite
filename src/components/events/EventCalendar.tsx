@@ -1,11 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format as dfFormat, parse as dfParse, startOfWeek as dfStartOfWeek, getDay as dfGetDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import { EventDoc } from '../../hooks/useEvents';
 import { tsToDate } from '../../hooks/useEventsUtils';
 import { useAuth } from '../../contexts/AuthContext';
-import { useUserRSVPs } from '../../hooks/useUserRSVPs';
+import { useAttendees } from '../../hooks/useAttendees';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 const localizer = dateFnsLocalizer({
@@ -24,11 +24,29 @@ type Props = {
 const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
   const { currentUser } = useAuth();
   
-  // Extract event IDs for RSVP fetching
-  const eventIds = useMemo(() => events.map(e => e.id || '').filter(id => id), [events]);
+  // For calendar view, we'll get RSVP status from the first event's attendees
+  // This is a simplified approach - in a full implementation, you might want to
+  // fetch attendees for all events or use a different strategy
+  const firstEventId = events[0]?.id;
+  const { attendees: firstEventAttendees } = useAttendees(firstEventId || '');
   
-  // Fetch user RSVPs for all events
-  const { getRSVPStatus } = useUserRSVPs(eventIds);
+  // Helper function to get RSVP status for an event
+  const getRSVPStatus = useCallback((eventId: string): 'going' | 'not-going' | null => {
+    if (!currentUser || eventId !== firstEventId) return null;
+    
+    const userAttendee = firstEventAttendees.find(a => 
+      a.userId === currentUser.id && a.attendeeType === 'primary'
+    );
+    
+    if (!userAttendee) return null;
+    
+    // Only return 'going' or 'not-going', filter out 'pending'
+    if (userAttendee.rsvpStatus === 'going' || userAttendee.rsvpStatus === 'not-going') {
+      return userAttendee.rsvpStatus;
+    }
+    
+    return null;
+  }, [currentUser, firstEventId, firstEventAttendees]);
   
   const calendarEvents = useMemo(() => events.map((e) => {
     const start = tsToDate(e.startAt);

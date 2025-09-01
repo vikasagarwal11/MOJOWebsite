@@ -1,6 +1,6 @@
 import React from 'react';
-import { Bell, Calendar, Share2 } from 'lucide-react';
-import EventCard from '../components/events/EventCard';
+import { Bell, Calendar, Share2, Eye } from 'lucide-react';
+import EventCardNew from '../components/events/EventCardNew';
 
 interface Event {
   id: string;
@@ -191,7 +191,7 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {rsvpedEvents.map(event => (
             <div key={event.id} className="relative">
-              <EventCard
+              <EventCardNew
                 event={event}
                 onEdit={currentUser?.role === 'admin' ? () => {
                   setEventToEdit(event);
@@ -226,7 +226,7 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {userEvents.map(event => (
             <div key={event.id} className="relative">
-              <EventCard
+              <EventCardNew
                 event={{ ...event, createdBy: userNames[event.createdBy] || event.createdBy }}
                 onEdit={() => {
                   setEventToEdit(event);

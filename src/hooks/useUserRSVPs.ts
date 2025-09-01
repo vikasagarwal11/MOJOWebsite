@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { RSVPDoc } from '../types/rsvp';
@@ -47,11 +47,11 @@ export const useUserRSVPs = (eventIds: string[]) => {
     fetchUserRSVPs();
   }, [currentUser, eventIds]);
 
-  // Helper function to get RSVP status for a specific event
-  const getRSVPStatus = (eventId: string): 'going' | 'not-going' | null => {
+  // Helper function to get RSVP status for a specific event - memoized with useCallback
+  const getRSVPStatus = useCallback((eventId: string): 'going' | 'not-going' | null => {
     const rsvp = userRSVPs.find(r => r.eventId === eventId);
     return rsvp ? rsvp.status : null;
-  };
+  }, [userRSVPs]);
 
   return {
     userRSVPs,
