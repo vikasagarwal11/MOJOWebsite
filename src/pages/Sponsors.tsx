@@ -17,13 +17,13 @@ const Sponsors: React.FC = () => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="text-center mb-12">
-        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+        <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent mb-4">
           Our Amazing Sponsors
         </h1>
         <p className="text-gray-600 text-lg max-w-2xl mx-auto">
           We're grateful for our partners who support our community with exclusive deals and promotions.
           {!currentUser && (
-            <span className="block mt-2 text-purple-600 font-medium">
+            <span className="block mt-2 text-[#F25129] font-medium">
               Join our community to access exclusive member promotions!
             </span>
           )}
@@ -35,7 +35,7 @@ const Sponsors: React.FC = () => {
         {sponsors.map((sponsor) => (
           <div
             key={sponsor.id}
-            className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-purple-100 overflow-hidden"
+            className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-[#F25129]/20 overflow-hidden"
           >
             {/* Sponsor Header */}
             <div className="p-6 border-b border-gray-100">
@@ -60,7 +60,7 @@ const Sponsors: React.FC = () => {
                       href={sponsor.website}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center text-purple-600 hover:text-purple-700 font-medium transition-colors"
+                      className="inline-flex items-center text-[#F25129] hover:text-[#E0451F] font-medium transition-colors"
                     >
                       Visit Website
                       <ExternalLink className="w-4 h-4 ml-1" />
@@ -87,7 +87,7 @@ const Sponsors: React.FC = () => {
                     key={promotion.id}
                     className={`rounded-xl border-2 p-4 transition-all duration-300 ${
                       currentUser
-                        ? 'border-purple-200 bg-purple-50 hover:border-purple-300 hover:bg-purple-100'
+                        ? 'border-[#F25129]/20 bg-[#F25129]/10 hover:border-[#F25129]/30 hover:bg-[#F25129]/20'
                         : 'border-gray-200 bg-gray-50 opacity-60'
                     }`}
                   >
@@ -101,7 +101,7 @@ const Sponsors: React.FC = () => {
                     
                     <div className="flex items-start justify-between mb-2">
                       <h4 className="font-semibold text-gray-900">{promotion.title}</h4>
-                      <div className="flex items-center text-purple-600">
+                      <div className="flex items-center text-[#F25129]">
                         <Gift className="w-4 h-4 mr-1" />
                         <span className="text-sm font-bold">
                           {promotion.discountPercentage}% OFF
@@ -117,7 +117,7 @@ const Sponsors: React.FC = () => {
                           {promotion.discountCode && (
                             <div className="flex items-center space-x-2">
                               <span className="text-xs text-gray-500">Code:</span>
-                              <code className="px-2 py-1 bg-purple-100 text-purple-700 rounded font-mono text-sm font-bold">
+                              <code className="px-2 py-1 bg-[#F25129]/10 text-[#F25129] rounded font-mono text-sm font-bold">
                                 {promotion.discountCode}
                               </code>
                             </div>
@@ -130,7 +130,7 @@ const Sponsors: React.FC = () => {
                       ) : (
                         <div className="text-center w-full">
                           <p className="text-sm text-gray-500 mb-2">Login to view discount code</p>
-                          <button className="text-purple-600 hover:text-purple-700 font-medium text-sm transition-colors">
+                          <button className="text-[#F25129] hover:text-[#E0451F] font-medium text-sm transition-colors">
                             Join Community
                           </button>
                         </div>
@@ -145,17 +145,17 @@ const Sponsors: React.FC = () => {
       </div>
 
       {/* CTA Section */}
-      <div className="mt-16 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl p-8 text-center text-white">
+      <div className="mt-16 bg-gradient-to-r from-[#F25129] to-[#FF6B35] rounded-2xl p-8 text-center text-white">
         <h2 className="text-2xl md:text-3xl font-bold mb-4">
           Want to Become a Sponsor?
         </h2>
-        <p className="text-purple-100 mb-6 max-w-2xl mx-auto">
+        <p className="text-white/80 mb-6 max-w-2xl mx-auto">
           Partner with Moms Fitness Mojo to reach an engaged community of health-conscious mothers. 
           Let's create meaningful partnerships that benefit our members.
         </p>
         <a
           href="mailto:partnerships@momsfitnessmojo.com"
-          className="inline-flex items-center px-8 py-3 bg-white text-purple-600 font-semibold rounded-full hover:bg-gray-100 transition-all duration-300 transform hover:scale-105 shadow-lg"
+          className="inline-flex items-center px-8 py-3 bg-white text-[#F25129] font-semibold rounded-full hover:bg-gray-100 transition-all duration-300 transform hover:scale-105 shadow-lg"
         >
           Contact Us
           <ExternalLink className="w-4 h-4 ml-2" />

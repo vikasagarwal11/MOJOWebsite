@@ -52,14 +52,14 @@ const Media: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Media Gallery</h1>
+          <h1 className="text-3xl md:text-4xl font-bold text-[#F25129] mb-2">Media Gallery</h1>
           <p className="text-gray-600 text-lg">Share and explore moments from our fitness community</p>
         </div>
 
         {currentUser && (
           <button
             onClick={() => setIsUploadModalOpen(true)}
-            className="mt-4 md:mt-0 flex items-center px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-full hover:from-purple-700 hover:to-pink-700 transition-all duration-300 transform hover:scale-105 shadow-lg"
+            className="mt-4 md:mt-0 flex items-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg"
           >
             <Upload className="w-5 h-5 mr-2" />
             Upload Media
@@ -81,8 +81,8 @@ const Media: React.FC = () => {
               onClick={() => setFilterType(f.key as any)}
               className={`flex items-center px-4 py-2 rounded-md font-medium transition-all duration-200 ${
                 filterType === f.key
-                  ? 'bg-white text-purple-600 shadow-sm'
-                  : 'text-gray-600 hover:text-purple-600'
+                  ? 'bg-white text-[#F25129] shadow-sm'
+                  : 'text-gray-600 hover:text-[#F25129]'
               }`}
             >
               {f.icon}
@@ -95,7 +95,7 @@ const Media: React.FC = () => {
         <select
           value={selectedEvent}
           onChange={(e) => setSelectedEvent(e.target.value)}
-          className="px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+          className="px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent bg-white"
         >
           <option value="all">All Events</option>
           <option value="no-event">No Event Tag</option>
@@ -125,7 +125,7 @@ const Media: React.FC = () => {
           {currentUser && (
             <button
               onClick={() => setIsUploadModalOpen(true)}
-              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-full hover:from-purple-700 hover:to-pink-700 transition-all duration-300 transform hover:scale-105"
+              className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105"
             >
               Upload First Media
             </button>

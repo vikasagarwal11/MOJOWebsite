@@ -253,7 +253,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
               className="bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] md:max-w-[90vw] lg:max-w-[85vw] xl:max-w-[80vw] 2xl:max-w-7xl max-h-[95vh] overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4">
+              <div className="bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Users className="w-6 h-6" />
@@ -261,7 +261,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                       <h2 id="rsvp-title" className="text-2xl font-bold">
                         {event.title}
                       </h2>
-                      <div className="flex items-center gap-4 text-purple-100 text-sm mt-1">
+                      <div className="flex items-center gap-4 text-white/80 text-sm mt-1">
                         <div className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
                           <span>{formatEventDate(event.startAt)}</span>
@@ -361,17 +361,17 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                         </div>
                       </div>
 
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg mb-4">
+                      <div className="bg-[#F25129]/10 border border-[#F25129]/20 rounded-lg mb-4">
                         <motion.button
                           id="add-attendees-trigger"
                           aria-expanded={!isAddSectionCollapsed}
                           aria-controls="add-attendees-panel"
                           onClick={() => setIsAddSectionCollapsed((v) => !v)}
-                          className="w-full p-4 flex items-center justify-between hover:bg-blue-100 transition-colors"
+                          className="w-full p-4 flex items-center justify-between hover:bg-[#F25129]/20 transition-colors"
                           aria-label={`${isAddSectionCollapsed ? 'Expand' : 'Collapse'} Add Attendees section`}
                         >
                           <div className="flex items-center gap-2">
-                            <UserPlus className="w-4 h-4 text-blue-600" />
+                            <UserPlus className="w-4 h-4 text-[#F25129]" />
                             <h4 className="font-medium text-gray-900">Add Attendees</h4>
                             <span className="text-sm text-gray-500">
                               ({bulkFormData.familyMembers.filter((m) => m.name.trim()).length} ready to add)
@@ -443,12 +443,12 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                         placeholder="Name"
                                         value={member.name}
                                         onChange={(e) => updateBulkFormField(member.id, 'name', e.target.value)}
-                                        className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                                       />
                                       <select
                                         value={member.ageGroup}
                                         onChange={(e) => updateBulkFormField(member.id, 'ageGroup', e.target.value)}
-                                        className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                                       >
                                         <option value="0-2">0-2 Years</option>
                                         <option value="3-5">3-5 Years</option>
@@ -458,7 +458,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                       <select
                                         value={member.relationship}
                                         onChange={(e) => updateBulkFormField(member.id, 'relationship', e.target.value)}
-                                        className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                                       >
                                         <option value="spouse">Spouse</option>
                                         <option value="child">Child</option>
@@ -467,7 +467,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                       <select
                                         value={member.rsvpStatus}
                                         onChange={(e) => updateBulkFormField(member.id, 'rsvpStatus', e.target.value)}
-                                        className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                                       >
                                         <option value="going">Going</option>
                                         <option value="not-going">Not Going</option>
@@ -486,11 +486,11 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                   ))}
                                 </div>
 
-                                <div className="mt-4 pt-3 border-t border-blue-200">
+                                <div className="mt-4 pt-3 border-t border-[#F25129]/20">
                                   <button
                                     onClick={handleBulkAddFamilyMembers}
                                     disabled={loading || bulkFormData.familyMembers.every((m) => !m.name.trim())}
-                                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    className="w-full px-4 py-2 bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                   >
                                     {loading
                                       ? 'Adding...'
@@ -504,17 +504,17 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                       </div>
 
                       {familyMembers.length > 0 && (
-                        <div className="bg-purple-50 border border-purple-200 rounded-lg mb-4">
+                        <div className="bg-[#F25129]/10 border border-[#F25129]/20 rounded-lg mb-4">
                           <motion.button
                             id="family-members-trigger"
                             aria-expanded={showFamilyMembers}
                             aria-controls="family-members-panel"
                             onClick={() => setShowFamilyMembers((v) => !v)}
-                            className="w-full p-4 flex items-center justify-between hover:bg-purple-100 transition-colors"
+                            className="w-full p-4 flex items-center justify-between hover:bg-[#F25129]/20 transition-colors"
                             aria-label={`${showFamilyMembers ? 'Collapse' : 'Expand'} Family Members section`}
                           >
                             <div className="flex items-center gap-2">
-                              <Heart className="w-4 h-4 text-purple-600" />
+                              <Heart className="w-4 h-4 text-[#F25129]" />
                               <h4 className="font-medium text-gray-900">Add from Family Profile</h4>
                               <span className="text-sm text-gray-500">({availableFamilyMembers.length} available)</span>
                             </div>
@@ -576,7 +576,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                           {availableFamilyMembers.map((familyMember, index) => (
                                             <div
                                               key={familyMember.id}
-                                              className={`px-3 py-2.5 hover:bg-purple-50 transition-colors ${
+                                              className={`px-3 py-2.5 hover:bg-[#F25129]/10 transition-colors ${
                                                 index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
                                               }`}
                                             >
@@ -598,7 +598,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                                   <button
                                                     onClick={() => handleAddFamilyMember(familyMember)}
                                                     disabled={loading}
-                                                    className="w-full px-2 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                                    className="w-full px-2 py-1 bg-[#F25129] text-white rounded text-xs font-medium hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                                   >
                                                     {loading ? 'Adding...' : 'Add'}
                                                   </button>
@@ -609,11 +609,11 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                         </div>
                                       </div>
 
-                                      <div className="mt-4 pt-3 border-t border-purple-200">
+                                      <div className="mt-4 pt-3 border-t border-[#F25129]/20">
                                         <button
                                           onClick={() => handleBulkAddFromProfile(availableFamilyMembers)}
                                           disabled={loading}
-                                          className="w-full px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                          className="w-full px-4 py-2 bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                         >
                                           {loading ? 'Adding...' : `Add All ${availableFamilyMembers.length} Family Members`}
                                         </button>
@@ -656,7 +656,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                           {event.description.length > 120 && (
                             <button
                               onClick={() => setIsDescriptionExpanded((v) => !v)}
-                              className="text-blue-600 hover:text-blue-800 text-sm font-medium mt-1"
+                              className="text-[#F25129] hover:text-[#E0451F] text-sm font-medium mt-1"
                             >
                               {isDescriptionExpanded ? 'Show less' : 'View event details...'}
                             </button>

@@ -362,10 +362,10 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">{isEditing ? 'Edit Event' : 'Create New Event'}</h2>
-          <button onClick={handleClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <X className="w-6 h-6 text-gray-500" />
+        <div className="flex items-center justify-between p-6 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white">
+          <h2 className="text-2xl font-bold text-white">{isEditing ? 'Edit Event' : 'Create New Event'}</h2>
+          <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+            <X className="w-6 h-6 text-white" />
           </button>
         </div>
         {/* Form */}
@@ -378,7 +378,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                 {...register('title')}
                 type="text"
                 disabled={isLoading}
-                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.title ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.title ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
                 placeholder="Enter event title"
               />
             </div>
@@ -390,7 +390,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
               {...register('description')}
               rows={4}
               disabled={isLoading}
-              className={`w-full px-4 py-3 rounded-lg border ${errors.description ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+              className={`w-full px-4 py-3 rounded-lg border ${errors.description ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
               placeholder="Describe your event..."
             />
             {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>}
@@ -404,7 +404,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                   {...register('date')}
                   type="date"
                   disabled={isLoading}
-                  className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.date ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                  className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.date ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
                 />
               </div>
               {errors.date && <p className="mt-1 text-sm text-red-600">{errors.date.message}</p>}
@@ -417,7 +417,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                   {...register('time')}
                   type="time"
                   disabled={isLoading}
-                  className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.time ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                  className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.time ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
                 />
               </div>
               {errors.time && <p className="mt-1 text-sm text-red-600">{errors.time.message}</p>}
@@ -436,7 +436,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                 type="checkbox"
                 id="isAllDay"
                 disabled={isLoading}
-                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                className="w-4 h-4 text-[#F25129] border-gray-300 rounded focus:ring-[#F25129]"
               />
               <label htmlFor="isAllDay" className="text-sm font-medium text-gray-700">
                 All Day Event
@@ -466,7 +466,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                       {...register('endTime')}
                       type="time"
                       disabled={isLoading}
-                      className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.endTime ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                      className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.endTime ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
                       placeholder="End time"
                     />
                   </div>
@@ -479,7 +479,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                       {...register('endDate')}
                       type="date"
                       disabled={isLoading}
-                      className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.endDate ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                      className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.endDate ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
                       placeholder="End date"
                     />
                   </div>
@@ -496,7 +496,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                 {...register('location')}
                 type="text"
                 disabled={isLoading}
-                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.location ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent`}
+                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.location ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
                 placeholder="Enter event location"
               />
             </div>
@@ -511,13 +511,13 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(tagInput); setTagInput(''); } }}
                 disabled={isLoading}
-                className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                 placeholder="Add tags (e.g., yoga, running)"
               />
             </div>
             <div className="flex flex-wrap gap-2 mt-2">
               {tags.map(t => (
-                <span key={t} className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm">
+                <span key={t} className="px-3 py-1 bg-[#F25129]/10 text-[#F25129] rounded-full text-sm">
                   {t}
                   <button onClick={() => setTags(tags.filter(x => x !== t))} className="ml-2">x</button>
                 </span>
@@ -536,7 +536,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                   step="1"
                   inputMode="numeric"
                   disabled={isLoading}
-                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                   placeholder="No limit"
                 />
               </div>
@@ -577,7 +577,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                       Remove Image
                     </button>
                   </div>
-                  <div className="relative w-full h-48 overflow-hidden rounded-lg bg-gradient-to-br from-purple-50 to-blue-50">
+                  <div className="relative w-full h-48 overflow-hidden rounded-lg bg-gradient-to-br from-[#F25129]/10 to-[#FF6B35]/10">
                     <img
                       src={eventToEdit.imageUrl}
                       alt={eventToEdit.title}
@@ -624,7 +624,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                   accept="image/*"
                   disabled={isLoading}
                   onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                 />
                 
                 {/* File Preview */}
@@ -650,7 +650,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                   {...register('imageUrl')}
                   type="url"
                   disabled={isLoading}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                   placeholder="Enter image URL..."
                 />
                 
@@ -686,7 +686,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                   checked={eventVisibility === 'public'}
                   onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
                   disabled={isLoading}
-                  className="h-4 w-4 text-purple-600 focus:ring-purple-500"
+                  className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
                 />
                 <div>
                   <span className="text-sm font-medium text-gray-700">🌍 Public Event</span>
@@ -702,7 +702,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                   checked={eventVisibility === 'members'}
                   onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
                   disabled={isLoading || currentUser?.role !== 'admin'}
-                  className="h-4 w-4 text-purple-600 focus:ring-purple-500 disabled:opacity-50"
+                  className="h-4 w-4 text-[#F25129] focus:ring-[#F25129] disabled:opacity-50"
                 />
                 <div>
                   <span className="text-sm font-medium text-gray-700">👥 Members Only</span>
@@ -718,7 +718,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                   checked={eventVisibility === 'private'}
                   onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
                   disabled={isLoading || currentUser?.role !== 'admin'}
-                  className="h-4 w-4 text-purple-600 focus:ring-purple-500 disabled:opacity-50"
+                  className="h-4 w-4 text-[#F25129] focus:ring-[#F25129] disabled:opacity-50"
                 />
                 <div>
                   <span className="text-sm font-medium text-gray-700">🔒 Private Event</span>
@@ -739,13 +739,13 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                     value={userSearchQuery}
                     onChange={(e) => setUserSearchQuery(e.target.value)}
                     placeholder="Search users by name or email..."
-                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500"
+                    className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129]"
                   />
                   <button
                     type="button"
                     onClick={handleUserSearch}
                     disabled={isLoading || !userSearchQuery.trim() || isSearching}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                    className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] disabled:opacity-50"
                   >
                     {isSearching ? 'Searching...' : 'Search'}
                   </button>
@@ -845,7 +845,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
             <button
               type="submit"
               disabled={isLoading}
-              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:opacity-50"
+              className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] disabled:opacity-50"
             >
               {isLoading ? (isEditing ? 'Updating...' : 'Creating...') : (isEditing ? 'Update Event' : 'Create Event')}
             </button>

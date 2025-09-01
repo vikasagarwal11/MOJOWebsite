@@ -145,9 +145,9 @@ const Register: React.FC = () => {
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12">
       <div className="max-w-md w-full">
-        <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl p-8 border border-purple-100">
+        <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl p-8 border border-[#F25129]/20">
           <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent">
               Join Our Community
             </h2>
             <p className="text-gray-600 mt-2">
@@ -168,7 +168,7 @@ const Register: React.FC = () => {
                       {...phoneForm.register('firstName')}
                       type="text"
                       autoComplete="given-name"
-                      className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                      className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200"
                       placeholder="First name"
                     />
                   </div>
@@ -187,7 +187,7 @@ const Register: React.FC = () => {
                       {...phoneForm.register('lastName')}
                       type="text"
                       autoComplete="family-name"
-                      className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
+                      className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200"
                       placeholder="Last name"
                     />
                   </div>
@@ -210,7 +210,7 @@ const Register: React.FC = () => {
                     autoComplete="tel"
                     className={`w-full pl-10 pr-4 py-3 rounded-lg border ${
                       phoneForm.formState.errors.phoneNumber ? 'border-red-300' : 'border-gray-300'
-                    } focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200`}
+                    } focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
                     placeholder="e.g., 5551234567 or (555) 123-4567"
                   />
                 </div>
@@ -224,7 +224,7 @@ const Register: React.FC = () => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium hover:from-purple-700 hover:to-pink-700 focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-medium hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? 'Sending Code...' : 'Send Verification Code'}
               </button>
@@ -240,7 +240,7 @@ const Register: React.FC = () => {
                     type="text"
                     inputMode="numeric"
                     maxLength={6}
-                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 text-center text-2xl font-mono tracking-widest"
+                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200 text-center text-2xl font-mono tracking-widest"
                     placeholder="000000"
                   />
                 </div>
@@ -262,7 +262,7 @@ const Register: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="flex-1 py-3 px-4 rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium hover:from-purple-700 hover:to-pink-700 focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 py-3 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-medium hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? 'Verifying...' : 'Create Account'}
                 </button>
@@ -273,7 +273,7 @@ const Register: React.FC = () => {
           <div className="mt-6 text-center">
             <p className="text-gray-600">
               Already have an account?{' '}
-              <Link to="/login" className="text-purple-600 hover:text-purple-700 font-medium transition-colors">
+              <Link to="/login" className="text-[#F25129] hover:text-[#E0451F] font-medium transition-colors">
                 Sign in
               </Link>
             </p>

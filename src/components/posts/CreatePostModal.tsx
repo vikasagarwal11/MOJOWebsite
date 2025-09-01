@@ -113,7 +113,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
               </button>
               <a
                 href="/login"
-                className="px-5 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                className="px-5 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors"
               >
                 Sign in
               </a>
@@ -173,7 +173,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
                 type="text"
                 className={`w-full pl-10 pr-4 py-3 rounded-lg border ${
                   errors.title ? 'border-red-300' : 'border-gray-300'
-                } focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200`}
+                } focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
                 placeholder="What's on your mind?"
               />
             </div>
@@ -193,7 +193,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
               rows={6}
               className={`w-full px-4 py-3 rounded-lg border ${
                 errors.content ? 'border-red-300' : 'border-gray-300'
-              } focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200`}
+              } focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
               placeholder="Share your thoughts, experiences, or ask questions..."
             />
             <div className="mt-1 flex justify-between text-xs text-gray-500">
@@ -215,7 +215,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
                   <input
                     {...register('imageUrl')}
                     type="url"
-                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                     placeholder="https://example.com/image.jpg"
                   />
                 </div>
@@ -227,7 +227,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
                   type="file"
                   accept="image/*"
                   onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                 />
                 <p className="text-xs text-gray-500">…or upload a file</p>
               </div>
@@ -246,7 +246,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
             <button
               type="submit"
               disabled={isLoading}
-              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? 'Publishing…' : 'Publish Post'}
             </button>

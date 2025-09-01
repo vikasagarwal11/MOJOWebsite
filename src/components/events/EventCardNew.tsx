@@ -323,8 +323,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
              />
            ) : (
-             <div className="w-full h-full bg-gradient-to-br from-purple-50 to-blue-50 flex items-center justify-center">
-               <Calendar className="w-8 h-8 text-purple-300" />
+             <div className="w-full h-full bg-gradient-to-br from-[#F25129]/10 to-[#FF6B35]/10 flex items-center justify-center">
+               <Calendar className="w-8 h-8 text-[#F25129]/60" />
              </div>
            )}
            
@@ -336,7 +336,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                e.stopPropagation();
                handleShare();
              }}
-             className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm text-gray-700 hover:text-blue-600 hover:bg-white rounded-lg transition-all duration-200 shadow-lg"
+             className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm text-gray-700 hover:text-[#F25129] hover:bg-white rounded-lg transition-all duration-200 shadow-lg"
              title="Share event"
            >
              <Share2 className="w-4 h-4" />
@@ -376,7 +376,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                            onClick={handleViewEventDetails}
                            role="link"
                            aria-label={`View details for ${event.title}`}
-                           className="text-blue-600 hover:text-blue-800 font-medium hover:underline bg-white px-1 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 whitespace-nowrap"
+                           className="text-[#F25129] hover:text-[#E0451F] font-medium hover:underline bg-white px-1 rounded focus:outline-none focus:ring-2 focus:ring-[#F25129]/40 whitespace-nowrap"
                            onKeyDown={(e) => {
                              if (e.key === 'Enter' || e.key === ' ') handleViewEventDetails(e);
                            }}
@@ -398,7 +398,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
             <div className="space-y-2 mb-6 h-[80px] md:h-[100px]">
             {/* Date & Time */}
             <div className="flex items-center text-gray-600">
-              <Calendar className="w-4 h-4 mr-2 text-purple-500" />
+              <Calendar className="w-4 h-4 mr-2 text-[#F25129]" />
               <span>{formatEventDate(event.startAt)}</span>
               {event.startAt && event.endAt && (
                 <span className="mx-2">•</span>
@@ -411,7 +411,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
             {/* Time */}
             {event.startAt && (
               <div className="flex items-center text-gray-600">
-                <Clock className="w-4 h-4 mr-2 text-purple-500" />
+                <Clock className="w-4 h-4 mr-2 text-[#F25129]" />
                 <span>
                   {formatEventTime(event.startAt)}
                   {event.endAt && ` - ${formatEventTime(event.endAt)}`}
@@ -422,14 +422,14 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
             {/* Location */}
             {event.location && (
               <div className="flex items-center text-gray-600">
-                <MapPin className="w-4 h-4 mr-2 text-purple-500" />
+                <MapPin className="w-4 h-4 mr-2 text-[#F25129]" />
                 <span className="line-clamp-1">{event.location}</span>
               </div>
             )}
 
             {/* Attendee Count */}
             <div className="flex items-center text-gray-600">
-              <Users className="w-4 h-4 mr-2 text-purple-500" />
+              <Users className="w-4 h-4 mr-2 text-[#F25129]" />
               <span>
                 {totalAttendeeCount} attending
                 {event.maxAttendees && ` / ${event.maxAttendees} max`}
@@ -500,7 +500,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                 whileTap={{ scale: 0.95 }}
                 onClick={handleRSVPModalOpen}
                 disabled={isEventPast}
-                className="p-2 bg-purple-100 text-purple-700 hover:bg-purple-200 rounded-lg transition-colors"
+                className="p-2 bg-[#F25129]/10 text-[#F25129] hover:bg-[#F25129]/20 rounded-lg transition-colors"
                 title="Manage RSVP details"
               >
                 <UserPlus className="w-4 h-4" />

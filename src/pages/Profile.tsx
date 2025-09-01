@@ -964,14 +964,14 @@ const Profile: React.FC = () => {
         <div className="flex space-x-1 mb-8 bg-gray-100 p-1 rounded-lg">
           <button
             onClick={() => setActiveTab('personal')}
-            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'personal' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
+            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'personal' ? 'bg-white text-[#F25129] shadow-sm' : 'text-gray-600 hover:text-[#F25129]'}`}
             aria-selected={activeTab === 'personal'}
           >
             Personal
           </button>
           <button
             onClick={() => setActiveTab('events')}
-            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'events' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
+            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'events' ? 'bg-white text-[#F25129] shadow-sm' : 'text-gray-600 hover:text-[#F25129]'}`}
             aria-selected={activeTab === 'events'}
           >
             {currentUser?.role === 'admin' ? 'My Events' : 'Events I\'m Attending'}
@@ -979,7 +979,7 @@ const Profile: React.FC = () => {
           {currentUser?.role === 'admin' && (
             <button
               onClick={() => setActiveTab('rsvp')}
-              className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'rsvp' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
+              className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'rsvp' ? 'bg-white text-[#F25129] shadow-sm' : 'text-gray-600 hover:text-[#F25129]'}`}
               aria-selected={activeTab === 'rsvp'}
             >
               RSVP Management
@@ -987,7 +987,7 @@ const Profile: React.FC = () => {
           )}
           <button
             onClick={() => setActiveTab('family')}
-            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'family' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
+            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'family' ? 'bg-white text-[#F25129] shadow-sm' : 'text-gray-600 hover:text-[#F25129]'}`}
             aria-selected={activeTab === 'family'}
           >
             Family Management
@@ -995,7 +995,7 @@ const Profile: React.FC = () => {
           {currentUser?.role === 'admin' && (
             <button
               onClick={() => setActiveTab('admin')}
-              className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'admin' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-purple-600'}`}
+              className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'admin' ? 'bg-white text-[#F25129] shadow-sm' : 'text-gray-600 hover:text-[#F25129]'}`}
               aria-selected={activeTab === 'admin'}
             >
               Admin

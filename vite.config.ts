@@ -77,8 +77,8 @@ export default defineConfig({
   ],
   server: {
     host: '0.0.0.0', // Allow external connections
-    port: 5173, // Default Vite port
-    strictPort: true, // Use exact port
+    port: 5174, // Use port 5174
+    strictPort: false, // Allow port fallback
     open: false // Don't auto-open browser
   }
 });

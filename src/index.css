@@ -175,7 +175,7 @@
 }
 
 .rbc-today {
-  background-color: rgba(139, 92, 246, 0.1);
+  background-color: rgba(242, 81, 41, 0.1);
 }
 
 .rbc-toolbar button {
@@ -184,11 +184,11 @@
 }
 
 .rbc-toolbar button:hover {
-  background-color: rgba(139, 92, 246, 0.1);
+  background-color: rgba(242, 81, 41, 0.1);
 }
 
 .rbc-toolbar button.rbc-active {
-  background-color: rgb(139, 92, 246);
+  background-color: #F25129;
   color: white;
 }
 

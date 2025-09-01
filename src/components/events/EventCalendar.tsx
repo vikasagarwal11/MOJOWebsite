@@ -100,8 +100,8 @@ const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
         }
         
         .rbc-toolbar button.rbc-active {
-          background-color: rgb(147 51 234) !important;
-          border-color: rgb(147 51 234) !important;
+          background-color: #F25129 !important;
+          border-color: #F25129 !important;
         }
       `}</style>
       
@@ -134,7 +134,7 @@ const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
             } else if (userRSVPStatus === 'not-going') {
               backgroundColor = '#ef4444'; // Red for "Not Going"
             } else if (isPublic) {
-              backgroundColor = '#8b5cf6'; // Purple for public events (no RSVP)
+              backgroundColor = '#F25129'; // Coral for public events (no RSVP)
             } else {
               backgroundColor = '#dc2626'; // Red for members-only events (no RSVP)
             }

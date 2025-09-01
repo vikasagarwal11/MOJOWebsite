@@ -4,83 +4,58 @@ import { Dumbbell, Mail, MapPin, Phone } from 'lucide-react';
 
 const Footer: React.FC = () => {
   return (
-    <footer className="bg-gray-900 text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <footer className="bg-gradient-to-r from-[#1a0f1a] to-[#2d1b2d] text-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Logo and Description */}
-          <div className="col-span-1 md:col-span-2">
-            <div className="flex items-center space-x-3 mb-4">
-              <img src="/logo.svg" alt="Moms Fitness Mojo" className="h-10 w-auto" />
+          <div className="md:col-span-2">
+            <div className="flex items-center mb-4">
+              <img src="/logo.png" alt="Moms Fitness Mojo" className="h-12 w-12 rounded-full object-cover mr-3" />
             </div>
-            <p className="text-gray-400 mb-6 max-w-md">
-              Empowering mothers to prioritize their health and wellness through fitness, community, and support. 
-              Join our vibrant community of strong, dedicated moms!
+            <p className="text-gray-300 leading-relaxed mb-6">
+              Empowering mothers to prioritize their health and wellness through fitness, community, and support. Join our vibrant community of strong, dedicated moms!
             </p>
-            <div className="space-y-2">
-              <div className="flex items-center space-x-2 text-gray-400">
-                <Mail className="w-4 h-4" />
-                <span>hello@momsfitnessmojo.com</span>
+            <div className="space-y-2 text-sm text-gray-300">
+              <div className="flex items-center">
+                <Mail className="w-4 h-4 mr-2" />
+                hello@momsfitnessmojo.com
               </div>
-              <div className="flex items-center space-x-2 text-gray-400">
-                <Phone className="w-4 h-4" />
-                <span>(555) 123-4567</span>
+              <div className="flex items-center">
+                <Phone className="w-4 h-4 mr-2" />
+                (555) 123-4567
               </div>
-              <div className="flex items-center space-x-2 text-gray-400">
-                <MapPin className="w-4 h-4" />
-                <span>Community Center, Your City</span>
+              <div className="flex items-center">
+                <MapPin className="w-4 h-4 mr-2" />
+                Community Center, Your City
               </div>
             </div>
           </div>
 
           {/* Quick Links */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">Quick Links</h3>
-            <div className="space-y-2">
-              {[
-                { name: 'Home', href: '/' },
-                { name: 'Events', href: '/events' },
-                { name: 'Media', href: '/media' },
-                { name: 'Posts', href: '/posts' },
-              ].map((link) => (
-                <Link
-                  key={link.name}
-                  to={link.href}
-                  className="block text-gray-400 hover:text-purple-400 transition-colors"
-                >
-                  {link.name}
-                </Link>
-              ))}
-            </div>
+            <h4 className="text-lg font-semibold mb-4 text-[#FF6B35]">Quick Links</h4>
+            <ul className="space-y-2">
+              <li><Link to="/" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Home</Link></li>
+              <li><Link to="/events" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Events</Link></li>
+              <li><Link to="/media" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Media</Link></li>
+              <li><Link to="/posts" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Posts</Link></li>
+            </ul>
           </div>
 
           {/* Community */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">Community</h3>
-            <div className="space-y-2">
-              <Link
-                to="/sponsors"
-                className="block text-gray-400 hover:text-purple-400 transition-colors"
-              >
-                Sponsors
-              </Link>
-              <Link
-                to="/contact"
-                className="block text-gray-400 hover:text-purple-400 transition-colors"
-              >
-                Contact Us
-              </Link>
-              <Link
-                to="/about"
-                className="block text-gray-400 hover:text-purple-400 transition-colors"
-              >
-                About Us
-              </Link>
-            </div>
+            <h4 className="text-lg font-semibold mb-4 text-[#FF6B35]">Community</h4>
+            <ul className="space-y-2">
+              <li><Link to="/sponsors" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Sponsors</Link></li>
+              <li><Link to="/contact" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Contact Us</Link></li>
+              <li><Link to="/about" className="text-gray-300 hover:text-[#FF6B35] transition-colors">About Us</Link></li>
+            </ul>
           </div>
         </div>
-
-        <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-          <p>&copy; 2025 Mom's Fitness Mojo. All rights reserved.</p>
+        
+        {/* Copyright */}
+        <div className="border-t border-gray-700 mt-12 pt-8 text-center">
+          <p className="text-gray-400">© 2025 Mom's Fitness Mojo. All rights reserved.</p>
         </div>
       </div>
     </footer>

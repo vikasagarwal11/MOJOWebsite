@@ -400,16 +400,16 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
         </video>
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center">
-            <Play className="w-6 h-6 text-purple-600 ml-0.5" />
+            <Play className="w-6 h-6 text-[#F25129] ml-0.5" />
           </div>
         </div>
                  {/* Single status chip - prevents conflicting chips */}
          {status && (
            <div className={`absolute top-3 left-3 z-10 px-3 py-1.5 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2
                           ${status.color === 'green' ? 'bg-green-500' :
-                            status.color === 'purple' ? 'bg-purple-500' :
-                            status.color === 'blue' ? 'bg-blue-500' : 'bg-red-500'}`}>
-             <div className={`w-2 h-2 bg-white rounded-full ${status.color === 'blue' || status.color === 'purple' ? 'animate-pulse' : ''}`}></div>
+                                    status.color === 'purple' ? 'bg-[#F25129]' :
+        status.color === 'blue' ? 'bg-blue-500' : 'bg-red-500'}`}>
+      <div className={`w-2 h-2 bg-white rounded-full ${status.color === 'blue' || status.color === 'purple' ? 'animate-pulse' : ''}`}></div>
              {status.label}
            </div>
          )}
@@ -433,12 +433,12 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
   }, [localMedia, onOpen, liked, thumbnailUrl, isThumbnailLoading]);
 
   return (
-    <div className="bg-white/80 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-purple-100 group" data-media-card>
+          <div className="bg-white/80 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-[#F25129]/20 group" data-media-card>
       <div className="relative aspect-square overflow-hidden">
         {previewEl}
         {localMedia.eventTitle && (
           <div className="absolute top-3 left-3">
-            <div className="flex items-center px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-sm font-medium text-purple-600 border border-purple-200">
+            <div className="flex items-center px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-sm font-medium text-[#F25129] border border-[#F25129]/30">
               <Tag className="w-3 h-3 mr-1" />
               {localMedia.eventTitle}
             </div>
@@ -490,7 +490,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
               <span className="text-sm">{likesCount}</span>
             </button>
 
-            <button onClick={()=> comments.setOpen(!comments.open)} className="flex items-center space-x-1 text-gray-500 hover:text-purple-600 transition-colors">
+            <button onClick={()=> comments.setOpen(!comments.open)} className="flex items-center space-x-1 text-gray-500 hover:text-[#F25129] transition-colors">
               <MessageCircle className="w-5 h-5" />
               <span className="text-sm" title={`Server count: ${localMedia.commentsCount}, Local count: ${comments.comments.length}`}>
                 {localMedia.commentsCount ?? comments.comments.length}
@@ -507,7 +507,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
 
         {/* Show latest comment preview when collapsed */}
         {!comments.open && comments.comments.length > 0 && (
-          <div className="mt-2 p-2 bg-gray-50 rounded-lg border-l-2 border-purple-200">
+          <div className="mt-2 p-2 bg-gray-50 rounded-lg border-l-2 border-[#F25129]">
             <div className="text-xs text-gray-600 truncate">
               <span className="font-medium">{comments.comments[0]?.authorName || 'Member'}:</span> {comments.comments[0]?.text}
             </div>
@@ -533,7 +533,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
               <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white/80 to-transparent" />
             )}
             {comments.hasMore && (
-              <button onClick={comments.loadMore} className="text-xs text-purple-600 hover:underline">Load more</button>
+              <button onClick={comments.loadMore} className="text-xs text-[#F25129] hover:underline">Load more</button>
             )}
             <form onSubmit={async (e) => {
               e.preventDefault();
@@ -554,8 +554,8 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
               }
             }} className="flex items-center gap-2">
               <input value={newComment} onChange={e=>setNewComment(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-purple-500" placeholder="Add a comment…" />
-              <button className="px-3 py-2 bg-purple-600 text-white rounded-md">Post</button>
+                className="flex-1 px-3 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-[#F25129]" placeholder="Add a comment…" />
+              <button className="px-3 py-2 bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] transition-colors">Post</button>
             </form>
           </div>
         )}

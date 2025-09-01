@@ -108,11 +108,11 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
       : undefined;
 
   return (
-    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-purple-100 overflow-hidden">
+    <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-[#F25129]/20 overflow-hidden">
       {/* Header */}
       <div className="p-6 pb-4">
         <div className="flex items-center space-x-3 mb-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+          <div className="w-12 h-12 bg-gradient-to-br from-[#F25129] to-[#FF6B35] rounded-full flex items-center justify-center">
             {post.authorPhoto ? (
               <img
                 src={post.authorPhoto}
@@ -162,7 +162,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
 
             <button
               onClick={() => setShowComments((v) => !v)}
-              className="flex items-center space-x-2 text-gray-500 hover:text-purple-600 transition-colors"
+              className="flex items-center space-x-2 text-gray-500 hover:text-[#F25129] transition-colors"
             >
               <MessageCircle className="w-5 h-5" />
               <span className="text-sm font-medium">{commentsCount}</span>
@@ -185,7 +185,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
               return (
                 <div
                   key={c.id}
-                  className="relative rounded-xl bg-purple-50/70 border border-purple-100 px-4 py-2 pl-10"
+                  className="relative rounded-xl bg-[#F25129]/10 border border-[#F25129]/20 px-4 py-2 pl-10"
                 >
                   {/* tiny bullet to keep the sub-bullet look */}
                   <span className="absolute left-3 top-3 inline-block w-2 h-2 rounded-full bg-amber-300" />
@@ -195,7 +195,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
                     <div className="flex flex-wrap items-baseline gap-2 text-sm">
                       <span className="font-semibold text-gray-900">{c.authorName}</span>
                       {mine && (
-                        <span className="px-1.5 py-0.5 text-[10px] rounded bg-purple-200 text-purple-800">
+                        <span className="px-1.5 py-0.5 text-[10px] rounded bg-[#F25129]/20 text-[#F25129]">
                           You
                         </span>
                       )}
@@ -218,7 +218,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
             {/* Add comment */}
             {currentUser && (
               <form onSubmit={handleComment} className="flex space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 bg-gradient-to-br from-[#F25129] to-[#FF6B35] rounded-full flex items-center justify-center flex-shrink-0">
                   <User className="w-4 h-4 text-white" />
                 </div>
                 <div className="flex-1">
@@ -227,13 +227,13 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
                     placeholder="Add a comment..."
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={!newComment.trim()}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                  className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
                 >
                   Post
                 </button>

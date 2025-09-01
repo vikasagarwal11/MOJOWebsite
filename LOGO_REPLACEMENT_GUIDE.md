@@ -2,10 +2,10 @@
 
 ## Current Logo Files
 
-The MOMS FITNESS MOJO logo is currently implemented using SVG files located in the `public/` directory:
+The MOMS FITNESS MOJO logo is currently implemented using PNG files located in the `public/` directory:
 
-- **`/public/logo.svg`** - Main logo (200x120px) used in Header and Footer components
-- **`/public/logo-small.svg`** - Small logo (32x32px) used as favicon
+- **`/public/logo.png`** - Main logo (400x240px recommended) used in Header and Footer components
+- **`/public/logo-small.png`** - Small logo (64x64px recommended) used as favicon
 
 ## Logo Design
 
@@ -31,20 +31,20 @@ The current logo features:
 
 ## How to Replace the Logo
 
-### Option 1: Replace Existing SVG Files
-1. **Keep the same filenames**: `logo.svg` and `logo-small.svg`
-2. **Maintain similar dimensions**: 
-   - Main logo: around 200x120px (or similar aspect ratio)
-   - Small logo: 32x32px
+### Option 1: Replace Existing PNG Files
+1. **Keep the same filenames**: `logo.png` and `logo-small.png`
+2. **Recommended dimensions**: 
+   - Main logo: 400x240px (for high-DPI displays)
+   - Small logo: 64x64px (for high-DPI displays)
 3. **Update the files** in the `public/` directory
 4. **Restart the development server** if running
 
 ### Option 2: Use New Image Files
 1. **Add new image files** to the `public/` directory
 2. **Update the components** to reference new filenames:
-   - Header: Update `src="/logo.svg"` to your new filename
-   - Footer: Update `src="/logo.svg"` to your new filename
-   - Favicon: Update `href="/logo-small.svg"` in `index.html`
+   - Header: Update `src="/logo.png"` to your new filename
+   - Footer: Update `src="/logo.png"` to your new filename
+   - Favicon: Update `href="/logo-small.png"` in `index.html`
 
 ### Option 3: Use External URLs
 1. **Host your logo** on a CDN or image hosting service
