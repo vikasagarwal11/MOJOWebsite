@@ -233,18 +233,23 @@ export const onEventTeaserSync = onDocumentWritten("events/{eventId}", async (ev
   }
 });
 
-// ───────────────── EVENTS: RSVP notifications ─────────────────
-export const notifyRsvp = onDocumentWritten("events/{eventId}/rsvps/{userId}", async (event) => {
+// ───────────────── EVENTS: RSVP notifications (New Attendee System) ─────────────────
+export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attendeeId}", async (event) => {
   const beforeData = event.data?.before.exists ? event.data?.before.data() : null;
   const afterData = event.data?.after.exists ? event.data?.after.data() : null;
 
-  const wasGoing = beforeData?.status === "going";
-  const isGoing = afterData?.status === "going";
+  const wasGoing = beforeData?.rsvpStatus === "going";
+  const isGoing = afterData?.rsvpStatus === "going";
   if (!isGoing || wasGoing) return;
 
   try {
     const eventId = event.params.eventId;
-    const userId = event.params.userId;
+    const attendeeId = event.params.attendeeId;
+    
+    // Get attendee data to find the user ID
+    const attendeeData = afterData;
+    const userId = attendeeData?.userId;
+    if (!userId) return;
 
     const eventDoc = await db.collection('events').doc(eventId).get();
     if (!eventDoc.exists) return;
@@ -259,16 +264,21 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/rsvps/{userId}", a
       const userData = userDoc.data()!;
       userName = userData.displayName || userData.firstName || userData.lastName || 'Member';
     }
+    
+    // Get attendee name for more specific notification
+    const attendeeName = attendeeData?.name || userName;
 
     await db.collection('notifications').add({
       userId: eventCreatorId,
-      message: `${userName} is going to ${eventData.title}!`,
+      message: `${attendeeName} is going to ${eventData.title}!`,
       createdAt: FieldValue.serverTimestamp(),
       eventId,
       read: false,
       type: 'rsvp',
       rsvpUserId: userId,
-      rsvpStatus: 'going'
+      rsvpStatus: 'going',
+      attendeeId: attendeeId,
+      attendeeName: attendeeName
     });
 
     try {
@@ -281,9 +291,9 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/rsvps/{userId}", a
           token: fcmToken,
           notification: {
             title: 'New RSVP',
-            body: `${userName} is going to ${eventData.title}!`,
+            body: `${attendeeName} is going to ${eventData.title}!`,
           },
-          data: { eventId, type: 'rsvp', userId },
+          data: { eventId, type: 'rsvp', userId, attendeeId, attendeeName },
         });
         console.log(`Push notification sent to ${eventCreatorId} for event ${eventId}`);
       }
@@ -291,7 +301,7 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/rsvps/{userId}", a
       console.warn('FCM notification failed, but Firestore notification was created:', fcmError);
     }
 
-    console.log(`Notification created for event ${eventId}: ${userName} is going`);
+    console.log(`Notification created for event ${eventId}: ${attendeeName} is going`);
   } catch (error) {
     console.error('Error creating RSVP notification:', error);
   }
