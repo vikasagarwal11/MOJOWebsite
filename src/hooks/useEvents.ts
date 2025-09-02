@@ -15,7 +15,9 @@ export type EventDoc = {
   invitedUserIds?: string[];
   tags?: string[];
   allDay?: boolean;
-  location?: string;
+  location?: string; // Keep for backward compatibility
+  venueName?: string; // New: "Short Hills Racquet Club"
+  venueAddress?: string; // New: "123 Main St, Short Hills, NJ 07078"
   description?: string;
   imageUrl?: string;
   isTeaser?: boolean;
