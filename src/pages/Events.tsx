@@ -34,7 +34,8 @@ const Events: React.FC = () => {
   const [viewMode, setViewMode] = useState<'grid'|'calendar'>('grid');
   const [showModal, setShowModal] = useState(false);
   const [searchInput, setSearchInput] = useState('');
-  const [tag, setTag] = useState<string| null>(null);
+  const [tagSearch, setTagSearch] = useState('');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
   const [dateRangeFilter, setDateRangeFilter] = useState<{
@@ -89,6 +90,14 @@ const Events: React.FC = () => {
   }, [activeTab, upcomingEvents, pastEvents, realTimeEvents, baseList]);
 
   const allTags = useMemo(() => [...new Set(baseList.flatMap(e => e.tags || []))], [baseList]);
+  
+  // Filter tags based on search input
+  const filteredTags = useMemo(() => {
+    if (!tagSearch.trim()) return allTags.slice(0, 10); // Show top 10 tags when no search
+    return allTags.filter(tag => 
+      tag.toLowerCase().includes(tagSearch.toLowerCase())
+    ).slice(0, 10); // Limit to 10 results
+  }, [allTags, tagSearch]);
 
   const { blockedUsers } = useUserBlocking();
 
@@ -98,13 +107,25 @@ const Events: React.FC = () => {
       // Basic search filter
       const q = debouncedSearch.trim().toLowerCase();
       const okTitle = q ? (e.title || '').toLowerCase().includes(q) : true;
-      const okTag = tag ? (e.tags || []).includes(tag) : true;
+      const okTag = selectedTag ? (e.tags || []).includes(selectedTag) : true;
       
-      if (!okTitle || !okTag) return false;
+      // Search in title, location, venue name, and venue address
+      const okSearch = q ? (
+        (e.title || '').toLowerCase().includes(q) ||
+        (e.location || '').toLowerCase().includes(q) ||
+        (e.venueName || '').toLowerCase().includes(q) ||
+        (e.venueAddress || '').toLowerCase().includes(q)
+      ) : true;
+      
+      if (!okSearch || !okTag) return false;
 
-      // Location filter
-      if (locationFilter && e.location) {
-        const locationMatch = e.location.toLowerCase().includes(locationFilter.toLowerCase());
+      // Location filter - search in location, venue name, and venue address
+      if (locationFilter) {
+        const locationMatch = (
+          (e.location || '').toLowerCase().includes(locationFilter.toLowerCase()) ||
+          (e.venueName || '').toLowerCase().includes(locationFilter.toLowerCase()) ||
+          (e.venueAddress || '').toLowerCase().includes(locationFilter.toLowerCase())
+        );
         if (!locationMatch) return false;
       }
 
@@ -138,7 +159,10 @@ const Events: React.FC = () => {
         case 'title':
           return (a.title || '').localeCompare(b.title || '');
         case 'location':
-          return (a.location || '').localeCompare(b.location || '');
+          // Sort by venue name first, then location, then venue address
+          const aLocation = (a.venueName || a.location || a.venueAddress || '').toLowerCase();
+          const bLocation = (b.venueName || b.location || b.venueAddress || '').toLowerCase();
+          return aLocation.localeCompare(bLocation);
         case 'popularity':
           // Sort by maxAttendees (higher capacity = more popular)
           return (b.maxAttendees || 0) - (a.maxAttendees || 0);
@@ -149,7 +173,7 @@ const Events: React.FC = () => {
     });
 
     return list;
-  }, [baseList, debouncedSearch, tag, locationFilter, dateRangeFilter, capacityFilter, sortBy]);
+  }, [baseList, debouncedSearch, selectedTag, locationFilter, dateRangeFilter, capacityFilter, sortBy]);
 
   const onSelectCalEvent = (e: EventDoc) => {
     console.log('🔍 Calendar event clicked:', {
@@ -218,7 +242,8 @@ const Events: React.FC = () => {
   // Clear all filters
   const clearAllFilters = () => {
     setSearchInput('');
-    setTag(null);
+    setTagSearch('');
+    setSelectedTag(null);
     setLocationFilter('');
     setDateRangeFilter({ startDate: '', endDate: '', enabled: false });
     setCapacityFilter({ min: '', max: '', enabled: false });
@@ -227,7 +252,7 @@ const Events: React.FC = () => {
   };
 
   // Check if any filters are active
-  const hasActiveFilters = searchInput || tag || locationFilter || 
+  const hasActiveFilters = searchInput || selectedTag || locationFilter || 
     dateRangeFilter.enabled || capacityFilter.enabled || sortBy !== 'date';
 
     return (
@@ -369,14 +394,43 @@ const Events: React.FC = () => {
           </div>
         </div>
           
-          <select 
-            value={tag || ''} 
-            onChange={e => setTag(e.target.value || null)} 
-            className="px-4 py-2 rounded-lg border focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200"
-          >
-            <option value="">All Tags</option>
-            {allTags.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search tags..."
+              value={tagSearch}
+              onChange={e => setTagSearch(e.target.value)}
+              className="px-4 py-2 rounded-lg border focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200 w-48"
+            />
+            {selectedTag && (
+              <div className="absolute -top-2 -right-2 bg-[#F25129] text-white text-xs px-2 py-1 rounded-full">
+                {selectedTag}
+                <button
+                  onClick={() => setSelectedTag(null)}
+                  className="ml-1 hover:bg-[#d43d1a] rounded-full w-4 h-4 flex items-center justify-center"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+            {/* Tag suggestions dropdown */}
+            {tagSearch && filteredTags.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                {filteredTags.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => {
+                      setSelectedTag(tag);
+                      setTagSearch('');
+                    }}
+                    className="w-full px-4 py-2 text-left hover:bg-gray-50 transition-colors duration-200"
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           
           <button 
             onClick={() => setViewMode(viewMode === 'grid' ? 'calendar' : 'grid')} 
@@ -502,7 +556,7 @@ const Events: React.FC = () => {
 
       {/* Search Status and Tag Statistics */}
       <AnimatePresence>
-        {(debouncedSearch || tag || hasActiveFilters) && (
+        {(debouncedSearch || selectedTag || hasActiveFilters) && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -514,8 +568,8 @@ const Events: React.FC = () => {
                 <Search className="w-4 h-4 text-[#F25129]" />
                 <span className="text-sm font-medium text-[#F25129]">
                   {debouncedSearch && `Searching for "${debouncedSearch}"`}
-                  {debouncedSearch && tag && ' • '}
-                  {tag && `Filtered by tag "${tag}"`}
+                  {debouncedSearch && selectedTag && ' • '}
+                  {selectedTag && `Filtered by tag "${selectedTag}"`}
                   {hasActiveFilters && ' • Advanced filters applied'}
                 </span>
         </div>
@@ -550,9 +604,9 @@ const Events: React.FC = () => {
                 key={tagName}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => setTag(tag === tagName ? null : tagName)}
+                onClick={() => setSelectedTag(selectedTag === tagName ? null : tagName)}
                 className={`px-3 py-1 text-sm rounded-full border transition-all duration-200 ${
-                  tag === tagName
+                  selectedTag === tagName
                     ? 'bg-[#F25129] text-white border-[#F25129] shadow-lg'
                     : 'bg-gray-50 text-gray-700 border-gray-300 hover:bg-gray-100 hover:border-gray-400'
                 }`}

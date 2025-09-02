@@ -235,3 +235,28 @@
 .previewing {
   touch-action: none;
 }
+
+/* Cross-browser scrollbar styles for RSVP Modal */
+.rsvp-modal-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db #f3f4f6;
+  scrollbar-gutter: stable;
+}
+
+.rsvp-modal-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.rsvp-modal-scrollbar::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+.rsvp-modal-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.rsvp-modal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}

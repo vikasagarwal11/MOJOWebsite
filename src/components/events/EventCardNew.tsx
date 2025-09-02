@@ -292,6 +292,19 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     return format(eventDate, 'h:mm a');
   };
 
+  // Calculate event duration in hours
+  const getEventDuration = () => {
+    if (!event.startAt || !event.endAt) return null;
+    
+    const startDate = event.startAt.toDate ? event.startAt.toDate() : new Date(event.startAt);
+    const endDate = event.endAt.toDate ? event.endAt.toDate() : new Date(event.endAt);
+    
+    const durationMs = endDate.getTime() - startDate.getTime();
+    const durationHours = Math.round(durationMs / (1000 * 60 * 60) * 10) / 10; // Round to 1 decimal place
+    
+    return durationHours;
+  };
+
   // Get RSVP button state
   const getRSVPButtonState = () => {
     if (isEventPast) return 'disabled';
@@ -312,7 +325,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
          initial={{ opacity: 0, y: 20 }}
          animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
          transition={{ duration: 0.5 }}
-                                                                                         className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 h-[420px] md:h-[470px] flex flex-col mb-4 scroll-mt-20"
+                                                                                         className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 h-[460px] sm:h-[480px] md:h-[500px] lg:h-[520px] xl:h-[540px] flex flex-col mb-4 scroll-mt-20"
        >
                  {/* Event Image - Always show image section for consistent height */}
          <div className="relative h-48 overflow-hidden">
@@ -346,12 +359,12 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
         {/* Event Content - Flex to fill remaining space */}
         <div className="p-6 flex flex-col flex-1">
                      {/* Event Title - More space for longer titles */}
-           <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-1 md:line-clamp-2 h-[32px] md:h-[56px] flex items-start">
+           <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-1 sm:line-clamp-2 md:line-clamp-2 h-[32px] sm:h-[48px] md:h-[56px] flex items-start">
              {event.title}
            </h3>
 
                                                                                                                                                                                                                                                                                                                                                                {/* Event Description - Adjusted height to compensate for title */}
-             <div className="mb-4 relative flex flex-col min-h-[64px] md:min-h-[96px]">
+             <div className="mb-4 relative flex flex-col min-h-[64px] sm:min-h-[80px] md:min-h-[96px]">
                {(() => {
                  const hasDesc = !!event.description?.trim();
                  return hasDesc ? (
@@ -395,35 +408,43 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
              </div>
 
                                            {/* Event Details - Adaptive height */}
-            <div className="space-y-2 mb-6 h-[80px] md:h-[100px]">
-            {/* Date & Time */}
+            <div className="space-y-1.5 mb-3 h-[120px] sm:h-[130px] md:h-[140px] lg:h-[150px] xl:h-[160px]">
+            {/* Date - Only show start date */}
             <div className="flex items-center text-gray-600">
               <Calendar className="w-4 h-4 mr-2 text-[#F25129]" />
               <span>{formatEventDate(event.startAt)}</span>
-              {event.startAt && event.endAt && (
-                <span className="mx-2">•</span>
-              )}
-              {event.endAt && (
-                <span>{formatEventDate(event.endAt)}</span>
-              )}
             </div>
 
-            {/* Time */}
+            {/* Time with duration */}
             {event.startAt && (
               <div className="flex items-center text-gray-600">
                 <Clock className="w-4 h-4 mr-2 text-[#F25129]" />
                 <span>
                   {formatEventTime(event.startAt)}
                   {event.endAt && ` - ${formatEventTime(event.endAt)}`}
+                  {(() => {
+                    const duration = getEventDuration();
+                    return duration ? ` (${duration} hours)` : '';
+                  })()}
                 </span>
               </div>
             )}
 
             {/* Location */}
-            {event.location && (
-              <div className="flex items-center text-gray-600">
-                <MapPin className="w-4 h-4 mr-2 text-[#F25129]" />
-                <span className="line-clamp-1">{event.location}</span>
+            {(event.venueName || event.venueAddress || event.location) && (
+              <div className="flex items-start text-gray-600">
+                <MapPin className="w-4 h-4 mr-2 text-[#F25129] mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  {event.venueName && (
+                    <div className="font-medium line-clamp-1">{event.venueName}</div>
+                  )}
+                  {event.venueAddress && (
+                    <div className="text-xs opacity-75 line-clamp-1">{event.venueAddress}</div>
+                  )}
+                  {!event.venueName && !event.venueAddress && event.location && (
+                    <div className="line-clamp-1">{event.location}</div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -438,7 +459,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
           </div>
 
           {/* Action Buttons - Always at bottom */}
-          <div className="flex items-center justify-between mt-auto pb-4 relative z-10" style={{ minHeight: '60px' }}>
+          <div className="flex items-center justify-between mt-auto pt-2 pb-4 relative z-10" style={{ minHeight: '60px' }}>
             {/* Quick RSVP Buttons - Made much smaller to fit Manage button */}
             <div className="flex gap-1 flex-1">
               {/* Going Button */}
@@ -503,7 +524,12 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                 className="p-2 bg-[#F25129]/10 text-[#F25129] hover:bg-[#F25129]/20 rounded-lg transition-colors"
                 title="Manage RSVP details"
               >
-                <UserPlus className="w-4 h-4" />
+                <div className="relative">
+                  <Users className="w-4 h-4" />
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-[#F25129] rounded-full flex items-center justify-center">
+                    <span className="text-white text-[8px] font-bold leading-none">+</span>
+                  </div>
+                </div>
               </motion.button>
 
               

@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Users, 
-  Search, 
   CheckCircle,
   XCircle,
   Clock,
@@ -40,8 +39,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     refreshAttendees 
   } = useAttendees(eventId, currentUser?.id || '');
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<AttendeeStatus | 'all'>('all');
+
   
   // Collapsible state for each section
   const [collapsedSections, setCollapsedSections] = useState({
@@ -97,21 +95,11 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     return !!matchingFamilyMember;
   };
 
-  // Filter attendees based on search and status
-  const filteredAttendees = attendees.filter(attendee => {
-    const displayName = getDisplayName(attendee);
-    const matchesSearch = displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         attendee.relationship.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || attendee.rsvpStatus === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
-
   // Group attendees by status
   const attendeesByStatus = {
-    going: filteredAttendees.filter(a => a.rsvpStatus === 'going'),
-    'not-going': filteredAttendees.filter(a => a.rsvpStatus === 'not-going'),
-    pending: filteredAttendees.filter(a => a.rsvpStatus === 'pending')
+    going: attendees.filter(a => a.rsvpStatus === 'going'),
+    'not-going': attendees.filter(a => a.rsvpStatus === 'not-going'),
+    pending: attendees.filter(a => a.rsvpStatus === 'pending')
   };
 
   const handleUpdateAttendee = async (attendeeId: string, updateData: any) => {
@@ -195,7 +183,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
         <p className="text-red-700">Error loading attendees: {error}</p>
         <button
           onClick={refreshAttendees}
-          className="mt-2 px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm"
+          className="mt-2 px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-[13px]"
         >
           Retry
         </button>
@@ -205,31 +193,6 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Search and Filter Bar */}
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <input
-            type="text"
-            placeholder="Search attendees by name or relationship..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-          />
-        </div>
-        
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as AttendeeStatus | 'all')}
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-        >
-          <option value="all">All Statuses</option>
-          <option value="going">Going</option>
-          <option value="not-going">Not Going</option>
-          <option value="pending">Pending</option>
-        </select>
-      </div>
-
       {/* Attendee Lists by Status */}
       <div className="space-y-4">
         {/* Going */}
@@ -242,7 +205,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
             >
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-green-600" />
-                <h4 className="font-medium text-gray-900">Going ({attendeesByStatus.going.length})</h4>
+                <h4 className="font-medium text-gray-900 text-[13px]">Going ({attendeesByStatus.going.length})</h4>
               </div>
               <motion.div
                 animate={{ rotate: collapsedSections.going ? 0 : 180 }}
@@ -266,8 +229,8 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                     {/* Excel-like Table Layout */}
                     <div className="border border-gray-200 rounded-lg overflow-hidden">
                                              {/* Table Header */}
-                                               <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
-                                                     <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-600">
+                                               <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
+                                                     <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
                              <div className="col-span-4">Name</div>
                              <div className="col-span-3">Age</div>
                              <div className="col-span-3">Status</div>
@@ -280,19 +243,19 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                            {attendeesByStatus.going.map((attendee, index) => (
                              <div 
                                key={attendee.attendeeId} 
-                               className={`px-3 py-2.5 hover:bg-green-50 transition-colors ${
+                               className={`px-3 py-2 hover:bg-green-50 transition-colors ${
                                  index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
                                }`}
                              >
                                <div className="grid grid-cols-12 gap-2 items-center">
                                  {/* Name */}
                                  <div className="col-span-4">
-                                   <span className="font-medium text-gray-900 text-sm">{getDisplayName(attendee)}</span>
+                                   <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
                                  </div>
                                  
                                  {/* Age */}
                                  <div className="col-span-3">
-                                   <span className="text-xs text-gray-500">
+                                   <span className="text-[12px] text-gray-500">
                                      {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
                                    </span>
                                  </div>
@@ -303,14 +266,14 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                      <select
                                        value={attendee.rsvpStatus}
                                        onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
-                                       className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500 bg-white"
+                                       className="w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500 bg-white"
                                      >
                                        <option value="going" className="text-green-700">Going</option>
                                        <option value="not-going" className="text-red-700">Not Going</option>
                                        <option value="pending" className="text-yellow-700">Pending</option>
                                      </select>
                                    ) : (
-                                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium bg-green-100 text-green-800">
                                        Going
                                      </span>
                                    )}
@@ -329,7 +292,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                              isAttendeeLinkedToFamily(attendee) ||
                                              (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
                                            }
-                                           className={`px-2 py-1 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
+                                           className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
                                              isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
                                                ? 'bg-green-100 text-green-600 cursor-not-allowed' 
                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
@@ -354,7 +317,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          {/* Delete Button */}
                                          <button
                                            onClick={() => handleDeleteAttendee(attendee.attendeeId)}
-                                           className="px-2 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center justify-center"
+                                           className="px-1 py-0.5 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center justify-center"
                                            title="Remove"
                                          >
                                            <Trash2 className="w-3 h-3" />
@@ -385,7 +348,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
             >
               <div className="flex items-center gap-2">
                 <XCircle className="w-5 h-5 text-red-600" />
-                <h4 className="font-medium text-gray-900">Not Going ({attendeesByStatus['not-going'].length})</h4>
+                <h4 className="font-medium text-gray-900 text-[13px]">Not Going ({attendeesByStatus['not-going'].length})</h4>
               </div>
               <motion.div
                 animate={{ rotate: collapsedSections.notGoing ? 0 : 180 }}
@@ -409,8 +372,8 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                     {/* Excel-like Table Layout */}
                     <div className="border border-gray-200 rounded-lg overflow-hidden">
                                              {/* Table Header */}
-                                               <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
-                                                     <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-600">
+                                               <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
+                                                     <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
                              <div className="col-span-4">Name</div>
                              <div className="col-span-3">Age</div>
                              <div className="col-span-3">Status</div>
@@ -423,19 +386,19 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                            {attendeesByStatus['not-going'].map((attendee, index) => (
                              <div 
                                key={attendee.attendeeId} 
-                               className={`px-3 py-2.5 hover:bg-red-50 transition-colors ${
+                               className={`px-3 py-2 hover:bg-red-50 transition-colors ${
                                  index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
                                }`}
                              >
                                <div className="grid grid-cols-12 gap-2 items-center">
                                  {/* Name */}
                                  <div className="col-span-4">
-                                   <span className="font-medium text-gray-900 text-sm">{getDisplayName(attendee)}</span>
+                                   <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
                                  </div>
                                  
                                  {/* Age */}
                                  <div className="col-span-3">
-                                   <span className="text-xs text-gray-500">
+                                   <span className="text-[12px] text-gray-500">
                                      {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
                                    </span>
                                  </div>
@@ -446,14 +409,14 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                      <select
                                        value={attendee.rsvpStatus}
                                        onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
-                                       className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 bg-white"
+                                       className="w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 bg-white"
                                      >
                                        <option value="going" className="text-green-700">Going</option>
                                        <option value="not-going" className="text-red-700">Not Going</option>
                                        <option value="pending" className="text-yellow-700">Pending</option>
                                      </select>
                                    ) : (
-                                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium bg-red-100 text-red-800">
                                        Not Going
                                      </span>
                                    )}
@@ -472,7 +435,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                              isAttendeeLinkedToFamily(attendee) ||
                                              (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
                                            }
-                                           className={`px-2 py-1 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
+                                           className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
                                              isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
                                                ? 'bg-green-100 text-green-600 cursor-not-allowed' 
                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
@@ -497,7 +460,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          {/* Delete Button */}
                                          <button
                                            onClick={() => handleDeleteAttendee(attendee.attendeeId)}
-                                           className="px-2 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center justify-center"
+                                           className="px-1 py-0.5 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center justify-center"
                                            title="Remove"
                                          >
                                            <Trash2 className="w-3 h-3" />
@@ -528,7 +491,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
             >
               <div className="flex items-center gap-2">
                 <Clock className="w-5 h-5 text-yellow-600" />
-                <h4 className="font-medium text-gray-900">Pending ({attendeesByStatus.pending.length})</h4>
+                <h4 className="font-medium text-gray-900 text-[13px]">Pending ({attendeesByStatus.pending.length})</h4>
               </div>
               <motion.div
                 animate={{ rotate: collapsedSections.pending ? 0 : 180 }}
@@ -552,8 +515,8 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                     {/* Excel-like Table Layout */}
                     <div className="border border-gray-200 rounded-lg overflow-hidden">
                                              {/* Table Header */}
-                                               <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
-                                                     <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-600">
+                                               <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
+                                                     <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
                              <div className="col-span-4">Name</div>
                              <div className="col-span-3">Age</div>
                              <div className="col-span-3">Status</div>
@@ -566,19 +529,19 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                            {attendeesByStatus.pending.map((attendee, index) => (
                              <div 
                                key={attendee.attendeeId} 
-                               className={`px-3 py-2.5 hover:bg-yellow-50 transition-colors ${
+                               className={`px-3 py-2 hover:bg-yellow-50 transition-colors ${
                                  index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
                                }`}
                              >
                                <div className="grid grid-cols-12 gap-2 items-center">
                                  {/* Name */}
                                  <div className="col-span-4">
-                                   <span className="font-medium text-gray-900 text-sm">{getDisplayName(attendee)}</span>
+                                   <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
                                  </div>
                                  
                                  {/* Age */}
                                  <div className="col-span-3">
-                                   <span className="text-xs text-gray-500">
+                                   <span className="text-[12px] text-gray-500">
                                      {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
                                    </span>
                                  </div>
@@ -589,14 +552,14 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                      <select
                                        value={attendee.rsvpStatus}
                                        onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
-                                       className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500 bg-white"
+                                       className="w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500 bg-white"
                                      >
                                        <option value="going" className="text-green-700">Going</option>
                                        <option value="not-going" className="text-red-700">Not Going</option>
                                        <option value="pending" className="text-yellow-700">Pending</option>
                                      </select>
                                    ) : (
-                                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium bg-yellow-100 text-yellow-800">
                                        Pending
                                      </span>
                                    )}
@@ -615,7 +578,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                              isAttendeeLinkedToFamily(attendee) ||
                                              (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
                                            }
-                                           className={`px-2 py-1 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
+                                           className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
                                              isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
                                                ? 'bg-green-100 text-green-600 cursor-not-allowed' 
                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
@@ -640,7 +603,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          {/* Delete Button */}
                                          <button
                                            onClick={() => handleDeleteAttendee(attendee.attendeeId)}
-                                           className="px-2 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center justify-center"
+                                           className="px-1 py-0.5 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center justify-center"
                                            title="Remove"
                                          >
                                            <Trash2 className="w-3 h-3" />
@@ -662,13 +625,10 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
         )}
 
         {/* No attendees */}
-        {filteredAttendees.length === 0 && (
+        {attendees.length === 0 && (
           <div className="text-center py-8 text-gray-500">
             <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
             <p>No attendees found</p>
-            {searchTerm && (
-              <p className="text-sm">Try adjusting your search criteria</p>
-            )}
           </div>
         )}
       </div>

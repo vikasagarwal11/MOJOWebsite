@@ -32,7 +32,9 @@ const eventSchema = z.object({
   endTime: z.string().optional(),
   endDate: z.string().optional(),
   isAllDay: z.boolean().optional(),
-  location: z.string().min(1, 'Location is required'),
+  location: z.string().min(1, 'Location is required'), // Keep for backward compatibility
+  venueName: z.string().optional(),
+  venueAddress: z.string().optional(),
   maxAttendees: z.string().optional(),
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
 });
@@ -101,6 +103,8 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
       setValue('title', eventToEdit.title);
       setValue('description', eventToEdit.description);
       setValue('location', eventToEdit.location);
+      setValue('venueName', eventToEdit.venueName || '');
+      setValue('venueAddress', eventToEdit.venueAddress || '');
       setValue('maxAttendees', eventToEdit.maxAttendees?.toString() || '');
       
       // Set dates
@@ -319,6 +323,8 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         endAt,
         allDay: data.isAllDay, // Add all-day flag
         location: data.location.trim(),
+        venueName: data.venueName?.trim() || undefined,
+        venueAddress: data.venueAddress?.trim() || undefined,
         imageUrl: imageUrl === undefined ? null : imageUrl, // Convert undefined to null for Firestore
         maxAttendees: data.maxAttendees ? Number(data.maxAttendees) : undefined,
         tags: tags.length > 0 ? tags : undefined,
@@ -489,7 +495,35 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Venue Name (Optional)</label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                {...register('venueName')}
+                type="text"
+                disabled={isLoading}
+                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.venueName ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
+                placeholder="e.g., Short Hills Racquet Club"
+              />
+            </div>
+            {errors.venueName && <p className="mt-1 text-sm text-red-600">{errors.venueName.message}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Address (Optional)</label>
+            <div className="relative">
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                {...register('venueAddress')}
+                type="text"
+                disabled={isLoading}
+                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.venueAddress ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
+                placeholder="e.g., 123 Main St, Short Hills, NJ 07078"
+              />
+            </div>
+            {errors.venueAddress && <p className="mt-1 text-sm text-red-600">{errors.venueAddress.message}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Location (Fallback)</label>
             <div className="relative">
               <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
@@ -497,10 +531,11 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                 type="text"
                 disabled={isLoading}
                 className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.location ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
-                placeholder="Enter event location"
+                placeholder="Enter event location (used if venue name/address not provided)"
               />
             </div>
             {errors.location && <p className="mt-1 text-sm text-red-600">{errors.location.message}</p>}
+            <p className="mt-1 text-xs text-gray-500">Use this if you don't have a specific venue name and address</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Tags (Optional)</label>
