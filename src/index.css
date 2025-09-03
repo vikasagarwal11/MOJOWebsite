@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Hide scrollbars utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom scrollbar for event details */
+.event-details-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.event-details-scrollbar::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 2px;
+}
+.event-details-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 2px;
+}
+.event-details-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
 /* Custom line-clamp utilities for text truncation */
 .line-clamp-1 {
   overflow: hidden;
