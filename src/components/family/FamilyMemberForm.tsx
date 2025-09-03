@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, User, Baby, Save } from 'lucide-react';
+import { X, User, Save } from 'lucide-react';
 import { FamilyMember, FamilyMemberFormData } from '../../types/family';
 import { validateFamilyMember } from '../../utils/familyMemberUtils';
 
@@ -49,8 +49,12 @@ export const FamilyMemberForm: React.FC<FamilyMemberFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate form data
-    const validation = validateFamilyMember(formData);
+    // Validate form data - convert empty string to undefined for validation
+    const validationData = {
+      ...formData,
+      ageGroup: formData.ageGroup === '' ? undefined : formData.ageGroup
+    };
+    const validation = validateFamilyMember(validationData);
     if (!validation.isValid) {
       setErrors(validation.errors);
       return;
@@ -58,7 +62,12 @@ export const FamilyMemberForm: React.FC<FamilyMemberFormProps> = ({
 
     setIsSubmitting(true);
     try {
-      await onSubmit(formData);
+      // Convert empty string to undefined for ageGroup
+      const submitData = {
+        ...formData,
+        ageGroup: formData.ageGroup === '' ? undefined : formData.ageGroup
+      };
+      await onSubmit(submitData);
     } catch (error) {
       console.error('Error submitting family member:', error);
       setErrors(['Failed to save family member. Please try again.']);
@@ -123,7 +132,8 @@ export const FamilyMemberForm: React.FC<FamilyMemberFormProps> = ({
             <option value="0-2">0-2 years (Baby/Toddler)</option>
             <option value="3-5">3-5 years (Preschool)</option>
             <option value="6-10">6-10 years (Child)</option>
-            <option value="11+">11+ years (Teen/Adult)</option>
+            <option value="teen">11+ Years (Teen)</option>
+            <option value="adult">Adult</option>
           </select>
         </div>
 

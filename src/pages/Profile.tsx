@@ -462,14 +462,22 @@ const Profile: React.FC = () => {
             for (const batch of batches) {
               await Promise.all(
                 batch.map(async (event) => {
-                  const rsvpQuery = query(collection(db, 'events', event.id, 'rsvps'), orderBy('updatedAt', 'desc'));
-                  const rsvpSnap = await getDocs(rsvpQuery);
-                  rsvps[event.id] = rsvpSnap.docs.map(d => ({ id: d.id, eventId: event.id, ...d.data() }));
+                  // Use new attendee system instead of old rsvps collection
+                  const attendeeQuery = query(collection(db, 'events', event.id, 'attendees'), orderBy('createdAt', 'desc'));
+                  const attendeeSnap = await getDocs(attendeeQuery);
+                  // Keep all attendee records for complete admin visibility
+                  rsvps[event.id] = attendeeSnap.docs.map(d => ({ 
+                    id: d.id, 
+                    eventId: event.id, 
+                    userId: d.data().userId,
+                    status: d.data().rsvpStatus, // Map rsvpStatus to status for compatibility
+                    ...d.data() 
+                  }));
                 })
               );
             }
             setRsvpsByEvent(rsvps);
-            fetchUserNames([...events.map(e => ({ id: e.createdBy })), ...Object.values(rsvps).flat()]);
+            fetchUserNames([...events.map(e => ({ id: e.createdBy })), ...Object.values(rsvps).flat().map(rsvp => ({ id: rsvp.userId }))]);
           } catch (e) {
             console.error('🚨 Profile: Failed to load admin events:', {
               error: e,
@@ -789,73 +797,112 @@ const Profile: React.FC = () => {
         toast.error('No RSVPs to export');
         return;
       }
-      const userDetails = await Promise.all(
-        rsvps.map(async (rsvp) => {
+      const attendeeDetails = await Promise.all(
+        rsvps.map(async (attendee) => {
           try {
-            const userDoc = await getDoc(doc(db, 'users', rsvp.id));
+            const userDoc = await getDoc(doc(db, 'users', attendee.userId));
             if (userDoc.exists()) {
               const userData = userDoc.data();
               return {
-                userId: rsvp.id,
-                status: rsvp.status,
+                // Attendee-specific data
+                attendeeId: attendee.id,
+                attendeeName: attendee.name || attendee.attendeeName || '',
+                attendeeType: attendee.attendeeType || 'primary',
+                ageGroup: attendee.ageGroup || '',
+                relationship: attendee.relationship || '',
+                rsvpStatus: attendee.status,
+                // User data
+                userId: attendee.userId,
                 firstName: userData.firstName || '',
                 lastName: userData.lastName || '',
                 displayName: userData.displayName || '',
                 email: userData.email || '',
-                phone: userData.phone || '',
+                phone: userData.phoneNumber || userData.phone || '',
                 address: userData.address ? `${userData.address.street || ''} ${userData.address.city || ''} ${userData.address.state || ''} ${userData.address.postalCode || ''}`.trim() : '',
-                rsvpDate: rsvp.createdAt?.toDate?.() ? new Date(rsvp.createdAt.toDate()).toLocaleDateString('en-US') : 'Unknown'
+                // Dates
+                rsvpDate: attendee.createdAt?.toDate?.() ? new Date(attendee.createdAt.toDate()).toLocaleDateString('en-US') : 'Unknown',
+                updatedDate: attendee.updatedAt?.toDate?.() ? new Date(attendee.updatedAt.toDate()).toLocaleDateString('en-US') : 'Unknown'
               };
             }
             return {
-              userId: rsvp.id,
-              status: rsvp.status,
+              // Attendee-specific data
+              attendeeId: attendee.id,
+              attendeeName: attendee.name || attendee.attendeeName || 'Unknown',
+              attendeeType: attendee.attendeeType || 'primary',
+              ageGroup: attendee.ageGroup || '',
+              relationship: attendee.relationship || '',
+              rsvpStatus: attendee.status,
+              // User data
+              userId: attendee.userId,
               firstName: 'Unknown',
               lastName: 'User',
               displayName: 'Unknown User',
               email: '',
               phone: '',
               address: '',
-              rsvpDate: rsvp.createdAt?.toDate?.() ? new Date(rsvp.createdAt.toDate()).toLocaleDateString('en-US') : 'Unknown'
+              // Dates
+              rsvpDate: attendee.createdAt?.toDate?.() ? new Date(attendee.createdAt.toDate()).toLocaleDateString('en-US') : 'Unknown',
+              updatedDate: attendee.updatedAt?.toDate?.() ? new Date(attendee.updatedAt.toDate()).toLocaleDateString('en-US') : 'Unknown'
             };
           } catch {
             return {
-              userId: rsvp.id,
-              status: rsvp.status,
+              // Attendee-specific data
+              attendeeId: attendee.id,
+              attendeeName: attendee.name || attendee.attendeeName || 'Error',
+              attendeeType: attendee.attendeeType || 'primary',
+              ageGroup: attendee.ageGroup || '',
+              relationship: attendee.relationship || '',
+              rsvpStatus: attendee.status,
+              // User data
+              userId: attendee.userId,
               firstName: 'Error',
               lastName: 'Loading',
               displayName: 'Error Loading User',
               email: '',
               phone: '',
               address: '',
-              rsvpDate: rsvp.createdAt?.toDate?.() ? new Date(rsvp.createdAt.toDate()).toLocaleDateString('en-US') : 'Unknown'
+              // Dates
+              rsvpDate: attendee.createdAt?.toDate?.() ? new Date(attendee.createdAt.toDate()).toLocaleDateString('en-US') : 'Unknown',
+              updatedDate: attendee.updatedAt?.toDate?.() ? new Date(attendee.updatedAt.toDate()).toLocaleDateString('en-US') : 'Unknown'
             };
           }
         })
       );
       const headers = [
+        'Attendee ID',
+        'Attendee Name',
+        'Attendee Type',
+        'Age Group',
+        'Relationship',
+        'RSVP Status',
         'User ID',
-        'First Name',
-        'Last Name',
-        'Display Name',
+        'Primary User First Name',
+        'Primary User Last Name',
+        'Primary User Display Name',
         'Email',
         'Phone',
         'Address',
-        'RSVP Status',
-        'RSVP Date'
+        'RSVP Date',
+        'Updated Date'
       ];
       const csvRows = [
         headers.join(','),
-        ...userDetails.map(user => [
-          user.userId,
-          `"${user.firstName}"`,
-          `"${user.lastName}"`,
-          `"${user.displayName}"`,
-          `"${user.email}"`,
-          `"${user.phone}"`,
-          `"${user.address}"`,
-          user.status,
-          user.rsvpDate
+        ...attendeeDetails.map(attendee => [
+          attendee.attendeeId,
+          `"${attendee.attendeeName}"`,
+          attendee.attendeeType,
+          attendee.ageGroup,
+          attendee.relationship,
+          attendee.rsvpStatus,
+          attendee.userId,
+          `"${attendee.firstName}"`,
+          `"${attendee.lastName}"`,
+          `"${attendee.displayName}"`,
+          `"${attendee.email}"`,
+          `"${attendee.phone}"`,
+          `"${attendee.address}"`,
+          attendee.rsvpDate,
+          attendee.updatedDate
         ].join(','))
       ];
       const csv = csvRows.join('\n');
@@ -866,7 +913,7 @@ const Profile: React.FC = () => {
       a.download = `${event.title.replace(/[^a-z0-9]/gi, '_')}_rsvps_${new Date().toISOString().split('T')[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success(`Exported ${userDetails.length} RSVPs with full user details`);
+      toast.success(`Exported ${attendeeDetails.length} attendees with full details including age groups`);
     } catch (e: any) {
       console.error('Error exporting RSVPs:', e);
       toast.error(e?.message || 'Failed to export RSVPs');

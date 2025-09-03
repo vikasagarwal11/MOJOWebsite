@@ -171,12 +171,13 @@ service cloud.firestore {
         request.auth.uid == userId && 
         (!('role' in request.resource.data) || (request.resource.data.role == 'member' && !isBlockedPhone())) && 
         validUserProfileData(request.resource.data);
-      allow update: if isSignedIn() && 
-        request.auth.uid == userId && 
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) && 
-        validUserProfileData(request.resource.data) ||
-        (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['blockedFromRsvp', 'updatedAt', 'fcmToken'])) &&
-        (!('fcmToken' in request.resource.data) || request.resource.data.fcmToken is string);
+      allow update: if isSignedIn() && (
+        (request.auth.uid == userId && 
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) && 
+         validUserProfileData(request.resource.data)) ||
+        (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['blockedFromRsvp', 'updatedAt', 'fcmToken']) &&
+         (!('fcmToken' in request.resource.data) || request.resource.data.fcmToken is string))
+      );
       allow delete: if isSignedIn() && request.auth.uid == userId;
       
       // --- FAMILY MEMBERS ---

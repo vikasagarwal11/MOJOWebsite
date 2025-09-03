@@ -100,8 +100,8 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
 
   return (
   <div className="grid gap-6">
-    {/* Notifications - Only show for event creators */}
-    {currentUser?.role === 'admin' && (
+    {/* Notifications - Show for event creators and admins */}
+    {(currentUser?.role === 'admin' || userEvents.length > 0) && (
       <div className="grid gap-4">
         <div className="flex items-center gap-2">
           <Bell className="w-5 h-5 text-purple-600" />
