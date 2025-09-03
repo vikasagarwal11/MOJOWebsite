@@ -88,7 +88,7 @@ export const deleteAttendee = async (eventId: string, attendeeId: string): Promi
   await deleteDoc(attendeeRef);
 };
 
-// Get all attendees for an event
+// Get all attendees for an event (for current user only)
 export const listAttendees = async (eventId: string, userId: string): Promise<Attendee[]> => {
   console.log('🔍 listAttendees called with:', { eventId, userId });
   
@@ -108,8 +108,30 @@ export const listAttendees = async (eventId: string, userId: string): Promise<At
   console.log('🔍 listAttendees result:', { 
     eventId, 
     userId, 
-    attendeeCount: attendees.length,
-    attendeeNames: attendees.map(a => a.name)
+    attendeeCount: attendees.length, 
+    attendeeNames: attendees.map(a => a.name) 
+  });
+  
+  return attendees;
+};
+
+// Get all attendees for an event (all users) - for admin view
+export const listAllAttendees = async (eventId: string): Promise<Attendee[]> => {
+  console.log('🔍 listAllAttendees called for eventId:', eventId);
+  
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
+  const snapshot = await getDocs(q);
+  
+  const attendees = snapshot.docs.map(doc => ({
+    attendeeId: doc.id,
+    ...doc.data()
+  })) as Attendee[];
+  
+  console.log('🔍 listAllAttendees result:', { 
+    eventId, 
+    attendeeCount: attendees.length, 
+    attendeeNames: attendees.map(a => a.name) 
   });
   
   return attendees;
@@ -173,13 +195,15 @@ export const bulkUpsertAttendees = async (eventId: string, attendees: CreateAtte
 
 // Set attendee status
 export const setAttendeeStatus = async (
-  eventId: string, 
-  attendeeId: string, 
+  eventId: string,
+  attendeeId: string,
   status: AttendeeStatus
 ): Promise<void> => {
   console.log('🔍 DEBUG: setAttendeeStatus called:', { eventId, attendeeId, status });
+  console.log('🔍 DEBUG: Document path will be: events/' + eventId + '/attendees/' + attendeeId);
   await updateAttendee(eventId, attendeeId, { rsvpStatus: status });
   console.log('🔍 DEBUG: setAttendeeStatus completed successfully');
+  console.log('🔍 DEBUG: Cloud Function should have been triggered for path: events/' + eventId + '/attendees/' + attendeeId);
 };
 
 // Calculate attendee counts for an event
@@ -231,7 +255,7 @@ export const recomputeEventAttendeeCount = async (eventId: string): Promise<numb
   return counts.totalGoing;
 };
 
-// Real-time listener for attendees
+// Real-time listener for attendees (current user only)
 export const subscribeToAttendees = (
   eventId: string, 
   userId: string,
@@ -252,7 +276,27 @@ export const subscribeToAttendees = (
     
     callback(attendees);
   });
+  
+  return unsubscribe;
+};
 
+// Real-time listener for all attendees (admin view)
+export const subscribeToAllAttendees = (
+  eventId: string,
+  callback: (attendees: Attendee[]) => void
+): (() => void) => {
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
+  
+  const unsubscribe = onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
+    const attendees = snapshot.docs.map(doc => ({
+      attendeeId: doc.id,
+      ...doc.data()
+    })) as Attendee[];
+    
+    callback(attendees);
+  });
+  
   return unsubscribe;
 };
 

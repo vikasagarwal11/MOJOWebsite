@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Calendar, Eye, EyeOff } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { auth } from '../config/firebase';
 import EventCardNew from '../components/events/EventCardNew';
 
 interface Event {
@@ -46,13 +47,13 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   adjustAttendingCount,
   blockUserFromRsvp,
   analyzeLastMinuteChanges,
-  rsvpFilter,
+  // rsvpFilter, // Unused - using per-event filters instead
   setRsvpFilter,
   eventsPage,
   setEventsPage,
   PAGE_SIZE,
   loadingAdminEvents,
-  currentUser,
+  // currentUser, // Unused in this component
 }) => {
   // NEW: Event filtering state
   const [eventFilter, setEventFilter] = React.useState('');
@@ -61,6 +62,10 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   // NEW: User details state for email/phone show/hide
   const [userDetails, setUserDetails] = useState<{[userId: string]: {email?: string; phone?: string}}>({});
   const [showContactInfo, setShowContactInfo] = useState<{[userId: string]: boolean}>({});
+  
+  // NEW: Two-level display state (for future implementation)
+  // const [expandedUsers, setExpandedUsers] = useState<{[userId: string]: boolean}>({});
+  // const [showAuditTrail, setShowAuditTrail] = useState(false);
   
   // NEW: Per-event RSVP filter state (instead of global)
   const [eventRsvpFilters, setEventRsvpFilters] = useState<{[eventId: string]: 'all' | 'going' | 'not-going'}>({});
@@ -97,22 +102,38 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   
   // Function to fetch user email and phone details
   const fetchUserDetails = async (userId: string) => {
-    if (userDetails[userId]) return; // Already fetched
+    console.log('🔍 fetchUserDetails called for userId:', userId);
+    if (userDetails[userId]) {
+      console.log('🔍 User details already cached for:', userId);
+      return; // Already fetched
+    }
     
     try {
+      console.log('🔍 Fetching user document for userId:', userId);
       const userDoc = await getDoc(doc(db, 'users', userId));
       if (userDoc.exists()) {
         const userData = userDoc.data();
+        console.log('🔍 User data found:', { email: userData.email, phoneNumber: userData.phoneNumber });
+        
+        // Try to get phone number from Firebase Auth as fallback
+        let phoneNumber = userData.phoneNumber;
+        if (!phoneNumber && auth.currentUser?.uid === userId) {
+          phoneNumber = auth.currentUser.phoneNumber || undefined;
+          console.log('🔍 Using Firebase Auth phone number as fallback:', phoneNumber);
+        }
+        
         setUserDetails(prev => ({
           ...prev,
           [userId]: {
             email: userData.email || 'Not provided',
-            phone: userData.phone || 'Not provided'
+            phone: phoneNumber || 'Not provided'
           }
         }));
+      } else {
+        console.log('🔍 User document does not exist for userId:', userId);
       }
     } catch (error) {
-      console.error('Error fetching user details:', error);
+      console.error('🚨 Error fetching user details:', error);
       setUserDetails(prev => ({
         ...prev,
         [userId]: {
@@ -125,13 +146,17 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   
   // Function to toggle contact info visibility
   const toggleContactInfo = async (userId: string) => {
+    console.log('🔍 toggleContactInfo called for userId:', userId);
+    console.log('🔍 Current showContactInfo state:', showContactInfo[userId]);
     if (!showContactInfo[userId]) {
+      console.log('🔍 Contact info not shown, fetching user details...');
       await fetchUserDetails(userId);
     }
     setShowContactInfo(prev => ({
       ...prev,
       [userId]: !prev[userId]
     }));
+    console.log('🔍 Toggled showContactInfo for userId:', userId);
   };
   
   // Function to update per-event RSVP filter
@@ -141,6 +166,86 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
       [eventId]: filter
     }));
   };
+
+  // Helper function to organize attendees by primary user
+  const organizeAttendeesByUser = (attendees: any[]) => {
+    const userGroups: {[userId: string]: any[]} = {};
+    attendees.forEach(attendee => {
+      const userId = attendee.userId;
+      if (!userGroups[userId]) {
+        userGroups[userId] = [];
+      }
+      userGroups[userId].push(attendee);
+    });
+    return userGroups;
+  };
+
+  // Helper function to calculate billing summary
+  const calculateBillingSummary = (attendees: any[]) => {
+    const summary = {
+      total: attendees.length,
+      going: attendees.filter(a => a.status === 'going').length,
+      notGoing: attendees.filter(a => a.status === 'not-going').length,
+      pending: attendees.filter(a => a.status === 'pending').length,
+      byAgeGroup: {
+        adults: 0,
+        children0to2: 0,
+        children3to5: 0,
+        children6to10: 0,
+        children11plus: 0
+      },
+      byType: {
+        primary: 0,
+        family: 0,
+        guests: 0
+      }
+    };
+
+    attendees.forEach(attendee => {
+      // Count by age group
+      switch (attendee.ageGroup) {
+        case '0-2':
+          summary.byAgeGroup.children0to2++;
+          break;
+        case '3-5':
+          summary.byAgeGroup.children3to5++;
+          break;
+        case '6-10':
+          summary.byAgeGroup.children6to10++;
+          break;
+        case 'teen':
+          summary.byAgeGroup.children11plus++;
+          break;
+        case 'adult':
+        default:
+          summary.byAgeGroup.adults++;
+          break;
+      }
+
+      // Count by type
+      switch (attendee.attendeeType) {
+        case 'primary':
+          summary.byType.primary++;
+          break;
+        case 'family_member':
+          summary.byType.family++;
+          break;
+        case 'guest':
+          summary.byType.guests++;
+          break;
+      }
+    });
+
+    return summary;
+  };
+
+  // Helper function to toggle user expansion (for future implementation)
+  // const toggleUserExpansion = (userId: string) => {
+  //   setExpandedUsers(prev => ({
+  //     ...prev,
+  //     [userId]: !prev[userId]
+  //   }));
+  // };
   
   // Function to get current filter for a specific event
   const getEventRsvpFilter = (eventId: string) => {
@@ -361,7 +466,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
             <div className="space-y-2">
               {lastMinuteChanges.slice(0, 3).map(rsvp => {
                 const event = allEvents.find(e => e.id === rsvp.eventId);
-                const userName = userNames[rsvp.id] || 'Unknown User';
+                const userName = userNames[rsvp.userId] || 'Unknown User';
                 return (
                   <div key={rsvp.id} className="text-xs text-orange-600 bg-white p-2 rounded border">
                     <strong>{userName}</strong> changed RSVP for <strong>{event?.title}</strong> to "Not Going"
@@ -795,122 +900,153 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
               {/* RSVP DATA SECTION - Only show when there are actual RSVPs */}
               {rsvpsByEvent[event.id]?.length ? (
                 <>
-                  {/* RSVP Summary Dashboard */}
-                  <div className="mb-4 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium text-gray-700">Response Summary</span>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                        <span>Going: <strong>{rsvpsByEvent[event.id].filter(r => r.status === 'going').length}</strong></span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-yellow-500 rounded-full"></span>
-        
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-red-500 rounded-full"></span>
-                        <span>Not Going: <strong>{rsvpsByEvent[event.id].filter(r => r.status === 'not-going').length}</strong></span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
-                        <span>Total: <strong>{rsvpsByEvent[event.id].length}</strong></span>
-                      </div>
-                    </div>
-                    <div className="mt-3 pt-3 border-t border-gray-200">
-                      <div className="text-xs text-gray-600 space-y-1">
-                        <div>
-                          <span className="font-medium text-green-700">Going:</span>{' '}
-                          {rsvpsByEvent[event.id]
-                            .filter(r => r.status === 'going')
-                            .map(r => userNames[r.id] || 'Loading...')
-                            .join(', ') || 'None'}
+                  {/* Enhanced RSVP Summary Dashboard with Billing Info */}
+                  {(() => {
+                    const attendees = rsvpsByEvent[event.id];
+                    const billingSummary = calculateBillingSummary(attendees);
+                    const primaryUserCount = Object.keys(organizeAttendeesByUser(attendees)).length;
+                    
+                    return (
+                      <div className="mb-4 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-sm font-medium text-gray-700">📊 Comprehensive RSVP Summary</span>
+                          {/* Audit Trail toggle will be implemented in future version */}
+                        </div>
+                        
+                        {/* Primary Summary */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                            <span>Going: <strong>{billingSummary.going}</strong></span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 bg-red-500 rounded-full"></span>
+                            <span>Not Going: <strong>{billingSummary.notGoing}</strong></span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
+                            <span>Total: <strong>{billingSummary.total}</strong></span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="w-3 h-3 bg-purple-500 rounded-full"></span>
+                            <span>Users: <strong>{primaryUserCount}</strong></span>
+                          </div>
                         </div>
 
+                        {/* Billing Summary */}
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          <div className="text-xs text-gray-600 space-y-2">
+                            <div className="font-medium text-gray-700">💰 Billing Breakdown:</div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                              <div>👥 Adults: <strong>{billingSummary.byAgeGroup.adults}</strong></div>
+                              <div>👶 0-2 years: <strong>{billingSummary.byAgeGroup.children0to2}</strong></div>
+                              <div>🧒 3-5 years: <strong>{billingSummary.byAgeGroup.children3to5}</strong></div>
+                              <div>👦 6-10 years: <strong>{billingSummary.byAgeGroup.children6to10}</strong></div>
+                              <div>👧 11+ Years (Teen): <strong>{billingSummary.byAgeGroup.children11plus}</strong></div>
+                              <div>🎫 Guests: <strong>{billingSummary.byType.guests}</strong></div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  {/* Detailed RSVP List */}
-                  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mt-4">
-                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700">Detailed RSVP List</span>
-                        <select
-                          value={getEventRsvpFilter(event.id)}
-                          onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'not-going')}
-                          className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
-                          aria-label={`Filter RSVPs for ${event.title}`}
-                        >
-                          <option value="all">All</option>
-                          <option value="going">Going</option>
-        
-                          <option value="not-going">Not Going</option>
-                        </select>
-                      </div>
-                      
-                      {/* NEW: Quick Status Filter Pills */}
-                      <div className="flex gap-2 flex-wrap">
-                        {[
-                          { value: 'all', label: 'All', count: rsvpsByEvent[event.id]?.length || 0, color: 'bg-gray-100 text-gray-700' },
-                          { value: 'going', label: 'Going', count: rsvpsByEvent[event.id]?.filter(r => r.status === 'going').length || 0, color: 'bg-green-100 text-green-700' },
+                    );
+                  })()}
                   
-                          { value: 'not-going', label: 'Not Going', count: rsvpsByEvent[event.id]?.filter(r => r.status === 'not-going').length || 0, color: 'bg-red-100 text-red-700' }
-                        ].map(filter => (
-                          <button
-                            key={filter.value}
-                            onClick={() => updateEventRsvpFilter(event.id, filter.value as 'all' | 'going' | 'not-going')}
-                            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                              getEventRsvpFilter(event.id) === filter.value
-                                ? filter.color + ' ring-2 ring-offset-1 ring-gray-400'
-                                : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
-                            }`}
-                            title={`${filter.label}: ${filter.count} responses`}
-                          >
-                            {filter.label} ({filter.count})
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <ul className="divide-y divide-gray-200 max-h-60 overflow-y-auto">
-                      {rsvpsByEvent[event.id]
-                        .filter(r => getEventRsvpFilter(event.id) === 'all' || r.status === getEventRsvpFilter(event.id))
-                        .map(rsvp => (
-                          <li key={rsvp.id} className="px-4 py-3 flex justify-between items-center hover:bg-gray-50">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
+
+                  {/* Two-Level Expandable RSVP List */}
+                  {(() => {
+                    const attendees = rsvpsByEvent[event.id];
+                    const currentFilter = getEventRsvpFilter(event.id);
+                    
+                    return (
+                      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mt-4">
+                        <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-gray-700">👥 Primary Users & Their Attendees</span>
+                            <select
+                              value={currentFilter}
+                              onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'not-going')}
+                              className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
+                              aria-label={`Filter RSVPs for ${event.title}`}
+                            >
+                              <option value="all">All</option>
+                              <option value="going">Going</option>
+                              <option value="not-going">Not Going</option>
+                            </select>
+                          </div>
+                      
+                          {/* Quick Status Filter Pills */}
+                          <div className="flex gap-2 flex-wrap">
+                            {[
+                              { value: 'all', label: 'All', count: attendees.length, color: 'bg-gray-100 text-gray-700' },
+                              { value: 'going', label: 'Going', count: attendees.filter(r => r.status === 'going').length, color: 'bg-green-100 text-green-700' },
+                              { value: 'not-going', label: 'Not Going', count: attendees.filter(r => r.status === 'not-going').length, color: 'bg-red-100 text-red-700' }
+                            ].map(filter => (
+                              <button
+                                key={filter.value}
+                                onClick={() => updateEventRsvpFilter(event.id, filter.value as 'all' | 'going' | 'not-going')}
+                                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                                  currentFilter === filter.value
+                                    ? filter.color + ' ring-2 ring-offset-1 ring-gray-400'
+                                    : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                                }`}
+                                title={`${filter.label}: ${filter.count} responses`}
+                              >
+                                {filter.label} ({filter.count})
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        {/* Clean List Format - Similar to RSVPModalNew */}
+                        <div className="max-h-80 overflow-y-auto">
+                              {rsvpsByEvent[event.id]
+                                .filter(r => getEventRsvpFilter(event.id) === 'all' || r.status === getEventRsvpFilter(event.id))
+                                .map(rsvp => (
+                                  <div key={rsvp.id} className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2">
                                 <span className="font-medium text-sm text-gray-900">
-                                  {userNames[rsvp.id] || 'Loading...'}
+                                  {rsvp.attendeeType === 'primary' ? '👤 ' : '  '}
+                                  {rsvp.name || rsvp.attendeeName || userNames[rsvp.userId] || 'Loading...'}
                                 </span>
+                                                                          {rsvp.attendeeType === 'primary' ? (
+                                            <span className="text-xs text-blue-600 font-medium">
+                                              (Primary User)
+                                            </span>
+                                          ) : (
+                                            <>
+                                              <span className="text-xs text-gray-500">
+                                                ({rsvp.attendeeType === 'family_member' ? '👨‍👩‍👧‍👦 Family' : '🎫 Guest'})
+                                              </span>
+                                              {/* Only show child icon and age for actual kids */}
+                                              {rsvp.ageGroup && ['0-2', '3-5', '6-10', 'teen'].includes(rsvp.ageGroup) && (
+                                                <span className="text-xs text-gray-500">
+                                                  👶 {rsvp.ageGroup === 'teen' ? 'Teen' : rsvp.ageGroup}
+                                                </span>
+                                              )}
+                                            </>
+                                          )}
                                 <button
-                                  onClick={() => toggleContactInfo(rsvp.id)}
+                                  onClick={() => toggleContactInfo(rsvp.userId)}
                                   className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                                  title={showContactInfo[rsvp.id] ? 'Hide contact info' : 'Show contact info'}
+                                  title={showContactInfo[rsvp.userId] ? 'Hide contact info' : 'Show contact info'}
                                 >
-                                  {showContactInfo[rsvp.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                  {showContactInfo[rsvp.id] ? 'Hide' : 'Show'} Contact
+                                  {showContactInfo[rsvp.userId] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                  {showContactInfo[rsvp.userId] ? 'Hide' : 'Show'} Contact
                                 </button>
-                                                                  <span
-                                    className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                      rsvp.status === 'going'
-                                        ? 'bg-green-100 text-green-800'
-                                        : 'bg-red-100 text-red-800'
-                                    }`}
-                                  >
-                                    {rsvp.status === 'going' ? '✅ Going' : '❌ Not Going'}
-                                  </span>
                               </div>
                               
                               {/* Show contact info when toggled */}
-                              {showContactInfo[rsvp.id] && userDetails[rsvp.id] && (
+                              {showContactInfo[rsvp.userId] && userDetails[rsvp.userId] && (
                                 <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-800 space-y-1">
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium">📧 Email:</span>
-                                    <span>{userDetails[rsvp.id].email}</span>
+                                    <span>{userDetails[rsvp.userId].email}</span>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium">📱 Phone:</span>
-                                    <span>{userDetails[rsvp.id].phone}</span>
+                                    <span>{userDetails[rsvp.userId].phone}</span>
                                   </div>
                                 </div>
                               )}
@@ -985,10 +1121,10 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                 value={rsvp.status}
                                 onChange={(e) => {
                                   const newStatus = e.target.value as 'going' | 'not-going' | '';
-                                  updateRsvp(event.id, rsvp.id, newStatus || null);
+                                  updateRsvp(event.id, rsvp.userId, newStatus || null);
                                 }}
                                 className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
-                                aria-label={`Change RSVP status for ${userNames[rsvp.id] || rsvp.id}`}
+                                aria-label={`Change RSVP status for ${userNames[rsvp.userId] || rsvp.userId}`}
                               >
                                 <option value="going">✅ Going</option>
               
@@ -997,18 +1133,21 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               </select>
                               {analyzeLastMinuteChanges(rsvp, event.startAt) > 0 && (
                                 <button
-                                  onClick={() => blockUserFromRsvp(rsvp.id)}
+                                  onClick={() => blockUserFromRsvp(rsvp.userId)}
                                   className="ml-2 px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
-                                  aria-label={`Block ${userNames[rsvp.id] || rsvp.id} from RSVPing`}
+                                  aria-label={`Block ${userNames[rsvp.userId] || rsvp.userId} from RSVPing`}
                                 >
                                   Block
                                 </button>
                               )}
-                            </div>
-                          </li>
-                        ))}
-                    </ul>
-                  </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </>
               ) : (
                 <div className="text-center py-8 bg-gray-50 rounded-lg">

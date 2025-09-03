@@ -7,6 +7,7 @@ import {
   MapPin,
   Clock,
   UserPlus,
+  Users,
   Plus,
   Minus,
   ChevronDown,
@@ -33,9 +34,14 @@ interface RSVPModalProps {
 export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAttendeeUpdate }) => {
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
+  
+  // Check if current user is the event creator (admin)
+  const isEventCreator = currentUser?.id === event.createdBy;
+  
   const { attendees, counts, addAttendee, bulkAddAttendees, refreshAttendees } = useAttendees(
     event.id,
-    currentUser?.id || ''
+    currentUser?.id || '',
+    isEventCreator // Pass admin flag to use different data source
   );
   const { familyMembers } = useFamilyMembers();
 
@@ -65,7 +71,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
       {
         id: makeId(),
         name: '',
-        ageGroup: '11+',
+        ageGroup: 'adult',
         relationship: 'guest',
         rsvpStatus: 'going',
       },
@@ -135,7 +141,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
     setBulkFormData((prev) => ({
       familyMembers: [
         ...prev.familyMembers,
-        { id: makeId(), name: '', ageGroup: '11+', relationship: 'guest', rsvpStatus: 'going' },
+        { id: makeId(), name: '', ageGroup: 'adult', relationship: 'guest', rsvpStatus: 'going' },
       ],
     }));
   };
@@ -170,12 +176,12 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
         attendeeType: 'family_member',
         relationship: member.relationship || 'guest',
         name: member.name.trim(),
-        ageGroup: member.ageGroup || '11+',
+        ageGroup: member.ageGroup || 'adult',
         rsvpStatus: member.rsvpStatus || 'going',
       }));
       await bulkAddAttendees(attendeesData);
       setBulkFormData({
-        familyMembers: [{ id: makeId(), name: '', ageGroup: '11+', relationship: 'guest', rsvpStatus: 'going' }],
+        familyMembers: [{ id: makeId(), name: '', ageGroup: 'adult', relationship: 'guest', rsvpStatus: 'going' }],
       });
       await refreshAttendees();
       onAttendeeUpdate?.();
@@ -199,7 +205,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
         familyMemberId: familyMember.id,
         relationship: 'guest',
         name: familyMember.name,
-        ageGroup: familyMember.ageGroup || '11+',
+        ageGroup: familyMember.ageGroup || 'adult',
         rsvpStatus: 'going',
       };
       await addAttendee(attendeeData);
@@ -225,7 +231,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
         familyMemberId: member.id,
         relationship: 'guest',
         name: member.name,
-        ageGroup: member.ageGroup || '11+',
+        ageGroup: member.ageGroup || 'adult',
         rsvpStatus: 'going',
       }));
       await bulkAddAttendees(attendeesData);
@@ -271,7 +277,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
               /* fallback max height for older browsers */ max-h-[95vh]
               /* overflow-hidden */ overflow-hidden"
               /* modern mobile-safe height (works where supported) */
-  style={{ maxHeight: 'min(95svh, 95dvh)' }}
+                style={{ maxHeight: 'min(95svh, 95dvh)' } as React.CSSProperties}
   onClick={(e) => e.stopPropagation()}
               /*onClick={(e) => e.stopPropagation()}*/
             >
@@ -461,7 +467,8 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                         <option value="0-2">0-2 Years</option>
                                         <option value="3-5">3-5 Years</option>
                                         <option value="6-10">6-10 Years</option>
-                                        <option value="11+">11+ Years</option>
+                                        <option value="teen">Teen</option>
+                                        <option value="adult">Adult</option>
                                       </select>
                                       <select
                                         value={member.relationship}

@@ -8,6 +8,7 @@ import {
 } from '../types/attendee';
 import {
   listAttendees,
+  listAllAttendees,
   upsertAttendee,
   updateAttendee,
   deleteAttendee,
@@ -15,6 +16,7 @@ import {
   setAttendeeStatus,
   calculateAttendeeCounts,
   subscribeToAttendees,
+  subscribeToAllAttendees,
   getUserAttendees
 } from '../services/attendeeService';
 
@@ -32,7 +34,7 @@ interface UseAttendeesReturn {
   refreshAttendees: () => Promise<void>;
 }
 
-export const useAttendees = (eventId: string, userId: string): UseAttendeesReturn => {
+export const useAttendees = (eventId: string, userId: string, isAdmin: boolean = false): UseAttendeesReturn => {
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [counts, setCounts] = useState<AttendeeCounts>({
     goingCount: 0,
@@ -57,7 +59,10 @@ export const useAttendees = (eventId: string, userId: string): UseAttendeesRetur
       try {
         setLoading(true);
         setError(null);
-        const eventAttendees = await listAttendees(eventId, userId);
+        // Use listAllAttendees for admins, listAttendees for regular users
+        const eventAttendees = isAdmin 
+          ? await listAllAttendees(eventId)
+          : await listAttendees(eventId, userId);
         setAttendees(eventAttendees);
         
         const eventCounts = calculateAttendeeCounts(eventAttendees);
@@ -71,20 +76,26 @@ export const useAttendees = (eventId: string, userId: string): UseAttendeesRetur
     };
 
     loadAttendees();
-  }, [eventId, userId]);
+  }, [eventId, userId, isAdmin]);
 
   // Set up real-time listener
   useEffect(() => {
     if (!eventId || !userId) return;
 
-    const unsubscribe = subscribeToAttendees(eventId, userId, (eventAttendees) => {
-      setAttendees(eventAttendees);
-      const eventCounts = calculateAttendeeCounts(eventAttendees);
-      setCounts(eventCounts);
-    });
+    const unsubscribe = isAdmin 
+      ? subscribeToAllAttendees(eventId, (eventAttendees) => {
+          setAttendees(eventAttendees);
+          const eventCounts = calculateAttendeeCounts(eventAttendees);
+          setCounts(eventCounts);
+        })
+      : subscribeToAttendees(eventId, userId, (eventAttendees) => {
+          setAttendees(eventAttendees);
+          const eventCounts = calculateAttendeeCounts(eventAttendees);
+          setCounts(eventCounts);
+        });
 
     return () => unsubscribe();
-  }, [eventId, userId]);
+  }, [eventId, userId, isAdmin]);
 
   // Add single attendee
   const addAttendee = useCallback(async (attendeeData: CreateAttendeeData): Promise<string> => {
@@ -195,7 +206,10 @@ export const useAttendees = (eventId: string, userId: string): UseAttendeesRetur
     try {
       setLoading(true);
       setError(null);
-      const eventAttendees = await listAttendees(eventId, userId);
+      // Use listAllAttendees for admins, listAttendees for regular users
+      const eventAttendees = isAdmin 
+        ? await listAllAttendees(eventId)
+        : await listAttendees(eventId, userId);
       setAttendees(eventAttendees);
       
       const eventCounts = calculateAttendeeCounts(eventAttendees);
@@ -206,7 +220,7 @@ export const useAttendees = (eventId: string, userId: string): UseAttendeesRetur
     } finally {
       setLoading(false);
     }
-  }, [eventId, userId]);
+  }, [eventId, userId, isAdmin]);
 
   return {
     attendees,

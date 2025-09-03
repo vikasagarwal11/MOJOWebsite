@@ -233,14 +233,47 @@ export const onEventTeaserSync = onDocumentWritten("events/{eventId}", async (ev
   }
 });
 
+// ───────────────── TEST FUNCTION ─────────────────
+export const testFunction = onDocumentWritten("events/{eventId}", async (event) => {
+  console.log(`🔍 TEST: Function triggered for eventId=${event.params.eventId}`);
+});
+
+// ───────────────── TEST ATTENDEE FUNCTION ─────────────────
+export const testAttendeeFunction = onDocumentWritten("events/{eventId}/attendees/{attendeeId}", async (event) => {
+  console.log(`🔍 TEST ATTENDEE: Function triggered for eventId=${event.params.eventId}, attendeeId=${event.params.attendeeId}`);
+  console.log(`🔍 TEST ATTENDEE: Document path: events/${event.params.eventId}/attendees/${event.params.attendeeId}`);
+});
+
+// ───────────────── TEST ALL DOCUMENTS FUNCTION ─────────────────
+export const testAllDocuments = onDocumentWritten("events/{eventId}/attendees/{attendeeId}", async (event) => {
+  console.log(`🔍 TEST ALL: Function triggered for ANY document change`);
+  console.log(`🔍 TEST ALL: Event params:`, event.params);
+  console.log(`🔍 TEST ALL: Document path: events/${event.params.eventId}/attendees/${event.params.attendeeId}`);
+});
+
 // ───────────────── EVENTS: RSVP notifications (New Attendee System) ─────────────────
 export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attendeeId}", async (event) => {
+  console.log(`🔍 notifyRsvp: Function triggered for eventId=${event.params.eventId}, attendeeId=${event.params.attendeeId}`);
+  
   const beforeData = event.data?.before.exists ? event.data?.before.data() : null;
   const afterData = event.data?.after.exists ? event.data?.after.data() : null;
+  
+  console.log(`🔍 notifyRsvp: beforeData=`, beforeData);
+  console.log(`🔍 notifyRsvp: afterData=`, afterData);
 
   const wasGoing = beforeData?.rsvpStatus === "going";
   const isGoing = afterData?.rsvpStatus === "going";
-  if (!isGoing || wasGoing) return;
+  
+  console.log(`🔍 notifyRsvp triggered: wasGoing=${wasGoing}, isGoing=${isGoing}, eventId=${event.params.eventId}, attendeeId=${event.params.attendeeId}`);
+  
+  // Only trigger notification when someone changes TO "going" status
+  // (was not going before, but is going now)
+  if (!isGoing || wasGoing) {
+    console.log(`🔍 notifyRsvp: Skipping notification (wasGoing=${wasGoing}, isGoing=${isGoing})`);
+    return;
+  }
+  
+  console.log(`🔍 notifyRsvp: Proceeding with notification creation`);
 
   try {
     const eventId = event.params.eventId;
@@ -249,14 +282,22 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attende
     // Get attendee data to find the user ID
     const attendeeData = afterData;
     const userId = attendeeData?.userId;
-    if (!userId) return;
+    console.log(`🔍 notifyRsvp: userId from attendeeData:`, userId);
+    if (!userId) {
+      console.log(`🔍 notifyRsvp: No userId found, returning`);
+      return;
+    }
 
     const eventDoc = await db.collection('events').doc(eventId).get();
     if (!eventDoc.exists) return;
 
     const eventData = eventDoc.data()!;
     const eventCreatorId = eventData.createdBy;
-    if (eventCreatorId === userId) return;
+    console.log(`🔍 notifyRsvp: eventCreatorId:`, eventCreatorId, `userId:`, userId);
+    if (eventCreatorId === userId) {
+      console.log(`🔍 notifyRsvp: User is event creator, skipping notification`);
+      return;
+    }
 
     const userDoc = await db.collection('users').doc(userId).get();
     let userName = 'Member';
@@ -268,7 +309,8 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attende
     // Get attendee name for more specific notification
     const attendeeName = attendeeData?.name || userName;
 
-    await db.collection('notifications').add({
+    console.log(`🔍 notifyRsvp: Creating notification for eventCreatorId:`, eventCreatorId);
+    const notificationRef = await db.collection('notifications').add({
       userId: eventCreatorId,
       message: `${attendeeName} is going to ${eventData.title}!`,
       createdAt: FieldValue.serverTimestamp(),
@@ -280,6 +322,7 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attende
       attendeeId: attendeeId,
       attendeeName: attendeeName
     });
+    console.log(`🔍 notifyRsvp: Notification created with ID:`, notificationRef.id);
 
     try {
       const creatorDoc = await db.collection('users').doc(eventCreatorId).get();
