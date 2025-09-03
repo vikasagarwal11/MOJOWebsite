@@ -1,13 +1,13 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, Calendar, Share2, Plus, X, TrendingUp, Clock, MapPin, Users, Tag } from 'lucide-react';
+import { Search, Filter, Calendar, Share2, Plus, TrendingUp, Tag } from 'lucide-react';
 import EventCalendar from '../components/events/EventCalendar';
 import EventList from '../components/events/EventList';
 import CreateEventModal from '../components/events/CreateEventModal';
 import { useEvents } from '../hooks/useEvents';
 import { useRealTimeEvents } from '../hooks/useRealTimeEvents';
 import { useAuth } from '../contexts/AuthContext';
-import { useUserBlocking } from '../hooks/useUserBlocking';
+// import { useUserBlocking } from '../hooks/useUserBlocking'; // For future RSVP blocking feature
 import { EventDoc } from '../hooks/useEvents';
 import { RSVPModalNew as RSVPModal } from '../components/events/RSVPModalNew';
 import { EventTeaserModal } from '../components/events/EventTeaserModal';
@@ -22,8 +22,7 @@ const Events: React.FC = () => {
   // Real-time updates
   const { 
     events: realTimeEvents, 
-    lastUpdate, 
-    refreshEvents: refreshRealTime 
+    lastUpdate
   } = useRealTimeEvents({
     enableNotifications: true,
     enableRealTimeUpdates: true,
@@ -37,6 +36,7 @@ const Events: React.FC = () => {
   const [tagSearch, setTagSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
   const [dateRangeFilter, setDateRangeFilter] = useState<{
     startDate: string;
@@ -99,14 +99,13 @@ const Events: React.FC = () => {
     ).slice(0, 10); // Limit to 10 results
   }, [allTags, tagSearch]);
 
-  const { blockedUsers } = useUserBlocking();
+  // const { blockedUsers } = useUserBlocking(); // For future RSVP blocking feature
 
   // Advanced filtering and sorting
   const filtered = useMemo(() => {
     let list = baseList.filter(e => {
       // Basic search filter
       const q = debouncedSearch.trim().toLowerCase();
-      const okTitle = q ? (e.title || '').toLowerCase().includes(q) : true;
       const okTag = selectedTag ? (e.tags || []).includes(selectedTag) : true;
       
       // Search in title, location, venue name, and venue address
@@ -184,10 +183,10 @@ const Events: React.FC = () => {
       activeTab
     });
 
-    // Check if user is blocked from RSVP
-    const isBlockedFromRSVP = blockedUsers.some((block: any) => 
-      block.blockCategory === 'rsvp_only' && block.isActive
-    );
+    // Check if user is blocked from RSVP (for future use)
+    // const isBlockedFromRSVP = blockedUsers.some((block: any) => 
+    //   block.blockCategory === 'rsvp_only' && block.isActive
+    // );
 
     // Check if event is past
     const isEventPast = () => {
@@ -279,7 +278,16 @@ const Events: React.FC = () => {
         )}
           </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {/* Mobile Filter Button */}
+          <button
+            onClick={() => setShowMobileFilters(true)}
+            className="md:hidden px-4 py-2 rounded-full border border-gray-300 text-gray-700 min-h-[44px]"
+            aria-label="Open filters"
+          >
+            Filters
+          </button>
+
           {/* Share button */}
           <motion.button
             whileHover={{ scale: 1.05 }}
@@ -291,13 +299,11 @@ const Events: React.FC = () => {
             <Share2 className="w-5 h-5" />
           </motion.button>
 
-
-
           {/* Create Event button (admin only) */}
           {currentUser?.role === 'admin' && (
             <motion.button 
               onClick={() => setShowModal(true)} 
-              className="inline-flex items-center px-4 py-2 rounded-full bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white hover:from-[#E0451F] hover:to-[#E55A2A] hover:shadow-lg transition-all duration-200"
+              className="inline-flex items-center px-4 py-2 rounded-full bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white hover:from-[#E0451F] hover:to-[#E55A2A] hover:shadow-lg transition-all duration-200 min-h-[44px]"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
@@ -360,179 +366,188 @@ const Events: React.FC = () => {
         </button>
       </motion.div>
 
-      {/* Search and Filter Controls */}
+      {/* Desktop Search and Filter Controls */}
       <motion.div 
-        className="space-y-4 mb-6"
+        className="hidden md:block sticky z-10 bg-white/95 backdrop-blur-sm -mx-6 px-6 pt-2 mb-6"
+        style={{ top: 'var(--app-header-offset, 64px)' } as React.CSSProperties}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.2 }}
       >
         {/* Main Search and View Controls */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1 relative">
-            <input
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              placeholder="Search events by title, location, or tags…"
-              className="w-full px-4 py-2 rounded-lg border pr-10 focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200"
-            />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-              {searchInput && (
-                <motion.button
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => setSearchInput('')}
-                  className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                  title="Clear search"
-                >
-                  ×
-                </motion.button>
-              )}
-              <Search className="w-4 h-4 text-gray-400" />
-          </div>
-        </div>
-          
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search tags..."
-              value={tagSearch}
-              onChange={e => setTagSearch(e.target.value)}
-              className="px-4 py-2 rounded-lg border focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200 w-48"
-            />
-            {selectedTag && (
-              <div className="absolute -top-2 -right-2 bg-[#F25129] text-white text-xs px-2 py-1 rounded-full">
-                {selectedTag}
-                <button
-                  onClick={() => setSelectedTag(null)}
-                  className="ml-1 hover:bg-[#d43d1a] rounded-full w-4 h-4 flex items-center justify-center"
-                >
-                  ×
-                </button>
-              </div>
-            )}
-            {/* Tag suggestions dropdown */}
-            {tagSearch && filteredTags.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
-                {filteredTags.map(tag => (
+        <div className="rounded-2xl border border-gray-200 bg-white/80 backdrop-blur-sm shadow-sm p-4">
+          <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
+            {/* Search Input */}
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-gray-500 mb-1">Search</div>
+              <label className="flex items-center min-h-[44px] rounded-xl border border-gray-300 px-3 bg-white">
+                <Search className="w-4 h-4 text-gray-400 mr-2" />
+                <input
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value)}
+                  placeholder="Search events by title, location, or tags…"
+                  className="flex-1 outline-none bg-transparent min-w-0"
+                />
+                {searchInput && (
                   <button
-                    key={tag}
-                    onClick={() => {
-                      setSelectedTag(tag);
-                      setTagSearch('');
-                    }}
-                    className="w-full px-4 py-2 text-left hover:bg-gray-50 transition-colors duration-200"
+                    onClick={() => setSearchInput('')}
+                    className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                    title="Clear search"
                   >
-                    {tag}
+                    ×
                   </button>
-                ))}
-              </div>
-            )}
-          </div>
-          
-          <button 
-            onClick={() => setViewMode(viewMode === 'grid' ? 'calendar' : 'grid')} 
-            className="px-4 py-2 rounded-lg border hover:bg-gray-50 transition-all duration-200 flex items-center gap-2"
-          >
-            {viewMode === 'grid' ? <Calendar className="w-4 h-4" /> : <div className="w-4 h-4">⊞</div>}
-            {viewMode === 'grid' ? 'Calendar View' : 'Grid View'}
-          </button>
-
-          {/* Advanced Filters Toggle */}
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-            className={`px-4 py-2 rounded-lg border transition-all duration-200 flex items-center gap-2 ${
-              showAdvancedFilters 
-                ? 'bg-[#F25129]/10 text-[#F25129] border-[#F25129]/30' 
-                : 'hover:bg-gray-50'
-            }`}
-          >
-            <Filter className="w-4 h-4" />
-            Advanced
-          </motion.button>
-          </div>
-
-        {/* Advanced Filters Panel */}
-        <AnimatePresence>
-          {showAdvancedFilters && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.3 }}
-              className="bg-gray-50 rounded-lg p-4 space-y-4"
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Location Filter */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
-                  <input
-                    type="text"
-                    value={locationFilter}
-                    onChange={e => setLocationFilter(e.target.value)}
-                    placeholder="Filter by location..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-         />
-      </div>
-
-                {/* Date Range Filter */}
-        <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
-                  <div className="space-y-2">
-                    <input
-                      type="date"
-                      value={dateRangeFilter.startDate}
-                      onChange={e => setDateRangeFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                    />
-                    <input
-                      type="date"
-                      value={dateRangeFilter.endDate}
-                      onChange={e => setDateRangeFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                    />
-        </div>
-      </div>
-
-                {/* Capacity Filter */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Capacity</label>
-                  <div className="space-y-2">
-                    <input
-                      type="number"
-                      placeholder="Min"
-                      value={capacityFilter.min}
-                      onChange={e => setCapacityFilter(prev => ({ ...prev, min: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                    />
-          <input
-                      type="number"
-                      placeholder="Max"
-                      value={capacityFilter.max}
-                      onChange={e => setCapacityFilter(prev => ({ ...prev, max: e.target.value }))}
-                      className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                    />
+                )}
+              </label>
             </div>
-        </div>
+            {/* Tag Search */}
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-gray-500 mb-1">Tags</div>
+              <div className="relative min-h-[44px]">
+                <input
+                  type="text"
+                  placeholder="Search tags..."
+                  value={tagSearch}
+                  onChange={e => setTagSearch(e.target.value)}
+                  className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200"
+                />
+                {selectedTag && (
+                  <div className="absolute -top-2 -right-2 bg-[#F25129] text-white text-xs px-2 py-1 rounded-full">
+                    {selectedTag}
+                    <button
+                      onClick={() => setSelectedTag(null)}
+                      className="ml-1 hover:bg-[#d43d1a] rounded-full w-4 h-4 flex items-center justify-center"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+                {/* Tag suggestions dropdown */}
+                {tagSearch && filteredTags.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                    {filteredTags.map(tag => (
+                      <button
+                        key={tag}
+                        onClick={() => {
+                          setSelectedTag(tag);
+                          setTagSearch('');
+                        }}
+                        className="w-full px-4 py-2 text-left hover:bg-gray-50 transition-colors duration-200"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* View Mode */}
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-gray-500 mb-1">View</div>
+              <button 
+                onClick={() => setViewMode(viewMode === 'grid' ? 'calendar' : 'grid')} 
+                className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 hover:bg-gray-50 transition-all duration-200 flex items-center justify-center gap-2"
+              >
+                {viewMode === 'grid' ? <Calendar className="w-4 h-4" /> : <div className="w-4 h-4">⊞</div>}
+                {viewMode === 'grid' ? 'Calendar' : 'Grid'}
+              </button>
+            </div>
 
-                {/* Sort Options */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
-        <select
-                    value={sortBy}
-                    onChange={e => setSortBy(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                  >
-                    <option value="date">Date (Soonest)</option>
-                    <option value="title">Title (A-Z)</option>
-                    <option value="location">Location (A-Z)</option>
-                    <option value="popularity">Popularity</option>
-        </select>
-      </div>
+            {/* Advanced Filters Toggle */}
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-gray-500 mb-1">Filters</div>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className={`w-full min-h-[44px] px-3 rounded-xl border transition-all duration-200 flex items-center justify-center gap-2 ${
+                  showAdvancedFilters 
+                    ? 'bg-[#F25129]/10 text-[#F25129] border-[#F25129]/30' 
+                    : 'border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <Filter className="w-4 h-4" />
+                Advanced
+              </motion.button>
+            </div>
+          </div>
+
+          {/* Advanced Filters Panel */}
+          <AnimatePresence>
+            {showAdvancedFilters && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+                className="mt-4 bg-gray-50 rounded-lg p-4 space-y-4"
+              >
+                <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
+                  {/* Location Filter */}
+                  <div className="min-w-0">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Location</label>
+                    <input
+                      type="text"
+                      value={locationFilter}
+                      onChange={e => setLocationFilter(e.target.value)}
+                      placeholder="Filter by location..."
+                      className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                    />
+                  </div>
+
+                  {/* Date Range Filter */}
+                  <div className="min-w-0">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Date Range</label>
+                    <div className="space-y-2">
+                      <input
+                        type="date"
+                        value={dateRangeFilter.startDate}
+                        onChange={e => setDateRangeFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                        className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                      />
+                      <input
+                        type="date"
+                        value={dateRangeFilter.endDate}
+                        onChange={e => setDateRangeFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                        className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Capacity Filter */}
+                  <div className="min-w-0">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Capacity</label>
+                    <div className="space-y-2">
+                      <input
+                        type="number"
+                        placeholder="Min"
+                        value={capacityFilter.min}
+                        onChange={e => setCapacityFilter(prev => ({ ...prev, min: e.target.value }))}
+                        className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Max"
+                        value={capacityFilter.max}
+                        onChange={e => setCapacityFilter(prev => ({ ...prev, max: e.target.value }))}
+                        className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Sort Options */}
+                  <div className="min-w-0">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Sort By</label>
+                    <select
+                      value={sortBy}
+                      onChange={e => setSortBy(e.target.value as any)}
+                      className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                    >
+                      <option value="date">Date (Soonest)</option>
+                      <option value="title">Title (A-Z)</option>
+                      <option value="location">Location (A-Z)</option>
+                      <option value="popularity">Popularity</option>
+                    </select>
+                  </div>
               </div>
 
               {/* Filter Actions */}
@@ -552,16 +567,227 @@ const Events: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
       </motion.div>
 
-      {/* Search Status and Tag Statistics */}
+      {/* Mobile Filter Sheet */}
+      {showMobileFilters && (
+        <div className="md:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={()=>setShowMobileFilters(false)} />
+          <div className="absolute bottom-0 inset-x-0 bg-white rounded-t-2xl p-4 max-h-[80vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Filters</h3>
+              <button 
+                className="px-3 py-1 rounded-lg border min-h-[44px]" 
+                onClick={()=>setShowMobileFilters(false)}
+              >
+                Done
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              {/* Search Input */}
+              <div className="min-w-0">
+                <div className="text-xs font-medium text-gray-500 mb-1">Search</div>
+                <label className="flex items-center min-h-[44px] rounded-xl border border-gray-300 px-3 bg-white">
+                  <Search className="w-4 h-4 text-gray-400 mr-2" />
+                  <input
+                    value={searchInput}
+                    onChange={e => setSearchInput(e.target.value)}
+                    placeholder="Search events by title, location, or tags…"
+                    className="flex-1 outline-none bg-transparent min-w-0"
+                  />
+                  {searchInput && (
+                    <button
+                      onClick={() => setSearchInput('')}
+                      className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                      title="Clear search"
+                    >
+                      ×
+                    </button>
+                  )}
+                </label>
+              </div>
+
+              {/* Tag Search */}
+              <div className="min-w-0">
+                <div className="text-xs font-medium text-gray-500 mb-1">Tags</div>
+                <div className="relative min-h-[44px]">
+                  <input
+                    type="text"
+                    placeholder="Search tags..."
+                    value={tagSearch}
+                    onChange={e => setTagSearch(e.target.value)}
+                    className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200"
+                  />
+                  {selectedTag && (
+                    <div className="absolute -top-2 -right-2 bg-[#F25129] text-white text-xs px-2 py-1 rounded-full">
+                      {selectedTag}
+                      <button
+                        onClick={() => setSelectedTag(null)}
+                        className="ml-1 hover:bg-[#d43d1a] rounded-full w-4 h-4 flex items-center justify-center"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+                  {/* Tag suggestions dropdown */}
+                  {tagSearch && filteredTags.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                      {filteredTags.map(tag => (
+                        <button
+                          key={tag}
+                          onClick={() => {
+                            setSelectedTag(tag);
+                            setTagSearch('');
+                          }}
+                          className="w-full px-4 py-2 text-left hover:bg-gray-50 transition-colors duration-200"
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* View Mode */}
+              <div className="min-w-0">
+                <div className="text-xs font-medium text-gray-500 mb-1">View</div>
+                <button 
+                  onClick={() => setViewMode(viewMode === 'grid' ? 'calendar' : 'grid')} 
+                  className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 hover:bg-gray-50 transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  {viewMode === 'grid' ? <Calendar className="w-4 h-4" /> : <div className="w-4 h-4">⊞</div>}
+                  {viewMode === 'grid' ? 'Calendar View' : 'Grid View'}
+                </button>
+              </div>
+
+              {/* Advanced Filters Toggle */}
+              <div className="min-w-0">
+                <div className="text-xs font-medium text-gray-500 mb-1">Advanced Filters</div>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                  className={`w-full min-h-[44px] px-3 rounded-xl border transition-all duration-200 flex items-center justify-center gap-2 ${
+                    showAdvancedFilters 
+                      ? 'bg-[#F25129]/10 text-[#F25129] border-[#F25129]/30' 
+                      : 'border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <Filter className="w-4 h-4" />
+                  {showAdvancedFilters ? 'Hide Advanced' : 'Show Advanced'}
+                </motion.button>
+              </div>
+
+              {/* Advanced Filters Panel */}
+              <AnimatePresence>
+                {showAdvancedFilters && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="bg-gray-50 rounded-lg p-4 space-y-4"
+                  >
+                    <div className="space-y-4">
+                      {/* Location Filter */}
+                      <div className="min-w-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Location</label>
+                        <input
+                          type="text"
+                          value={locationFilter}
+                          onChange={e => setLocationFilter(e.target.value)}
+                          placeholder="Filter by location..."
+                          className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                        />
+                      </div>
+
+                      {/* Date Range Filter */}
+                      <div className="min-w-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Date Range</label>
+                        <div className="space-y-2">
+                          <input
+                            type="date"
+                            value={dateRangeFilter.startDate}
+                            onChange={e => setDateRangeFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                            className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                          />
+                          <input
+                            type="date"
+                            value={dateRangeFilter.endDate}
+                            onChange={e => setDateRangeFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                            className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Capacity Filter */}
+                      <div className="min-w-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Capacity</label>
+                        <div className="space-y-2">
+                          <input
+                            type="number"
+                            placeholder="Min"
+                            value={capacityFilter.min}
+                            onChange={e => setCapacityFilter(prev => ({ ...prev, min: e.target.value }))}
+                            className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                          />
+                          <input
+                            type="number"
+                            placeholder="Max"
+                            value={capacityFilter.max}
+                            onChange={e => setCapacityFilter(prev => ({ ...prev, max: e.target.value }))}
+                            className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Sort Options */}
+                      <div className="min-w-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Sort By</label>
+                        <select
+                          value={sortBy}
+                          onChange={e => setSortBy(e.target.value as any)}
+                          className="w-full min-h-[44px] px-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                        >
+                          <option value="date">Date (Soonest)</option>
+                          <option value="title">Title (A-Z)</option>
+                          <option value="location">Location (A-Z)</option>
+                          <option value="popularity">Popularity</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Filter Actions */}
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+                      <span className="text-sm text-gray-600">
+                        {hasActiveFilters ? `${filtered.length} events found` : 'All events shown'}
+                      </span>
+                      <button
+                        onClick={clearAllFilters}
+                        className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 underline"
+                      >
+                        Clear all filters
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Desktop Search Status and Tag Statistics */}
       <AnimatePresence>
         {(debouncedSearch || selectedTag || hasActiveFilters) && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="mb-6 p-4 bg-gradient-to-r from-[#F25129]/10 to-[#FF6B35]/10 border border-[#F25129]/20 rounded-lg"
+            className="hidden md:block mb-6 p-4 bg-gradient-to-r from-[#F25129]/10 to-[#FF6B35]/10 border border-[#F25129]/20 rounded-lg"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -592,7 +818,7 @@ const Events: React.FC = () => {
       {/* Tag Statistics and Quick Filters */}
       {allTags.length > 0 && (
         <motion.div 
-          className="mb-6"
+          className="hidden md:block mb-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.3 }}

@@ -1,11 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import {
-  X,
   AlertTriangle,
   Calendar,
-  MapPin,
-  Clock,
   UserPlus,
   Users,
   Plus,
@@ -22,8 +19,16 @@ import { useFamilyMembers } from '../../hooks/useFamilyMembers';
 import { AttendeeList } from './AttendeeList';
 import { CreateAttendeeData, AttendeeStatus, AgeGroup, Relationship } from '../../types/attendee';
 import { FamilyMember } from '../../types/family';
-import { format } from 'date-fns';
+
 import toast from 'react-hot-toast';
+// Import our new hooks
+import { useEventDates } from './RSVPModalNew/hooks/useEventDates';
+import { useCapacityState } from './RSVPModalNew/hooks/useCapacityState';
+import { useModalA11y } from './RSVPModalNew/hooks/useModalA11y';
+import { getCapacityBadgeClasses } from './RSVPModalNew/rsvpUi';
+// Import new components
+import { Header } from './RSVPModalNew/components/Header';
+import { EventDetails } from './RSVPModalNew/components/EventDetails';
 
 interface RSVPModalProps {
   event: EventDoc;
@@ -34,6 +39,19 @@ interface RSVPModalProps {
 export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAttendeeUpdate }) => {
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
+  
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768); // md breakpoint
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
   
   // Check if current user is the event creator (admin)
   const isEventCreator = currentUser?.id === event.createdBy;
@@ -51,7 +69,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   const [showFamilyMembers, setShowFamilyMembers] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
 
-  const closeBtnRef = useRef<HTMLButtonElement>(null);
+
 
   type BulkRow = {
     id: string;
@@ -82,52 +100,21 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
     (block) => block.blockCategory === 'rsvp_only' && block.isActive
   );
 
-  const toJsDate = (d: any) => (d?.toDate ? d.toDate() : new Date(d));
-  const formatEventDate = (d: any) => (d ? format(toJsDate(d), 'MMM dd, yyyy') : 'TBD');
-  const formatEventTime = (d: any) => (d ? format(toJsDate(d), 'h:mm a') : 'TBD');
-  
-  // Calculate event duration in hours
-  const getEventDuration = () => {
-    if (!event.startAt || !event.endAt) return null;
-    
-    const startDate = toJsDate(event.startAt);
-    const endDate = toJsDate(event.endAt);
-    
-    const durationMs = endDate.getTime() - startDate.getTime();
-    const durationHours = Math.round(durationMs / (1000 * 60 * 60) * 10) / 10; // Round to 1 decimal place
-    
-    return durationHours;
-  };
-  
-  const isEventPast = !!event.startAt && toJsDate(event.startAt) < new Date();
+  // Use our new date hook
+  const { 
+    isEventPast
+  } = useEventDates(event);
+
+  // Use our new capacity state hook
+  const capacityState = useCapacityState(counts, event.maxAttendees);
 
   const handleClose = () => {
     setIsOpen(false);
     setTimeout(() => onClose(), 200);
   };
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose();
-    };
-    window.addEventListener('keydown', onKey);
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = isOpen ? 'hidden' : previousOverflow;
-
-    if (isOpen) {
-      const modal = document.querySelector('[role="dialog"]') as HTMLElement | null;
-      const firstFocusable = modal?.querySelector<
-        HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-      >('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
-      (firstFocusable as HTMLElement | undefined)?.focus();
-    }
-
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isOpen]);
+  // Use our new accessibility hook
+  const { dialogProps, closeBtnRef } = useModalA11y({ isOpen, onClose: handleClose });
 
   const availableFamilyMembers = familyMembers.filter(
     (familyMember) =>
@@ -264,9 +251,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
             onClick={handleClose}
           >
             <motion.div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="rsvp-title"
+              {...dialogProps}
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -281,65 +266,19 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   onClick={(e) => e.stopPropagation()}
               /*onClick={(e) => e.stopPropagation()}*/
             >
-              <div className="bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <h2 id="rsvp-title" className="text-2xl font-bold">
-                        {event.title}
-                      </h2>
-                      <div className="text-white/80 text-sm mt-1">
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            <span>{formatEventDate(event.startAt)}</span>
-                          </div>
-                          {event.startAt && (
-                            <div className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              <span>
-                                {formatEventTime(event.startAt)}
-                                {event.endAt && ` - ${formatEventTime(event.endAt)}`}
-                                {(() => {
-                                  const duration = getEventDuration();
-                                  return duration ? ` (${duration} hours)` : '';
-                                })()}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        {(event.venueName || event.venueAddress || event.location) && (
-                          <div className="flex items-center gap-1 mt-1">
-                            <MapPin className="w-3 h-3" />
-                            <div>
-                              {event.venueName && (
-                                <div className="font-medium">{event.venueName}</div>
-                              )}
-                              {event.venueAddress && (
-                                <div className="text-xs opacity-90">{event.venueAddress}</div>
-                              )}
-                              {!event.venueName && !event.venueAddress && event.location && (
-                                <span>{event.location}</span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <motion.button
-                    ref={closeBtnRef}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleClose}
-                    className="p-2 bg-white bg-opacity-20 rounded-full hover:bg-opacity-30 transition-all"
-                    aria-label="Close RSVP modal"
-                  >
-                    <X className="w-5 h-5" />
-                  </motion.button>
-                </div>
-              </div>
+              {/* Header Component */}
+              <Header 
+                event={event}
+                onClose={onClose}
+                closeBtnRef={closeBtnRef}
+                isCompact={isMobile}
+              />
+              
+              {/* Event Details (Mobile only) */}
+              <EventDetails 
+                event={event}
+                isMobile={isMobile}
+              />
 
               <div
                 className="flex-1  min-h-0 overflow-y-auto pb-6 pr-2 rsvp-modal-scrollbar"
@@ -404,27 +343,13 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
 
                         {!isAddSectionCollapsed && (
                           <div className="px-4 pt-2">
-                            {event.maxAttendees && counts.totalGoing >= event.maxAttendees * 0.9 && (
-                              <div
-                                className={`mb-3 p-3 rounded-lg text-sm ${
-                                  counts.totalGoing >= event.maxAttendees
-                                    ? 'bg-red-50 border border-red-200 text-red-800'
-                                    : 'bg-yellow-50 border border-yellow-200 text-yellow-800'
-                                }`}
-                              >
+                            {capacityState.isNearlyFull && (
+                              <div className={`mb-3 p-3 rounded-lg text-sm ${getCapacityBadgeClasses(capacityState.state)}`}>
                                 <div className="flex items-center gap-2">
                                   <AlertTriangle className="w-4 h-4" />
-                                  <span className="font-medium">
-                                    {counts.totalGoing >= event.maxAttendees ? 'Event is at capacity' : 'Event is nearly full'}
-                                  </span>
+                                  <span className="font-medium">{capacityState.warningMessage}</span>
                                 </div>
-                                <p className="mt-1 text-xs opacity-90">
-                                  {counts.totalGoing >= event.maxAttendees
-                                    ? 'You can still add people (limit not enforced), but consider capacity.'
-                                    : `Only ${event.maxAttendees - counts.totalGoing} slot${
-                                        event.maxAttendees - counts.totalGoing === 1 ? '' : 's'
-                                      } remaining.`}
-                                </p>
+                                <p className="mt-1 text-xs opacity-90">{capacityState.slotsRemainingText}</p>
                               </div>
                             )}
 
@@ -558,27 +483,13 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                 className="overflow-hidden"
                               >
                                 <div className="p-4 pt-0">
-                                  {event.maxAttendees && counts.totalGoing >= event.maxAttendees * 0.9 && (
-                                    <div
-                                      className={`mb-4 p-3 rounded-lg text-sm ${
-                                        counts.totalGoing >= event.maxAttendees
-                                          ? 'bg-red-50 border border-red-200 text-red-800'
-                                          : 'bg-yellow-50 border border-yellow-200 text-yellow-800'
-                                      }`}
-                                    >
+                                  {capacityState.isNearlyFull && (
+                                    <div className={`mb-4 p-3 rounded-lg text-sm ${getCapacityBadgeClasses(capacityState.state)}`}>
                                       <div className="flex items-center gap-2">
                                         <AlertTriangle className="w-4 h-4" />
-                                        <span className="font-medium">
-                                          {counts.totalGoing >= event.maxAttendees ? 'Event is at capacity' : 'Event is nearly full'}
-                                        </span>
+                                        <span className="font-medium">{capacityState.warningMessage}</span>
                                       </div>
-                                      <p className="mt-1 text-xs opacity-90">
-                                        {counts.totalGoing >= event.maxAttendees
-                                          ? 'You can still add people (limit not enforced), but consider capacity.'
-                                          : `Only ${event.maxAttendees - counts.totalGoing} slot${
-                                              event.maxAttendees - counts.totalGoing === 1 ? '' : 's'
-                                            } remaining.`}
-                                      </p>
+                                      <p className="mt-1 text-xs opacity-90">{capacityState.slotsRemainingText}</p>
                                     </div>
                                   )}
 
