@@ -77,7 +77,7 @@ export default defineConfig({
   ],
   server: {
     host: '0.0.0.0', // Allow external connections
-    port: 5174, // Use port 5174
+    port: 5175, // Use port 5175 (current running port)
     strictPort: false, // Allow port fallback
     open: false // Don't auto-open browser
   }
