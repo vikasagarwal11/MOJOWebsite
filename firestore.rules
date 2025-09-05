@@ -119,8 +119,8 @@ service cloud.firestore {
       return data is map &&
         ('eventId' in data) && isNonEmptyString(data.eventId) &&
         ('userId' in data) && isNonEmptyString(data.userId) &&
-        ('status' in data) && data.status in ['going', 'not-going'] &&
-        ('adults' in data) && data.adults is number && data.adults >= 0 &&
+        ('status' in data) && data.status in ['going', 'not-going', 'pending'] &&
+        (!('adults' in data) || (data.adults is number && data.adults >= 0)) &&
         // childCounts can be:
         //  (A) list of maps: [{ageGroup:'0-2', count:1}, ...] (max 4), OR
         //  (B) map keyed by age group: {'0-2':1,'3-5':0,'6-10':2,'11':0}
@@ -147,7 +147,7 @@ service cloud.firestore {
         ('attendeeType' in data) && data.attendeeType in ['primary', 'family_member', 'guest'] &&
         ('relationship' in data) && data.relationship in ['self', 'spouse', 'child', 'guest'] &&
         ('name' in data) && isNonEmptyString(data.name) && data.name.size() >= 2 &&
-        ('ageGroup' in data) && data.ageGroup in ['0-2', '3-5', '6-10', '11+'] &&
+        ('ageGroup' in data) && data.ageGroup in ['0-2', '3-5', '6-10', '11+', 'adult'] &&
         ('rsvpStatus' in data) && data.rsvpStatus in ['going', 'not-going', 'pending'] &&
         (!('familyMemberId' in data) || (data.familyMemberId is string || data.familyMemberId == null));
     }
@@ -282,7 +282,8 @@ service cloud.firestore {
         allow update: if (isMember() || isAdmin()) &&
           (request.auth.uid == userId || isAdmin()) &&
           request.resource.data.eventId == eventId &&
-          request.resource.data.userId == userId;
+          request.resource.data.userId == userId &&
+          validRSVPData(request.resource.data);
         
         // Enhanced: Allow admins to modify any RSVP
         allow delete: if (isMember() || isAdmin()) && 

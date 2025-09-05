@@ -46,7 +46,7 @@ export const EventDetails: React.FC<EventDetailsProps> = ({
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.4 }}
               className="overflow-hidden"
             >
               {/* Scrollable content with max height */}

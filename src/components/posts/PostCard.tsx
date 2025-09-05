@@ -49,6 +49,16 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
     return () => unsub();
   }, [post.id, currentUser?.id]);
 
+  // Global likes count listener - always active for real-time updates
+  useEffect(() => {
+    const q = query(collection(db, 'posts', post.id, 'likes'));
+    const unsub = onSnapshot(q, (snap) => {
+      // Update likes count in real-time
+      setLikesCount(snap.docs.length);
+    });
+    return () => unsub();
+  }, [post.id]);
+
   // Load latest comments when panel opens
   useEffect(() => {
     if (!showComments) return;
@@ -63,20 +73,29 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
     return () => unsub();
   }, [showComments, post.id]);
 
+  // Global comment count listener - always active for real-time updates
+  useEffect(() => {
+    const q = query(
+      collection(db, 'posts', post.id, 'comments'),
+      orderBy('createdAt', 'desc')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      // Update comment count in real-time
+      setCommentsCount(snap.docs.length);
+    });
+    return () => unsub();
+  }, [post.id]);
+
   const handleLike = async () => {
     if (!currentUser) return;
     try {
       const likeRef = doc(db, 'posts', post.id, 'likes', currentUser.id);
       if (isLiked) {
-        setIsLiked(false); setLikesCount((c) => Math.max(0, c - 1));
         await deleteDoc(likeRef);
       } else {
-        setIsLiked(true); setLikesCount((c) => c + 1);
         await setDoc(likeRef, { userId: currentUser.id, createdAt: serverTimestamp() });
       }
     } catch (e: any) {
-      setIsLiked((v) => !v);
-      setLikesCount((c) => (isLiked ? c + 1 : Math.max(0, c - 1)));
       toast.error(e?.message || 'Failed to update like.');
     }
   };
@@ -94,7 +113,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
         createdAt: serverTimestamp(),
       });
       setNewComment('');
-      setCommentsCount((c) => c + 1); // optimistic; CF updates the doc too
+      // Real-time listener will update the count automatically
     } catch (err: any) {
       toast.error(err?.message || 'Failed to add comment.');
     }

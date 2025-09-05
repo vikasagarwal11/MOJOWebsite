@@ -13,7 +13,19 @@ export function usePagedComments(
   const [lastDoc, setLastDoc] = useState<any | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [open, setOpen] = useState(!!opts?.initialOpen); // default false
+  const [commentsCount, setCommentsCount] = useState<number>(0);
 
+  // Global comment count listener - always active for real-time updates
+  useEffect(() => {
+    if (!mediaId) return;
+    const q = query(collection(db, 'media', mediaId, 'comments'), orderBy('createdAt', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      setCommentsCount(snap.docs.length);
+    });
+    return () => unsub();
+  }, [mediaId]);
+
+  // Load detailed comments when panel opens
   useEffect(() => {
     if (!open || !mediaId) return;
     const q = query(collection(db, 'media', mediaId, 'comments'), orderBy('createdAt', 'desc'), limit(pageSize));
@@ -34,5 +46,5 @@ export function usePagedComments(
     setHasMore(snap.docs.length === pageSize);
   }, [mediaId, lastDoc, pageSize]);
 
-  return { open, setOpen, comments, hasMore, loadMore };
+  return { open, setOpen, comments, hasMore, loadMore, commentsCount };
 }

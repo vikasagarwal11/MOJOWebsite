@@ -11,6 +11,38 @@
   scrollbar-width: none;
 }
 
+/* ---------- Unified, themeable scrollbar (use: `scrollbar`) ---------- */
+@layer utilities {
+  .scrollbar {
+    scrollbar-gutter: stable both-edges;
+    scrollbar-width: thin;
+    --sb-track: #f3f4f6;
+    --sb-thumb: #d1d5db;
+    --sb-thumb-hover: #9ca3af;
+  }
+  .scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar::-webkit-scrollbar-track { background: var(--sb-track); border-radius: 4px; }
+  .scrollbar::-webkit-scrollbar-thumb { background: var(--sb-thumb); border-radius: 4px; }
+  .scrollbar::-webkit-scrollbar-thumb:hover { background: var(--sb-thumb-hover); }
+  /* Reusable modal scroll util */
+  .modalScroll { overscroll-behavior: contain; }
+}
+
+/* Dialog container for container queries & seam fixes */
+.rsvp-dialog {
+  container-type: inline-size;      /* enables CSS container queries if you add them later */
+  transform: translateZ(0);         /* sub-pixel seam fix without killing borders globally */
+  backface-visibility: hidden;
+}
+
+/* Safe-area friendly footer helper */
+.safe-footer { 
+  padding-bottom: max(1rem, env(safe-area-inset-bottom)); 
+  /* Temporary: Make it more visible for testing */
+  background-color: rgba(255, 0, 0, 0.1);
+  border-top: 2px solid red;
+}
+
 /* Custom scrollbar for event details */
 .event-details-scrollbar::-webkit-scrollbar {
   width: 4px;
@@ -261,27 +293,5 @@
   touch-action: none;
 }
 
-/* Cross-browser scrollbar styles for RSVP Modal */
-.rsvp-modal-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: #d1d5db #f3f4f6;
-  scrollbar-gutter: stable;
-}
-
-.rsvp-modal-scrollbar::-webkit-scrollbar {
-  width: 8px;
-}
-
-.rsvp-modal-scrollbar::-webkit-scrollbar-track {
-  background: #f3f4f6;
-  border-radius: 4px;
-}
-
-.rsvp-modal-scrollbar::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 4px;
-}
-
-.rsvp-modal-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
-}
+/* Use the unified `.scrollbar` utility instead of a bespoke class */
+.rsvp-modal-scrollbar { @apply scrollbar; }

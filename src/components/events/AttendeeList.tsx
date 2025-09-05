@@ -95,16 +95,18 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     return !!matchingFamilyMember;
   };
 
-  // Group attendees by status
-  const attendeesByStatus = {
+  // Group attendees by status (memoized for performance)
+  const attendeesByStatus = useMemo(() => ({
     going: attendees.filter(a => a.rsvpStatus === 'going'),
     'not-going': attendees.filter(a => a.rsvpStatus === 'not-going'),
     pending: attendees.filter(a => a.rsvpStatus === 'pending')
-  };
+  }), [attendees]);
 
   const handleUpdateAttendee = async (attendeeId: string, updateData: any) => {
     try {
+      console.log('DEBUG: handleUpdateAttendee called with:', { attendeeId, updateData });
       await updateAttendee(attendeeId, updateData);
+      console.log('DEBUG: updateAttendee completed successfully');
       onAttendeeUpdate?.();
     } catch (error) {
       console.error('Failed to update attendee:', error);

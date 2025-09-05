@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId, useMemo, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import {
   AlertTriangle,
@@ -10,7 +10,7 @@ import {
   ChevronDown,
   Heart,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { EventDoc } from '../../hooks/useEvents';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserBlocking } from '../../hooks/useUserBlocking';
@@ -29,6 +29,7 @@ import { getCapacityBadgeClasses } from './RSVPModalNew/rsvpUi';
 // Import new components
 import { Header } from './RSVPModalNew/components/Header';
 import { EventDetails } from './RSVPModalNew/components/EventDetails';
+import { AttendeeInputRowMemo } from './RSVPModalNew/components/AttendeeInputRow';
 
 interface RSVPModalProps {
   event: EventDoc;
@@ -52,6 +53,17 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Accessible, collision-free IDs for aria-controls/labelledby
+  const addId = useId();
+  const famId = useId();
+
+  // Reduced-motion aware transitions
+  const prefersReduced = useReducedMotion();
+  const modalTransition = useMemo(
+    () => (prefersReduced ? { duration: 0 } : { type: 'spring' as const, duration: 0.25 }),
+    [prefersReduced]
+  );
   
   // Check if current user is the event creator (admin)
   const isEventCreator = currentUser?.id === event.createdBy;
@@ -84,7 +96,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
       ? (globalThis as any).crypto.randomUUID()
       : Math.random().toString(36).slice(2);
 
-  const [bulkFormData, setBulkFormData] = useState<{ familyMembers: BulkRow[] }>({
+  const [bulkFormData, setBulkFormData] = useState<{ familyMembers: BulkRow[] }>(() => ({
     familyMembers: [
       {
         id: makeId(),
@@ -94,7 +106,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
         rsvpStatus: 'going',
       },
     ],
-  });
+  }));
 
   const isBlockedFromRSVP = blockedUsers.some(
     (block) => block.blockCategory === 'rsvp_only' && block.isActive
@@ -107,6 +119,12 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
 
   // Use our new capacity state hook
   const capacityState = useCapacityState(counts, event.maxAttendees);
+
+  // Memoize the ready to add count to prevent unnecessary re-renders
+  const readyToAddCount = useMemo(() => 
+    bulkFormData.familyMembers.filter((m) => m.name.trim()).length, 
+    [bulkFormData.familyMembers]
+  );
 
   const handleClose = () => {
     setIsOpen(false);
@@ -124,31 +142,31 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
       )
   );
 
-  const addBulkFormRow = () => {
+  const addBulkFormRow = useCallback(() => {
     setBulkFormData((prev) => ({
       familyMembers: [
         ...prev.familyMembers,
         { id: makeId(), name: '', ageGroup: 'adult', relationship: 'guest', rsvpStatus: 'going' },
       ],
     }));
-  };
+  }, []);
 
-  const removeBulkFormRow = (id: string) => {
+  const removeBulkFormRow = useCallback((id: string) => {
     setBulkFormData((prev) => ({
       familyMembers:
         prev.familyMembers.length > 1
           ? prev.familyMembers.filter((m) => m.id !== id)
           : prev.familyMembers,
     }));
-  };
+  }, []);
 
-  const updateBulkFormField = (id: string, field: keyof BulkRow, value: string) => {
+  const updateBulkFormField = useCallback((id: string, field: keyof BulkRow, value: string) => {
     setBulkFormData((prev) => ({
       familyMembers: prev.familyMembers.map((m) =>
         m.id === id ? ({ ...m, [field]: value } as BulkRow) : m
       ),
     }));
-  };
+  }, []);
 
   const handleBulkAddFamilyMembers = async () => {
     if (!currentUser || bulkFormData.familyMembers.length === 0) return;
@@ -239,8 +257,6 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
     <AnimatePresence>
       {isOpen && (
         <>
-          <span tabIndex={0} onFocus={() => closeBtnRef.current?.focus()} />
-
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -252,19 +268,17 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
           >
             <motion.div
               {...dialogProps}
-              initial={{ scale: 0.9, opacity: 0 }}
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: 'spring', duration: 0.3 }}
-              /*className="bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] md:max-w-[90vw] lg:max-w-[85vw] xl:max-w-[80vw] 2xl:max-w-7xl max-h-[95vh] overflow-hidden"*/
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] md:max-w-[50vw] lg:max-w-[45vw] xl:max-w-[40vw] 2xl:max-w-2xl 
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={modalTransition}
+              className="rsvp-dialog bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] md:max-w-[50vw] lg:max-w-[45vw] xl:max-w-[40vw] 2xl:max-w-2xl 
               /* make it a flex column and bound its height */  flex flex-col 
               /* fallback max height for older browsers */ max-h-[95vh]
               /* overflow-hidden */ overflow-hidden"
               /* modern mobile-safe height (works where supported) */
-                style={{ maxHeight: 'min(95svh, 95dvh)' } as React.CSSProperties}
-  onClick={(e) => e.stopPropagation()}
-              /*onClick={(e) => e.stopPropagation()}*/
+              style={{ maxHeight: 'min(95svh, 95dvh)' } as React.CSSProperties}
+              onClick={(e) => e.stopPropagation()}
             >
               {/* Header Component */}
               <Header 
@@ -281,10 +295,8 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
               />
 
               <div
-                className="flex-1  min-h-0 overflow-y-auto pb-6 pr-2 rsvp-modal-scrollbar"
-                style={{ 
-                  overscrollBehavior: 'contain'
-                }}
+                className="flex-1 min-h-0 overflow-y-auto pb-6 pr-2 rsvp-modal-scrollbar modalScroll"
+                style={{ scrollbarGutter: 'stable both-edges' }}
               >
                 {isBlockedFromRSVP ? (
                   <div className="p-6 text-center">
@@ -333,7 +345,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                             <UserPlus className="w-4 h-4 text-[#F25129]" />
                             <h4 className="font-medium text-gray-900 text-[13px]">Add Attendees</h4>
                             <span className="text-[12px] text-gray-500">
-                              ({bulkFormData.familyMembers.filter((m) => m.name.trim()).length} ready to add)
+                              ({readyToAddCount} ready to add)
                             </span>
                           </div>
                           <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.2 }}>
@@ -368,69 +380,41 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                               transition={{ duration: 0.3, ease: 'easeInOut' }}
                               className="overflow-hidden"
                             >
-                              <div className="p-4 pt-0">
-                                <div
-                                  className="max-h-[180px] overflow-y-auto space-y-2 pr-2 rsvp-modal-scrollbar"
-                                  style={{ 
-                                    overscrollBehavior: 'contain'
-                                  }}
-                                >
-                                  {bulkFormData.familyMembers.map((member) => (
-                                    <div key={member.id} className="grid grid-cols-1 sm:grid-cols-5 gap-1 items-center">
-                                      <input
-                                        type="text"
-                                        placeholder="Name"
-                                        value={member.name}
-                                        onChange={(e) => updateBulkFormField(member.id, 'name', e.target.value)}
-                                        className="px-2.5 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-[13px]"
-                                      />
-                                      <select
-                                        value={member.ageGroup}
-                                        onChange={(e) => updateBulkFormField(member.id, 'ageGroup', e.target.value)}
-                                        className="px-2.5 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-[13px]"
-                                      >
-                                        <option value="0-2">0-2 Years</option>
-                                        <option value="3-5">3-5 Years</option>
-                                        <option value="6-10">6-10 Years</option>
-                                        <option value="teen">Teen</option>
-                                        <option value="adult">Adult</option>
-                                      </select>
-                                      <select
-                                        value={member.relationship}
-                                        onChange={(e) => updateBulkFormField(member.id, 'relationship', e.target.value)}
-                                        className="px-2.5 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-[13px]"
-                                      >
-                                        <option value="spouse">Spouse</option>
-                                        <option value="child">Child</option>
-                                        <option value="guest">Guest</option>
-                                      </select>
-                                      <select
-                                        value={member.rsvpStatus}
-                                        onChange={(e) => updateBulkFormField(member.id, 'rsvpStatus', e.target.value)}
-                                        className="px-2.5 py-1.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-[13px]"
-                                      >
-                                        <option value="going">Going</option>
-                                        <option value="not-going">Not Going</option>
-                                        <option value="pending">Pending</option>
-                                      </select>
-                                      <div className="flex gap-1">
-                                        <button
-                                          onClick={() => removeBulkFormRow(member.id)}
-                                          className="w-8 h-8 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors flex items-center justify-center"
-                                          title="Remove row"
+                              <div className="p-2 pt-0">
+                                {/* Table Header */}
+                                <div className="border border-gray-200 rounded-lg overflow-hidden mb-2">
+                                                                     <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
+                                     <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
+                                       <div className="col-span-4">Name</div>
+                                       <div className="col-span-3">Age</div>
+                                       <div className="col-span-3">Relation</div>
+                                       <div className="col-span-2">Actions</div>
+                                     </div>
+                                   </div>
+                                  
+                                  {/* Table Body */}
+                                  <div className="divide-y divide-gray-100">
+                                    <div
+                                      className="max-h-[180px] overflow-y-auto rsvp-modal-scrollbar modalScroll"
+                                      style={{ scrollbarGutter: 'stable both-edges' }}
+                                    >
+                                      {bulkFormData.familyMembers.map((member, index) => (
+                                        <div 
+                                          key={member.id}
+                                          className="py-2"
                                         >
-                                          <Minus className="w-3 h-3" />
-                                        </button>
-                                        <button
-                                          onClick={addBulkFormRow}
-                                          className="w-8 h-8 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors flex items-center justify-center"
-                                          title="Add row"
-                                        >
-                                          <Plus className="w-3 h-3" />
-                                        </button>
-                                      </div>
+                                          <div className="px-2.5">
+                                            <AttendeeInputRowMemo
+                                              member={member}
+                                              onUpdate={updateBulkFormField}
+                                              onRemove={removeBulkFormRow}
+                                              onAdd={addBulkFormRow}
+                                            />
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
-                                  ))}
+                                  </div>
                                 </div>
 
                                 <div className="mt-4 pt-3 border-t border-[#F25129]/20">
@@ -441,7 +425,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                   >
                                     {loading
                                       ? 'Adding...'
-                                      : `Add ${bulkFormData.familyMembers.filter((m) => m.name.trim()).length} Attendee(s)`}
+                                      : `Add ${readyToAddCount} Attendee(s)`}
                                   </button>
                                 </div>
                               </div>
@@ -602,12 +586,12 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                 )}
               </div>
 
-              <div className="border-t border-gray-200 p-4 bg-gray-50 mt-2">
+              <div className="border-t border-gray-200 p-4 bg-gray-50 mt-2 safe-footer">
                 <div className="flex items-center justify-end">
                   <div className="flex gap-3">
                     <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      whileHover={prefersReduced ? undefined : { scale: 1.05 }}
+                      whileTap={prefersReduced ? undefined : { scale: 0.95 }}
                       onClick={handleClose}
                       className="px-3 py-1.5 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors text-[13px]"
                     >
@@ -618,8 +602,6 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
               </div>
             </motion.div>
           </motion.div>
-
-          <span tabIndex={0} onFocus={() => closeBtnRef.current?.focus()} />
         </>
       )}
     </AnimatePresence>,
