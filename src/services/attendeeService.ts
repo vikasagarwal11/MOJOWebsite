@@ -74,12 +74,17 @@ export const updateAttendee = async (
   attendeeId: string, 
   updateData: UpdateAttendeeData
 ): Promise<void> => {
+  console.log('DEBUG: updateAttendee service called with:', { eventId, attendeeId, updateData });
   const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
   
-  await updateDoc(attendeeRef, {
+  const updatePayload = {
     ...updateData,
     updatedAt: new Date()
-  });
+  };
+  console.log('DEBUG: updateAttendee payload:', updatePayload);
+  
+  await updateDoc(attendeeRef, updatePayload);
+  console.log('DEBUG: updateAttendee completed successfully');
 };
 
 // Delete attendee

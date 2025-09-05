@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 
 interface UseModalA11yProps {
   isOpen: boolean;
@@ -9,7 +9,8 @@ interface ModalA11yReturn {
   dialogProps: {
     role: 'dialog';
     'aria-modal': boolean;
-    'aria-labelledby': string;
+    ref: React.RefObject<HTMLDivElement>;
+    onKeyDown: (e: React.KeyboardEvent) => void;
   };
   closeBtnRef: React.RefObject<HTMLButtonElement>;
 }
@@ -17,40 +18,56 @@ interface ModalA11yReturn {
 /**
  * Hook to handle modal accessibility features
  * Manages escape key, scroll lock, and focus management
+ * FIXED: Only focuses once on open, never steals focus from active inputs
  */
 export const useModalA11y = ({ isOpen, onClose }: UseModalA11yProps): ModalA11yReturn => {
-  const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+  const hasFocusedOnOpen = useRef(false);
 
+  // Focus only once when the dialog transitions from closed -> open.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    
-    window.addEventListener('keydown', onKey);
+    if (!isOpen) {
+      hasFocusedOnOpen.current = false; // reset for the next time we open
+      return;
+    }
+    if (hasFocusedOnOpen.current) return;
+    hasFocusedOnOpen.current = true;
 
+    // Defer to after paint; don't steal focus if an input already has it.
+    requestAnimationFrame(() => {
+      const active = document.activeElement as HTMLElement | null;
+      const dialogEl = dialogRef.current;
+      if (!dialogEl) return;
+
+      const activeInsideDialog = active && dialogEl.contains(active);
+      if (!activeInsideDialog) {
+        closeBtnRef.current?.focus();
+      }
+    });
+  }, [isOpen]);
+
+  // Handle scroll lock
+  useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = isOpen ? 'hidden' : previousOverflow;
-
-    if (isOpen) {
-      const modal = document.querySelector('[role="dialog"]') as HTMLElement | null;
-      const firstFocusable = modal?.querySelector<
-        HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-      >('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
-      (firstFocusable as HTMLElement | undefined)?.focus();
-    }
-
+    
     return () => {
-      window.removeEventListener('keydown', onKey);
       document.body.style.overflow = previousOverflow;
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
-  return {
-    dialogProps: {
-      role: 'dialog',
+  const dialogProps = useMemo(
+    () => ({
+      role: 'dialog' as const,
       'aria-modal': true,
-      'aria-labelledby': 'rsvp-title'
-    },
-    closeBtnRef
-  };
+      ref: dialogRef,
+      onKeyDown: (e: React.KeyboardEvent) => {
+        if (e.key === 'Escape') onClose();
+      },
+    }),
+    [onClose]
+  );
+
+  return { dialogProps, closeBtnRef };
 };

@@ -289,46 +289,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
 
   const comments = usePagedComments(localMedia.id, 10, { initialOpen: false });
   
-  // Debug logging for comment count discrepancy
-  useEffect(() => {
-    if (localMedia.commentsCount !== undefined && comments.comments.length !== localMedia.commentsCount) {
-      console.log('🔍 Comment count mismatch detected:', {
-        mediaId: localMedia.id,
-        serverCount: localMedia.commentsCount,
-        localCount: comments.comments.length,
-        comments: comments.comments.map(c => ({ id: c.id, text: c.text.substring(0, 20) }))
-      });
-    }
-  }, [localMedia.commentsCount, comments.comments.length, localMedia.id, comments.comments]);
-  
-  // Real-time sync for comments count to prevent stale data
-  useEffect(() => {
-    if (!localMedia.id) return;
-    
-    const unsubscribe = onSnapshot(
-      doc(db, 'media', localMedia.id),
-      (docSnapshot) => {
-        if (docSnapshot.exists()) {
-          const serverCommentsCount = docSnapshot.data().commentsCount ?? 0;
-          
-          // Debug: Log if there's a mismatch
-          if (serverCommentsCount !== (localMedia.commentsCount ?? 0)) {
-            console.log('🔍 Comments count sync:', {
-              mediaId: localMedia.id,
-              oldCount: localMedia.commentsCount,
-              newCount: serverCommentsCount,
-              localCount: comments.comments.length
-            });
-          }
-        }
-      },
-      (error: any) => {
-        console.warn('Failed to sync comments count:', error);
-      }
-    );
-    
-    return unsubscribe;
-  }, [localMedia.id, localMedia.commentsCount, comments.comments.length]);
+  // Real-time comment count is now handled by usePagedComments hook
   
   // Safe date parsing with fallback
   const createdAt = useMemo(() => {
@@ -492,8 +453,8 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
 
             <button onClick={()=> comments.setOpen(!comments.open)} className="flex items-center space-x-1 text-gray-500 hover:text-[#F25129] transition-colors">
               <MessageCircle className="w-5 h-5" />
-              <span className="text-sm" title={`Server count: ${localMedia.commentsCount}, Local count: ${comments.comments.length}`}>
-                {localMedia.commentsCount ?? comments.comments.length}
+              <span className="text-sm" title={`Real-time count: ${comments.commentsCount}`}>
+                {comments.commentsCount}
               </span>
               {comments.comments.length > 0 && !comments.open && (
                 <span className="text-xs text-gray-400">• View all</span>
@@ -548,7 +509,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
                 });
                 
                 setNewComment('');
-                // Note: commentsCount will be updated by Cloud Function
+                // Real-time listener will update the count automatically
               } catch (error: any) {
                 toast.error('Failed to post comment: ' + error.message);
               }

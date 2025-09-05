@@ -2,7 +2,7 @@
 export interface FamilyMember {
   id: string;
   name: string;
-  ageGroup?: '0-2' | '3-5' | '6-10' | 'teen' | 'adult';
+  ageGroup?: '0-2' | '3-5' | '6-10' | '11+' | 'adult';
   isDefaultMember: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -10,13 +10,13 @@ export interface FamilyMember {
 
 export interface CreateFamilyMemberData {
   name: string;
-  ageGroup?: '0-2' | '3-5' | '6-10' | 'teen' | 'adult';
+  ageGroup?: '0-2' | '3-5' | '6-10' | '11+' | 'adult';
   isDefaultMember?: boolean;
 }
 
 export interface UpdateFamilyMemberData {
   name?: string;
-  ageGroup?: '0-2' | '3-5' | '6-10' | 'teen' | 'adult';
+  ageGroup?: '0-2' | '3-5' | '6-10' | '11+' | 'adult';
   isDefaultMember?: boolean;
 }
 
@@ -27,6 +27,6 @@ export interface FamilyMemberValidationResult {
 
 export interface FamilyMemberFormData {
   name: string;
-  ageGroup: '0-2' | '3-5' | '6-10' | 'teen' | 'adult' | '' | undefined;
+  ageGroup: '0-2' | '3-5' | '6-10' | '11+' | 'adult' | '' | undefined;
   isDefaultMember: boolean;
 }

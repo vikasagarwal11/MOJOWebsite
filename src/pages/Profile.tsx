@@ -633,27 +633,37 @@ const Profile: React.FC = () => {
       toast.error('If you add an address, City and State are required.');
       return;
     }
-    const computedDisplay = [firstName, lastName].filter(Boolean).join(' ') || displayName || 'Member';
+    const nameParts = [firstName, lastName].filter(Boolean);
+    const computedDisplay = nameParts.length > 0 ? nameParts.join(' ') : (displayName || 'Member');
     try {
       setSaving(true);
-      await updateDoc(doc(db, 'users', currentUser!.id), {
+      // Clean social links - remove empty strings to avoid validation issues
+      const cleanSocial = Object.fromEntries(
+        Object.entries(social).filter(([key, value]) => value && value.trim())
+      );
+      
+      const updateData: any = {
         firstName: firstName || '',
         lastName: lastName || '',
         displayName: computedDisplay,
         email: email || '',
-        address: hasAnyAddress
-          ? {
-              street: address.street || '',
-              city: address.city || '',
-              state: address.state || 'NJ',
-              postalCode: address.postalCode || '',
-            }
-          : {},
-        social,
+        social: cleanSocial,
         interests,
         about: (about || '').trim(),
         updatedAt: serverTimestamp(),
-      });
+      };
+      
+      // Only include address if there's actual address data
+      if (hasAnyAddress) {
+        updateData.address = {
+          street: address.street || '',
+          city: address.city || '',
+          state: address.state || 'NJ',
+          postalCode: address.postalCode || '',
+        };
+      }
+      
+      await updateDoc(doc(db, 'users', currentUser!.id), updateData);
       setDisplayName(computedDisplay);
       toast.success('Profile saved');
     } catch (e: any) {
@@ -695,30 +705,80 @@ const Profile: React.FC = () => {
     }
   };
 
-  // Update RSVP
-  const updateRsvp = async (eventId: string, userId: string, status: 'going' | 'not-going' | null) => {
+  // Refresh RSVP data for admin
+  const refreshRsvpData = async () => {
+    if (currentUser?.role !== 'admin' || allEvents.length === 0) return;
+    
     try {
-      const rsvpRef = doc(db, 'events', eventId, 'rsvps', userId);
-      const snap = await getDoc(rsvpRef);
-      const existing = snap.exists() ? snap.data() : { statusHistory: [] };
+      console.log('DEBUG: Refreshing RSVP data for', allEvents.length, 'events');
+      const rsvps: { [eventId: string]: any[] } = {};
+      
+      for (const event of allEvents) {
+        // Fetch from the attendees collection to get all individual attendees
+        const attendeeQuery = query(collection(db, 'events', event.id, 'attendees'), orderBy('createdAt', 'desc'));
+        const attendeeSnap = await getDocs(attendeeQuery);
+        if (attendeeSnap.docs.length > 0) {
+          rsvps[event.id] = attendeeSnap.docs.map(d => ({ 
+            id: d.id, 
+            eventId: event.id, 
+            userId: d.data().userId,
+            status: d.data().rsvpStatus, // Map rsvpStatus to status for compatibility
+            ...d.data() 
+          }));
+        }
+      }
+      
+      console.log('DEBUG: Fetched RSVP data:', rsvps);
+      setRsvpsByEvent(rsvps);
+      console.log('DEBUG: RSVP data refreshed successfully');
+    } catch (e) {
+      console.error('DEBUG: Failed to refresh RSVP data:', e);
+    }
+  };
+
+  // Update RSVP
+  const updateRsvp = async (eventId: string, attendeeId: string, status: 'going' | 'not-going' | 'pending' | null) => {
+    try {
+      console.log('DEBUG: updateRsvp called with:', { eventId, attendeeId, status });
+      
+      // Update the specific attendee record
+      const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
+      const attendeeSnap = await getDoc(attendeeRef);
+      
+      if (!attendeeSnap.exists()) {
+        console.log('DEBUG: Attendee not found:', attendeeId);
+        toast.error('Attendee not found');
+        return;
+      }
+      
+      const existing = attendeeSnap.data();
       const newHistory = [
         ...(existing.statusHistory || []),
         {
           status,
-          changedAt: serverTimestamp(),
+          changedAt: new Date(),
           changedBy: currentUser!.id,
         }
       ];
-      if (status === null) {
-        await deleteDoc(rsvpRef);
-      } else {
-        await setDoc(rsvpRef, {
-          status,
-          createdAt: existing.createdAt || serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          statusHistory: newHistory,
-        }, { merge: true });
+      
+      const updateData: any = {
+        rsvpStatus: status,
+        updatedAt: serverTimestamp(),
+        statusHistory: newHistory,
+      };
+      
+      // Only set createdAt if it doesn't exist (new document)
+      if (!existing.createdAt) {
+        updateData.createdAt = serverTimestamp();
       }
+      
+      console.log('DEBUG: Updating attendee', attendeeId, 'with status:', status);
+      await updateDoc(attendeeRef, updateData);
+      console.log('DEBUG: updateRsvp completed successfully');
+      
+      // Refresh RSVP data after successful update
+      await refreshRsvpData();
+      
       toast.success('RSVP updated');
     } catch (e: any) {
       console.error('Failed to update RSVP:', e);
