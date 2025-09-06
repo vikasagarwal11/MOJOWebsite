@@ -1,16 +1,20 @@
 import React, { useMemo, useState } from 'react';
-import { Upload, Image, Video, Filter, Camera } from 'lucide-react';
+import { Upload, Image, Video, Filter, Camera, Video as VideoIcon } from 'lucide-react';
 import { orderBy } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { useFirestore } from '../hooks/useFirestore';
 import MediaUploadModal from '../components/media/MediaUploadModal';
+import { LiveMediaUpload } from '../components/media/LiveMediaUpload';
 import MediaCard from '../components/media/MediaCard';
 
 const Media: React.FC = () => {
   const { currentUser } = useAuth();
   const { useRealtimeCollection } = useFirestore();
+  
+  // Media component loaded successfully
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isLiveUploadOpen, setIsLiveUploadOpen] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'image' | 'video'>('all');
   const [selectedEvent, setSelectedEvent] = useState<string>('all');
 
@@ -56,15 +60,22 @@ const Media: React.FC = () => {
           <p className="text-gray-600 text-lg">Share and explore moments from our fitness community</p>
         </div>
 
-        {currentUser && (
+        <div className="mt-4 md:mt-0 flex flex-col sm:flex-row gap-3">
           <button
             onClick={() => setIsUploadModalOpen(true)}
-            className="mt-4 md:mt-0 flex items-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg"
+            className="flex items-center justify-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg"
           >
             <Upload className="w-5 h-5 mr-2" />
             Upload Media
           </button>
-        )}
+          <button
+            onClick={() => setIsLiveUploadOpen(true)}
+            className="flex items-center justify-center px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-full hover:from-red-600 hover:to-red-700 transition-all duration-300 transform hover:scale-105 shadow-lg"
+          >
+            <VideoIcon className="w-5 h-5 mr-2" />
+            Live Upload
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -139,6 +150,13 @@ const Media: React.FC = () => {
           events={eventsForFilter}
           onClose={() => setIsUploadModalOpen(false)}
           onMediaUploaded={() => setIsUploadModalOpen(false)}
+        />
+      )}
+
+      {/* Live Media Upload Modal */}
+      {isLiveUploadOpen && (
+        <LiveMediaUpload
+          onClose={() => setIsLiveUploadOpen(false)}
         />
       )}
     </div>

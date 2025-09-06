@@ -17,6 +17,7 @@ import { useUserBlocking } from '../../hooks/useUserBlocking';
 import { useAttendees } from '../../hooks/useAttendees';
 import { useFamilyMembers } from '../../hooks/useFamilyMembers';
 import { AttendeeList } from './AttendeeList';
+import { LoadingSpinner, LoadingButton } from '../ui/LoadingSpinner';
 import { CreateAttendeeData, AttendeeStatus, AgeGroup, Relationship } from '../../types/attendee';
 import { FamilyMember } from '../../types/family';
 
@@ -528,13 +529,13 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                       </div>
 
                                       <div className="mt-4 pt-3 border-t border-[#F25129]/20">
-                                        <button
+                                        <LoadingButton
+                                          loading={loading}
                                           onClick={() => handleBulkAddFromProfile(availableFamilyMembers)}
-                                          disabled={loading}
                                           className="w-full px-3.5 py-2 text-sm bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                         >
-                                          {loading ? 'Adding...' : `Add All ${availableFamilyMembers.length} Family Members`}
-                                        </button>
+                                          Add All {availableFamilyMembers.length} Family Members
+                                        </LoadingButton>
                                       </div>
                                     </>
                                   ) : (

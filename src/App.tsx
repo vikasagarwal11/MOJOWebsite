@@ -76,8 +76,8 @@ function App() {
               <Route path="/" element={<Layout />}>
                 <Route index element={<Home />} />
                 <Route path="events" element={<Events />} />
-                {/* <Route path="media" element={<Media />} />  OLD VERSION - COMMENTED OUT */}
-                <Route path="media" element={<MediaGallery />} />  {/* NEW VERSION */}
+                <Route path="media" element={<Media />} />  {/* UPDATED VERSION WITH LIVE UPLOAD */}
+                {/* <Route path="media" element={<MediaGallery />} />  OLD VERSION - COMMENTED OUT */}
                 <Route path="posts" element={<Posts />} />
                 <Route path="sponsors" element={<Sponsors />} />
                 <Route path="profile" element={<Profile />} />

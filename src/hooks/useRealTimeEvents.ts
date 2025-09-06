@@ -16,6 +16,7 @@ interface UseRealTimeEventsResult {
   error: string | null;
   lastUpdate: Date | null;
   refreshEvents: () => void;
+  upcomingCount: number;
 }
 
 export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRealTimeEventsResult {
@@ -25,10 +26,26 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [upcomingCount, setUpcomingCount] = useState(0);
   
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const previousEventsRef = useRef<Map<string, EventDoc>>(new Map());
-  const notificationShownRef = useRef<Set<string>>(new Set());
+  const notificationQueueRef = useRef<{ title: string; message: string }[]>([]);
+
+  // Process queued notifications after render
+  useEffect(() => {
+    if (notificationQueueRef.current.length > 0) {
+      notificationQueueRef.current.forEach(({ message }) => {
+        toast.success(message, {
+          duration: 5000,
+          icon: '📅',
+          style: { background: '#10B981', color: 'white' },
+        });
+        if (navigator.vibrate) navigator.vibrate(200); // Vibration for notification
+      });
+      notificationQueueRef.current = [];
+    }
+  }, [events]); // Trigger on events update
 
   // Build queries based on user authentication
   const buildQueries = useCallback(() => {
@@ -71,7 +88,7 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
   }, [userId]);
 
   // Handle real-time updates
-  const handleSnapshot = useCallback((snapshot: any, queryIndex: number) => {
+  const handleSnapshot = useCallback((snapshot: any) => {
     const newEvents = new Map<string, EventDoc>();
     
     snapshot.docs.forEach((doc: any) => {
@@ -102,40 +119,26 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
         mergedEvents.set(id, event);
       });
 
-      // Check for new events and show notifications
+      // Check for new events and queue notifications
       if (enableNotifications && userId) {
         newEvents.forEach((event, id) => {
           const previousEvent = previousEventsRef.current.get(id);
           
-          // Show notification for new events
-          if (!previousEvent && !notificationShownRef.current.has(id)) {
-            notificationShownRef.current.add(id);
-            
-            // Check if event is starting soon (within 24 hours)
+          // Queue notification for new events
+          if (!previousEvent) {
             const eventStart = new Date(event.startAt.seconds * 1000);
-            const now = new Date();
-            const hoursUntilEvent = (eventStart.getTime() - now.getTime()) / (1000 * 60 * 60);
+            const hoursUntil = (eventStart.getTime() - Date.now()) / (3600 * 1000);
             
-            if (hoursUntilEvent <= 24 && hoursUntilEvent > 0) {
-              toast.success(
-                `🎉 New event: ${event.title} starts in ${Math.floor(hoursUntilEvent)} hours!`,
-                {
-                  duration: 5000,
-                  icon: '📅',
-                  style: {
-                    background: '#10B981',
-                    color: 'white',
-                  },
-                }
-              );
-            } else if (!previousEvent) {
-              toast.success(
-                `📅 New event: ${event.title}`,
-                {
-                  duration: 4000,
-                  icon: '🎉',
-                }
-              );
+            if (hoursUntil <= 24 && hoursUntil > 0) {
+              notificationQueueRef.current.push({
+                title: event.title,
+                message: `🎉 New event: ${event.title} starts in ${Math.floor(hoursUntil)} hours!`
+              });
+            } else {
+              notificationQueueRef.current.push({
+                title: event.title,
+                message: `📅 New event: ${event.title}`
+              });
             }
           }
         });
@@ -144,11 +147,14 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
       // Update previous events reference
       previousEventsRef.current = new Map(mergedEvents);
       
-      return Array.from(mergedEvents.values()).sort((a, b) => {
+      const sorted = Array.from(mergedEvents.values()).sort((a, b) => {
         const aTime = a.startAt.seconds;
         const bTime = b.startAt.seconds;
         return aTime - bTime;
       });
+      
+      setUpcomingCount(sorted.length);
+      return sorted;
     });
 
     setLastUpdate(new Date());
@@ -170,10 +176,10 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
     const queries = buildQueries();
     const unsubs: Array<() => void> = [];
 
-    queries.forEach((query, index) => {
+    queries.forEach((query) => {
       const unsubscribe = onSnapshot(
         query,
-        (snapshot) => handleSnapshot(snapshot, index),
+        (snapshot) => handleSnapshot(snapshot),
         handleError
       );
       unsubs.push(unsubscribe);
@@ -208,10 +214,10 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
       const queries = buildQueries();
       const unsubs: Array<() => void> = [];
       
-      queries.forEach((query, index) => {
+      queries.forEach((query) => {
         const unsubscribe = onSnapshot(
           query,
-          (snapshot) => handleSnapshot(snapshot, index),
+          (snapshot) => handleSnapshot(snapshot),
           handleError
         );
         unsubs.push(unsubscribe);
@@ -237,6 +243,7 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
     loading,
     error,
     lastUpdate,
-    refreshEvents
+    refreshEvents,
+    upcomingCount
   };
 }
