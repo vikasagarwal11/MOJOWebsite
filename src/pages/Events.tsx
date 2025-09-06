@@ -299,16 +299,19 @@ const Events: React.FC = () => {
             <Share2 className="w-5 h-5" />
           </motion.button>
 
-          {/* Create Event button (admin only) */}
+          {/* Action buttons (admin only) */}
           {currentUser?.role === 'admin' && (
-            <motion.button 
-              onClick={() => setShowModal(true)} 
-              className="inline-flex items-center px-4 py-2 rounded-full bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white hover:from-[#E0451F] hover:to-[#E55A2A] hover:shadow-lg transition-all duration-200 min-h-[44px]"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Plus className="w-4 h-4 mr-2" /> Create Event
-            </motion.button>
+            <>
+              
+              <motion.button
+                onClick={() => setShowModal(true)} 
+                className="inline-flex items-center px-4 py-2 rounded-full bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white hover:from-[#E0451F] hover:to-[#E55A2A] hover:shadow-lg transition-all duration-200 min-h-[44px]"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Plus className="w-4 h-4 mr-2" /> Create Event
+              </motion.button>
+            </>
           )}
         </div>
       </motion.div>
@@ -935,6 +938,7 @@ const Events: React.FC = () => {
           />
         )}
       </AnimatePresence>
+
     </div>
   );
 };
