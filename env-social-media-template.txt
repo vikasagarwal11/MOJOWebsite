@@ -1,0 +1,37 @@
+# Social Media Integration Environment Variables
+# Add these to your .env file for auto-posting functionality
+
+# Facebook API Credentials
+# Get these from: https://developers.facebook.com/
+VITE_FACEBOOK_APP_ID=your_facebook_app_id
+VITE_FACEBOOK_ACCESS_TOKEN=your_facebook_access_token
+
+# Instagram Business API Credentials
+# Get these from: https://developers.facebook.com/docs/instagram-api/
+VITE_INSTAGRAM_ACCESS_TOKEN=your_instagram_access_token
+VITE_INSTAGRAM_BUSINESS_ACCOUNT_ID=your_instagram_business_account_id
+
+# Twitter API Credentials
+# Get these from: https://developer.twitter.com/
+VITE_TWITTER_API_KEY=your_twitter_api_key
+VITE_TWITTER_API_SECRET=your_twitter_api_secret
+VITE_TWITTER_ACCESS_TOKEN=your_twitter_access_token
+VITE_TWITTER_ACCESS_TOKEN_SECRET=your_twitter_access_token_secret
+
+# How to get these credentials:
+
+# 1. FACEBOOK & INSTAGRAM:
+#    - Go to https://developers.facebook.com/
+#    - Create a new app
+#    - Add Facebook Login and Instagram Basic Display products
+#    - Get App ID and generate access tokens
+#    - For Instagram: Connect your business account
+
+# 2. TWITTER:
+#    - Go to https://developer.twitter.com/
+#    - Create a new project/app
+#    - Generate API keys and access tokens
+#    - Make sure to enable "Read and Write" permissions
+
+# Note: These are sensitive credentials - never commit them to version control!
+# Add .env to your .gitignore file
