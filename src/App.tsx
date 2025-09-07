@@ -13,6 +13,7 @@ import Login from './components/auth/Login';
 import Register from './components/auth/Register';
 import Profile from './pages/Profile';
 import FamilyManagement from './pages/FamilyManagement';
+import Founder from './pages/Founder';
 
 /** Simple error boundary so a crash doesn't white-screen the app */
 class SimpleErrorBoundary extends React.Component<
@@ -82,6 +83,7 @@ function App() {
                 <Route path="sponsors" element={<Sponsors />} />
                 <Route path="profile" element={<Profile />} />
                 <Route path="family-management" element={<FamilyManagement />} />
+                <Route path="founder" element={<Founder />} />
               </Route>
             </Routes>
           </div>

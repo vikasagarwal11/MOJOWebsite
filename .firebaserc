@@ -1,5 +1,16 @@
 {
   "projects": {
-    "default": "momfitnessmojo"
+    "default": "momfitnessmojo",
+    "dev": "momfitnessmojo-dev",
+    "prod": "momfitnessmojo"
+  },
+  "targets": {
+    "momfitnessmojo": {
+      "hosting": {
+        "momsfitnessmojo": [
+          "momsfitnessmojo"
+        ]
+      }
+    }
   }
 }
