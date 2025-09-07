@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Upload, Image, Video, Filter, Camera, Video as VideoIcon } from 'lucide-react';
 import { orderBy } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,6 +6,8 @@ import { useFirestore } from '../hooks/useFirestore';
 import MediaUploadModal from '../components/media/MediaUploadModal';
 import { LiveMediaUpload } from '../components/media/LiveMediaUpload';
 import MediaCard from '../components/media/MediaCard';
+import MediaLightbox from '../components/media/MediaLightbox';
+import { useLightbox } from '../hooks/useLightbox';
 
 const Media: React.FC = () => {
   const { currentUser } = useAuth();
@@ -15,6 +17,17 @@ const Media: React.FC = () => {
 
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isLiveUploadOpen, setIsLiveUploadOpen] = useState(false);
+  const [isModalClosing, setIsModalClosing] = useState(false);
+
+  // Debug logging for modal state
+  useEffect(() => {
+    console.log('🎬 Media: isLiveUploadOpen changed to:', isLiveUploadOpen);
+    if (isLiveUploadOpen) {
+      console.log('🎬 Media: Modal should be open now');
+    } else {
+      console.log('🎬 Media: Modal closed');
+    }
+  }, [isLiveUploadOpen]);
   const [filterType, setFilterType] = useState<'all' | 'image' | 'video'>('all');
   const [selectedEvent, setSelectedEvent] = useState<string>('all');
 
@@ -50,6 +63,9 @@ const Media: React.FC = () => {
       return typeOk && eventOk;
     });
   }, [mediaFiles, filterType, selectedEvent]);
+
+  // Lightbox functionality
+  const lightbox = useLightbox(filteredMedia, { loop: true });
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -120,8 +136,8 @@ const Media: React.FC = () => {
 
       {/* Media Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredMedia.map((media: any) => (
-          <MediaCard key={media.id} media={media} />
+        {filteredMedia.map((media: any, index: number) => (
+          <MediaCard key={media.id} media={media} onOpen={() => lightbox.open(index)} />
         ))}
       </div>
 
@@ -156,7 +172,27 @@ const Media: React.FC = () => {
       {/* Live Media Upload Modal */}
       {isLiveUploadOpen && (
         <LiveMediaUpload
-          onClose={() => setIsLiveUploadOpen(false)}
+          onClose={() => {
+            setIsModalClosing(true);
+            setTimeout(() => {
+              setIsLiveUploadOpen(false);
+              setIsModalClosing(false);
+            }, 100);
+          }}
+        />
+      )}
+
+      {/* Media Lightbox */}
+      {lightbox.index !== null && (
+        <MediaLightbox
+          item={filteredMedia[lightbox.index]}
+          onPrev={lightbox.prev}
+          onNext={lightbox.next}
+          onClose={lightbox.close}
+          autoPlay={true}
+          intervalMs={3500}
+          pauseOnHover={true}
+          autoAdvanceVideos={true}
         />
       )}
     </div>

@@ -406,25 +406,37 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
           </div>
         )}
         <div className="absolute top-3 right-3 flex gap-2">
-          <button onClick={()=>shareUrl(localMedia.url, localMedia.title)} className="p-2 rounded-full bg-white/90 hover:bg-white">
+          <button onClick={(e) => {
+            e.stopPropagation();
+            shareUrl(localMedia.url, localMedia.title);
+          }} className="p-2 rounded-full bg-white/90 hover:bg-white">
             <Share2 className="w-4 h-4 text-gray-700" />
           </button>
-          <a href={localMedia.url} download className="p-2 rounded-full bg-white/90 hover:bg-white">
+          <a href={localMedia.url} download onClick={(e) => e.stopPropagation()} className="p-2 rounded-full bg-white/90 hover:bg-white">
             <Download className="w-4 h-4 text-gray-700" />
           </a>
           {canModerate && (
             <div className="relative admin-menu">
-              <button onClick={() => setMenuOpen(v => !v)}
+              <button onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(v => !v);
+              }}
                 className="p-2 rounded-full bg-white/90 hover:bg-white" aria-label="More">
                 <MoreHorizontal className="w-4 h-4 text-gray-700" />
               </button>
               {menuOpen && (
                 <div className="absolute right-0 mt-2 w-40 rounded-md bg-white shadow-lg p-1 border border-gray-200 z-10">
-                  <button onClick={togglePublic} className="w-full flex items-center gap-2 px-2 py-2 rounded hover:bg-gray-50 text-left">
+                  <button onClick={(e) => {
+                    e.stopPropagation();
+                    togglePublic();
+                  }} className="w-full flex items-center gap-2 px-2 py-2 rounded hover:bg-gray-50 text-left">
                     {localMedia.isPublic ? <EyeOff className="w-4 h-4 text-gray-600"/> : <Eye className="w-4 h-4 text-gray-600"/>}
                     <span className="text-sm">{localMedia.isPublic ? 'Hide (make private)' : 'Make public'}</span>
                   </button>
-                  <button onClick={onClickDelete} className="w-full flex items-center gap-2 px-2 py-2 rounded hover:bg-red-50 text-red-600 text-left">
+                  <button onClick={(e) => {
+                    e.stopPropagation();
+                    onClickDelete();
+                  }} className="w-full flex items-center gap-2 px-2 py-2 rounded hover:bg-red-50 text-red-600 text-left">
                     <Trash2 className="w-4 h-4"/> 
                     <span className="text-sm">Delete</span>
                   </button>
@@ -446,12 +458,18 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
 
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <button onClick={handleLikeToggle} className={`flex items-center space-x-1 transition-colors ${liked? 'text-red-500':'text-gray-500 hover:text-red-500'}`}>
+            <button onClick={(e) => {
+              e.stopPropagation();
+              handleLikeToggle();
+            }} className={`flex items-center space-x-1 transition-colors ${liked? 'text-red-500':'text-gray-500 hover:text-red-500'}`}>
               <Heart className={`w-5 h-5 ${liked? 'fill-current':''}`} />
               <span className="text-sm">{likesCount}</span>
             </button>
 
-            <button onClick={()=> comments.setOpen(!comments.open)} className="flex items-center space-x-1 text-gray-500 hover:text-[#F25129] transition-colors">
+            <button onClick={(e) => {
+              e.stopPropagation();
+              comments.setOpen(!comments.open);
+            }} className="flex items-center space-x-1 text-gray-500 hover:text-[#F25129] transition-colors">
               <MessageCircle className="w-5 h-5" />
               <span className="text-sm" title={`Real-time count: ${comments.commentsCount}`}>
                 {comments.commentsCount}
@@ -494,9 +512,13 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
               <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white/80 to-transparent" />
             )}
             {comments.hasMore && (
-              <button onClick={comments.loadMore} className="text-xs text-[#F25129] hover:underline">Load more</button>
+              <button onClick={(e) => {
+                e.stopPropagation();
+                comments.loadMore();
+              }} className="text-xs text-[#F25129] hover:underline">Load more</button>
             )}
             <form onSubmit={async (e) => {
+              e.stopPropagation();
               e.preventDefault();
               if (!currentUser || !newComment.trim()) return;
               
@@ -514,9 +536,9 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
                 toast.error('Failed to post comment: ' + error.message);
               }
             }} className="flex items-center gap-2">
-              <input value={newComment} onChange={e=>setNewComment(e.target.value)}
+              <input value={newComment} onChange={e=>setNewComment(e.target.value)} onClick={(e) => e.stopPropagation()}
                 className="flex-1 px-3 py-2 rounded-md border border-gray-300 focus:ring-2 focus:ring-[#F25129]" placeholder="Add a comment…" />
-              <button className="px-3 py-2 bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] transition-colors">Post</button>
+              <button onClick={(e) => e.stopPropagation()} className="px-3 py-2 bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] transition-colors">Post</button>
             </form>
           </div>
         )}
