@@ -456,6 +456,15 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
+    // --- CONTACT MESSAGES ---
+    match /contactMessages/{messageId} {
+      // Allow anyone to create contact messages (for the contact form)
+      allow create: if true;
+      
+      // Only admins can read, update, or delete contact messages
+      allow read, update, delete: if isAdmin();
+    }
+    
     // --- Fallback for stray comments ---
     match /{parentPath=**}/comments/{commentId} {
       allow read: if isSignedIn();

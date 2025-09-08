@@ -71,7 +71,7 @@ const FamilyManagement: React.FC = () => {
             <div className="inline-flex items-center justify-center w-16 h-16 bg-purple-100 rounded-full mb-4">
               <Users className="w-8 h-8 text-purple-600" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent leading-relaxed pb-1 mb-2">
               Family Member Management
             </h1>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">

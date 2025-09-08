@@ -1,0 +1,13 @@
+{
+  "test123": {
+    "demo-user": {
+      "eventTitle": "Demo Event - Moms Fitness",
+      "attendees": [
+        { "id": "1", "name": "Sarah Johnson", "role": "Primary Member", "ageGroup": "adult", "isPrimary": true },
+        { "id": "2", "name": "Mike Johnson", "role": "Spouse", "ageGroup": "adult", "isPrimary": false },
+        { "id": "3", "name": "Emma Johnson", "role": "Child (8 years)", "ageGroup": "6-10", "isPrimary": false },
+        { "id": "4", "name": "Liam Johnson", "role": "Child (5 years)", "ageGroup": "3-5", "isPrimary": false }
+      ]
+    }
+  }
+}

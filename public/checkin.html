@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event Check-in - Moms Fitness Mojo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #F25129, #FF6B35);
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #F25129;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .success {
+            color: #10B981;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .error {
+            color: #EF4444;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .event-info {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .event-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 10px;
+        }
+
+        .event-details {
+            color: #6b7280;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .family-members {
+            margin: 20px 0;
+            text-align: left;
+        }
+
+        .member-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            background: #f9fafb;
+            transition: all 0.2s;
+        }
+
+        .member-item.checked {
+            border-color: #F25129;
+            background: #fef2f2;
+        }
+
+        .member-checkbox {
+            width: 20px;
+            height: 20px;
+            margin-right: 12px;
+            accent-color: #F25129;
+            cursor: pointer;
+        }
+
+        .member-name {
+            font-weight: 500;
+            color: #374151;
+            flex: 1;
+        }
+
+        .member-role {
+            font-size: 12px;
+            color: #6b7280;
+            background: #e5e7eb;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+
+        .checkin-button {
+            background: linear-gradient(135deg, #F25129, #FF6B35);
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 20px;
+            transition: all 0.2s;
+        }
+
+        .checkin-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(242, 81, 41, 0.3);
+        }
+
+        .checkin-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .offline-indicator {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            color: #92400e;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+
+        .sync-indicator {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+            color: #065f46;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .actions {
+            margin-top: 30px;
+            display: flex;
+            gap: 15px;
+        }
+
+        .action-button {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            background: white;
+            color: #374151;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .action-button:hover {
+            border-color: #F25129;
+            color: #F25129;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+
+        .status-pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-synced {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-failed {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">M</div>
+        <h1>Event Check-in</h1>
+        <p class="subtitle">Select who's attending today</p>
+
+        <!-- Loading State -->
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading event details...</p>
+        </div>
+
+        <!-- Success State -->
+        <div id="success" class="hidden">
+            <div class="success">✅ Check-in Successful!</div>
+            <div id="eventInfo" class="event-info hidden">
+                <div id="eventTitle" class="event-title"></div>
+                <div id="eventDetails" class="event-details"></div>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="error" class="hidden">
+            <div class="error">❌ Check-in Failed</div>
+            <p id="errorMessage"></p>
+        </div>
+
+        <!-- Check-in Form -->
+        <div id="checkinForm" class="hidden">
+            <div id="eventInfo" class="event-info">
+                <div id="eventTitle" class="event-title"></div>
+                <div id="eventDetails" class="event-details"></div>
+            </div>
+
+            <div class="family-members">
+                <h3 style="margin-bottom: 15px; color: #374151;">Who's attending?</h3>
+                <div id="familyMembersList"></div>
+            </div>
+
+            <button id="checkinButton" class="checkin-button">
+                Check In Selected Members
+            </button>
+        </div>
+
+        <!-- Offline Indicator -->
+        <div id="offlineIndicator" class="offline-indicator hidden">
+            📱 You're offline. Your check-in will be saved locally and synced when you're back online.
+        </div>
+
+        <!-- Sync Indicator -->
+        <div id="syncIndicator" class="sync-indicator hidden">
+            🔄 Syncing your check-in data...
+        </div>
+
+        <!-- Actions -->
+        <div id="actions" class="actions hidden">
+            <button class="action-button" onclick="window.close()">Close</button>
+            <button class="action-button" onclick="location.reload()">Check In Again</button>
+        </div>
+    </div>
+
+    <script>
+        // Parse URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const eventId = urlParams.get('event');
+        const token = urlParams.get('token');
+        const timestamp = urlParams.get('t');
+
+        // State management
+        let eventData = null;
+        let familyMembers = [];
+        let selectedMembers = new Set();
+        let isOnline = navigator.onLine;
+        let pendingCheckins = [];
+
+        // DOM elements
+        const loadingEl = document.getElementById('loading');
+        const successEl = document.getElementById('success');
+        const errorEl = document.getElementById('error');
+        const checkinFormEl = document.getElementById('checkinForm');
+        const eventTitleEl = document.getElementById('eventTitle');
+        const eventDetailsEl = document.getElementById('eventDetails');
+        const familyMembersListEl = document.getElementById('familyMembersList');
+        const checkinButtonEl = document.getElementById('checkinButton');
+        const offlineIndicatorEl = document.getElementById('offlineIndicator');
+        const syncIndicatorEl = document.getElementById('syncIndicator');
+        const actionsEl = document.getElementById('actions');
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Validate parameters
+                if (!eventId || !token || !timestamp) {
+                    // Show demo mode for testing
+                    console.log('Demo mode: Missing QR parameters, using test data');
+                    await loadEventData();
+                    await loadFamilyMembers();
+                    showCheckinForm();
+                    return;
+                }
+
+                // Load event data and family members
+                await loadEventData();
+                await loadFamilyMembers();
+                
+                // Show check-in form
+                showCheckinForm();
+
+            } catch (error) {
+                console.error('Check-in error:', error);
+                showError(error.message);
+            }
+        });
+
+        // Load event data
+        async function loadEventData() {
+            // Simulate API call - in real implementation, this would fetch from your backend
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            eventData = {
+                id: eventId,
+                title: `Event ${eventId}`,
+                date: new Date().toLocaleDateString(),
+                time: new Date().toLocaleTimeString(),
+                location: 'Event Venue'
+            };
+
+            eventTitleEl.textContent = eventData.title;
+            eventDetailsEl.innerHTML = `
+                <div><strong>Date:</strong> ${eventData.date}</div>
+                <div><strong>Time:</strong> ${eventData.time}</div>
+                <div><strong>Location:</strong> ${eventData.location}</div>
+            `;
+        }
+
+        // Load family members from RSVP data
+        async function loadFamilyMembers() {
+            try {
+                // Get event ID and user ID from URL parameters or localStorage
+                const eventId = urlParams.get('event') || 'test123';
+                const userId = urlParams.get('userId') || localStorage.getItem('userId') || 'demo-user';
+                
+                console.log('Loading RSVP data for event:', eventId, 'user:', userId);
+                
+                // Try to fetch real RSVP data
+                try {
+                    const response = await fetch('/api/rsvp-data.json');
+                    if (response.ok) {
+                        const allRSVPData = await response.json();
+                        const rsvpData = allRSVPData[eventId]?.[userId];
+                        
+                        if (rsvpData) {
+                            familyMembers = rsvpData.attendees.map(attendee => ({
+                                id: attendee.id,
+                                name: attendee.name,
+                                role: attendee.role,
+                                ageGroup: attendee.ageGroup,
+                                isDefault: true,
+                                userId: attendee.isPrimary ? userId : undefined
+                            }));
+                            
+                            // Update event title if available
+                            if (rsvpData.eventTitle) {
+                                eventTitleEl.textContent = rsvpData.eventTitle;
+                            }
+                            
+                            console.log('✅ Loaded real RSVP data:', familyMembers);
+                        } else {
+                            throw new Error('No RSVP data found for this event/user');
+                        }
+                    } else {
+                        throw new Error('Failed to fetch RSVP data');
+                    }
+                } catch (apiError) {
+                    console.log('API not available, using demo data:', apiError);
+                    
+                    // Fallback to demo data for testing
+                    familyMembers = [
+                        { id: '1', name: 'Sarah Johnson', role: 'Primary Member', isDefault: true, userId: userId },
+                        { id: '2', name: 'Mike Johnson', role: 'Spouse', isDefault: true },
+                        { id: '3', name: 'Emma Johnson', role: 'Child (8 years)', isDefault: true },
+                        { id: '4', name: 'Liam Johnson', role: 'Child (5 years)', isDefault: true }
+                    ];
+                }
+
+                // By default, select all members
+                selectedMembers = new Set(familyMembers.map(m => m.id));
+                
+                renderFamilyMembers();
+            } catch (error) {
+                console.error('Error loading family members:', error);
+                showError('Failed to load family members. Please try again.');
+            }
+        }
+
+        // Render family members list
+        function renderFamilyMembers() {
+            familyMembersListEl.innerHTML = familyMembers.map(member => `
+                <div class="member-item ${selectedMembers.has(member.id) ? 'checked' : ''}" data-member-id="${member.id}">
+                    <input 
+                        type="checkbox" 
+                        class="member-checkbox" 
+                        id="member-${member.id}"
+                        ${selectedMembers.has(member.id) ? 'checked' : ''}
+                        onchange="toggleMember('${member.id}')"
+                    >
+                    <label for="member-${member.id}" class="member-name">${member.name}</label>
+                    <span class="member-role">${member.role}</span>
+                </div>
+            `).join('');
+        }
+
+        // Toggle member selection
+        function toggleMember(memberId) {
+            if (selectedMembers.has(memberId)) {
+                selectedMembers.delete(memberId);
+            } else {
+                selectedMembers.add(memberId);
+            }
+            
+            // Update visual state
+            const memberItem = document.querySelector(`[data-member-id="${memberId}"]`);
+            if (selectedMembers.has(memberId)) {
+                memberItem.classList.add('checked');
+            } else {
+                memberItem.classList.remove('checked');
+            }
+            
+            // Update button state
+            updateCheckinButton();
+        }
+
+        // Update check-in button state
+        function updateCheckinButton() {
+            const hasSelection = selectedMembers.size > 0;
+            checkinButtonEl.disabled = !hasSelection;
+            checkinButtonEl.textContent = hasSelection 
+                ? `Check In ${selectedMembers.size} Member${selectedMembers.size > 1 ? 's' : ''}`
+                : 'Select at least one member';
+        }
+
+        // Handle check-in
+        checkinButtonEl.addEventListener('click', async () => {
+            if (selectedMembers.size === 0) return;
+            
+            const selectedMembersData = familyMembers.filter(m => selectedMembers.has(m.id));
+            
+            if (isOnline) {
+                await performCheckin(selectedMembersData);
+            } else {
+                await saveOfflineCheckin(selectedMembersData);
+            }
+        });
+
+        // Perform online check-in
+        async function performCheckin(members) {
+            try {
+                checkinButtonEl.disabled = true;
+                checkinButtonEl.textContent = 'Processing...';
+                
+                // Create check-in data
+                const checkinData = {
+                    eventId,
+                    primaryUserId: 'user123', // In real implementation, get from auth
+                    members: members.map(m => ({
+                        id: m.id,
+                        name: m.name,
+                        role: m.role,
+                        userId: m.userId,
+                        isCheckedIn: true
+                    })),
+                    qrCodeData: `${eventId}_${token}_${timestamp}`,
+                    deviceInfo: navigator.userAgent,
+                    location: undefined // Could be added with GPS
+                };
+
+                // Simulate API call with retry logic for concurrent check-ins
+                let attempts = 0;
+                const maxAttempts = 3;
+                
+                while (attempts < maxAttempts) {
+                    try {
+                        // Simulate API call with potential concurrency issues
+                        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
+                        
+                        // Simulate occasional concurrency errors
+                        if (Math.random() < 0.2 && attempts < maxAttempts - 1) {
+                            throw new Error('Concurrent modification detected. Retrying...');
+                        }
+                        
+                        // Success
+                        console.log('✅ Group check-in successful:', checkinData);
+                        showSuccess();
+                        return;
+                        
+                    } catch (apiError) {
+                        attempts++;
+                        if (attempts >= maxAttempts) {
+                            throw apiError;
+                        }
+                        console.log(`⚠️ Retry attempt ${attempts}/${maxAttempts}:`, apiError.message);
+                        await new Promise(resolve => setTimeout(resolve, 1000 * attempts)); // Exponential backoff
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Check-in error:', error);
+                showError('Failed to check in. Please try again.');
+                checkinButtonEl.disabled = false;
+                checkinButtonEl.textContent = 'Check In Selected Members';
+            }
+        }
+
+        // Save offline check-in
+        async function saveOfflineCheckin(members) {
+            try {
+                const checkinData = {
+                    eventId,
+                    primaryUserId: 'user123', // In real implementation, get from auth
+                    members: members.map(m => ({
+                        id: m.id,
+                        name: m.name,
+                        role: m.role,
+                        userId: m.userId,
+                        isCheckedIn: true
+                    })),
+                    qrCodeData: `${eventId}_${token}_${timestamp}`,
+                    deviceInfo: navigator.userAgent,
+                    location: undefined,
+                    checkedInAt: new Date().toISOString(),
+                    isOffline: true
+                };
+                
+                // Save to local storage with unique ID
+                const offlineId = `offline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                const existingData = JSON.parse(localStorage.getItem('offlineGroupCheckins') || '[]');
+                existingData.push({ ...checkinData, id: offlineId });
+                localStorage.setItem('offlineGroupCheckins', JSON.stringify(existingData));
+                
+                console.log('💾 Offline group check-in saved:', offlineId);
+                showOfflineSuccess();
+                
+            } catch (error) {
+                console.error('Error saving offline check-in:', error);
+                showError('Failed to save offline check-in. Please try again.');
+            }
+        }
+
+        // Show success state
+        function showSuccess() {
+            loadingEl.classList.add('hidden');
+            successEl.classList.remove('hidden');
+            actionsEl.classList.remove('hidden');
+        }
+
+        // Show offline success
+        function showOfflineSuccess() {
+            loadingEl.classList.add('hidden');
+            successEl.classList.remove('hidden');
+            offlineIndicatorEl.classList.remove('hidden');
+            actionsEl.classList.remove('hidden');
+        }
+
+        // Show error state
+        function showError(message) {
+            loadingEl.classList.add('hidden');
+            errorEl.classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = message;
+            actionsEl.classList.remove('hidden');
+        }
+
+        // Show check-in form
+        function showCheckinForm() {
+            loadingEl.classList.add('hidden');
+            checkinFormEl.classList.remove('hidden');
+            updateCheckinButton();
+        }
+
+        // Handle online/offline status
+        window.addEventListener('online', () => {
+            isOnline = true;
+            offlineIndicatorEl.classList.add('hidden');
+            syncPendingCheckins();
+        });
+
+        window.addEventListener('offline', () => {
+            isOnline = false;
+            offlineIndicatorEl.classList.remove('hidden');
+        });
+
+        // Sync pending check-ins when back online
+        async function syncPendingCheckins() {
+            const pendingData = JSON.parse(localStorage.getItem('offlineGroupCheckins') || '[]');
+            if (pendingData.length === 0) return;
+            
+            syncIndicatorEl.classList.remove('hidden');
+            
+            try {
+                let synced = 0;
+                let failed = 0;
+                
+                for (const checkin of pendingData) {
+                    try {
+                        // Simulate API call for each offline check-in
+                        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 500));
+                        console.log('🔄 Syncing offline check-in:', checkin.id);
+                        synced++;
+                    } catch (error) {
+                        console.error('Failed to sync check-in:', checkin.id, error);
+                        failed++;
+                    }
+                }
+                
+                if (synced > 0) {
+                    // Clear synced data
+                    localStorage.removeItem('offlineGroupCheckins');
+                    console.log(`✅ Synced ${synced} offline check-ins, ${failed} failed`);
+                }
+                
+                syncIndicatorEl.classList.add('hidden');
+                
+            } catch (error) {
+                console.error('Sync error:', error);
+                syncIndicatorEl.classList.add('hidden');
+            }
+        }
+
+        // Initialize offline sync on page load
+        if (isOnline) {
+            syncPendingCheckins();
+        }
+    </script>
+</body>
+</html>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, Calendar, Clock, MapPin, Users, FileText, Tag } from 'lucide-react';
+import { X, Calendar, Clock, MapPin, Users, FileText, Tag, QrCode } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStorage } from '../../hooks/useStorage';
 import { addDoc, collection, doc, updateDoc, serverTimestamp, query, where, limit, getDocs } from 'firebase/firestore';
@@ -37,6 +37,7 @@ const eventSchema = z.object({
   venueAddress: z.string().optional(),
   maxAttendees: z.string().optional(),
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
+  attendanceEnabled: z.boolean().optional(),
 });
 
 type EventFormData = z.infer<typeof eventSchema>;
@@ -91,8 +92,10 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     location: eventToEdit.location,
     maxAttendees: eventToEdit.maxAttendees,
     imageUrl: eventToEdit.imageUrl || '',
+    attendanceEnabled: eventToEdit.attendanceEnabled || false,
   } : {
     isAllDay: false, // Default to false for new events
+    attendanceEnabled: false, // Default to false for new events
   },
 });
 
@@ -106,6 +109,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
       setValue('venueName', eventToEdit.venueName || '');
       setValue('venueAddress', eventToEdit.venueAddress || '');
       setValue('maxAttendees', eventToEdit.maxAttendees?.toString() || '');
+      setValue('attendanceEnabled', eventToEdit.attendanceEnabled || false);
       
       // Set dates
       if (eventToEdit.startAt) {
@@ -327,6 +331,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         venueAddress: data.venueAddress?.trim() || undefined,
         imageUrl: imageUrl === undefined ? null : imageUrl, // Convert undefined to null for Firestore
         maxAttendees: data.maxAttendees ? Number(data.maxAttendees) : undefined,
+        attendanceEnabled: data.attendanceEnabled || false,
         tags: tags.length > 0 ? tags : undefined,
         createdBy: currentUser.id,
         visibility: eventVisibility,
@@ -577,7 +582,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Event Image (Optional)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Event Image (Optional)</label>
               
               {/* Current Image Display (when editing) */}
               {isEditing && eventToEdit?.imageUrl && (
@@ -704,6 +709,32 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
               </div>
             </div>
           </div>
+          
+          {/* QR Code Attendance Toggle */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <QrCode className="w-5 h-5 text-blue-600 mt-0.5" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-blue-900">
+                    QR Code Attendance Tracking
+                  </label>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      {...register('attendanceEnabled')}
+                      type="checkbox"
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+                <p className="text-xs text-blue-700">
+                  Enable QR code scanning for event check-ins. Attendees can scan a QR code to automatically record their attendance.
+                </p>
+              </div>
+            </div>
+          </div>
+          
           {/* Event Visibility Selection */}
           <div className="space-y-4 pt-4">
             <label className="block text-sm font-medium text-gray-700">Event Visibility</label>
