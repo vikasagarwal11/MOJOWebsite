@@ -9,6 +9,7 @@ import {
   Minus,
   ChevronDown,
   Heart,
+  QrCode,
 } from 'lucide-react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { EventDoc } from '../../hooks/useEvents';
@@ -31,6 +32,7 @@ import { getCapacityBadgeClasses } from './RSVPModalNew/rsvpUi';
 import { Header } from './RSVPModalNew/components/Header';
 import { EventDetails } from './RSVPModalNew/components/EventDetails';
 import { AttendeeInputRowMemo } from './RSVPModalNew/components/AttendeeInputRow';
+import { QRCodeTab } from './QRCodeTab';
 
 interface RSVPModalProps {
   event: EventDoc;
@@ -69,7 +71,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   // Check if current user is the event creator (admin)
   const isEventCreator = currentUser?.id === event.createdBy;
   
-  const { attendees, counts, addAttendee, bulkAddAttendees, refreshAttendees } = useAttendees(
+  const { attendees, counts, addAttendee, bulkAddAttendees, refreshAttendees, updateAttendee } = useAttendees(
     event.id,
     currentUser?.id || '',
     isEventCreator // Pass admin flag to use different data source
@@ -81,6 +83,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   const [isAddSectionCollapsed, setIsAddSectionCollapsed] = useState(false);
   const [showFamilyMembers, setShowFamilyMembers] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  const [activeTab, setActiveTab] = useState<'attendees' | 'qr'>('attendees');
 
 
 
@@ -176,6 +179,12 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
 
     try {
       setLoading(true);
+      
+      // Check if primary member is already an attendee
+      const existingPrimaryAttendee = attendees.find(
+        attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'primary'
+      );
+      
       const attendeesData: CreateAttendeeData[] = validMembers.map((member) => ({
         eventId: event.id,
         userId: currentUser.id,
@@ -185,13 +194,31 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
         ageGroup: member.ageGroup || 'adult',
         rsvpStatus: member.rsvpStatus || 'going',
       }));
+      
+      // Add primary member if not already exists, or update existing one to going
+      if (!existingPrimaryAttendee) {
+        attendeesData.unshift({
+          eventId: event.id,
+          userId: currentUser.id,
+          attendeeType: 'primary',
+          relationship: 'self',
+          name: currentUser.displayName || `${currentUser.firstName} ${currentUser.lastName}`.trim() || 'You',
+          ageGroup: 'adult',
+          rsvpStatus: 'going',
+        });
+      } else if (existingPrimaryAttendee.rsvpStatus !== 'going') {
+        // Update existing primary member to going status
+        await updateAttendee(existingPrimaryAttendee.attendeeId, { rsvpStatus: 'going' });
+        toast.success('You have been automatically set to "going" since family members are attending.');
+      }
+      
       await bulkAddAttendees(attendeesData);
       setBulkFormData({
         familyMembers: [{ id: makeId(), name: '', ageGroup: 'adult', relationship: 'guest', rsvpStatus: 'going' }],
       });
       await refreshAttendees();
       onAttendeeUpdate?.();
-      toast.success(`${validMembers.length} attendee(s) added successfully!`);
+      toast.success(`${validMembers.length} attendee(s) added successfully!${!existingPrimaryAttendee ? ' You have also been added as attending.' : ''}`);
     } catch (error) {
       console.error('Failed to add attendees:', error);
       toast.error('Failed to add attendees. Please try again.');
@@ -204,7 +231,16 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
     if (!currentUser) return;
     try {
       setLoading(true);
-      const attendeeData: CreateAttendeeData = {
+      
+      // Check if primary member is already an attendee
+      const existingPrimaryAttendee = attendees.find(
+        attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'primary'
+      );
+      
+      const attendeesToAdd: CreateAttendeeData[] = [];
+      
+      // Add family member
+      attendeesToAdd.push({
         eventId: event.id,
         userId: currentUser.id,
         attendeeType: 'family_member',
@@ -213,11 +249,35 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
         name: familyMember.name,
         ageGroup: familyMember.ageGroup || 'adult',
         rsvpStatus: 'going',
-      };
-      await addAttendee(attendeeData);
+      });
+      
+      // Add primary member if not already exists, or update existing one to going
+      if (!existingPrimaryAttendee) {
+        attendeesToAdd.push({
+          eventId: event.id,
+          userId: currentUser.id,
+          attendeeType: 'primary',
+          relationship: 'self',
+          name: currentUser.displayName || `${currentUser.firstName} ${currentUser.lastName}`.trim() || 'You',
+          ageGroup: 'adult',
+          rsvpStatus: 'going',
+        });
+      } else if (existingPrimaryAttendee.rsvpStatus !== 'going') {
+        // Update existing primary member to going status
+        await updateAttendee(existingPrimaryAttendee.attendeeId, { rsvpStatus: 'going' });
+        toast.success('You have been automatically set to "going" since a family member is attending.');
+      }
+      
+      // Add family member (and primary if new)
+      if (attendeesToAdd.length === 1) {
+        await addAttendee(attendeesToAdd[0]);
+      } else {
+        await bulkAddAttendees(attendeesToAdd);
+      }
+      
       await refreshAttendees();
       onAttendeeUpdate?.();
-      toast.success(`${familyMember.name} added successfully!`);
+      toast.success(`${familyMember.name} added successfully!${!existingPrimaryAttendee ? ' You have also been added as attending.' : ''}`);
     } catch (error) {
       console.error('Failed to add family member:', error);
       toast.error('Failed to add family member. Please try again.');
@@ -230,6 +290,12 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
     if (!currentUser || members.length === 0) return;
     try {
       setLoading(true);
+      
+      // Check if primary member is already an attendee
+      const existingPrimaryAttendee = attendees.find(
+        attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'primary'
+      );
+      
       const attendeesData: CreateAttendeeData[] = members.map((member) => ({
         eventId: event.id,
         userId: currentUser.id,
@@ -240,10 +306,28 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
         ageGroup: member.ageGroup || 'adult',
         rsvpStatus: 'going',
       }));
+      
+      // Add primary member if not already exists, or update existing one to going
+      if (!existingPrimaryAttendee) {
+        attendeesData.unshift({
+          eventId: event.id,
+          userId: currentUser.id,
+          attendeeType: 'primary',
+          relationship: 'self',
+          name: currentUser.displayName || `${currentUser.firstName} ${currentUser.lastName}`.trim() || 'You',
+          ageGroup: 'adult',
+          rsvpStatus: 'going',
+        });
+      } else if (existingPrimaryAttendee.rsvpStatus !== 'going') {
+        // Update existing primary member to going status
+        await updateAttendee(existingPrimaryAttendee.attendeeId, { rsvpStatus: 'going' });
+        toast.success('You have been automatically set to "going" since family members are attending.');
+      }
+      
       await bulkAddAttendees(attendeesData);
       await refreshAttendees();
       onAttendeeUpdate?.();
-      toast.success(`${members.length} family members added successfully!`);
+      toast.success(`${members.length} family members added successfully!${!existingPrimaryAttendee ? ' You have also been added as attending.' : ''}`);
     } catch (error) {
       console.error('Failed to add family members:', error);
       toast.error('Failed to add family members. Please try again.');
@@ -295,11 +379,45 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                 isMobile={isMobile}
               />
 
+              {/* Tab Navigation */}
+              <div className="px-6 py-3 border-b border-gray-200">
+                <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setActiveTab('attendees')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      activeTab === 'attendees'
+                        ? 'bg-white text-[#F25129] shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    Attendees
+                  </button>
+                  {event.attendanceEnabled && (
+                    <button
+                      onClick={() => setActiveTab('qr')}
+                      className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === 'qr'
+                          ? 'bg-white text-[#F25129] shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      <QrCode className="w-4 h-4" />
+                      QR Code
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div
                 className="flex-1 min-h-0 overflow-y-auto pb-6 pr-2 rsvp-modal-scrollbar modalScroll"
                 style={{ scrollbarGutter: 'stable both-edges' }}
               >
-                {isBlockedFromRSVP ? (
+                {activeTab === 'qr' && event.attendanceEnabled ? (
+                  <div className="p-6">
+                    <QRCodeTab event={event} />
+                  </div>
+                ) : isBlockedFromRSVP ? (
                   <div className="p-6 text-center">
                     <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
                     <h3 className="text-xl font-semibold text-gray-900 mb-2">RSVP Access Restricted</h3>

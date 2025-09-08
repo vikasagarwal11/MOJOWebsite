@@ -180,24 +180,24 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
          console.log('🔍 DEBUG: Updating existing primary attendee status to:', status);
          await setAttendeeStatus(existingAttendee.attendeeId, status);
          
-         // If primary member is changing to "not-going", update all family members to "not-going" as well
-         if (status === 'not-going') {
-           console.log('🔍 DEBUG: Primary member is not going, updating all family members to not-going');
-           const familyMembers = attendees.filter(a => 
-             a.userId === currentUser.id && 
-             a.attendeeType === 'family_member' && 
-             a.rsvpStatus === 'going'
-           );
-           
-           for (const familyMember of familyMembers) {
-             console.log('🔍 DEBUG: Updating family member to not-going:', familyMember.name);
-             await setAttendeeStatus(familyMember.attendeeId, 'not-going');
-           }
-           
-           if (familyMembers.length > 0) {
-             toast.success(`${familyMembers.length} family member${familyMembers.length > 1 ? 's' : ''} automatically marked as "Not Going" since you cannot attend.`);
-           }
-         }
+        // If primary member is changing to "not-going", update all family members to "not-going" as well
+        if (status === 'not-going') {
+          console.log('🔍 DEBUG: Primary member is not going, updating all family members to not-going');
+          const familyMembers = attendees.filter(a => 
+            a.userId === currentUser.id && 
+            a.attendeeType === 'family_member' && 
+            a.rsvpStatus === 'going'
+          );
+          
+          for (const familyMember of familyMembers) {
+            console.log('🔍 DEBUG: Updating family member to not-going:', familyMember.name);
+            await setAttendeeStatus(familyMember.attendeeId, 'not-going');
+          }
+          
+          if (familyMembers.length > 0) {
+            toast.success(`${familyMembers.length} family member${familyMembers.length > 1 ? 's' : ''} automatically marked as "Not Going" since you cannot attend.`);
+          }
+        }
        } else {
          // Create new primary attendee
          console.log('🔍 DEBUG: Creating new primary attendee with status:', status);

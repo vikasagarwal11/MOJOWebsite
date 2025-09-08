@@ -23,7 +23,7 @@ export const validateFamilyMember = (data: Partial<FamilyMember>): FamilyMemberV
   }
 
   // Age group validation (optional but if provided, must be valid)
-  if (data.ageGroup && !['0-2', '3-5', '6-10', '11+'].includes(data.ageGroup)) {
+  if (data.ageGroup && !['0-2', '3-5', '6-10', 'teen', 'adult'].includes(data.ageGroup)) {
     errors.push('Invalid age group');
   }
 
