@@ -105,6 +105,74 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   const handleUpdateAttendee = async (attendeeId: string, updateData: any) => {
     try {
       console.log('DEBUG: handleUpdateAttendee called with:', { attendeeId, updateData });
+      
+      // Find the attendee being updated
+      const attendeeToUpdate = attendees.find(a => a.attendeeId === attendeeId);
+      if (!attendeeToUpdate || !currentUser) {
+        await updateAttendee(attendeeId, updateData);
+        onAttendeeUpdate?.();
+        return;
+      }
+      
+      // Check if this is a primary member trying to change status
+      if (attendeeToUpdate.userId === currentUser.id && 
+          attendeeToUpdate.attendeeType === 'primary' && 
+          updateData.rsvpStatus && 
+          updateData.rsvpStatus !== 'going') {
+        
+        // Check if there are any family members marked as "going"
+        const goingFamilyMembers = attendees.filter(
+          a => a.userId === currentUser.id && 
+               a.attendeeType === 'family_member' && 
+               a.rsvpStatus === 'going'
+        );
+        
+        if (goingFamilyMembers.length > 0) {
+          toast.error('You cannot change your status to "not going" or "pending" while family members are marked as "going". Please remove family members first or change their status.');
+          return;
+        }
+      }
+      
+      // Check if this is a family member changing to "going" status
+      console.log('DEBUG: Checking if family member changing to going:', {
+        attendeeUserId: attendeeToUpdate.userId,
+        currentUserId: currentUser.id,
+        attendeeType: attendeeToUpdate.attendeeType,
+        newStatus: updateData.rsvpStatus,
+        isFamilyMember: attendeeToUpdate.attendeeType === 'family_member',
+        isCurrentUser: attendeeToUpdate.userId === currentUser.id,
+        isChangingToGoing: updateData.rsvpStatus === 'going'
+      });
+      
+      if (attendeeToUpdate.userId === currentUser.id && 
+          attendeeToUpdate.attendeeType === 'family_member' && 
+          updateData.rsvpStatus === 'going') {
+        
+        console.log('DEBUG: Family member changing to going - looking for primary member');
+        
+        // Find the primary member for this user
+        const primaryAttendee = attendees.find(
+          a => a.userId === currentUser.id && a.attendeeType === 'primary'
+        );
+        
+        console.log('DEBUG: Primary member found:', {
+          exists: !!primaryAttendee,
+          currentStatus: primaryAttendee?.rsvpStatus,
+          needsUpdate: primaryAttendee && primaryAttendee.rsvpStatus !== 'going'
+        });
+        
+        // If primary member exists and is not already "going", update them to "going"
+        if (primaryAttendee && primaryAttendee.rsvpStatus !== 'going') {
+          console.log('DEBUG: Auto-updating primary member to going status');
+          await updateAttendee(primaryAttendee.attendeeId, { rsvpStatus: 'going' });
+          toast.success('You have been automatically set to "going" since a family member is attending.');
+        }
+      }
+      
+      // Note: We removed the auto-removal logic for family members changing status
+      // The primary member should only be removed when they explicitly set their own status to "not-going"
+      // This allows the primary member to attend alone without family members
+      
       await updateAttendee(attendeeId, updateData);
       console.log('DEBUG: updateAttendee completed successfully');
       onAttendeeUpdate?.();
@@ -115,7 +183,17 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
 
   const handleDeleteAttendee = async (attendeeId: string) => {
     try {
+      // Find the attendee being deleted
+      const attendeeToDelete = attendees.find(a => a.attendeeId === attendeeId);
+      if (!attendeeToDelete) return;
+
+      // Remove the attendee
       await removeAttendee(attendeeId);
+      
+      // Note: We removed the auto-removal logic for primary members when family members are deleted
+      // The primary member should only be removed when they explicitly set their own status to "not-going"
+      // This allows the primary member to attend alone without family members
+      
       onAttendeeUpdate?.();
     } catch (error) {
       console.error('Failed to delete attendee:', error);
@@ -123,6 +201,22 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   };
 
   // Status changes are handled inline via handleUpdateAttendee
+
+  // Helper function to check if primary member status should be locked
+  const isPrimaryMemberStatusLocked = (attendee: Attendee): boolean => {
+    if (!currentUser || attendee.userId !== currentUser.id || attendee.attendeeType !== 'primary') {
+      return false;
+    }
+    
+    // Check if there are any family members marked as "going"
+    const goingFamilyMembers = attendees.filter(
+      a => a.userId === currentUser.id && 
+           a.attendeeType === 'family_member' && 
+           a.rsvpStatus === 'going'
+    );
+    
+    return goingFamilyMembers.length > 0;
+  };
 
   // Handle adding attendee to family profile
   const handleAddToFamily = async (attendee: Attendee) => {
@@ -268,7 +362,13 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                      <select
                                        value={attendee.rsvpStatus}
                                        onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
-                                       className="w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500 bg-white"
+                                       disabled={isPrimaryMemberStatusLocked(attendee)}
+                                       className={`w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500 ${
+                                         isPrimaryMemberStatusLocked(attendee) 
+                                           ? 'bg-gray-100 cursor-not-allowed opacity-75' 
+                                           : 'bg-white'
+                                       }`}
+                                       title={isPrimaryMemberStatusLocked(attendee) ? 'Status locked because family members are attending' : ''}
                                      >
                                        <option value="going" className="text-green-700">Going</option>
                                        <option value="not-going" className="text-red-700">Not Going</option>
@@ -316,11 +416,16 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                            )}
                                          </button>
                                          
-                                         {/* Delete Button */}
+                                         {/* Delete Button - Disabled for primary members */}
                                          <button
                                            onClick={() => handleDeleteAttendee(attendee.attendeeId)}
-                                           className="px-1 py-0.5 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center justify-center"
-                                           title="Remove"
+                                           disabled={attendee.attendeeType === 'primary'}
+                                           className={`px-1 py-0.5 rounded flex items-center justify-center transition-colors ${
+                                             attendee.attendeeType === 'primary' 
+                                               ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                                               : 'bg-gray-600 text-white hover:bg-gray-700'
+                                           }`}
+                                           title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
                                          >
                                            <Trash2 className="w-3 h-3" />
                                          </button>
@@ -411,7 +516,13 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                      <select
                                        value={attendee.rsvpStatus}
                                        onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
-                                       className="w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 bg-white"
+                                       disabled={isPrimaryMemberStatusLocked(attendee)}
+                                       className={`w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 ${
+                                         isPrimaryMemberStatusLocked(attendee) 
+                                           ? 'bg-gray-100 cursor-not-allowed opacity-75' 
+                                           : 'bg-white'
+                                       }`}
+                                       title={isPrimaryMemberStatusLocked(attendee) ? 'Status locked because family members are attending' : ''}
                                      >
                                        <option value="going" className="text-green-700">Going</option>
                                        <option value="not-going" className="text-red-700">Not Going</option>
@@ -459,11 +570,16 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                            )}
                                          </button>
                                          
-                                         {/* Delete Button */}
+                                         {/* Delete Button - Disabled for primary members */}
                                          <button
                                            onClick={() => handleDeleteAttendee(attendee.attendeeId)}
-                                           className="px-1 py-0.5 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center justify-center"
-                                           title="Remove"
+                                           disabled={attendee.attendeeType === 'primary'}
+                                           className={`px-1 py-0.5 rounded flex items-center justify-center transition-colors ${
+                                             attendee.attendeeType === 'primary' 
+                                               ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                                               : 'bg-gray-600 text-white hover:bg-gray-700'
+                                           }`}
+                                           title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
                                          >
                                            <Trash2 className="w-3 h-3" />
                                          </button>
@@ -554,7 +670,13 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                      <select
                                        value={attendee.rsvpStatus}
                                        onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
-                                       className="w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500 bg-white"
+                                       disabled={isPrimaryMemberStatusLocked(attendee)}
+                                       className={`w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500 ${
+                                         isPrimaryMemberStatusLocked(attendee) 
+                                           ? 'bg-gray-100 cursor-not-allowed opacity-75' 
+                                           : 'bg-white'
+                                       }`}
+                                       title={isPrimaryMemberStatusLocked(attendee) ? 'Status locked because family members are attending' : ''}
                                      >
                                        <option value="going" className="text-green-700">Going</option>
                                        <option value="not-going" className="text-red-700">Not Going</option>
@@ -602,11 +724,16 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                            )}
                                          </button>
                                          
-                                         {/* Delete Button */}
+                                         {/* Delete Button - Disabled for primary members */}
                                          <button
                                            onClick={() => handleDeleteAttendee(attendee.attendeeId)}
-                                           className="px-1 py-0.5 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors flex items-center justify-center"
-                                           title="Remove"
+                                           disabled={attendee.attendeeType === 'primary'}
+                                           className={`px-1 py-0.5 rounded flex items-center justify-center transition-colors ${
+                                             attendee.attendeeType === 'primary' 
+                                               ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                                               : 'bg-gray-600 text-white hover:bg-gray-700'
+                                           }`}
+                                           title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
                                          >
                                            <Trash2 className="w-3 h-3" />
                                          </button>
