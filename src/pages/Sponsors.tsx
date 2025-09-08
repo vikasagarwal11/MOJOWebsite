@@ -154,7 +154,7 @@ const Sponsors: React.FC = () => {
           Let's create meaningful partnerships that benefit our members.
         </p>
         <a
-          href="mailto:partnerships@momsfitnessmojo.com"
+          href="mailto:momsfitnessmojo@gmail.com"
           className="inline-flex items-center px-8 py-3 bg-white text-[#F25129] font-semibold rounded-full hover:bg-gray-100 transition-all duration-300 transform hover:scale-105 shadow-lg"
         >
           Contact Us

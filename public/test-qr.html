@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Test - Moms Fitness Mojo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .qr-section {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .qr-code {
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            background: white;
+            display: inline-block;
+            margin: 20px 0;
+        }
+        .test-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .url-display {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+        .instructions {
+            background: #fff3e0;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .step {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f9f9f9;
+            border-left: 4px solid #F25129;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 QR Code Test Page</h1>
+        <p>This page helps you test the QR code system on mobile devices.</p>
+
+        <div class="test-info">
+            <h3>📱 Mobile Testing Setup</h3>
+            <p><strong>Your Computer IP:</strong> 192.168.5.95</p>
+            <p><strong>Development Server:</strong> http://192.168.5.95:5179</p>
+            <p><strong>Check-in Page:</strong> http://192.168.5.95:5179/checkin.html</p>
+        </div>
+
+        <div class="qr-section">
+            <h3>🔗 Test QR Code</h3>
+            <p>This QR code will redirect to the check-in page:</p>
+            
+            <div class="qr-code">
+                <div id="qrCode"></div>
+            </div>
+            
+            <div class="url-display" id="qrUrl">
+                Loading QR code...
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>📋 Testing Instructions</h3>
+            
+            <div class="step">
+                <strong>Step 1:</strong> Make sure your phone and computer are on the same WiFi network
+            </div>
+            
+            <div class="step">
+                <strong>Step 2:</strong> Open your phone's camera app or QR scanner
+            </div>
+            
+            <div class="step">
+                <strong>Step 3:</strong> Scan the QR code above
+            </div>
+            
+            <div class="step">
+                <strong>Step 4:</strong> Your phone should open: <code>http://192.168.5.95:5179/checkin.html?event=test123&token=abc&t=1234567890</code>
+            </div>
+            
+            <div class="step">
+                <strong>Step 5:</strong> You should see the group check-in page with family members
+            </div>
+        </div>
+
+        <div class="test-info">
+            <h3>🔧 Troubleshooting</h3>
+            <ul>
+                <li><strong>Can't access the page:</strong> Make sure both devices are on the same WiFi</li>
+                <li><strong>QR code not working:</strong> Try typing the URL manually in your phone's browser</li>
+                <li><strong>Page not loading:</strong> Check if the development server is running on port 5178</li>
+            </ul>
+        </div>
+
+        <div class="test-info">
+            <h3>🌐 Alternative Testing Methods</h3>
+            <ul>
+                <li><strong>Manual URL:</strong> Type the URL directly in your phone's browser</li>
+                <li><strong>QR Generator:</strong> Use any QR code generator with the URL above</li>
+                <li><strong>Desktop Test:</strong> Test on desktop first, then mobile</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script>
+        // Generate test QR code
+        const testUrl = 'http://192.168.5.95:5179/checkin.html?event=test123&token=abc123&t=' + Date.now();
+        
+        // Display the URL
+        document.getElementById('qrUrl').textContent = testUrl;
+        
+        // Generate QR code
+        QRCode.toCanvas(document.getElementById('qrCode'), testUrl, {
+            width: 200,
+            margin: 2,
+            color: {
+                dark: '#F25129',
+                light: '#FFFFFF'
+            }
+        }, function (error) {
+            if (error) {
+                console.error('QR Code generation error:', error);
+                document.getElementById('qrCode').innerHTML = '<p style="color: red;">Error generating QR code</p>';
+            } else {
+                console.log('QR Code generated successfully');
+            }
+        });
+    </script>
+</body>
+</html>

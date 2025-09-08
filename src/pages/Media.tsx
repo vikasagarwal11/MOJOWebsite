@@ -72,7 +72,7 @@ const Media: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-[#F25129] mb-2">Media Gallery</h1>
+          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent leading-relaxed pb-1 mb-2">Media Gallery</h1>
           <p className="text-gray-600 text-lg">Share and explore moments from our fitness community</p>
         </div>
 

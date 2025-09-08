@@ -1,196 +1,118 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { familyMemberService } from '../services/familyMemberService';
-import { 
-  FamilyMember, 
-  CreateFamilyMemberData, 
-  UpdateFamilyMemberData 
-} from '../types/family';
+import { FamilyMember, CreateFamilyMemberData, UpdateFamilyMemberData } from '../types/family';
 
-interface UseFamilyMembersReturn {
-  // State
+export interface FamilyMembersResult {
   familyMembers: FamilyMember[];
   loading: boolean;
   error: string | null;
-  
-  // CRUD operations
-  createFamilyMember: (memberData: CreateFamilyMemberData) => Promise<void>;
-  updateFamilyMember: (memberId: string, updates: UpdateFamilyMemberData) => Promise<void>;
-  deleteFamilyMember: (memberId: string) => Promise<void>;
-  
-  // Utility functions
+  createFamilyMember: (member: Omit<FamilyMember, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  updateFamilyMember: (id: string, member: Partial<FamilyMember>) => Promise<void>;
+  deleteFamilyMember: (id: string) => Promise<void>;
   refreshFamilyMembers: () => Promise<void>;
-  getFamilyMemberById: (memberId: string) => FamilyMember | undefined;
-  hasFamilyMembers: boolean;
-  
-  // Loading states for individual operations
-  creating: boolean;
-  updating: boolean;
-  deleting: boolean;
 }
 
-/**
- * Custom hook for managing family members
- */
-export const useFamilyMembers = (): UseFamilyMembersReturn => {
+export function useFamilyMembers(): FamilyMembersResult {
   const { currentUser } = useAuth();
-  
-  // State
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // Individual operation loading states
-  const [creating, setCreating] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
-  /**
-   * Load family members from database
-   */
-  const loadFamilyMembers = useCallback(async () => {
-    if (!currentUser?.id) {
+  const loadFamilyMembers = async () => {
+    if (!currentUser) {
       setFamilyMembers([]);
+      setLoading(false);
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    
     try {
-      const members = await familyMemberService.getAll(currentUser.id);
-      setFamilyMembers(members);
+      setLoading(true);
+      setError(null);
+
+      // Use real Firebase service
+      const familyMembers = await familyMemberService.getAll(currentUser.id);
+      setFamilyMembers(familyMembers);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load family members';
-      setError(errorMessage);
-      console.error('❌ Error loading family members:', err);
+      console.error('Error loading family members:', err);
+      setError('Failed to load family members');
     } finally {
       setLoading(false);
     }
-  }, [currentUser?.id]);
+  };
 
-  /**
-   * Refresh family members
-   */
-  const refreshFamilyMembers = useCallback(async () => {
-    await loadFamilyMembers();
-  }, [loadFamilyMembers]);
-
-  /**
-   * Create a new family member
-   */
-  const createFamilyMember = useCallback(async (memberData: CreateFamilyMemberData) => {
-    if (!currentUser?.id) {
-      throw new Error('User not authenticated');
-    }
-
-    setCreating(true);
-    setError(null);
+  const createFamilyMember = async (member: Omit<FamilyMember, 'id' | 'createdAt' | 'updatedAt'>) => {
+    if (!currentUser) throw new Error('User not authenticated');
     
     try {
-      const newMember = await familyMemberService.create(currentUser.id, memberData);
-      setFamilyMembers(prev => [newMember, ...prev]);
-      console.log('✅ Family member created successfully');
+      setLoading(true);
+      // Convert to CreateFamilyMemberData format
+      const createData: CreateFamilyMemberData = {
+        name: member.name,
+        ageGroup: member.ageGroup,
+        isDefaultMember: member.isDefaultMember
+      };
+      const newMember = await familyMemberService.create(currentUser.id, createData);
+      setFamilyMembers(prev => [...prev, newMember]);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create family member';
-      setError(errorMessage);
-      console.error('❌ Error creating family member:', err);
-      throw err;
+      console.error('Error creating family member:', err);
+      throw new Error('Failed to create family member');
     } finally {
-      setCreating(false);
+      setLoading(false);
     }
-  }, [currentUser?.id]);
+  };
 
-  /**
-   * Update an existing family member
-   */
-  const updateFamilyMember = useCallback(async (memberId: string, updates: UpdateFamilyMemberData) => {
-    if (!currentUser?.id) {
-      throw new Error('User not authenticated');
-    }
-
-    setUpdating(true);
-    setError(null);
+  const updateFamilyMember = async (id: string, updates: Partial<FamilyMember>) => {
+    if (!currentUser) throw new Error('User not authenticated');
     
     try {
-      const updatedMember = await familyMemberService.update(currentUser.id, memberId, updates);
+      setLoading(true);
+      // Convert to UpdateFamilyMemberData format
+      const updateData: UpdateFamilyMemberData = {
+        name: updates.name,
+        ageGroup: updates.ageGroup,
+        isDefaultMember: updates.isDefaultMember
+      };
+      const updatedMember = await familyMemberService.update(currentUser.id, id, updateData);
       setFamilyMembers(prev => 
         prev.map(member => 
-          member.id === memberId ? updatedMember : member
+          member.id === id ? updatedMember : member
         )
       );
-      console.log('✅ Family member updated successfully');
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to update family member';
-      setError(errorMessage);
-      console.error('❌ Error updating family member:', err);
-      throw err;
+      console.error('Error updating family member:', err);
+      throw new Error('Failed to update family member');
     } finally {
-      setUpdating(false);
+      setLoading(false);
     }
-  }, [currentUser?.id]);
+  };
 
-  /**
-   * Delete a family member
-   */
-  const deleteFamilyMember = useCallback(async (memberId: string) => {
-    if (!currentUser?.id) {
-      throw new Error('User not authenticated');
-    }
-
-    setDeleting(true);
-    setError(null);
+  const deleteFamilyMember = async (id: string) => {
+    if (!currentUser) throw new Error('User not authenticated');
     
     try {
-      await familyMemberService.delete(currentUser.id, memberId);
-      setFamilyMembers(prev => prev.filter(member => member.id !== memberId));
-      console.log('✅ Family member deleted successfully');
+      setLoading(true);
+      await familyMemberService.delete(currentUser.id, id);
+      setFamilyMembers(prev => prev.filter(member => member.id !== id));
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to delete family member';
-      setError(errorMessage);
-      console.error('❌ Error deleting family member:', err);
-      throw err;
+      console.error('Error deleting family member:', err);
+      throw new Error('Failed to delete family member');
     } finally {
-      setDeleting(false);
+      setLoading(false);
     }
-  }, [currentUser?.id]);
+  };
 
-  /**
-   * Get family member by ID
-   */
-  const getFamilyMemberById = useCallback((memberId: string): FamilyMember | undefined => {
-    return familyMembers.find(member => member.id === memberId);
-  }, [familyMembers]);
-
-  /**
-   * Check if user has family members
-   */
-  const hasFamilyMembers = familyMembers.length > 0;
-
-  // Load family members when user changes
   useEffect(() => {
     loadFamilyMembers();
-  }, [loadFamilyMembers]);
+  }, [currentUser]);
 
   return {
-    // State
     familyMembers,
     loading,
     error,
-    
-    // CRUD operations
     createFamilyMember,
     updateFamilyMember,
     deleteFamilyMember,
-    
-    // Utility functions
-    refreshFamilyMembers,
-    getFamilyMemberById,
-    hasFamilyMembers,
-    
-    // Loading states
-    creating,
-    updating,
-    deleting
+    refreshFamilyMembers: loadFamilyMembers
   };
-};
+}

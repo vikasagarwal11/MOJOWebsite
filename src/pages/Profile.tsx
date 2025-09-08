@@ -441,17 +441,18 @@ const Profile: React.FC = () => {
         setLoadingAdminEvents(true);
         const adminQ = query(
           collection(db, 'events'),
-          orderBy('startAt', 'desc'),
-          limit(PAGE_SIZE * eventsPage)
+          orderBy('startAt', 'desc')
         );
         console.log('🔍 Profile: Setting up admin events onSnapshot listener');
         unsubAdmin = onSnapshot(adminQ, async (snap) => {
           console.log('🔍 Profile: Admin events onSnapshot callback fired', {
             docCount: snap.docs.length,
-            hasData: snap.docs.length > 0
+            hasData: snap.docs.length > 0,
+            error: snap.metadata.fromCache ? 'from cache' : 'from server'
           });
           try {
             const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            console.log('🔍 Profile: Setting allEvents to:', events.length, 'events');
             setAllEvents(events);
             const batchSize = 10;
             const batches = [];

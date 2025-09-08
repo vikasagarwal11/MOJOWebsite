@@ -1,23 +1,36 @@
-import React, { useState } from 'react';
-import { Calendar } from 'lucide-react';
-import { deleteDoc, doc, getDocs, getDoc, collection, query, where, limit, addDoc } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2 } from 'lucide-react';
+import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
 import EventCardNew from '../components/events/EventCardNew';
-import { useAuth } from '../contexts/AuthContext';
+import ContactMessagesAdmin from '../components/admin/ContactMessagesAdmin';
 
 interface Event {
   id: string;
   title: string;
-  description: string;
+  description?: string;
   startAt: any;
   endAt?: any;
-  location: string;
-  createdBy: string;
-  attendingCount: number;
-  maxAttendees?: number;
+  duration?: number;
+  visibility?: 'public' | 'members' | 'private';
+  createdBy?: string;
+  invitedUserIds?: string[];
+  tags?: string[];
+  allDay?: boolean;
+  location?: string;
+  venueName?: string;
+  venueAddress?: string;
   imageUrl?: string;
+  isTeaser?: boolean;
+  maxAttendees?: number;
+  attendingCount?: number;
+  qrCode?: string;
+  qrCodeGeneratedAt?: any;
+  attendanceEnabled?: boolean;
+  attendanceCount?: number;
+  lastAttendanceUpdate?: any;
 }
 
 type ProfileAdminTabProps = {
@@ -51,11 +64,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   blockedUsers,
   loadingBlockedUsers,
 }) => {
-  const { currentUser } = useAuth();
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
+  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'messages' | 'users' | 'media' | 'maintenance'>('events');
+  
+  // Media management state
+  const [allMedia, setAllMedia] = useState<any[]>([]);
+  const [loadingMedia, setLoadingMedia] = useState(false);
+  const [mediaPage, setMediaPage] = useState(0);
+  const MEDIA_PAGE_SIZE = 10;
 
   // Search users by name or email
   const handleSearchUsers = async () => {
@@ -97,27 +116,77 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
     try {
       // For now, use the old blocking system to maintain compatibility
       await blockUserFromRsvp(userId);
-      // Refresh search results to show updated blocked status
-      setSearchResults(prev => 
-        prev.map(user => 
-          user.id === userId 
-            ? { ...user, blockedFromRsvp: true }
-            : user
-        )
-      );
+      toast.success('User blocked from RSVPing');
+      setSearchResults(prev => prev.map(user => 
+        user.id === userId ? { ...user, blockedFromRsvp: true } : user
+      ));
     } catch (error) {
       console.error('Failed to block user:', error);
+      toast.error('Failed to block user');
     }
   };
 
-  // Enhanced blocking function
-  const handleEnhancedBlock = (user: any) => {
-    // This will be connected to the parent component's blocking modal
-    if (typeof window !== 'undefined') {
-      // Dispatch a custom event to open the blocking modal
-      window.dispatchEvent(new CustomEvent('openBlockModal', { 
-        detail: { user } 
+  // Unblock a user
+  const handleUnblockUser = async (userId: string) => {
+    try {
+      await unblockUser(userId);
+      toast.success('User unblocked');
+      setSearchResults(prev => prev.map(user => 
+        user.id === userId ? { ...user, blockedFromRsvp: false } : user
+      ));
+    } catch (error) {
+      console.error('Failed to unblock user:', error);
+      toast.error('Failed to unblock user');
+    }
+  };
+
+  // Load all media files
+  const loadAllMedia = async () => {
+    setLoadingMedia(true);
+    try {
+      const mediaRef = collection(db, 'media');
+      const q = query(mediaRef, orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
+      
+      const media = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
       }));
+      
+      setAllMedia(media);
+    } catch (error) {
+      console.error('Failed to load media:', error);
+      toast.error('Failed to load media files');
+    } finally {
+      setLoadingMedia(false);
+    }
+  };
+
+  // Delete media file
+  const handleDeleteMedia = async (mediaId: string, mediaData: any) => {
+    if (!confirm('Are you sure you want to delete this media file? This cannot be undone.')) return;
+    
+    try {
+      // Delete from Firestore
+      await deleteDoc(doc(db, 'media', mediaId));
+      
+      // Delete from Storage if file exists
+      if (mediaData.storageFolder) {
+        try {
+          const storageRef = ref(storage, mediaData.storageFolder);
+          await deleteObject(storageRef);
+        } catch (storageError) {
+          console.warn('Failed to delete from storage:', storageError);
+        }
+      }
+      
+      // Update local state
+      setAllMedia(prev => prev.filter(m => m.id !== mediaId));
+      toast.success('Media file deleted successfully');
+    } catch (error) {
+      console.error('Failed to delete media:', error);
+      toast.error('Failed to delete media file');
     }
   };
 
@@ -125,375 +194,452 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const handleFixStuckProcessing = async () => {
     setIsFixingStuckProcessing(true);
     try {
-      console.log('🔧 Attempting to create manual fix document...');
-      console.log('Current user:', currentUser);
+      // Get all media documents that are stuck in processing
+      const mediaRef = collection(db, 'media');
+      const q = query(mediaRef, where('transcodeStatus', '==', 'processing'));
+      const snapshot = await getDocs(q);
       
-      // Create a manual fix document to trigger the Cloud Function
-      const fixDoc = await addDoc(collection(db, 'manual_fixes'), {
-        type: 'reset_stuck_processing',
-        timestamp: new Date(),
-        triggeredBy: currentUser?.id || 'unknown',
-        status: 'pending'
-      });
+      const batch = writeBatch(db);
+      let fixedCount = 0;
       
-      console.log('✅ Manual fix document created successfully:', fixDoc.id);
-      toast.success('Stuck processing fix triggered! Check the logs for details.');
-      
-      // Wait a moment and check if the document was processed
-      setTimeout(async () => {
-        try {
-          const docRef = doc(db, 'manual_fixes', fixDoc.id);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            console.log('📊 Manual fix document status:', data);
-            if (data.status === 'completed') {
-              toast.success('Fix completed successfully!');
-            } else if (data.status === 'failed') {
-              toast.error(`Fix failed: ${data.error || 'Unknown error'}`);
-            }
-          }
-        } catch (checkError) {
-          console.error('Failed to check document status:', checkError);
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        const createdAt = data.createdAt?.toDate();
+        const now = new Date();
+        const hoursDiff = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+        
+        // If it's been more than 2 hours, mark as completed
+        if (hoursDiff > 2) {
+          batch.update(doc.ref, { 
+            transcodeStatus: 'completed',
+            updatedAt: serverTimestamp()
+          });
+          fixedCount++;
         }
-      }, 3000);
-      
-    } catch (error: any) {
-      console.error('❌ Failed to trigger stuck processing fix:', error);
-      console.error('Error details:', {
-        code: error?.code,
-        message: error?.message,
-        details: error?.details
       });
-      toast.error(`Failed to trigger fix: ${error?.message || 'Unknown error'}`);
+      
+      if (fixedCount > 0) {
+        await batch.commit();
+        toast.success(`Fixed ${fixedCount} stuck processing videos`);
+        // Reload media to show updated status
+        loadAllMedia();
+      } else {
+        toast.success('No stuck processing videos found');
+      }
+    } catch (error) {
+      console.error('Failed to fix stuck processing:', error);
+      toast.error('Failed to fix stuck processing videos');
     } finally {
       setIsFixingStuckProcessing(false);
     }
   };
 
+  // Load media when media section is active
+  useEffect(() => {
+    if (activeAdminSection === 'media') {
+      loadAllMedia();
+    }
+  }, [activeAdminSection]);
+
+  // Debug logging
+  console.log('🔍 ProfileAdminTab: Current state', {
+    allEvents: allEvents.length,
+    loadingAdminEvents,
+    eventsPage,
+    PAGE_SIZE,
+    activeAdminSection,
+    eventsData: allEvents.map(e => ({ id: e.id, title: e.title, createdBy: e.createdBy }))
+  });
+
   return (
-  <div className="grid gap-6">
-    <div className="flex items-center gap-2">
-      <h2 className="text-sm font-semibold text-gray-700">Admin Event Management</h2>
-      <button
-        onClick={() => {
-          setEventToEdit(null);
-          setIsCreateModalOpen(true);
-        }}
-        className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full hover:from-purple-700 hover:to-pink-700"
-        aria-label="Create new event"
-      >
-        Create New Event
-      </button>
-    </div>
-    {loadingAdminEvents ? (
-      <div className="text-center py-8 bg-gray-50 rounded-lg">
-        <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-2"></div>
-        <p className="text-gray-500">Loading admin events...</p>
+    <div className="grid gap-6">
+      {/* Admin Section Navigation */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        <button
+          onClick={() => setActiveAdminSection('events')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'events'
+              ? 'bg-purple-600 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Calendar className="w-4 h-4 inline mr-2" />
+          Event Management
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('messages')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'messages'
+              ? 'bg-purple-600 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4 inline mr-2" />
+          Contact Messages
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('users')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'users'
+              ? 'bg-purple-600 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Eye className="w-4 h-4 inline mr-2" />
+          User Management
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('media')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'media'
+              ? 'bg-purple-600 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Video className="w-4 h-4 inline mr-2" />
+          Media Management
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('maintenance')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'maintenance'
+              ? 'bg-purple-600 text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Search className="w-4 h-4 inline mr-2" />
+          System Tools
+        </button>
       </div>
-    ) : allEvents.length === 0 ? (
-      <div className="text-center py-8 bg-gray-50 rounded-lg">
-        <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-        <p className="text-gray-500">No events found</p>
-      </div>
-    ) : (
-      <div className="space-y-6">
-        {allEvents.map((event, index) => (
-          <div 
-            key={event.id} 
-            className={`space-y-4 p-4 rounded-lg ${
-              index % 2 === 0 
-                ? 'bg-blue-50/50 border-l-4 border-blue-200' 
-                : 'bg-pink-50/50 border-l-4 border-pink-200'
-            }`}
-          >
-            {/* EventCard for consistent display - WITH top action icons in Admin tab */}
-            <EventCardNew
-              event={event}
-              onEdit={() => {
-                setEventToEdit(event);
+
+      {/* Event Management Section */}
+      {activeAdminSection === 'events' && (
+        <>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-gray-700">Admin Event Management</h2>
+            <span className="text-xs text-gray-500">({allEvents.length} events)</span>
+            <button
+              onClick={() => {
+                setEventToEdit(null);
                 setIsCreateModalOpen(true);
               }}
-            />
-            
-            {/* Top action icons are now displayed in the EventCard header */}
-              {/* COMMENTED OUT: Duplicate buttons that were confusing users */}
-              {/* 
-              <button
-                onClick={() => {
-                  setEventToEdit(event);
-                  setIsCreateModalOpen(true);
-                }}
-                className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors text-sm"
-                aria-label={`Edit ${event.title}`}
-              >
-                ✏️ Edit Event
-              </button>
-              <button
-                onClick={async () => {
-                  if (!confirm(`Are you sure you want to delete "${event.title}"? This cannot be undone.`)) return;
-                  try {
-                    await deleteDoc(doc(db, 'events', event.id));
-                    // Note: Cloud Functions handle event_teasers cleanup when events are deleted
-                    const rsvps = await getDocs(collection(db, 'events', event.id, 'rsvps'));
-                    for (const rsvp of rsvps.docs) {
-                      await deleteDoc(rsvp.ref);
-                    }
-                    if (event.imageUrl) {
-                      const imageRef = ref(storage, `events/${event.id}/${event.imageUrl.split('/').pop()}`);
-                      await deleteObject(imageRef).catch(() => {});
-                    }
-                    toast.success('Event deleted');
-                  } catch (e: any) {
-                    toast.error(e?.message || 'Failed to delete event');
-                  }
-                }}
-                className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm"
-                aria-label={`Delete ${event.title}`}
-              >
-                🗑️ Delete Event
-              </button>
-              <button
-                onClick={() => shareEvent(event)}
-                className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
-                aria-label={`Share ${event.title}`}
-              >
-                📤 Share Event
-              </button>
-              */}
+              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full hover:from-purple-700 hover:to-pink-700"
+              aria-label="Create new event"
+            >
+              Create New Event
+            </button>
+          </div>
+          {loadingAdminEvents ? (
+            <div className="text-center py-8 bg-gray-50 rounded-lg">
+              <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+              <p className="text-gray-500">Loading admin events...</p>
+            </div>
+          ) : allEvents.length === 0 ? (
+            <div className="text-center py-8 bg-gray-50 rounded-lg">
+              <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+              <p className="text-gray-500">No events found</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {allEvents.slice(eventsPage * PAGE_SIZE, (eventsPage + 1) * PAGE_SIZE).map((event, index) => {
+                console.log('🔍 Rendering event in admin tab:', { eventId: event.id, title: event.title, index });
+                return (
+                  <div 
+                    key={event.id} 
+                    className={`space-y-4 p-4 rounded-lg ${
+                      index % 2 === 0 
+                        ? 'bg-blue-50/50 border-l-4 border-blue-200' 
+                        : 'bg-pink-50/50 border-l-4 border-pink-200'
+                    }`}
+                  >
+                    <EventCardNew
+                      event={event}
+                      onEdit={() => {
+                        setEventToEdit(event);
+                        setIsCreateModalOpen(true);
+                      }}
+                    />
+                  
+                  <div className="border-t border-gray-200 pt-4">
+                    <div className="text-sm text-gray-600 space-y-1">
+                      <p><strong>Event ID:</strong> {event.id}</p>
+                      <p><strong>Created by:</strong> {userNames[event.createdBy || ''] || 'Unknown User'}</p>
+                      <p><strong>Attendees:</strong> {event.attendingCount || 0} / {event.maxAttendees || 'No limit'}</p>
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => shareEvent(event)}
+                        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                      >
+                        Share Event
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                );
+              })}
               
-              {/* NEW: Clean, single action buttons with clear labels */}
-
-            {/* Quick Event Info */}
-            <div className="border-t border-gray-200 pt-4">
-              <div className="text-sm text-gray-600 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span>👥 Attending:</span>
-                  <span className={`font-medium ${
-                    (event.attendingCount || 0) <= 0 
-                      ? 'text-red-500' 
-                      : (event.attendingCount || 0) > 10 
-                        ? 'text-green-600' 
-                        : 'text-yellow-600'
-                  }`}>
-                    {/* FIXED: Prevent negative values and show warning for invalid data */}
-                    {Math.max(0, event.attendingCount || 0)}
-                    {(event.attendingCount || 0) < 0 && (
-                      <span className="ml-1 text-xs text-red-600">⚠️ Invalid data</span>
-                    )}
+              {/* Event Pagination */}
+              {allEvents.length > PAGE_SIZE && (
+                <div className="flex justify-center gap-2 mt-6">
+                  <button
+                    onClick={() => setEventsPage(Math.max(0, eventsPage - 1))}
+                    disabled={eventsPage === 0}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-4 py-2 text-gray-600">
+                    Page {eventsPage + 1} of {Math.ceil(allEvents.length / PAGE_SIZE)}
                   </span>
+                  <button
+                    onClick={() => setEventsPage(Math.min(Math.ceil(allEvents.length / PAGE_SIZE) - 1, eventsPage + 1))}
+                    disabled={eventsPage >= Math.ceil(allEvents.length / PAGE_SIZE) - 1}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span>👤 Created by:</span>
-                  <span className="font-medium">{userNames[event.createdBy] || event.createdBy || 'Unknown'}</span>
-                </div>
-                <div className="text-xs text-gray-500 mt-2">
-                  💡 For detailed RSVP management, use the "RSVP Management" tab
-                </div>
+              )}
+            </div>
+          )}
+
+          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-start gap-2">
+              <span className="text-yellow-600">⚠️</span>
+              <div className="text-sm text-yellow-800">
+                <p className="font-medium">User Blocking Guidelines:</p>
+                <ul className="mt-1 space-y-1 text-xs">
+                  <li>• Block users who repeatedly abuse RSVP system</li>
+                  <li>• Block users who make last-minute cancellations</li>
+                  <li>• Block users who violate community guidelines</li>
+                  <li>• Blocked users cannot RSVP to any events</li>
+                  <li>• Blocking can be reversed by admins</li>
+                </ul>
               </div>
             </div>
           </div>
-        ))}
-        {allEvents.length >= PAGE_SIZE * eventsPage && (
-          <button
-            onClick={() => setEventsPage(eventsPage + 1)}
-            className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-full hover:bg-purple-700"
-            aria-label="Load more events"
-          >
-            Load More Events
-          </button>
-        )}
-      </div>
-    )}
+        </>
+      )}
 
-    {/* User Blocking Management Section */}
-    <div className="mt-8 p-6 rounded-lg border border-gray-200 bg-white shadow-sm">
-      <div className="flex items-center gap-2 mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">User Blocking Management</h3>
-        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full font-medium">
-          Admin Only
-        </span>
-      </div>
-      
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Block User Section */}
-        <div className="space-y-4">
-          <h4 className="font-medium text-gray-700">Block User from RSVPing</h4>
-          <div className="space-y-3">
+      {/* Contact Messages Section */}
+      {activeAdminSection === 'messages' && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Contact Messages</h2>
+            <div className="text-sm text-gray-500">
+              <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+                📧 Email notifications sent automatically
+              </span>
+            </div>
+          </div>
+          <ContactMessagesAdmin />
+        </div>
+      )}
+
+      {/* User Management Section */}
+      {activeAdminSection === 'users' && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">User Management</h2>
+          <div className="space-y-4">
             <div className="flex gap-2">
               <input
                 type="text"
                 placeholder="Search users by name or email..."
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                aria-label="Search users to block"
                 value={userSearchQuery}
                 onChange={(e) => setUserSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleSearchUsers();
-                  }
-                }}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               />
               <button
                 onClick={handleSearchUsers}
-                disabled={!userSearchQuery.trim() || isSearching}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
-                aria-label="Search users"
+                disabled={isSearching}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
               >
                 {isSearching ? 'Searching...' : 'Search'}
               </button>
             </div>
-            
-            {/* Search Results */}
+
             {searchResults.length > 0 && (
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                <label className="text-sm font-medium text-gray-700">Search Results:</label>
+              <div className="space-y-2">
+                <h3 className="font-medium text-gray-900">Search Results:</h3>
                 {searchResults.map((user) => (
-                  <div key={user.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                    <div className="flex-1">
-                      <div className="font-medium text-sm">{user.displayName || 'Unknown User'}</div>
-                      <div className="text-xs text-gray-500">{user.email}</div>
+                  <div key={user.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">{user.displayName}</p>
+                      <p className="text-sm text-gray-600">{user.email}</p>
                     </div>
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => handleBlockUser(user.id)}
-                        disabled={user.blockedFromRsvp}
-                        className={`px-3 py-1 text-xs rounded transition-colors ${
-                          user.blockedFromRsvp
-                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                            : 'bg-red-600 text-white hover:bg-red-700'
-                        }`}
-                        title={user.blockedFromRsvp ? 'Already blocked' : 'Block user from RSVPing'}
-                      >
-                        {user.blockedFromRsvp ? 'Already Blocked' : 'Block RSVP'}
-                      </button>
-                      <button
-                        onClick={() => handleEnhancedBlock(user)}
-                        className="px-3 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
-                        title="Enhanced blocking options"
-                      >
-                        Advanced Block
-                      </button>
+                      {user.blockedFromRsvp ? (
+                        <button
+                          onClick={() => handleUnblockUser(user.id)}
+                          className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                        >
+                          Unblock
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleBlockUser(user.id)}
+                          className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                        >
+                          Block
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             )}
-            
-            <button
-              onClick={() => {
-                // TODO: Implement user search and blocking
-                toast.success('User blocking functionality coming soon');
-              }}
-              className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              aria-label="Block selected user from RSVPing"
-            >
-              🔒 Block User from RSVPing
-            </button>
-            <div className="text-xs text-gray-500">
-              💡 Tip: Blocked users cannot RSVP to any events
-            </div>
-          </div>
-        </div>
 
-        {/* Blocked Users List */}
-        <div className="space-y-4">
-          <h4 className="font-medium text-gray-700">Currently Blocked Users</h4>
-          {loadingBlockedUsers ? (
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-center py-8">
+            {loadingBlockedUsers ? (
+              <div className="text-center py-4">
                 <div className="animate-spin w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full mx-auto mb-2"></div>
-                <p className="text-sm text-gray-500">Loading blocked users...</p>
+                <p className="text-gray-500 text-sm">Loading blocked users...</p>
               </div>
-            </div>
-          ) : blockedUsers.length === 0 ? (
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-center py-8">
-                <span className="text-4xl">🚫</span>
-                <p className="text-sm text-gray-600 mt-2">No blocked users</p>
-                <p className="text-xs text-gray-500">Users blocked from RSVPing will appear here</p>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="space-y-3">
-                {blockedUsers.map(user => (
-                  <div key={user.id} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200">
-                    <div className="flex-1">
-                      <div className="font-medium text-sm text-gray-900">
-                        {user.displayName || userNames[user.id] || 'Unknown User'}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {user.email || 'No email'}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        Blocked: {user.blockedAt?.toDate?.() 
-                          ? new Date(user.blockedAt.toDate()).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
-                            })
-                          : 'Unknown date'}
-                      </div>
+            ) : blockedUsers.length > 0 ? (
+              <div className="space-y-2">
+                <h3 className="font-medium text-gray-900">Blocked Users:</h3>
+                {blockedUsers.map((user) => (
+                  <div key={user.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">{user.displayName}</p>
+                      <p className="text-sm text-gray-600">{user.email}</p>
+                      <p className="text-xs text-gray-500">
+                        Blocked: {user.blockedAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
+                      </p>
                     </div>
                     <button
                       onClick={() => unblockUser(user.id)}
-                      className="px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs"
-                      aria-label={`Unblock ${user.displayName || userNames[user.id] || 'user'}`}
+                      className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
                     >
-                      🔓 Unblock
+                      Unblock
                     </button>
                   </div>
                 ))}
               </div>
+            ) : (
+              <div className="text-center py-4 text-gray-500">
+                <p className="text-sm">No blocked users found</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Media Management Section */}
+      {activeAdminSection === 'media' && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Media Management</h2>
+          
+          {loadingMedia ? (
+            <div className="text-center py-8">
+              <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+              <p className="text-gray-500">Loading media files...</p>
+            </div>
+          ) : allMedia.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              <Video className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+              <p>No media files found</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {allMedia.slice(mediaPage * MEDIA_PAGE_SIZE, (mediaPage + 1) * MEDIA_PAGE_SIZE).map((media) => (
+                  <div key={media.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        {media.type === 'video' ? (
+                          <Video className="w-5 h-5 text-blue-500" />
+                        ) : (
+                          <Image className="w-5 h-5 text-green-500" />
+                        )}
+                        <span className="text-sm font-medium capitalize">{media.type}</span>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteMedia(media.id, media)}
+                        className="p-1 text-red-500 hover:bg-red-50 rounded"
+                        title="Delete media"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    
+                    {media.thumbnailUrl && (
+                      <img 
+                        src={media.thumbnailUrl} 
+                        alt="Media thumbnail" 
+                        className="w-full h-32 object-cover rounded mb-2"
+                      />
+                    )}
+                    
+                    <div className="space-y-1 text-sm text-gray-600">
+                      <p><strong>Status:</strong> 
+                        <span className={`ml-1 px-2 py-1 rounded text-xs ${
+                          media.transcodeStatus === 'completed' ? 'bg-green-100 text-green-800' :
+                          media.transcodeStatus === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                          media.transcodeStatus === 'failed' ? 'bg-red-100 text-red-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {media.transcodeStatus || 'pending'}
+                        </span>
+                      </p>
+                      <p><strong>Uploaded by:</strong> {userNames[media.uploadedBy] || 'Unknown'}</p>
+                      <p><strong>Created:</strong> {media.createdAt?.toLocaleDateString() || 'Unknown'}</p>
+                      {media.fileSize && (
+                        <p><strong>Size:</strong> {(media.fileSize / 1024 / 1024).toFixed(2)} MB</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Pagination */}
+              {allMedia.length > MEDIA_PAGE_SIZE && (
+                <div className="flex justify-center gap-2 mt-6">
+                  <button
+                    onClick={() => setMediaPage(Math.max(0, mediaPage - 1))}
+                    disabled={mediaPage === 0}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-4 py-2 text-gray-600">
+                    Page {mediaPage + 1} of {Math.ceil(allMedia.length / MEDIA_PAGE_SIZE)}
+                  </span>
+                  <button
+                    onClick={() => setMediaPage(Math.min(Math.ceil(allMedia.length / MEDIA_PAGE_SIZE) - 1, mediaPage + 1))}
+                    disabled={mediaPage >= Math.ceil(allMedia.length / MEDIA_PAGE_SIZE) - 1}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
-      </div>
+      )}
 
-      <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-        <div className="flex items-start gap-2">
-          <span className="text-yellow-600">⚠️</span>
-          <div className="text-sm text-yellow-800">
-            <p className="font-medium">User Blocking Guidelines:</p>
-            <ul className="mt-1 space-y-1 text-xs">
-              <li>• Block users who repeatedly abuse RSVP system</li>
-              <li>• Block users who make last-minute cancellations</li>
-              <li>• Block users who violate community guidelines</li>
-              <li>• Blocked users cannot RSVP to any events</li>
-              <li>• Blocking can be reversed by admins</li>
-            </ul>
+      {/* System Maintenance Section */}
+      {activeAdminSection === 'maintenance' && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">System Maintenance</h2>
+          <div className="space-y-4">
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <h4 className="font-medium text-yellow-800 mb-2">FFmpeg Pipeline Fix</h4>
+              <p className="text-sm text-yellow-700 mb-3">
+                If videos are stuck in "processing" state, this will reset them to the correct status.
+              </p>
+              <button
+                onClick={handleFixStuckProcessing}
+                disabled={isFixingStuckProcessing}
+                className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50"
+              >
+                {isFixingStuckProcessing ? 'Fixing...' : 'Fix Stuck Processing Videos'}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
-
-    {/* System Maintenance Tools */}
-    <div className="mt-8 p-6 rounded-lg border border-gray-200 bg-white shadow-sm">
-      <div className="flex items-center gap-2 mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">System Maintenance</h3>
-        <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full font-medium">
-          System Tools
-        </span>
-      </div>
-      
-      <div className="space-y-4">
-        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <h4 className="font-medium text-yellow-800 mb-2">FFmpeg Pipeline Fix</h4>
-          <p className="text-sm text-yellow-700 mb-3">
-            If videos are stuck in "processing" state, this will reset them to the correct status.
-          </p>
-          <button
-            onClick={handleFixStuckProcessing}
-            disabled={isFixingStuckProcessing}
-            className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50"
-          >
-            {isFixingStuckProcessing ? 'Fixing...' : 'Fix Stuck Processing Videos'}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
   );
 };

@@ -254,10 +254,13 @@ const Founder: React.FC = () => {
 
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <button className="px-6 py-3 bg-white text-[#F25129] rounded-full font-semibold hover:bg-white/90 transition-all duration-200 flex items-center gap-2">
+                  <a 
+                    href="mailto:momsfitnessmojo@gmail.com?subject=Message from Moms Fitness Mojo Community"
+                    className="px-6 py-3 bg-white text-[#F25129] rounded-full font-semibold hover:bg-white/90 transition-all duration-200 flex items-center gap-2"
+                  >
                     <MessageCircle className="w-4 h-4" />
                     Message
-                  </button>
+                  </a>
                   <button className="px-6 py-3 bg-white/20 backdrop-blur-sm text-white rounded-full font-semibold hover:bg-white/30 transition-all duration-200 flex items-center gap-2">
                     <Heart className="w-4 h-4" />
                     Follow

@@ -23,6 +23,12 @@ export type EventDoc = {
   isTeaser?: boolean;
   maxAttendees?: number;
   attendingCount?: number;
+  // QR Code Attendance Tracking
+  qrCode?: string; // Generated QR code data
+  qrCodeGeneratedAt?: any; // Timestamp when QR was generated
+  attendanceEnabled?: boolean; // Admin can enable/disable QR attendance
+  attendanceCount?: number; // Real-time attendance count from QR scans
+  lastAttendanceUpdate?: any; // Last time attendance was updated
 };
 
 type UseEventsOptions = { skewMs?: number; includeGuestTeasers?: boolean; };
