@@ -294,10 +294,9 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attende
     const eventData = eventDoc.data()!;
     const eventCreatorId = eventData.createdBy;
     console.log(`🔍 notifyRsvp: eventCreatorId:`, eventCreatorId, `userId:`, userId);
-    if (eventCreatorId === userId) {
-      console.log(`🔍 notifyRsvp: User is event creator, skipping notification`);
-      return;
-    }
+    
+    // Allow notifications for everyone, including event creators
+    // Event creators should also receive notifications for their own events
 
     const userDoc = await db.collection('users').doc(userId).get();
     let userName = 'Member';
@@ -308,11 +307,17 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attende
     
     // Get attendee name for more specific notification
     const attendeeName = attendeeData?.name || userName;
+    
+    // Create appropriate message based on whether it's the event creator or not
+    const isEventCreator = eventCreatorId === userId;
+    const notificationMessage = isEventCreator 
+      ? `You RSVP'd for ${eventData.title}!`
+      : `${attendeeName} is going to ${eventData.title}!`;
 
     console.log(`🔍 notifyRsvp: Creating notification for eventCreatorId:`, eventCreatorId);
     const notificationRef = await db.collection('notifications').add({
       userId: eventCreatorId,
-      message: `${attendeeName} is going to ${eventData.title}!`,
+      message: notificationMessage,
       createdAt: FieldValue.serverTimestamp(),
       eventId,
       read: false,
@@ -320,7 +325,8 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attende
       rsvpUserId: userId,
       rsvpStatus: 'going',
       attendeeId: attendeeId,
-      attendeeName: attendeeName
+      attendeeName: attendeeName,
+      isEventCreator: isEventCreator
     });
     console.log(`🔍 notifyRsvp: Notification created with ID:`, notificationRef.id);
 
@@ -334,9 +340,9 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attende
           token: fcmToken,
           notification: {
             title: 'New RSVP',
-            body: `${attendeeName} is going to ${eventData.title}!`,
+            body: notificationMessage,
           },
-          data: { eventId, type: 'rsvp', userId, attendeeId, attendeeName },
+          data: { eventId, type: 'rsvp', userId, attendeeId, attendeeName, isEventCreator: isEventCreator.toString() },
         });
         console.log(`Push notification sent to ${eventCreatorId} for event ${eventId}`);
       }
