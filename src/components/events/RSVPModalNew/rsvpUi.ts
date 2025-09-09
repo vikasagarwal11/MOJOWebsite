@@ -8,7 +8,7 @@ export const AGE_GROUP_OPTIONS = [
   { value: '0-2', label: '0-2 Years' },
   { value: '3-5', label: '3-5 Years' },
   { value: '6-10', label: '6-10 Years' },
-  { value: 'teen', label: 'Teen' },
+  { value: '11+', label: '11+ Years' },
   { value: 'adult', label: 'Adult' }
 ] as const;
 

@@ -132,7 +132,7 @@ export const FamilyMemberForm: React.FC<FamilyMemberFormProps> = ({
             <option value="0-2">0-2 years (Baby/Toddler)</option>
             <option value="3-5">3-5 years (Preschool)</option>
             <option value="6-10">6-10 years (Child)</option>
-            <option value="teen">11+ Years (Teen)</option>
+            <option value="11+">11+ Years (Teen)</option>
             <option value="adult">Adult</option>
           </select>
         </div>

@@ -8,11 +8,13 @@ import { QrCode, Camera, BarChart3, Users } from 'lucide-react';
 
 interface QRCodeTabProps {
   event: EventDoc;
+  onEventUpdate?: () => void;
   className?: string;
 }
 
 export const QRCodeTab: React.FC<QRCodeTabProps> = ({
   event,
+  onEventUpdate,
   className = ''
 }) => {
   const { currentUser } = useAuth();
@@ -79,6 +81,10 @@ export const QRCodeTab: React.FC<QRCodeTabProps> = ({
           event={event}
           onQRGenerated={(qrCode) => {
             console.log('QR Code generated:', qrCode);
+          }}
+          onAttendanceToggled={(enabled) => {
+            console.log('QR Attendance toggled:', enabled);
+            onEventUpdate?.();
           }}
         />
       )}

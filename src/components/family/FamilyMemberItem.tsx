@@ -29,7 +29,8 @@ export const FamilyMemberItem: React.FC<FamilyMemberItemProps> = ({
       case '0-2': return '0-2 Years';
       case '3-5': return '3-5 Years';
       case '6-10': return '6-10 Years';
-      case '11+': return 'Adult';
+      case '11+': return '11+ Years';
+      case 'adult': return 'Adult';
       default: return 'Unknown';
     }
   };
@@ -40,6 +41,7 @@ export const FamilyMemberItem: React.FC<FamilyMemberItemProps> = ({
       case '3-5': return 'bg-purple-100 text-purple-700 border-purple-200';
       case '6-10': return 'bg-orange-100 text-orange-700 border-orange-200';
       case '11+': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'adult': return 'bg-green-100 text-green-700 border-green-200';
       default: return 'bg-gray-100 text-gray-700 border-gray-200';
     }
   };

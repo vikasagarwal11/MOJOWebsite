@@ -31,6 +31,7 @@ const getAgeGroupLabel = (ageGroup: AgeGroup): string => {
     case '3-5': return '3-5 Years';
     case '6-10': return '6-10 Years';
     case '11+': return '11+ Years';
+    case 'adult': return 'Adult';
     default: return ageGroup;
   }
 };

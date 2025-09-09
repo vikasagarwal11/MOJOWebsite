@@ -213,7 +213,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
         case '6-10':
           summary.byAgeGroup.children6to10++;
           break;
-        case 'teen':
+        case '11+':
           summary.byAgeGroup.children11plus++;
           break;
         case 'adult':
@@ -1022,9 +1022,9 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                                 ({rsvp.attendeeType === 'family_member' ? '👨‍👩‍👧‍👦 Family' : '🎫 Guest'})
                                               </span>
                                               {/* Only show child icon and age for actual kids */}
-                                              {rsvp.ageGroup && ['0-2', '3-5', '6-10', 'teen'].includes(rsvp.ageGroup) && (
+                                              {rsvp.ageGroup && ['0-2', '3-5', '6-10', '11+'].includes(rsvp.ageGroup) && (
                                                 <span className="text-xs text-gray-500">
-                                                  👶 {rsvp.ageGroup === 'teen' ? 'Teen' : rsvp.ageGroup}
+                                                  👶 {rsvp.ageGroup === '11+' ? '11+' : rsvp.ageGroup}
                                                 </span>
                                               )}
                                             </>

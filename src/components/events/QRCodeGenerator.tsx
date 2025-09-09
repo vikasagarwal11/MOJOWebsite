@@ -1,24 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeService } from '../../services/qrCodeService';
+import { EventAttendanceService } from '../../services/eventAttendanceService';
 import { EventDoc } from '../../hooks/useEvents';
-import { QrCode, Download, Copy, RefreshCw, CheckCircle } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
+import { QrCode, Download, Copy, RefreshCw, CheckCircle, Settings, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface QRCodeGeneratorProps {
   event: EventDoc;
   onQRGenerated?: (qrCode: string) => void;
+  onAttendanceToggled?: (enabled: boolean) => void;
   className?: string;
 }
 
 export const QRCodeGenerator: React.FC<QRCodeGeneratorProps> = ({
   event,
   onQRGenerated,
+  onAttendanceToggled,
   className = ''
 }) => {
+  const { currentUser } = useAuth();
   const [qrCodeData, setQrCodeData] = useState<string>('');
   const [qrCodeImage, setQrCodeImage] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [isTogglingAttendance, setIsTogglingAttendance] = useState(false);
 
   useEffect(() => {
     generateQRCode();
@@ -75,6 +81,35 @@ export const QRCodeGenerator: React.FC<QRCodeGeneratorProps> = ({
     toast.success('QR code downloaded!');
   };
 
+  const toggleQRAttendance = async () => {
+    if (!currentUser) {
+      toast.error('Please sign in to modify QR attendance settings');
+      return;
+    }
+
+    if (!EventAttendanceService.canModifyQRAttendance(event, currentUser.id)) {
+      toast.error('You do not have permission to modify QR attendance for this event');
+      return;
+    }
+
+    if (!EventAttendanceService.isQRAttendanceAvailable(event)) {
+      toast.error('QR attendance can only be enabled up to 24 hours before the event');
+      return;
+    }
+
+    setIsTogglingAttendance(true);
+    try {
+      const newStatus = await EventAttendanceService.toggleQRAttendance(event.id, event.attendanceEnabled || false);
+      onAttendanceToggled?.(newStatus);
+      toast.success(`QR attendance ${newStatus ? 'enabled' : 'disabled'} successfully!`);
+    } catch (error) {
+      console.error('Error toggling QR attendance:', error);
+      toast.error('Failed to update QR attendance settings');
+    } finally {
+      setIsTogglingAttendance(false);
+    }
+  };
+
   const isQRCodeValid = () => {
     if (!event.startAt) return false;
     const now = Date.now();
@@ -88,20 +123,53 @@ export const QRCodeGenerator: React.FC<QRCodeGeneratorProps> = ({
   };
 
   if (!event.attendanceEnabled) {
+    const canModify = currentUser && EventAttendanceService.canModifyQRAttendance(event, currentUser.id);
+    const isAvailable = EventAttendanceService.isQRAttendanceAvailable(event);
+
     return (
       <div className={`bg-gray-100 rounded-lg p-6 text-center ${className}`}>
         <QrCode className="w-12 h-12 text-gray-400 mx-auto mb-3" />
         <h3 className="text-lg font-semibold text-gray-700 mb-2">QR Code Attendance</h3>
         <p className="text-gray-500 mb-4">QR code attendance tracking is not enabled for this event.</p>
-        <button
-          onClick={() => {
-            // This would need to be implemented to update the event's attendanceEnabled field
-            toast.info('Contact an admin to enable QR attendance for this event');
-          }}
-          className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors"
-        >
-          Enable QR Attendance
-        </button>
+        
+        {!isAvailable && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+            <div className="flex items-center gap-2 text-yellow-700">
+              <AlertTriangle className="w-4 h-4" />
+              <span className="text-sm font-medium">QR attendance can only be enabled up to 24 hours before the event</span>
+            </div>
+          </div>
+        )}
+
+        {canModify ? (
+          <button
+            onClick={toggleQRAttendance}
+            disabled={isTogglingAttendance || !isAvailable}
+            className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 mx-auto"
+          >
+            {isTogglingAttendance ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Enabling...
+              </>
+            ) : (
+              <>
+                <Settings className="w-4 h-4" />
+                Enable QR Attendance
+              </>
+            )}
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm text-gray-500">Only the event organizer can enable QR attendance</p>
+            <button
+              onClick={() => toast('Contact the event organizer to enable QR attendance', { icon: 'ℹ️' })}
+              className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+            >
+              Contact Organizer
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -114,6 +182,20 @@ export const QRCodeGenerator: React.FC<QRCodeGeneratorProps> = ({
           Event QR Code
         </h3>
         <div className="flex gap-2">
+          {currentUser && EventAttendanceService.canModifyQRAttendance(event, currentUser.id) && (
+            <button
+              onClick={toggleQRAttendance}
+              disabled={isTogglingAttendance}
+              className="p-2 text-gray-500 hover:text-red-600 transition-colors disabled:opacity-50"
+              title="Disable QR Attendance"
+            >
+              {isTogglingAttendance ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Settings className="w-4 h-4" />
+              )}
+            </button>
+          )}
           <button
             onClick={generateQRCode}
             disabled={isGenerating}

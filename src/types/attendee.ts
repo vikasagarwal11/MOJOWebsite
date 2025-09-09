@@ -13,6 +13,10 @@ export interface Attendee {
   ageGroup: AgeGroup;
   rsvpStatus: AttendeeStatus;
   familyMemberId?: string | null;
+  // Payment information
+  paymentStatus?: import('./payment').PaymentStatus;
+  paymentTransactionId?: string; // Reference to payment transaction
+  price?: number; // Price in cents for this attendee
   createdAt: any;
   updatedAt: any;
 }

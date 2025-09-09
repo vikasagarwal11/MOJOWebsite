@@ -35,9 +35,9 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "✅ RSVP Notification System deployed successfully!" -ForegroundColor Green
 Write-Host ""
 Write-Host "🎯 What was deployed:" -ForegroundColor Cyan
-Write-Host "   • Cloud Function: onRsvpNotification" -ForegroundColor White
-Write-Host "   • Firestore Rules: notifications collection access" -ForegroundColor White
-Write-Host "   • Storage Rules: existing rules maintained" -ForegroundColor White
+Write-Host "   - Cloud Function: onRsvpNotification" -ForegroundColor White
+Write-Host "   - Firestore Rules: notifications collection access" -ForegroundColor White
+Write-Host "   - Storage Rules: existing rules maintained" -ForegroundColor White
 Write-Host ""
 Write-Host "🧪 To test the system:" -ForegroundColor Cyan
 Write-Host "   1. Create an event as an admin" -ForegroundColor White
@@ -45,7 +45,7 @@ Write-Host "   2. RSVP as a different user with 'Going' status" -ForegroundColor
 Write-Host "   3. Check the admin's profile for notifications" -ForegroundColor White
 Write-Host ""
 Write-Host "📱 The notification system is now live and will:" -ForegroundColor Cyan
-Write-Host "   • Automatically create notifications when users RSVP 'Going'" -ForegroundColor White
-Write-Host "   • Display notifications in user profiles" -ForegroundColor White
-Write-Host "   • Allow marking notifications as read" -ForegroundColor White
-Write-Host "   • Provide links to view events" -ForegroundColor White
+Write-Host "   - Automatically create notifications when users RSVP 'Going'" -ForegroundColor White
+Write-Host "   - Display notifications in user profiles" -ForegroundColor White
+Write-Host "   - Allow marking notifications as read" -ForegroundColor White
+Write-Host "   - Provide links to view events" -ForegroundColor White

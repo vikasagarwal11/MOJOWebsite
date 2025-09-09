@@ -33,6 +33,7 @@ import { Header } from './RSVPModalNew/components/Header';
 import { EventDetails } from './RSVPModalNew/components/EventDetails';
 import { AttendeeInputRowMemo } from './RSVPModalNew/components/AttendeeInputRow';
 import { QRCodeTab } from './QRCodeTab';
+import { PaymentSection } from './PaymentSection';
 
 interface RSVPModalProps {
   event: EventDoc;
@@ -415,7 +416,13 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
               >
                 {activeTab === 'qr' && event.attendanceEnabled ? (
                   <div className="p-6">
-                    <QRCodeTab event={event} />
+                    <QRCodeTab 
+                      event={event} 
+                      onEventUpdate={() => {
+                        // Refresh event data when QR attendance is toggled
+                        onAttendeeUpdate?.();
+                      }}
+                    />
                   </div>
                 ) : isBlockedFromRSVP ? (
                   <div className="p-6 text-center">
@@ -431,6 +438,19 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                   </div>
                 ) : (
                   <div className="p-3">
+                    {/* Payment Section */}
+                    <PaymentSection 
+                      event={event}
+                      attendees={attendees}
+                      onPaymentComplete={() => {
+                        refreshAttendees();
+                        onAttendeeUpdate?.();
+                      }}
+                      onPaymentError={(error) => {
+                        console.error('Payment error:', error);
+                      }}
+                    />
+
                     <div className="mb-4">
                       <div className="flex items-center gap-3 mb-3">
                         <h3 className="text-[15px] font-semibold text-gray-900">Manage Attendees</h3>
@@ -624,7 +644,13 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                                   <span className="font-medium text-gray-900 text-[13px]">{familyMember.name}</span>
                                                 </div>
                                                 <div className="sm:col-span-3 text-[12px] text-gray-500">
-                                                  {familyMember.ageGroup ? `${familyMember.ageGroup} years` : 'Not set'}
+                                                  {familyMember.ageGroup ? 
+                                                    (familyMember.ageGroup === 'adult' ? 'Adult' :
+                                                     familyMember.ageGroup === '11+' ? '11+ Years' :
+                                                     familyMember.ageGroup === '0-2' ? '0-2 Years' :
+                                                     familyMember.ageGroup === '3-5' ? '3-5 Years' :
+                                                     familyMember.ageGroup === '6-10' ? '6-10 Years' :
+                                                     `${familyMember.ageGroup} years`) : 'Not set'}
                                                 </div>
                                                 <div className="sm:col-span-2">
                                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800">
