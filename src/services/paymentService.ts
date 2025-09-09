@@ -354,11 +354,8 @@ export class PaymentService {
       requiresPayment: true,
       adultPrice,
       ageGroupPricing: finalPricing,
-      currency,
-      refundPolicy: {
-        allowed: true,
-        feePercentage: 5 // 5% refund fee
-      }
+      currency
+      // refundPolicy will be set separately based on user choice
     };
   }
 }

@@ -107,6 +107,11 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     maxAttendees: eventToEdit.maxAttendees,
     imageUrl: eventToEdit.imageUrl || '',
     attendanceEnabled: eventToEdit.attendanceEnabled || false,
+    // Payment fields
+    requiresPayment: eventToEdit.pricing?.requiresPayment || false,
+    adultPrice: eventToEdit.pricing?.adultPrice ? (eventToEdit.pricing.adultPrice / 100).toString() : '',
+    currency: eventToEdit.pricing?.currency || 'USD',
+    refundAllowed: eventToEdit.pricing?.refundPolicy?.allowed === true,
   } : {
     isAllDay: false, // Default to false for new events
     attendanceEnabled: false, // Default to false for new events
@@ -160,6 +165,39 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
       // Set image
       if (eventToEdit.imageUrl) {
         setValue('imageUrl', eventToEdit.imageUrl);
+      }
+      
+      // Set payment configuration
+      if (eventToEdit.pricing) {
+        setValue('requiresPayment', eventToEdit.pricing.requiresPayment || false);
+        setValue('adultPrice', eventToEdit.pricing.adultPrice ? (eventToEdit.pricing.adultPrice / 100).toString() : '');
+        setValue('currency', eventToEdit.pricing.currency || 'USD');
+        setValue('refundAllowed', eventToEdit.pricing.refundPolicy?.allowed === true);
+        
+        // Set age group pricing
+        if (eventToEdit.pricing.ageGroupPricing) {
+          const pricing = eventToEdit.pricing.ageGroupPricing;
+          const adultPricing = pricing.find((p: any) => p.ageGroup === 'adult');
+          const childPricing = pricing.find((p: any) => p.ageGroup === '3-5');
+          const teenPricing = pricing.find((p: any) => p.ageGroup === '11+');
+          const infantPricing = pricing.find((p: any) => p.ageGroup === '0-2');
+          
+          setValue('adultPrice', adultPricing ? (adultPricing.price / 100).toString() : '');
+          setValue('childPrice', childPricing ? (childPricing.price / 100).toString() : '');
+          setValue('teenPrice', teenPricing ? (teenPricing.price / 100).toString() : '');
+          setValue('infantPrice', infantPricing ? (infantPricing.price / 100).toString() : '');
+        }
+        
+        // Set refund deadline
+        if (eventToEdit.pricing.refundPolicy?.deadline) {
+          const deadline = eventToEdit.pricing.refundPolicy.deadline.toDate ? 
+            eventToEdit.pricing.refundPolicy.deadline.toDate() : 
+            new Date(eventToEdit.pricing.refundPolicy.deadline);
+          setValue('refundDeadline', format(deadline, 'yyyy-MM-dd'));
+        }
+        
+        // Update payment state
+        setRequiresPayment(eventToEdit.pricing.requiresPayment || false);
       }
     }
   }, [eventToEdit, setValue]);
@@ -349,12 +387,17 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
           'adult': adultPrice
         }, data.currency || 'USD');
         
-        // Add refund policy
+        // Add refund policy only if user explicitly allows refunds
         if (data.refundAllowed) {
           pricing.refundPolicy = {
             allowed: true,
             deadline: data.refundDeadline ? Timestamp.fromDate(new Date(data.refundDeadline)) : undefined,
             feePercentage: 5 // Default 5% refund fee
+          };
+        } else {
+          // Explicitly set refund policy to not allowed
+          pricing.refundPolicy = {
+            allowed: false
           };
         }
       } else {
