@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, Calendar, Clock, MapPin, Users, FileText, Tag, QrCode } from 'lucide-react';
+import { X, Calendar, Clock, MapPin, Users, FileText, Tag, QrCode, DollarSign } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStorage } from '../../hooks/useStorage';
-import { addDoc, collection, doc, updateDoc, serverTimestamp, query, where, limit, getDocs } from 'firebase/firestore';
+import { addDoc, collection, doc, updateDoc, serverTimestamp, query, where, limit, getDocs, Timestamp } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import { PaymentService } from '../../services/paymentService';
+import { EventPricing } from '../../types/payment';
 
 // Firestore shouldn't see undefined fields
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
@@ -38,6 +41,15 @@ const eventSchema = z.object({
   maxAttendees: z.string().optional(),
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
   attendanceEnabled: z.boolean().optional(),
+  // Payment fields
+  requiresPayment: z.boolean().optional(),
+  adultPrice: z.string().optional(),
+  childPrice: z.string().optional(),
+  teenPrice: z.string().optional(),
+  infantPrice: z.string().optional(),
+  currency: z.string().optional(),
+  refundAllowed: z.boolean().optional(),
+  refundDeadline: z.string().optional(),
 });
 
 type EventFormData = z.infer<typeof eventSchema>;
@@ -62,6 +74,8 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [imageRemoved, setImageRemoved] = useState(false); // Track if image was removed
+  // Payment state
+  const [requiresPayment, setRequiresPayment] = useState(false);
 
   const isEditing = !!eventToEdit;
 
@@ -96,6 +110,9 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   } : {
     isAllDay: false, // Default to false for new events
     attendanceEnabled: false, // Default to false for new events
+    requiresPayment: false, // Default to free events
+    currency: 'USD', // Default currency
+    refundAllowed: false, // Default no refunds
   },
 });
 
@@ -136,10 +153,8 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
       
       // Load existing invited users for display
       if (eventToEdit.invitedUserIds && eventToEdit.invitedUserIds.length > 0) {
-        // Fetch user details for display
-        eventToEdit.invitedUserIds.forEach((userId: string) => {
-          // You might want to fetch user details here for display
-        });
+        // Set invited user IDs for display
+        setInvitedUserIds(eventToEdit.invitedUserIds);
       }
       
       // Set image
@@ -318,6 +333,34 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
       
       console.log('🔍 Final imageUrl value:', imageUrl);
       
+      // Create pricing configuration
+      let pricing: EventPricing | undefined;
+      if (data.requiresPayment) {
+        const adultPrice = data.adultPrice ? Math.round(parseFloat(data.adultPrice) * 100) : 0;
+        const childPrice = data.childPrice ? Math.round(parseFloat(data.childPrice) * 100) : 0;
+        const teenPrice = data.teenPrice ? Math.round(parseFloat(data.teenPrice) * 100) : 0;
+        const infantPrice = data.infantPrice ? Math.round(parseFloat(data.infantPrice) * 100) : 0;
+        
+        pricing = PaymentService.createPaidEventPricing(adultPrice, {
+          '0-2': infantPrice,
+          '3-5': childPrice,
+          '6-10': childPrice,
+          '11+': teenPrice,
+          'adult': adultPrice
+        }, data.currency || 'USD');
+        
+        // Add refund policy
+        if (data.refundAllowed) {
+          pricing.refundPolicy = {
+            allowed: true,
+            deadline: data.refundDeadline ? Timestamp.fromDate(new Date(data.refundDeadline)) : undefined,
+            feePercentage: 5 // Default 5% refund fee
+          };
+        }
+      } else {
+        pricing = PaymentService.createDefaultPricing();
+      }
+
       // Build event payload (no undefineds)
       const eventData = stripUndefined({
         title: data.title.trim(),
@@ -337,6 +380,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         visibility: eventVisibility,
         invitedUserIds: eventVisibility === 'private' ? invitedUserIds : undefined,
         attendingCount: eventToEdit?.attendingCount ?? 0,
+        pricing: pricing,
         createdAt: eventToEdit?.createdAt ?? serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -353,7 +397,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
         toast.success('Event updated successfully!');
       } else {
         // Create new event
-        const evRef = await addDoc(collection(db, 'events'), eventData);
+        await addDoc(collection(db, 'events'), eventData);
         // Note: Cloud Functions handle event_teasers collection management
         // No need to manually create teasers here
         toast.success('Event created successfully!');
@@ -898,6 +942,137 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
               </div>
             </div>
           )}
+
+          {/* Payment Configuration */}
+          <div className="space-y-4 pt-6 border-t border-gray-200">
+            <div className="flex items-center gap-3">
+              <DollarSign className="w-5 h-5 text-gray-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Payment Configuration</h3>
+            </div>
+            
+            <div className="space-y-4">
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={requiresPayment}
+                  onChange={(e) => {
+                    setRequiresPayment(e.target.checked);
+                    setValue('requiresPayment', e.target.checked);
+                  }}
+                  disabled={isLoading}
+                  className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Require Payment</span>
+                  <p className="text-xs text-gray-500">Enable payment collection for this event</p>
+                </div>
+              </label>
+
+              {requiresPayment && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200"
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Adult Price ($)</label>
+                      <input
+                        {...register('adultPrice')}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        disabled={isLoading}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                        placeholder="25.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
+                      <select
+                        {...register('currency')}
+                        disabled={isLoading}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                      >
+                        <option value="USD">USD ($)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="GBP">GBP (£)</option>
+                        <option value="CAD">CAD (C$)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Children (3-10) ($)</label>
+                      <input
+                        {...register('childPrice')}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        disabled={isLoading}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                        placeholder="15.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Teens (11+) ($)</label>
+                      <input
+                        {...register('teenPrice')}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        disabled={isLoading}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                        placeholder="20.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Infants (0-2) ($)</label>
+                      <input
+                        {...register('infantPrice')}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        disabled={isLoading}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        {...register('refundAllowed')}
+                        disabled={isLoading}
+                        className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-gray-700">Allow Refunds</span>
+                        <p className="text-xs text-gray-500">Enable refunds for this event</p>
+                      </div>
+                    </label>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Refund Deadline (Optional)</label>
+                      <input
+                        {...register('refundDeadline')}
+                        type="date"
+                        disabled={isLoading}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Leave empty to allow refunds until event date</p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          </div>
+
           {/* Submit */}
           <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
             <button

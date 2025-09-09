@@ -29,6 +29,8 @@ export type EventDoc = {
   attendanceEnabled?: boolean; // Admin can enable/disable QR attendance
   attendanceCount?: number; // Real-time attendance count from QR scans
   lastAttendanceUpdate?: any; // Last time attendance was updated
+  // Payment Configuration
+  pricing?: import('../types/payment').EventPricing;
 };
 
 type UseEventsOptions = { skewMs?: number; includeGuestTeasers?: boolean; };

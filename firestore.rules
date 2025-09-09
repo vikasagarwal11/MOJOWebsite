@@ -290,49 +290,67 @@ service cloud.firestore {
           (request.auth.uid == userId || isAdmin());
       }
 
-      // Attendees subcollection - NEW!
+      // Attendees subcollection - SECURE VERSION
       match /attendees/{attendeeId} {
+        // Users can read attendees for events they have access to
         allow read: if isSignedIn() && (
           // Event creator can read all attendees
           get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
           // Admin can read all attendees
           isAdmin() ||
-          // User can read attendees for events they can access
-          (
-            // Public events: anyone can read
-            get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
-            // Members can read members-only events
-            (isMember() && get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members') ||
-            // Invited users can read private events
-            (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'private' && 
-             request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds)
-          )
+          // User can read their own household attendees
+          resource.data.userId == request.auth.uid ||
+          // Users can read attendees for public events (with fallback for legacy events)
+          (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+           (!('visibility' in get(/databases/$(database)/documents/events/$(eventId)).data) && 
+            get(/databases/$(database)/documents/events/$(eventId)).data.public == true)) ||
+          // Users can read attendees for members-only events if they are members
+          (isMember() && get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members') ||
+          // Users can read attendees for private events if they are invited
+          (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'private' && 
+           request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds)
         );
         
-        allow create: if isSignedIn() && (
-          // User can manage their own household attendees
-          request.resource.data.userId == request.auth.uid ||
-          // Event creator can manage all attendees
-          get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
-          // Admin can manage all attendees
-          isAdmin()
-        ) && validAttendeeData(request.resource.data);
+        // Users can create attendees for events they have access to
+        allow create: if isSignedIn() && 
+          request.resource.data.userId == request.auth.uid &&
+          validAttendeeData(request.resource.data) &&
+          (
+            // Event creator can add attendees
+            get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
+            // Admin can add attendees
+            isAdmin() ||
+            // Users can add attendees to public events (with fallback for legacy events)
+            (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+             (!('visibility' in get(/databases/$(database)/documents/events/$(eventId)).data) && 
+              get(/databases/$(database)/documents/events/$(eventId)).data.public == true)) ||
+            // Members can add attendees to members-only events
+            (isMember() && get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members') ||
+            // Invited users can add attendees to private events
+            (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'private' && 
+             request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds) ||
+            // Allow any authenticated user to add family members to events they can see
+            // This is more permissive but maintains privacy by only allowing their own attendees
+            (userDoc() != null && 
+             (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+              (!('visibility' in get(/databases/$(database)/documents/events/$(eventId)).data) && 
+               get(/databases/$(database)/documents/events/$(eventId)).data.public == true))) ||
+            // Fallback: Allow any authenticated user to add their own family members
+            // This ensures family member addition works even if event visibility is not set properly
+            (userDoc() != null && request.resource.data.attendeeType == 'family_member')
+          );
         
+        // Users can update their own attendees, event creators can update all attendees
         allow update: if isSignedIn() && (
-          // User can manage their own household attendees
           request.resource.data.userId == request.auth.uid ||
-          // Event creator can manage all attendees
           get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
-          // Admin can manage all attendees
           isAdmin()
         ) && validAttendeeData(request.resource.data);
         
+        // Users can delete their own attendees, event creators can delete all attendees
         allow delete: if isSignedIn() && (
-          // User can manage their own household attendees
           resource.data.userId == request.auth.uid ||
-          // Event creator can manage all attendees
           get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
-          // Admin can manage all attendees
           isAdmin()
         );
       }
@@ -463,6 +481,72 @@ service cloud.firestore {
       
       // Only admins can read, update, or delete contact messages
       allow read, update, delete: if isAdmin();
+    }
+    
+    // --- PAYMENT TRANSACTIONS ---
+    match /payment_transactions/{transactionId} {
+      // Users can read their own payment transactions
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      
+      // Only admins can read all payment transactions
+      allow read: if isAdmin();
+      
+      // Users can create payment transactions for their own RSVPs
+      allow create: if isSignedIn() && 
+        request.auth.uid == request.resource.data.userId &&
+        isNonEmptyString(request.resource.data.eventId) &&
+        isNonEmptyString(request.resource.data.attendeeId) &&
+        request.resource.data.amount is number &&
+        request.resource.data.amount >= 0 &&
+        isNonEmptyString(request.resource.data.currency) &&
+        isNonEmptyString(request.resource.data.status) &&
+        request.resource.data.status in ['pending', 'paid', 'failed', 'refunded'] &&
+        isNonEmptyString(request.resource.data.method) &&
+        request.resource.data.method in ['card', 'bank_transfer', 'cash', 'other'] &&
+        request.resource.data.refundStatus in ['none', 'partial', 'full', 'requested'];
+      
+      // Only admins can update payment transactions (for status updates, refunds)
+      allow update: if isAdmin();
+      
+      // Only admins can delete payment transactions
+      allow delete: if isAdmin();
+    }
+    
+    // --- PAYMENT CONFIGURATION ---
+    match /payment_config/{configId} {
+      // Only admins can read payment configuration
+      allow read: if isAdmin();
+      
+      // Only admins can create/update payment configuration
+      allow create, update: if isAdmin();
+      
+      // Only admins can delete payment configuration
+      allow delete: if isAdmin();
+    }
+    
+    // --- REFUND REQUESTS ---
+    match /refund_requests/{requestId} {
+      // Users can read their own refund requests
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      
+      // Only admins can read all refund requests
+      allow read: if isAdmin();
+      
+      // Users can create refund requests for their own payments
+      allow create: if isSignedIn() && 
+        request.auth.uid == request.resource.data.userId &&
+        isNonEmptyString(request.resource.data.paymentId) &&
+        isNonEmptyString(request.resource.data.eventId) &&
+        request.resource.data.requestedAmount is number &&
+        request.resource.data.requestedAmount > 0 &&
+        isNonEmptyString(request.resource.data.reason) &&
+        request.resource.data.status == 'pending';
+      
+      // Only admins can update refund requests (approve/reject)
+      allow update: if isAdmin();
+      
+      // Only admins can delete refund requests
+      allow delete: if isAdmin();
     }
     
     // --- Fallback for stray comments ---

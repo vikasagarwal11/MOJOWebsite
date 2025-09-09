@@ -94,3 +94,6 @@ export interface Promotion {
   isActive: boolean;
   imageUrl?: string;
 }
+
+// Re-export payment types
+export * from './payment';

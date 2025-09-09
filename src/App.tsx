@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { setupGlobalErrorHandling } from './utils/globalErrorHandler';
 import Layout from './components/layout/Layout';
 import Home from './pages/Home';
 import Events from './pages/Events';
@@ -17,36 +19,18 @@ import Founder from './pages/Founder';
 import Contact from './pages/Contact';
 import About from './pages/About';
 
-/** Simple error boundary so a crash doesn't white-screen the app */
-class SimpleErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch(err: any, info: any) {
-    console.error('Boundary caught:', err, info);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="p-6 text-gray-700">
-          Something went wrong. Please refresh.
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 function App() {
+  // Set up global error handling
+  useEffect(() => {
+    setupGlobalErrorHandling()
+  }, [])
+
   return (
-    <SimpleErrorBoundary>
+    <ErrorBoundary
+      onError={(error, errorInfo) => {
+        console.error('App Error Boundary caught error:', error, errorInfo)
+      }}
+    >
       <AuthProvider>
         <Router>
           <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
@@ -93,7 +77,7 @@ function App() {
           </div>
         </Router>
       </AuthProvider>
-    </SimpleErrorBoundary>
+    </ErrorBoundary>
   );
 }
 
