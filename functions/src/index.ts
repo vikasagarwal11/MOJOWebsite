@@ -387,7 +387,7 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
 // ───────────────── MEDIA: FFmpeg + Manifest Rewrite ─────────────────
 export const onMediaFileFinalize = onObjectFinalized(
   {
-    bucket: 'mojomediafiles',
+    bucket: 'mojomediafiles-staging',
     region: 'us-east1',
     timeoutSeconds: 540,
     memory: '2GiB',

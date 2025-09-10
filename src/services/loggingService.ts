@@ -1,4 +1,8 @@
-import { getAnalytics, logEvent, setUserId, setUserProperties } from 'firebase/analytics'
+import { 
+  logEvent as firebaseLogEvent, 
+  setUserId as fbSetUserId, 
+  setUserProperties as fbSetUserProperties 
+} from 'firebase/analytics'
 import { getAuth } from 'firebase/auth'
 import { errorService } from './errorService'
 
@@ -22,6 +26,10 @@ export class LoggingService {
   private isInitialized = false
   private eventQueue: LogEvent[] = []
   private maxQueueSize = 100
+  private isLogging = false // Prevent infinite recursion
+  private cachedUserId: string | undefined = undefined
+  private userIdCacheTime = 0
+  private userIdCacheTimeout = 30000 // 30 seconds
 
   static getInstance(): LoggingService {
     if (!LoggingService.instance) {
@@ -35,27 +43,39 @@ export class LoggingService {
    */
   async initialize(): Promise<void> {
     try {
-      // Only initialize in production or when explicitly enabled
-      if (import.meta.env.PROD || import.meta.env.VITE_ENABLE_ANALYTICS === 'true') {
-        const { getAnalytics } = await import('firebase/analytics')
-        this.analytics = getAnalytics()
-        this.isInitialized = true
-        
-        // Process queued events
-        this.processEventQueue()
-        
-        console.log('📊 Logging service initialized')
-      } else {
-        console.log('📊 Logging service initialized (development mode - events logged to console)')
-        this.isInitialized = true
+      // Add analytics kill switch for better environment control
+      const analyticsEnabled =
+        (import.meta.env.PROD && import.meta.env.VITE_ENABLE_ANALYTICS !== 'false') ||
+        import.meta.env.VITE_ENABLE_ANALYTICS === 'true';
+
+      if (!analyticsEnabled) {
+        this.isInitialized = true;
+        console.log('📊 Logging service initialized (analytics disabled for this env)');
+        return;
       }
+
+      // Add measurement ID validation
+      const measurementId = import.meta.env.VITE_FIREBASE_MEASUREMENT_ID;
+      if (!measurementId || /^G-?X{4,}$/i.test(measurementId)) {
+        this.isInitialized = true;
+        this.analytics = null;
+        console.warn('📊 Analytics skipped: missing or placeholder VITE_FIREBASE_MEASUREMENT_ID');
+        return;
+      }
+
+      const { getAnalytics } = await import('firebase/analytics')
+      this.analytics = getAnalytics()
+      this.isInitialized = true
+      
+      // Process queued events
+      this.processEventQueue()
+      
+      console.log('📊 Logging service initialized (analytics ON)')
     } catch (error) {
-      errorService.logError(error as Error, {
-        component: 'LoggingService',
-        severity: 'medium',
-        category: 'unknown',
-        showToast: false,
-      })
+      // DO NOT call errorService here to avoid feedback loops
+      console.warn('📊 Logging service init failed; analytics OFF:', error);
+      this.isInitialized = true;
+      this.analytics = null;
     }
   }
 
@@ -63,37 +83,47 @@ export class LoggingService {
    * Log a custom event
    */
   logEvent(eventName: string, parameters: Record<string, any> = {}): void {
-    const event: LogEvent = {
-      name: eventName,
-      parameters: {
-        ...parameters,
-        timestamp: new Date().toISOString(),
-        page_url: window.location.href,
-        page_title: document.title,
-      },
-      userId: this.getCurrentUserId(),
-      timestamp: new Date(),
+    // Prevent infinite recursion
+    if (this.isLogging) {
+      return
     }
+    
+    this.isLogging = true
+    
+    try {
+      const event: LogEvent = {
+        name: eventName,
+        parameters: {
+          ...parameters,
+          timestamp: new Date().toISOString(),
+          page_url: window.location.href,
+          page_title: document.title,
+        },
+        userId: this.getCurrentUserId(),
+        timestamp: new Date(),
+      }
 
-    if (this.isInitialized && this.analytics) {
-      try {
-        logEvent(this.analytics, eventName, event.parameters)
-      } catch (error) {
-        errorService.logError(error as Error, {
-          component: 'LoggingService',
-          severity: 'low',
-          category: 'unknown',
-          showToast: false,
-        })
+      if (this.isInitialized && this.analytics) {
+        try {
+          firebaseLogEvent(this.analytics, eventName, event.parameters)
+        } catch (error) {
+          // Don't use errorService here to avoid infinite loops
+          console.warn('Failed to log event:', error)
+        }
+      } else {
+        // Queue event if not initialized
+        this.addToQueue(event)
+        
+        // Log to console in development
+        if (import.meta.env.DEV) {
+          console.log('📊 Event logged:', event)
+        }
       }
-    } else {
-      // Queue event if not initialized
-      this.addToQueue(event)
-      
-      // Log to console in development
-      if (import.meta.env.DEV) {
-        console.log('📊 Event logged:', event)
-      }
+    } catch (error) {
+      // Silent fail to prevent infinite loops
+      console.warn('Error in logging service:', error)
+    } finally {
+      this.isLogging = false
     }
   }
 
@@ -103,8 +133,9 @@ export class LoggingService {
   async setUserProperties(properties: UserProperties): Promise<void> {
     if (this.isInitialized && this.analytics) {
       try {
-        await setUserProperties(this.analytics, properties)
+        await fbSetUserProperties(this.analytics, properties)
       } catch (error) {
+        // OK to use errorService here (logger isn't involved)
         errorService.logError(error as Error, {
           component: 'LoggingService',
           severity: 'low',
@@ -119,16 +150,15 @@ export class LoggingService {
    * Set user ID
    */
   async setUserId(userId: string): Promise<void> {
+    // Update cached user ID
+    this.cachedUserId = userId
+    this.userIdCacheTime = Date.now()
+    
     if (this.isInitialized && this.analytics) {
       try {
-        await setUserId(this.analytics, userId)
+        await fbSetUserId(this.analytics, userId)
       } catch (error) {
-        errorService.logError(error as Error, {
-          component: 'LoggingService',
-          severity: 'low',
-          category: 'unknown',
-          showToast: false,
-        })
+        console.warn('Failed to set user ID:', error)
       }
     }
   }
@@ -238,14 +268,31 @@ export class LoggingService {
   }
 
   /**
-   * Get current user ID
+   * Get current user ID with caching to prevent infinite loops
    */
   private getCurrentUserId(): string | undefined {
+    // SAFE: Don't call getAuth() during logging operations to prevent recursion
+    if (this.isLogging) {
+      return this.cachedUserId // Return cached value or undefined
+    }
+    
+    // Return cached user ID if still valid
+    if (this.cachedUserId && (Date.now() - this.userIdCacheTime) < this.userIdCacheTimeout) {
+      return this.cachedUserId
+    }
+    
     try {
       const auth = getAuth()
-      return auth.currentUser?.uid
+      const userId = auth.currentUser?.uid
+      
+      // Cache the user ID
+      this.cachedUserId = userId
+      this.userIdCacheTime = Date.now()
+      
+      return userId
     } catch {
-      return undefined
+      // Return cached value if available, even if expired
+      return this.cachedUserId
     }
   }
 
@@ -265,13 +312,14 @@ export class LoggingService {
    * Process queued events
    */
   private processEventQueue(): void {
+    if (!this.analytics) return; // Add safety guard
     if (this.eventQueue.length === 0) return
 
     console.log(`📊 Processing ${this.eventQueue.length} queued events`)
     
     this.eventQueue.forEach(event => {
       try {
-        logEvent(this.analytics, event.name, event.parameters)
+        firebaseLogEvent(this.analytics, event.name, event.parameters)
       } catch (error) {
         console.error('Failed to process queued event:', error)
       }
@@ -292,6 +340,14 @@ export class LoggingService {
    */
   clearEventQueue(): void {
     this.eventQueue = []
+  }
+
+  /**
+   * Clear user ID cache (call when user logs out)
+   */
+  clearUserCache(): void {
+    this.cachedUserId = undefined
+    this.userIdCacheTime = 0
   }
 }
 
