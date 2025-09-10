@@ -16,6 +16,7 @@ export class ErrorService {
   private static instance: ErrorService
   private errorQueue: ErrorInfo[] = []
   private maxQueueSize = 100
+  private isLogging = false // Prevent infinite recursion
 
   static getInstance(): ErrorService {
     if (!ErrorService.instance) {
@@ -38,24 +39,38 @@ export class ErrorService {
       customMessage?: string
     } = {}
   ): void {
-    const errorInfo = this.createErrorInfo(error, context)
-    
-    // Add to queue
-    this.addToQueue(errorInfo)
-    
-    // Show user notification if requested
-    if (context.showToast !== false) {
-      this.showUserNotification(errorInfo, context.customMessage)
+    // Prevent infinite recursion
+    if (this.isLogging) {
+      return
     }
     
-    // Log to console in development
-    if (import.meta.env.DEV) {
-      console.error('🚨 Error logged:', errorInfo)
-    }
+    this.isLogging = true
     
-    // Send to external service in production
-    if (import.meta.env.PROD) {
-      this.sendToExternalService(errorInfo)
+    try {
+      const errorInfo = this.createErrorInfo(error, context)
+      
+      // Add to queue
+      this.addToQueue(errorInfo)
+      
+      // Show user notification if requested
+      if (context.showToast !== false) {
+        this.showUserNotification(errorInfo, context.customMessage)
+      }
+      
+      // Log to console in development
+      if (import.meta.env.DEV) {
+        console.error('🚨 Error logged:', errorInfo)
+      }
+      
+      // Send to external service in production
+      if (import.meta.env.PROD) {
+        this.sendToExternalService(errorInfo)
+      }
+    } catch (e) {
+      // Silent fail to prevent infinite loops
+      console.warn('Error in error service:', e)
+    } finally {
+      this.isLogging = false
     }
   }
 
@@ -295,8 +310,23 @@ export class ErrorService {
 
   private sendToExternalService(errorInfo: ErrorInfo): void {
     // In production, send to external service like Sentry, LogRocket, etc.
-    // For now, we'll just log to console
-    console.error('Production error:', errorInfo)
+    // For now, we'll just log to console with a different method to avoid infinite loops
+    try {
+      // Use a different logging method to avoid infinite recursion
+      if (typeof window !== 'undefined' && window.console) {
+        // Use console.warn instead of console.error to avoid potential loops
+        console.warn('Production error:', {
+          message: errorInfo.message,
+          code: errorInfo.code,
+          component: errorInfo.component,
+          severity: errorInfo.severity,
+          category: errorInfo.category,
+          timestamp: errorInfo.timestamp
+        })
+      }
+    } catch (e) {
+      // Silent fail to prevent infinite loops
+    }
     
     // Example: Send to Firebase Analytics
     // analytics.logEvent('error_occurred', {

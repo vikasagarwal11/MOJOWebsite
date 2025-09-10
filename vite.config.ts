@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     // Temporarily disabled PWA to fix caching issues
@@ -81,5 +81,12 @@ export default defineConfig({
     port: 5175, // Use port 5175 (current running port)
     strictPort: false, // Allow port fallback
     open: false // Don't auto-open browser
-  }
-});
+  },
+  define: {
+    // Define environment variables for different modes
+    __APP_ENV__: JSON.stringify(mode)
+  },
+  // Load environment variables based on mode
+  envDir: '.',
+  envPrefix: 'VITE_'
+}));

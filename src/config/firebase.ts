@@ -12,19 +12,23 @@ import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 import { getPerformance } from 'firebase/performance';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'demo-api-key',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'demo-project.firebaseapp.com',
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || 'https://demo-project-default-rtdb.firebaseio.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'demo-project',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'demo-project.appspot.com',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '123456789',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:123456789:web:abcdef',
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-XXXXXXXXXX',
 };
 
-// Helpful runtime check
-for (const [k, v] of Object.entries(firebaseConfig)) {
-  if (!v) console.warn(`[Firebase] Missing env: ${k}`);
+// Helpful runtime check - only warn in development
+if (import.meta.env.DEV) {
+  for (const [k, v] of Object.entries(firebaseConfig)) {
+    if (!v || v.includes('demo-') || v.includes('your_') || v === '123456789' || v === 'G-XXXXXXXXXX') {
+      console.warn(`[Firebase] Using placeholder value for: ${k}`);
+    }
+  }
 }
 
 // Flag to control local emulators (set VITE_USE_EMULATORS=true in .env.local)
@@ -33,7 +37,11 @@ export const USING_EMULATORS = import.meta.env.VITE_USE_EMULATORS === 'true';
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 // ✅ Firestore with persistent local cache (multi-tab)
+// Use different database based on environment
+const databaseId = import.meta.env.VITE_FIREBASE_DATABASE_ID || '(default)';
+
 export const db = initializeFirestore(app, {
+  databaseId,
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager(),
     // Set cache size to prevent SDK compatibility issues

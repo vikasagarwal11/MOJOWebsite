@@ -6,13 +6,21 @@ export function setupGlobalErrorHandling() {
   window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason)
     
-    errorService.logError(event.reason, {
-      component: 'GlobalErrorHandler',
-      severity: 'high',
-      category: 'unknown',
-      showToast: true,
-      customMessage: 'An unexpected error occurred. Please try again.',
-    })
+    // Only log if it's not a stack overflow error to prevent infinite loops
+    if (!(event.reason instanceof Error && event.reason.message.includes('Maximum call stack size exceeded'))) {
+      try {
+        errorService.logError(event.reason, {
+          component: 'GlobalErrorHandler',
+          severity: 'high',
+          category: 'unknown',
+          showToast: true,
+          customMessage: 'An unexpected error occurred. Please try again.',
+        })
+      } catch (e) {
+        // Silent fail to prevent infinite loops
+        console.warn('Failed to log error:', e)
+      }
+    }
     
     // Prevent the default browser behavior
     event.preventDefault()
@@ -22,13 +30,21 @@ export function setupGlobalErrorHandling() {
   window.addEventListener('error', (event) => {
     console.error('Uncaught error:', event.error)
     
-    errorService.logError(event.error, {
-      component: 'GlobalErrorHandler',
-      severity: 'high',
-      category: 'unknown',
-      showToast: true,
-      customMessage: 'An unexpected error occurred. Please refresh the page.',
-    })
+    // Only log if it's not a stack overflow error to prevent infinite loops
+    if (!(event.error instanceof Error && event.error.message.includes('Maximum call stack size exceeded'))) {
+      try {
+        errorService.logError(event.error, {
+          component: 'GlobalErrorHandler',
+          severity: 'high',
+          category: 'unknown',
+          showToast: true,
+          customMessage: 'An unexpected error occurred. Please refresh the page.',
+        })
+      } catch (e) {
+        // Silent fail to prevent infinite loops
+        console.warn('Failed to log error:', e)
+      }
+    }
   })
 
   // Handle Firebase errors globally
