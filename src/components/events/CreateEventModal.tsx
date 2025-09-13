@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, Calendar, Clock, MapPin, Users, FileText, Tag, QrCode, DollarSign } from 'lucide-react';
+import { X, Calendar, Clock, MapPin, Users, FileText, Tag, QrCode, DollarSign, Search, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStorage } from '../../hooks/useStorage';
 import { addDoc, collection, doc, updateDoc, serverTimestamp, query, where, limit, getDocs, Timestamp } from 'firebase/firestore';
@@ -35,7 +35,8 @@ const eventSchema = z.object({
   endTime: z.string().optional(),
   endDate: z.string().optional(),
   isAllDay: z.boolean().optional(),
-  location: z.string().min(1, 'Location is required'), // Keep for backward compatibility
+  duration: z.string().optional(), // Duration in hours
+  location: z.string().optional(), // Optional for backward compatibility
   venueName: z.string().optional(),
   venueAddress: z.string().optional(),
   maxAttendees: z.string().optional(),
@@ -50,6 +51,23 @@ const eventSchema = z.object({
   currency: z.string().optional(),
   refundAllowed: z.boolean().optional(),
   refundDeadline: z.string().optional(),
+}).refine((data) => {
+  // Custom validation for timed events
+  if (!data.isAllDay) {
+    if (!data.endTime || !data.endDate) {
+      return false;
+    }
+    
+    // Check if end time is after start time
+    const startDateTime = new Date(`${data.date}T${data.time}`);
+    const endDateTime = new Date(`${data.endDate}T${data.endTime}`);
+    
+    return endDateTime > startDateTime;
+  }
+  return true;
+}, {
+  message: "For timed events, end date and time are required and must be after start time",
+  path: ["endTime"]
 });
 
 type EventFormData = z.infer<typeof eventSchema>;
@@ -74,8 +92,23 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [imageRemoved, setImageRemoved] = useState(false); // Track if image was removed
+  const [isManuallyOverridden, setIsManuallyOverridden] = useState(false); // Track if end date/time are manually overridden
   // Payment state
   const [requiresPayment, setRequiresPayment] = useState(false);
+  
+  // Address autocomplete state
+  const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
+  const [isAddressLoading, setIsAddressLoading] = useState(false);
+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
+  const [isVenueResolving, setIsVenueResolving] = useState(false);
+  
+  // Venue name autocomplete state
+  const [venueSuggestions, setVenueSuggestions] = useState<any[]>([]);
+  const [isVenueLoading, setIsVenueLoading] = useState(false);
+  const [showVenueSuggestions, setShowVenueSuggestions] = useState(false);
+  
+  const addressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const addressAbortControllerRef = useRef<AbortController | null>(null);
 
   const isEditing = !!eventToEdit;
 
@@ -90,6 +123,23 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     setUserSearchQuery('');
     setSearchResults([]);
     setEventVisibility('public');
+    
+    // Cleanup address autocomplete
+    setAddressSuggestions([]);
+    setShowAddressSuggestions(false);
+    setIsVenueResolving(false);
+    
+    // Cleanup venue suggestions
+    setVenueSuggestions([]);
+    setShowVenueSuggestions(false);
+    
+    if (addressTimeoutRef.current) {
+      clearTimeout(addressTimeoutRef.current);
+    }
+    if (addressAbortControllerRef.current) {
+      addressAbortControllerRef.current.abort();
+    }
+    
     onClose();
   };
 
@@ -114,12 +164,75 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     refundAllowed: eventToEdit.pricing?.refundPolicy?.allowed === true,
   } : {
     isAllDay: false, // Default to false for new events
+    duration: '1', // Default 1 hour duration
     attendanceEnabled: false, // Default to false for new events
     requiresPayment: false, // Default to free events
     currency: 'USD', // Default currency
     refundAllowed: false, // Default no refunds
   },
 });
+
+// Watch form values for smart defaults
+const watchedDate = watch('date');
+const watchedTime = watch('time');
+const watchedEndTime = watch('endTime');
+const watchedEndDate = watch('endDate');
+const watchedIsAllDay = watch('isAllDay');
+const watchedDuration = watch('duration');
+
+// Smart defaults: Set end date to start date when start date changes
+useEffect(() => {
+  if (watchedDate && !watchedEndDate && !isEditing) {
+    setValue('endDate', watchedDate);
+  }
+}, [watchedDate, watchedEndDate, setValue, isEditing]);
+
+// Smart defaults: Set end time to start time + 1 hour when start time changes
+useEffect(() => {
+  if (watchedTime && !watchedEndTime && !isEditing) {
+    const [hours, minutes] = watchedTime.split(':').map(Number);
+    const endTime = new Date();
+    endTime.setHours(hours + 1, minutes, 0, 0);
+    const endTimeString = endTime.toTimeString().slice(0, 5);
+    setValue('endTime', endTimeString);
+  }
+}, [watchedTime, watchedEndTime, setValue, isEditing]);
+
+// Clear end date/time when switching to all-day
+useEffect(() => {
+  if (watchedIsAllDay) {
+    setValue('endTime', '');
+    setValue('endDate', '');
+    setValue('duration', '');
+  }
+}, [watchedIsAllDay, setValue]);
+
+// Duration calculation: Auto-calculate end time when duration changes
+useEffect(() => {
+  if (watchedDuration && watchedDate && watchedTime && !watchedIsAllDay && !isEditing) {
+    const durationHours = parseFloat(watchedDuration);
+    if (!isNaN(durationHours) && durationHours > 0) {
+      const [hours, minutes] = watchedTime.split(':').map(Number);
+      const startDateTime = new Date();
+      startDateTime.setHours(hours, minutes, 0, 0);
+      
+      // Add duration
+      const endDateTime = new Date(startDateTime.getTime() + (durationHours * 60 * 60 * 1000));
+      
+      // Format end time
+      const endTimeString = endDateTime.toTimeString().slice(0, 5);
+      
+      // Check if we need to move to next day
+      const endDate = new Date(watchedDate);
+      if (endDateTime.getHours() < hours || (endDateTime.getHours() === hours && endDateTime.getMinutes() < minutes)) {
+        endDate.setDate(endDate.getDate() + 1);
+      }
+      
+      setValue('endTime', endTimeString);
+      setValue('endDate', endDate.toISOString().split('T')[0]);
+    }
+  }
+}, [watchedDuration, watchedDate, watchedTime, watchedIsAllDay, setValue, isEditing]);
 
   // Load existing event data for editing
   useEffect(() => {
@@ -205,6 +318,208 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const addTag = (raw: string) => {
     const t = raw.trim().toLowerCase().replace(/\s+/g, '-');
     if (t && !tags.includes(t)) setTags([...tags, t]);
+  };
+
+  // Address autocomplete functions - Using FREE OpenStreetMap Nominatim API
+  const searchAddresses = async (query: string) => {
+    if (!query || query.length < 3) {
+      setAddressSuggestions([]);
+      setShowAddressSuggestions(false);
+      return;
+    }
+
+    // Cancel previous request
+    if (addressAbortControllerRef.current) {
+      addressAbortControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    addressAbortControllerRef.current = controller;
+
+    setIsAddressLoading(true);
+
+    try {
+      // Use FREE OpenStreetMap Nominatim API
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=us&limit=8&addressdetails=1&extratags=1`,
+        { 
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'MomsFitnessMojo/1.0'
+          }
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setAddressSuggestions(data.map((item: any, index: number) => ({
+          id: `osm_${index}`,
+          description: item.display_name,
+          mainText: item.name || item.display_name.split(',')[0],
+          secondaryText: item.display_name.split(',').slice(1).join(',').trim(),
+          type: 'osm',
+          lat: item.lat,
+          lon: item.lon,
+          category: item.category || 'address'
+        })));
+        setShowAddressSuggestions(true);
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.error('Address search error:', error);
+        setAddressSuggestions([]);
+      }
+    } finally {
+      setIsAddressLoading(false);
+    }
+  };
+
+  const handleAddressInput = (value: string) => {
+    setValue('venueAddress', value);
+    
+    // Clear previous timeout
+    if (addressTimeoutRef.current) {
+      clearTimeout(addressTimeoutRef.current);
+    }
+
+    // Set new timeout for debounced search
+    addressTimeoutRef.current = setTimeout(() => {
+      searchAddresses(value);
+    }, 300);
+  };
+
+  const selectAddress = (suggestion: any) => {
+    setValue('venueAddress', suggestion.description);
+    setShowAddressSuggestions(false);
+    setAddressSuggestions([]);
+  };
+
+  // Auto-resolve address from venue name
+  const resolveVenueAddress = async (venueName: string) => {
+    if (!venueName || venueName.length < 3) {
+      setIsVenueResolving(false);
+      return;
+    }
+
+    // Cancel previous request
+    if (addressAbortControllerRef.current) {
+      addressAbortControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    addressAbortControllerRef.current = controller;
+
+    setIsVenueResolving(true);
+
+    try {
+      // Search for the venue name specifically
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(venueName)}&countrycodes=us&limit=1&addressdetails=1&extratags=1&class=amenity`,
+        { 
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'MomsFitnessMojo/1.0'
+          }
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.length > 0) {
+          const venue = data[0];
+          const address = venue.display_name;
+          setValue('venueAddress', address);
+          
+          // Show a brief success message
+          toast.success(`📍 Address found: ${venue.name || venueName}`);
+        } else {
+          // No venue found, show helpful message
+          toast.info(`No address found for "${venueName}". Try typing the address manually.`);
+        }
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.log('Venue address resolution failed:', error);
+        // Don't show error to user, just silently fail
+      }
+    } finally {
+      setIsVenueResolving(false);
+    }
+  };
+
+  // Search for venue suggestions
+  const searchVenues = async (query: string) => {
+    if (!query || query.length < 3) {
+      setVenueSuggestions([]);
+      setShowVenueSuggestions(false);
+      return;
+    }
+
+    // Cancel previous request
+    if (addressAbortControllerRef.current) {
+      addressAbortControllerRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    addressAbortControllerRef.current = controller;
+
+    setIsVenueLoading(true);
+
+    try {
+      // Search for venues/businesses
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=us&limit=5&addressdetails=1&extratags=1&class=amenity&type=business`,
+        { 
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'MomsFitnessMojo/1.0'
+          }
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setVenueSuggestions(data.map((item: any, index: number) => ({
+          id: `venue_${index}`,
+          name: item.name || item.display_name.split(',')[0],
+          address: item.display_name,
+          type: item.type || 'venue',
+          category: item.category || 'business',
+          lat: item.lat,
+          lon: item.lon
+        })));
+        setShowVenueSuggestions(true);
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        console.error('Venue search error:', error);
+        setVenueSuggestions([]);
+      }
+    } finally {
+      setIsVenueLoading(false);
+    }
+  };
+
+  const selectVenue = (venue: any) => {
+    setValue('venueName', venue.name);
+    setValue('venueAddress', venue.address);
+    setShowVenueSuggestions(false);
+    setVenueSuggestions([]);
+    toast.success(`📍 Venue selected: ${venue.name}`);
+  };
+
+  const handleVenueNameInput = (value: string) => {
+    setValue('venueName', value);
+    
+    // Clear previous timeout
+    if (addressTimeoutRef.current) {
+      clearTimeout(addressTimeoutRef.current);
+    }
+
+    // Set new timeout for debounced venue search
+    addressTimeoutRef.current = setTimeout(() => {
+      searchVenues(value);
+    }, 300); // 300ms delay for venue search
   };
 
   // Search users for invitation
@@ -493,100 +808,176 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
             />
             {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  {...register('date')}
-                  type="date"
-                  disabled={isLoading}
-                  className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.date ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
-                />
-              </div>
-              {errors.date && <p className="mt-1 text-sm text-red-600">{errors.date.message}</p>}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Start Time</label>
-              <div className="relative">
-                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  {...register('time')}
-                  type="time"
-                  disabled={isLoading}
-                  className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.time ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
-                />
-              </div>
-              {errors.time && <p className="mt-1 text-sm text-red-600">{errors.time.message}</p>}
-            </div>
-          </div>
-          
-          {/* All Day Event Option */}
-          <div className="space-y-3">
+          {/* Event Start, Type & Duration - All in One Compact Row */}
+          <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-gray-500" />
-              <h3 className="text-sm font-medium text-gray-700">Event Type</h3>
+              <Calendar className="w-5 h-5 text-[#F25129]" />
+              <h3 className="text-sm font-medium text-gray-700">Event Details</h3>
             </div>
-            <div className="flex items-center gap-3">
-              <input
-                {...register('isAllDay')}
-                type="checkbox"
-                id="isAllDay"
-                disabled={isLoading}
-                className="w-4 h-4 text-[#F25129] border-gray-300 rounded focus:ring-[#F25129]"
-              />
-              <label htmlFor="isAllDay" className="text-sm font-medium text-gray-700">
-                All Day Event
-              </label>
-            </div>
-            <p className="text-xs text-gray-500">
-              Check this for events that span entire days (like conferences, workshops, or multi-day events)
-            </p>
-          </div>
-
-          {/* End Time and Date Section - Only show when not all-day */}
-          {!watch('isAllDay') && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-gray-500" />
-                <h3 className="text-sm font-medium text-gray-700">Event Duration</h3>
-              </div>
-              <p className="text-xs text-gray-500 mb-3">
-                Set end time and optionally end date for timed events. Leave end date empty for same-day events.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">End Time (Optional)</label>
-                  <div className="relative">
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      {...register('endTime')}
-                      type="time"
-                      disabled={isLoading}
-                      className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.endTime ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
-                      placeholder="End time"
-                    />
-                  </div>
+            
+            {/* Two-Row Layout: Start/End aligned, All Day/Duration on right */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+              {/* Row 1: Start Date & Time */}
+              <div className="lg:col-span-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
+                <div className="relative">
+                  <Calendar className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    {...register('date')}
+                    type="date"
+                    disabled={isLoading}
+                    className={`w-full pl-8 pr-3 py-2 text-sm rounded-lg border ${errors.date ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
+                  />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">End Date (Optional)</label>
+                {errors.date && <p className="mt-1 text-xs text-red-600">{errors.date.message}</p>}
+              </div>
+              
+              <div className="lg:col-span-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Start Time</label>
+                <div className="relative">
+                  <Clock className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    {...register('time')}
+                    type="time"
+                    disabled={isLoading}
+                    className={`w-full pl-8 pr-3 py-2 text-sm rounded-lg border ${errors.time ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
+                  />
+                </div>
+                {errors.time && <p className="mt-1 text-xs text-red-600">{errors.time.message}</p>}
+              </div>
+              
+              {/* All Day Event Checkbox */}
+              <div className="lg:col-span-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Event Type</label>
+                <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-200 h-[40px]">
+                  <input
+                    {...register('isAllDay')}
+                    type="checkbox"
+                    id="isAllDay"
+                    disabled={isLoading}
+                    className="w-4 h-4 text-[#F25129] border-gray-300 rounded focus:ring-[#F25129]"
+                  />
+                  <label htmlFor="isAllDay" className="text-xs font-medium text-gray-700 cursor-pointer">
+                    All Day
+                  </label>
+                </div>
+              </div>
+              
+              {/* Duration Field - Only show when not all-day */}
+              {!watchedIsAllDay && (
+                <div className="lg:col-span-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Duration</label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Clock className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        {...register('duration')}
+                        type="number"
+                        min="0.5"
+                        max="168"
+                        step="0.5"
+                        disabled={isLoading}
+                        className={`w-full pl-8 pr-3 py-2 text-sm rounded-lg border ${errors.duration ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
+                        placeholder="1"
+                      />
+                    </div>
+                    <span className="text-xs text-gray-500 font-medium whitespace-nowrap">hrs</span>
+                  </div>
+                  {errors.duration && <p className="mt-1 text-xs text-red-600">{errors.duration.message}</p>}
+                </div>
+              )}
+            </div>
+            
+            {/* Row 2: End Date & Time - Aligned with Start fields */}
+            {!watch('isAllDay') && (
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 mt-3">
+                <div className="lg:col-span-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">End Date</label>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <Calendar className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       {...register('endDate')}
                       type="date"
                       disabled={isLoading}
-                      className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.endDate ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
-                      placeholder="End date"
+                      onChange={(e) => {
+                        setIsManuallyOverridden(true);
+                        register('endDate').onChange(e);
+                      }}
+                      className={`w-full pl-8 pr-3 py-2 text-sm rounded-lg border ${errors.endDate ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
                     />
                   </div>
-                  <p className="mt-1 text-xs text-gray-500">Leave empty for same-day events</p>
+                  {errors.endDate && <p className="mt-1 text-xs text-red-600">{errors.endDate.message}</p>}
                 </div>
+                
+                <div className="lg:col-span-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">End Time</label>
+                  <div className="relative">
+                    <Clock className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      {...register('endTime')}
+                      type="time"
+                      disabled={isLoading}
+                      onChange={(e) => {
+                        setIsManuallyOverridden(true);
+                        register('endTime').onChange(e);
+                      }}
+                      className={`w-full pl-8 pr-3 py-2 text-sm rounded-lg border ${errors.endTime ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
+                    />
+                  </div>
+                  {errors.endTime && <p className="mt-1 text-xs text-red-600">{errors.endTime.message}</p>}
+                </div>
+                
+                {/* Empty space for alignment */}
+                <div className="lg:col-span-2"></div>
               </div>
+            )}
+            
+          </div>
+
+          {/* Manual Override Indicator - Only show when not all-day */}
+          {!watch('isAllDay') && isManuallyOverridden && (
+            <div className="p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-yellow-600" />
+                  <span className="text-sm font-medium text-yellow-800">Manual Override</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsManuallyOverridden(false);
+                    // Recalculate from duration
+                    if (watchedDuration && watchedDate && watchedTime) {
+                      const durationHours = parseFloat(watchedDuration);
+                      if (!isNaN(durationHours) && durationHours > 0) {
+                        const [hours, minutes] = watchedTime.split(':').map(Number);
+                        const startDateTime = new Date();
+                        startDateTime.setHours(hours, minutes, 0, 0);
+                        
+                        const endDateTime = new Date(startDateTime.getTime() + (durationHours * 60 * 60 * 1000));
+                        const endTimeString = endDateTime.toTimeString().slice(0, 5);
+                        
+                        const endDate = new Date(watchedDate);
+                        if (endDateTime.getHours() < hours || (endDateTime.getHours() === hours && endDateTime.getMinutes() < minutes)) {
+                          endDate.setDate(endDate.getDate() + 1);
+                        }
+                        
+                        setValue('endTime', endTimeString);
+                        setValue('endDate', endDate.toISOString().split('T')[0]);
+                      }
+                    }
+                  }}
+                  className="text-xs text-yellow-700 hover:text-yellow-800 underline"
+                >
+                  Reset to Auto
+                </button>
+              </div>
+              <p className="text-xs text-yellow-700 mt-1">
+                End date/time manually set. Duration field ignored.
+              </p>
             </div>
           )}
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-gray-700 mb-2">Venue Name (Optional)</label>
             <div className="relative">
               <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -594,13 +985,63 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                 {...register('venueName')}
                 type="text"
                 disabled={isLoading}
-                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.venueName ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
-                placeholder="e.g., Short Hills Racquet Club"
+                onChange={(e) => handleVenueNameInput(e.target.value)}
+                onFocus={() => {
+                  if (venueSuggestions.length > 0) {
+                    setShowVenueSuggestions(true);
+                  }
+                }}
+                onBlur={() => {
+                  // Delay hiding suggestions to allow clicking on them
+                  setTimeout(() => setShowVenueSuggestions(false), 200);
+                }}
+                className={`w-full pl-10 pr-10 py-3 rounded-lg border ${errors.venueName ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
+                placeholder="Start typing venue name..."
+                autoComplete="off"
               />
+              {isVenueLoading && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#F25129] animate-spin" />
+              )}
+              {!isVenueLoading && watch('venueName') && (
+                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              )}
             </div>
+            
+            {/* Venue Suggestions Dropdown */}
+            {showVenueSuggestions && venueSuggestions.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                {venueSuggestions.map((venue) => (
+                  <button
+                    key={venue.id}
+                    type="button"
+                    onClick={() => selectVenue(venue)}
+                    className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 focus:outline-none focus:bg-gray-50"
+                  >
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">
+                          {venue.name}
+                        </div>
+                        <div className="text-xs text-gray-500 truncate">
+                          {venue.address}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {venue.category === 'amenity' ? '📍' : '🏢'}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            
+            <p className="text-xs text-gray-500 mt-1">
+              💡 Select a venue from suggestions to auto-fill both name and address
+            </p>
             {errors.venueName && <p className="mt-1 text-sm text-red-600">{errors.venueName.message}</p>}
           </div>
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-gray-700 mb-2">Address (Optional)</label>
             <div className="relative">
               <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -608,26 +1049,60 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
                 {...register('venueAddress')}
                 type="text"
                 disabled={isLoading}
-                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.venueAddress ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
-                placeholder="e.g., 123 Main St, Short Hills, NJ 07078"
+                onChange={(e) => handleAddressInput(e.target.value)}
+                onFocus={() => {
+                  if (addressSuggestions.length > 0) {
+                    setShowAddressSuggestions(true);
+                  }
+                }}
+                onBlur={() => {
+                  // Delay hiding suggestions to allow clicking on them
+                  setTimeout(() => setShowAddressSuggestions(false), 200);
+                }}
+                className={`w-full pl-10 pr-10 py-3 rounded-lg border ${errors.venueAddress ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
+                placeholder="Start typing address..."
+                autoComplete="off"
               />
+              {isAddressLoading && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
+              )}
+              {!isAddressLoading && watch('venueAddress') && (
+                <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              )}
             </div>
+            
+            {/* Address Suggestions Dropdown - Fixed positioning */}
+            {showAddressSuggestions && addressSuggestions.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                {addressSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.id}
+                    type="button"
+                    onClick={() => selectAddress(suggestion)}
+                    className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 focus:outline-none focus:bg-gray-50"
+                  >
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">
+                          {suggestion.mainText}
+                        </div>
+                        {suggestion.secondaryText && (
+                          <div className="text-xs text-gray-500 truncate">
+                            {suggestion.secondaryText}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {suggestion.category === 'amenity' ? '📍' : '🏠'}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            
             {errors.venueAddress && <p className="mt-1 text-sm text-red-600">{errors.venueAddress.message}</p>}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Location (Fallback)</label>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                {...register('location')}
-                type="text"
-                disabled={isLoading}
-                className={`w-full pl-10 pr-4 py-3 rounded-lg border ${errors.location ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
-                placeholder="Enter event location (used if venue name/address not provided)"
-              />
-            </div>
-            {errors.location && <p className="mt-1 text-sm text-red-600">{errors.location.message}</p>}
-            <p className="mt-1 text-xs text-gray-500">Use this if you don't have a specific venue name and address</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Tags (Optional)</label>
@@ -669,7 +1144,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
               </div>
             </div>
             <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Event Image (Optional)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Event Image (Optional)</label>
               
               {/* Current Image Display (when editing) */}
               {isEditing && eventToEdit?.imageUrl && (
