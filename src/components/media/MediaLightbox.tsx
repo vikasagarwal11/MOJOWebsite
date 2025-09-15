@@ -6,6 +6,7 @@ import { useSwipe } from '../../hooks/useSwipe';
 import { getDownloadURL, ref } from 'firebase/storage';
 import { storage } from '../../config/firebase';
 import { attachHls, detachHls } from '../../utils/hls';
+import { useImageOrientation } from '../../utils/imageOrientation';
 
 type Props = {
   item: any;
@@ -34,6 +35,7 @@ export default function MediaLightbox({
   const [scale, setScale] = useState(1);
   const [isMuted, setIsMuted] = useState(false); // Audio state for videos - start unmuted for better UX
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const { correctImageOrientation } = useImageOrientation();
 
   // DEBUG: Log component props and state
   console.log('🔍 MediaLightbox DEBUG:', {
@@ -360,6 +362,7 @@ export default function MediaLightbox({
                   alt={item.title || ''}
                   className="max-h-[85vh] max-w-[85vw] rounded-2xl object-contain"
                   draggable={false}
+                  onLoad={(e) => correctImageOrientation(e.currentTarget)}
                 />
               )}
             </TransformComponent>

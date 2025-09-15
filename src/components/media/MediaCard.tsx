@@ -12,10 +12,12 @@ import { getDownloadURL, ref } from 'firebase/storage';
 import { storage } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '../ConfirmDialog';
+import { useImageOrientation } from '../../utils/imageOrientation';
 
 export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>void }) {
   const { currentUser } = useAuth();
   const canEngage = !!currentUser && (currentUser.role === 'member' || currentUser.role === 'admin');
+  const { correctImageOrientation } = useImageOrientation();
 
   const [liked, setLiked] = useState<boolean>(false);
   const [likesCount, setLikesCount] = useState<number>(media.likesCount ?? 0);
@@ -387,24 +389,17 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
           loading="lazy" 
           onDoubleClick={onDoubleTap} 
           onClick={onOpen}
+          onLoad={(e) => correctImageOrientation(e.currentTarget)}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
         />
       )
     );
-  }, [localMedia, onOpen, liked, thumbnailUrl, isThumbnailLoading]);
+  }, [localMedia, onOpen, liked, thumbnailUrl, isThumbnailLoading, correctImageOrientation]);
 
   return (
           <div className="bg-white/80 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-[#F25129]/20 group" data-media-card>
       <div className="relative aspect-square overflow-hidden">
         {previewEl}
-        {localMedia.eventTitle && (
-          <div className="absolute top-3 left-3">
-            <div className="flex items-center px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-sm font-medium text-[#F25129] border border-[#F25129]/30">
-              <Tag className="w-3 h-3 mr-1" />
-              {localMedia.eventTitle}
-            </div>
-          </div>
-        )}
         <div className="absolute top-3 right-3 flex gap-2">
           <button onClick={(e) => {
             e.stopPropagation();
@@ -449,6 +444,14 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
 
       <div className="p-4">
         <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{localMedia.title}</h3>
+        {localMedia.eventTitle && (
+          <div className="mb-2">
+            <div className="inline-flex items-center px-3 py-1 bg-[#F25129]/10 text-[#F25129] rounded-full text-sm font-medium border border-[#F25129]/20">
+              <Tag className="w-3 h-3 mr-1" />
+              {localMedia.eventTitle}
+            </div>
+          </div>
+        )}
         {localMedia.description && <p className="text-gray-600 text-sm mb-3 line-clamp-2">{localMedia.description}</p>}
 
         <div className="flex items-center justify-between text-sm text-gray-500 mb-3">

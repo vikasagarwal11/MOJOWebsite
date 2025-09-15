@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fix for mobile image orientation - respect EXIF data */
+img {
+  image-orientation: from-image;
+  -webkit-image-orientation: from-image;
+}
+
 /* Hide scrollbars utility */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
