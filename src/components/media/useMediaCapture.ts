@@ -42,6 +42,7 @@ export interface UseMediaCaptureReturn {
   capturePhoto: () => Promise<void>;
   releaseCamera: () => void;
   resetRecording: () => void;
+  refreshDevices: () => Promise<void>;
   applyZoom: (level: number) => Promise<void>;
   generateThumbnailFromUrl: (url: string) => Promise<void>;
 
@@ -64,7 +65,8 @@ export interface UseMediaCaptureReturn {
 
 export default function useMediaCapture(
   videoRef: React.RefObject<HTMLVideoElement>,
-  canvasRef: React.RefObject<HTMLCanvasElement>
+  canvasRef: React.RefObject<HTMLCanvasElement>,
+  currentMode: Mode = 'reel'
 ): UseMediaCaptureReturn {
   // Core state
   const [mediaBlob, setMediaBlob] = useState<Blob | null>(null);
@@ -104,6 +106,7 @@ export default function useMediaCapture(
   const startingRef = useRef(false);
   const reattachTimer = useRef<number | null>(null);
   const thumbnailBlobRef = useRef<Blob | null>(null);
+  const isFallbackModeRef = useRef(false);
 
   // ---- Permissions / devices ----
   const checkPermissions = useCallback(async () => {
@@ -128,6 +131,8 @@ export default function useMediaCapture(
       setDevices(vids);
       if (vids.length > 0 && !deviceId) setDeviceId(vids[0].deviceId);
       console.log('📷 Available cameras:', vids.length, vids);
+      console.log('📷 Current deviceId:', deviceId);
+      console.log('📷 Device labels:', vids.map(d => ({ id: d.deviceId, label: d.label })));
     } catch (e) {
       console.error('❌ enumerateDevices error', e);
     }
@@ -145,6 +150,8 @@ export default function useMediaCapture(
     }
   }, [devices]);
 
+  // Restart camera when deviceId changes - will be defined after startPreview
+
   // ---- Ready-state helpers ----
   const markReady = useCallback(() => {
     setStreamReady(true);
@@ -158,18 +165,23 @@ export default function useMediaCapture(
     const stream = streamRef.current;
     if (!stream) return;
 
-    // Wait briefly for the <video> to exist
+    // Wait for the <video> to exist with longer timeout
     const t0 = performance.now();
     while (!videoRef.current || !(videoRef.current instanceof HTMLVideoElement)) {
-      if (performance.now() - t0 > 1000) {
-        console.warn('[attachStreamToVideo] video element still not ready after 1s.');
-        break;
+      if (performance.now() - t0 > 3000) {
+        console.warn('[attachStreamToVideo] video element still not ready after 3s.');
+        return;
       }
-      await new Promise(r => setTimeout(r, 16));
+      await new Promise(r => setTimeout(r, 50));
     }
 
     const video = videoRef.current;
-    if (!video) return;
+    if (!video) {
+      console.warn('[attachStreamToVideo] video element not found after waiting');
+      return;
+    }
+
+    console.log('[attachStreamToVideo] video element found, attaching stream...');
 
     try {
       // Attach the stream
@@ -192,7 +204,7 @@ export default function useMediaCapture(
             console.warn('[attachStreamToVideo] loadedmetadata fallback fired.');
             markReady();
           }
-        }, 1500);
+        }, 2000);
       }
 
       // Try to play; ignore autoplay rejections
@@ -239,6 +251,14 @@ export default function useMediaCapture(
       console.log('📹 Preview start already in progress, skipping');
       return;
     }
+    if (isStartingCamera) {
+      console.log('📹 Camera already starting, skipping');
+      return;
+    }
+    if (cameraOn && streamRef.current && !deviceId) {
+      console.log('📹 Camera already on and working, skipping');
+      return;
+    }
     if (!navigator.mediaDevices?.getUserMedia) {
       toast.error('Camera access not supported. Use HTTPS and a modern browser.');
       return;
@@ -246,10 +266,12 @@ export default function useMediaCapture(
 
     startingRef.current = true;
     setIsStartingCamera(true);
+    isFallbackModeRef.current = false;
 
     try {
       // If switching devices, reset
       if (streamRef.current && deviceId) {
+        console.log('📷 Switching devices, releasing current camera...');
         releaseCamera();
         await new Promise(r => setTimeout(r, 120));
       }
@@ -259,10 +281,15 @@ export default function useMediaCapture(
           deviceId: deviceId ? { exact: deviceId } : undefined,
           width: { ideal: 1280 },
           height: { ideal: 720 },
-          facingMode: previewMode === 'photo' ? 'user' : 'environment',
+          // Only use facingMode if no specific deviceId is selected
+          ...(deviceId ? {} : { facingMode: previewMode === 'photo' ? 'user' : 'environment' }),
         },
         audio: previewMode !== 'photo',
       };
+
+      console.log('📷 Attempting camera with constraints:', JSON.stringify(constraints, null, 2));
+      console.log('📷 Using deviceId:', deviceId);
+      console.log('📷 Available devices:', devices.map(d => d.deviceId));
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
@@ -279,15 +306,83 @@ export default function useMediaCapture(
       startingRef.current = false;
 
       const name = error?.name;
-      toast.error(
-        name === 'NotAllowedError'
-          ? 'Please allow camera permissions and try again.'
-          : name === 'NotFoundError'
-          ? 'No camera found on this device.'
-          : 'Camera not ready. Try again in a moment.'
-      );
+      
+      if (name === 'NotFoundError') {
+        // Camera device not found, try fallback approach
+        console.log('🔄 Camera device not found, trying fallback...');
+        
+        try {
+          // Try without specific device ID
+          isFallbackModeRef.current = true;
+          const fallbackConstraints: MediaStreamConstraints = {
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              facingMode: previewMode === 'photo' ? 'user' : 'environment',
+            },
+            audio: previewMode !== 'photo',
+          };
+          
+          console.log('📷 Fallback constraints:', JSON.stringify(fallbackConstraints, null, 2));
+          console.log('📷 Fallback mode:', previewMode);
+          
+          const fallbackStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+          streamRef.current = fallbackStream;
+          await attachStreamToVideo();
+          setIsStartingCamera(false);
+          startingRef.current = false;
+          toast.success('Camera started with fallback device');
+          return;
+        } catch (fallbackError) {
+          console.error('Fallback camera also failed:', fallbackError);
+          
+          // Try with absolute minimal constraints
+          try {
+            console.log('📷 Trying minimal constraints...');
+            const minimalConstraints: MediaStreamConstraints = {
+              video: true,
+              audio: false
+            };
+            
+            const minimalStream = await navigator.mediaDevices.getUserMedia(minimalConstraints);
+            streamRef.current = minimalStream;
+            await attachStreamToVideo();
+            setIsStartingCamera(false);
+            startingRef.current = false;
+            toast.success('Camera started with minimal settings');
+            return;
+          } catch (minimalError) {
+            console.error('Minimal constraints also failed:', minimalError);
+          }
+          
+          await enumerateDevices();
+          
+          if (devices.length > 0) {
+            setDeviceId(devices[0].deviceId);
+            toast.error('Camera device changed. Please try again.');
+          } else {
+            toast.error('No camera found on this device.');
+          }
+        }
+      } else {
+        toast.error(
+          name === 'NotAllowedError'
+            ? 'Please allow camera permissions and try again.'
+            : 'Camera not ready. Try again in a moment.'
+        );
+      }
     }
   }, [deviceId, attachStreamToVideo, releaseCamera]);
+
+  // Note: Device changes are now handled directly in startPreview when needed
+  // This prevents infinite loops from useEffect dependencies
+
+  // Refresh devices when camera fails
+  const refreshDevices = useCallback(async () => {
+    console.log('🔄 Refreshing camera devices...');
+    await enumerateDevices();
+  }, [enumerateDevices]);
+
 
   // ---- Recording (define stop first so start can reference it safely) ----
   const stopRecording = useCallback(() => {
@@ -510,6 +605,63 @@ export default function useMediaCapture(
     };
   }, [releaseCamera, previewUrl]);
 
+  // Wrapper functions that check recording state
+  const safeSetPhotoFilter = useCallback((filter: string) => {
+    if (isRecording) {
+      console.warn('⚠️ Cannot change photo filter during recording');
+      return;
+    }
+    setPhotoFilter(filter);
+  }, [isRecording, setPhotoFilter]);
+
+  const safeSetVideoEffect = useCallback((effect: string) => {
+    if (isRecording) {
+      console.warn('⚠️ Cannot change video effect during recording');
+      return;
+    }
+    setVideoEffect(effect);
+  }, [isRecording, setVideoEffect]);
+
+  const safeSetAutoEnhance = useCallback((enhance: boolean) => {
+    if (isRecording) {
+      console.warn('⚠️ Cannot change auto enhance during recording');
+      return;
+    }
+    setAutoEnhance(enhance);
+  }, [isRecording, setAutoEnhance]);
+
+  const safeSetTextOverlay = useCallback((text: string) => {
+    if (isRecording) {
+      console.warn('⚠️ Cannot change text overlay during recording');
+      return;
+    }
+    setTextOverlay(text);
+  }, [isRecording, setTextOverlay]);
+
+  const safeSetKeepCameraActive = useCallback((active: boolean) => {
+    if (isRecording) {
+      console.warn('⚠️ Cannot change keep camera active during recording');
+      return;
+    }
+    setKeepCameraActive(active);
+  }, [isRecording, setKeepCameraActive]);
+
+  const safeSetZoomLevel = useCallback((level: number) => {
+    if (isRecording) {
+      console.warn('⚠️ Cannot change zoom level during recording');
+      return;
+    }
+    setZoomLevel(level);
+  }, [isRecording, setZoomLevel]);
+
+  const safeSetDeviceId = useCallback((id?: string) => {
+    if (isRecording) {
+      console.warn('⚠️ Cannot change device during recording');
+      return;
+    }
+    setDeviceId(id);
+  }, [isRecording, setDeviceId]);
+
   return {
     mediaBlob,
     previewUrl,
@@ -545,20 +697,21 @@ export default function useMediaCapture(
     capturePhoto,
     releaseCamera,
     resetRecording,
+    refreshDevices,
     applyZoom: async (level: number) => setZoomLevel(Math.min(3, Math.max(1, level))),
     generateThumbnailFromUrl,
 
-    setPhotoFilter,
-    setVideoEffect,
-    setAutoEnhance,
-    setTextOverlay,
-    setKeepCameraActive,
-    setZoomLevel,
+    setPhotoFilter: safeSetPhotoFilter,
+    setVideoEffect: safeSetVideoEffect,
+    setAutoEnhance: safeSetAutoEnhance,
+    setTextOverlay: safeSetTextOverlay,
+    setKeepCameraActive: safeSetKeepCameraActive,
+    setZoomLevel: safeSetZoomLevel,
     setMaxRecordingTime,
     setTrimStart,
     setTrimEnd,
     setBakeVideoEffects,
-    setDeviceId,
+    setDeviceId: safeSetDeviceId,
     setCountdown,
     setMediaBlob,
     setPreviewUrl,

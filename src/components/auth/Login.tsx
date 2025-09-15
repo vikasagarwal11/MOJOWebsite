@@ -8,6 +8,7 @@ import { Phone, Shield } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { ConfirmationResult } from 'firebase/auth';
 import { normalizeUSPhoneToE164OrNull } from '../../utils/phone';
+import toast from 'react-hot-toast';
 
 // Keep the schema loose; we’ll do real normalization/validation in submit
 const phoneSchema = z.object({
@@ -25,7 +26,7 @@ const Login: React.FC = () => {
   const [step, setStep] = useState<'phone' | 'code'>('phone');
   const [isLoading, setIsLoading] = useState(false);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-  const { sendVerificationCode, verifyCode } = useAuth();
+  const { sendVerificationCode, verifyCode, checkIfUserExists } = useAuth();
   const navigate = useNavigate();
 
   const phoneForm = useForm<PhoneFormData>({ resolver: zodResolver(phoneSchema) });
@@ -43,8 +44,24 @@ const Login: React.FC = () => {
 
     setIsLoading(true);
     try {
+      console.log('🔍 Login: Checking if phone number is registered...');
+      
+      // First, check if this phone number is registered
+      const userExists = await checkIfUserExists(e164);
+      if (!userExists) {
+        console.log('🔍 Login: User not found, showing error message');
+        toast.error('Phone number not registered. Please register first.');
+        phoneForm.setError('phoneNumber', {
+          message: 'This phone number is not registered. Please register first.'
+        });
+        return;
+      }
+      
+      console.log('🔍 Login: User found, sending verification code...');
+      // User exists, send verification code
       const result = await sendVerificationCode(e164);
       setConfirmationResult(result);
+      console.log('🔍 Login: Phone verification successful, switching to code step');
 
       // Clear phone input and code input, switch step, focus code field
       phoneForm.reset({ phoneNumber: '' });
@@ -103,6 +120,7 @@ const Login: React.FC = () => {
     setIsLoading(true);
     try {
       console.log('🔍 Login: Calling verifyCode with isLogin=true (will preserve existing user data)');
+      console.log('🔍 Login: This is a LOGIN attempt - should only work for existing users');
       await verifyCode(confirmationResult, data.verificationCode, '', '', '', true);
       console.log('🔍 Login: verifyCode completed successfully, navigating to home');
       navigate('/');
@@ -113,6 +131,17 @@ const Login: React.FC = () => {
         errorMessage: (error as any)?.message,
         errorStack: (error as any)?.stack
       });
+      
+      // Check if this is a "no account found" error
+      if ((error as any)?.message?.includes('No account found')) {
+        toast.error('No account found. Please register first.');
+        // Reset to phone step and redirect to registration
+        setStep('phone');
+        phoneForm.reset();
+        navigate('/register');
+      } else {
+        toast.error('Login failed. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -131,6 +160,23 @@ const Login: React.FC = () => {
                 ? 'Enter your phone number to sign in'
                 : 'Enter the verification code sent to your phone'}
             </p>
+            {step === 'phone' && (
+              <div className="text-sm text-gray-500 mt-2 space-y-1">
+                <p>
+                  Don't have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate('/register')}
+                    className="text-[#F25129] hover:text-[#FF6B35] font-medium underline"
+                  >
+                    Register here
+                  </button>
+                </p>
+                <p className="text-xs text-gray-400">
+                  Only registered users can sign in. New users should register first.
+                </p>
+              </div>
+            )}
           </div>
 
           {step === 'phone' ? (

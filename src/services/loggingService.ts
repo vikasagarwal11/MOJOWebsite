@@ -63,14 +63,22 @@ export class LoggingService {
         return;
       }
 
+      // Import analytics safely
       const { getAnalytics } = await import('firebase/analytics')
-      this.analytics = getAnalytics()
+      
+      // Get analytics instance safely
+      try {
+        this.analytics = getAnalytics()
+        console.log('📊 Logging service initialized (analytics ON)')
+      } catch (analyticsError) {
+        console.warn('📊 Analytics initialization failed:', analyticsError)
+        this.analytics = null
+      }
+      
       this.isInitialized = true
       
       // Process queued events
       this.processEventQueue()
-      
-      console.log('📊 Logging service initialized (analytics ON)')
     } catch (error) {
       // DO NOT call errorService here to avoid feedback loops
       console.warn('📊 Logging service init failed; analytics OFF:', error);
@@ -271,29 +279,9 @@ export class LoggingService {
    * Get current user ID with caching to prevent infinite loops
    */
   private getCurrentUserId(): string | undefined {
-    // SAFE: Don't call getAuth() during logging operations to prevent recursion
-    if (this.isLogging) {
-      return this.cachedUserId // Return cached value or undefined
-    }
-    
-    // Return cached user ID if still valid
-    if (this.cachedUserId && (Date.now() - this.userIdCacheTime) < this.userIdCacheTimeout) {
-      return this.cachedUserId
-    }
-    
-    try {
-      const auth = getAuth()
-      const userId = auth.currentUser?.uid
-      
-      // Cache the user ID
-      this.cachedUserId = userId
-      this.userIdCacheTime = Date.now()
-      
-      return userId
-    } catch {
-      // Return cached value if available, even if expired
-      return this.cachedUserId
-    }
+    // SAFE: Always return cached value to prevent infinite recursion
+    // The user ID should be set via setUserId() method, not retrieved here
+    return this.cachedUserId
   }
 
   /**

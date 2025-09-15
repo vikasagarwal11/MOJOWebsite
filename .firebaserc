@@ -1,9 +1,7 @@
 {
   "projects": {
     "default": "momfitnessmojo",
-    "dev": "momfitnessmojo",
-    "staging": "momfitnessmojo-staging",
-    "prod": "momfitnessmojo-prod"
+    "dev": "momfitnessmojo"
   },
   "targets": {
     "momfitnessmojo": {
@@ -13,5 +11,6 @@
         ]
       }
     }
-  }
+  },
+  "etags": {}
 }

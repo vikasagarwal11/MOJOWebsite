@@ -113,20 +113,20 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
     }
   }, [localMedia.thumbnailPath, localMedia.url]);
 
-  // Enhanced debugging for video playback issues
+  // Enhanced debugging for video playback issues (reduced logging)
   useEffect(() => {
-    console.log('🎬 MediaCard Debug:', {
-      mediaId: localMedia.id,
-      type: localMedia.type,
-      transcodeStatus: localMedia.transcodeStatus,
-      hasHls: !!localMedia.sources?.hls,
-      hlsPath: localMedia.sources?.hls,
-      hasThumbnail: !!localMedia.thumbnailPath,
-      thumbnailPath: localMedia.thumbnailPath,
-      videoUrl: localMedia.url,
-      isHlsAttached,
-      videoRefExists: !!videoRef.current
-    });
+    // console.log('🎬 MediaCard Debug:', {
+    //   mediaId: localMedia.id,
+    //   type: localMedia.type,
+    //   transcodeStatus: localMedia.transcodeStatus,
+    //   hasHls: !!localMedia.sources?.hls,
+    //   hlsPath: localMedia.sources?.hls,
+    //   hasThumbnail: !!localMedia.thumbnailPath,
+    //   thumbnailPath: localMedia.thumbnailPath,
+    //   videoUrl: localMedia.url,
+    //   isHlsAttached,
+    //   videoRefExists: !!videoRef.current
+    // });
   }, [localMedia.id, localMedia.type, localMedia.transcodeStatus, localMedia.sources?.hls, localMedia.thumbnailPath, localMedia.url, isHlsAttached]);
 
   // Attach HLS when video element is ready and HLS source is available
@@ -394,7 +394,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
         />
       )
     );
-  }, [localMedia, onOpen, liked, thumbnailUrl, isThumbnailLoading, correctImageOrientation]);
+  }, [localMedia, onOpen, liked, thumbnailUrl, isThumbnailLoading]);
 
   return (
           <div className="bg-white/80 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-[#F25129]/20 group" data-media-card>

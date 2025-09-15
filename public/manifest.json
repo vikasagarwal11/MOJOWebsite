@@ -1,0 +1,53 @@
+{
+  "name": "Moms Fitness Mojo",
+  "short_name": "Mojo Fitness",
+  "description": "A fitness community for moms to connect, share, and grow together",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f97316",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en-US",
+  "categories": ["fitness", "lifestyle", "community"],
+  "icons": [
+    {
+      "src": "/logo-small.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/images/founder-cover.jpg",
+      "sizes": "1280x720",
+      "type": "image/jpeg",
+      "form_factor": "wide"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Events",
+      "short_name": "Events",
+      "description": "View upcoming fitness events",
+      "url": "/events",
+      "icons": [{ "src": "/logo-small.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Media",
+      "short_name": "Media",
+      "description": "Browse fitness media and content",
+      "url": "/media",
+      "icons": [{ "src": "/logo-small.png", "sizes": "96x96" }]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
+}

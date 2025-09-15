@@ -101,7 +101,7 @@ function enforceGuestPolicy(
       out.push(orderBy('startAt', 'asc'));
     }
   } else if (collectionName === 'media') {
-    if (!hasWhereEquals(out, 'isPublic', true)) out.unshift(where('isPublic', '==', true));
+    // Remove the isPublic filter - show all media
     if (!hasAnyOrderBy(out) && !hasOrderByField(out, 'createdAt')) {
       out.push(orderBy('createdAt', 'desc'));
     }

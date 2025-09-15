@@ -22,7 +22,12 @@ import {
   serverTimestamp,
   onSnapshot,
   Unsubscribe,
+  collection,
+  query,
+  where,
+  getDocs,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth, db, USING_EMULATORS } from '../config/firebase';
 import { User } from '../types';
 import toast from 'react-hot-toast';
@@ -41,6 +46,8 @@ interface AuthContextType {
     phoneNumber: string,
     isLogin?: boolean
   ) => Promise<void>;
+  checkIfUserExists: (phoneNumber: string) => Promise<boolean>;
+  checkSMSDeliveryStatus: (phoneNumber: string, verificationId: string) => Promise<any>;
   logout: () => Promise<void>;
   // kept for compatibility; the argument is ignored
   setupRecaptcha: (_elementId?: string) => RecaptchaVerifier;
@@ -139,7 +146,9 @@ function createRecaptcha(): RecaptchaVerifier {
 function getOrCreateRecaptcha(): RecaptchaVerifier {
   console.log('🔍 AuthContext: getOrCreateRecaptcha called');
   
-  if (_recaptchaVerifierSingleton && document.getElementById(RECAPTCHA_ID)) {
+  // Check if we have a valid verifier and container
+  const container = document.getElementById(RECAPTCHA_ID);
+  if (_recaptchaVerifierSingleton && container && container.parentNode) {
     console.log('🔍 AuthContext: Returning existing reCAPTCHA verifier');
     return _recaptchaVerifierSingleton;
   }
@@ -158,12 +167,16 @@ function clearRecaptcha() {
     console.warn('🚨 AuthContext: reCAPTCHA clear error:', e);
   }
   _recaptchaVerifierSingleton = null;
-  try {
-    swapRecaptchaContainer();
-    console.log('🔍 AuthContext: reCAPTCHA container swapped');
-  } catch (e) {
-    console.warn('🚨 AuthContext: reCAPTCHA container swap error:', e);
-  }
+  
+  // Wait a bit before swapping container to let reCAPTCHA finish cleanup
+  setTimeout(() => {
+    try {
+      swapRecaptchaContainer();
+      console.log('🔍 AuthContext: reCAPTCHA container swapped');
+    } catch (e) {
+      console.warn('🚨 AuthContext: reCAPTCHA container swap error:', e);
+    }
+  }, 100);
 }
 /* ============================================================================= */
 
@@ -215,22 +228,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
           
           if (!snap.exists()) {
-            console.log('🔍 AuthContext: Document does not exist, creating minimal shell user');
-            // First-time: minimal shell
-            const minimalUser = {
-              id: fbUser.uid,
-              email: fbUser.email || '',
-              firstName: fbUser.displayName?.split(' ')[0] || 'Member',
-              lastName: fbUser.displayName?.split(' ').slice(1).join(' ') || '',
-              displayName: fbUser.displayName || 'Member',
-              phoneNumber: fbUser.phoneNumber || '',
-              photoURL: fbUser.photoURL || undefined,
-              role: 'member' as const,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            };
-            console.log('🔍 AuthContext: Setting minimal user:', minimalUser);
-            setCurrentUser(minimalUser);
+            console.log('🔍 AuthContext: Document does not exist - user needs to register');
+            // Don't create minimal users - let the verifyCode function handle this
+            // This prevents "ghost users" from being created during login
+            console.log('🔍 AuthContext: Setting currentUser to null - user must register');
+            setCurrentUser(null);
           } else {
             console.log('🔍 AuthContext: Document exists, loading full user data');
             const d = snap.data() as any;
@@ -318,8 +320,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('🔍 AuthContext: reCAPTCHA verifier ready, calling signInWithPhoneNumber');
     
     try {
+      console.log('🔍 AuthContext: About to call signInWithPhoneNumber with:', {
+        phoneNumber,
+        verifierType: verifier?.type,
+        authApp: auth?.app?.name,
+        projectId: auth?.app?.options?.projectId
+      });
+      
       const result = await signInWithPhoneNumber(auth, phoneNumber, verifier);
       console.log('🔍 AuthContext: signInWithPhoneNumber successful');
+      console.log('🔍 AuthContext: ConfirmationResult:', {
+        verificationId: result.verificationId,
+        hasConfirmationResult: !!result,
+        resultType: typeof result
+      });
+      
+      // Enhanced SMS delivery logging
+      if (result.verificationId) {
+        console.log('🔍 AuthContext: SMS should have been sent to:', phoneNumber);
+        console.log('🔍 AuthContext: Verification ID:', result.verificationId);
+        console.log('🔍 AuthContext: SMS delivery details:');
+        console.log('  - Phone Number:', phoneNumber);
+        console.log('  - Project ID:', auth.app?.options?.projectId);
+        console.log('  - Auth Domain:', auth.app?.options?.authDomain);
+        console.log('  - reCAPTCHA Site Key:', process.env.VITE_RECAPTCHA_SITE_KEY);
+        console.log('  - Current Domain:', window.location.hostname);
+        console.log('  - User Agent:', navigator.userAgent);
+        console.log('  - Timestamp:', new Date().toISOString());
+        
+        // Log to Firebase Analytics for tracking
+        if (typeof window !== 'undefined' && (window as any).gtag) {
+          (window as any).gtag('event', 'sms_verification_sent', {
+            phone_number: phoneNumber,
+            verification_id: result.verificationId,
+            timestamp: new Date().toISOString()
+          });
+        }
+        
+        console.log('🔍 AuthContext: If no SMS received, check:');
+        console.log('  1. Firebase Console → Authentication → Usage (SMS quota)');
+        console.log('  2. Firebase Console → Authentication → Settings (Phone provider enabled)');
+        console.log('  3. Firebase Console → Project Settings → Billing (SMS billing enabled)');
+        console.log('  4. Check phone carrier for SMS filtering');
+        console.log('  5. Try a different phone number for testing');
+      }
+      
       toast.success('Verification code sent');
       return result;
     } catch (err: any) {
@@ -335,6 +380,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (err?.code === 'auth/operation-not-allowed') {
         console.error('🚨 AuthContext: Phone sign-in not enabled in Firebase Console');
         toast.error('Enable Phone sign-in in Firebase Console → Authentication → Sign-in method → Phone.');
+      }
+      if (err?.code === 'auth/quota-exceeded') {
+        console.error('🚨 AuthContext: SMS quota exceeded');
+        toast.error('SMS quota exceeded. Check Firebase Console for billing/quota issues.');
+      }
+      if (err?.code === 'auth/invalid-phone-number') {
+        console.error('🚨 AuthContext: Invalid phone number format');
+        toast.error('Invalid phone number format. Please check the number and try again.');
+      }
+      if (err?.code === 'auth/too-many-requests') {
+        console.error('🚨 AuthContext: Too many SMS requests');
+        toast.error('Too many SMS requests. Please wait before trying again.');
       }
       if (err?.code === 'auth/captcha-check-failed' || msg.includes('hostname match not found')) {
         const host =
@@ -381,6 +438,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const checkIfUserExists = async (phoneNumber: string): Promise<boolean> => {
+    console.log('🔍 AuthContext: checkIfUserExists called with:', phoneNumber);
+    
+    try {
+      // Use Cloud Function to check if phone number is registered
+      const functions = getFunctions();
+      const checkPhoneNumber = httpsCallable(functions, 'checkPhoneNumberExists');
+      
+      console.log('🔍 AuthContext: Calling Cloud Function to check phone number...');
+      const result = await checkPhoneNumber({ phoneNumber });
+      
+      const exists = (result.data as any)?.exists || false;
+      console.log('🔍 AuthContext: Phone number check result:', { phoneNumber, exists });
+      
+      return exists;
+    } catch (error) {
+      console.error('🚨 AuthContext: Error checking phone number via Cloud Function:', error);
+      console.log('🔍 AuthContext: Falling back to allowing verification (assume new user)');
+      // If there's an error with Cloud Function, allow verification to proceed
+      // This ensures the system doesn't break if Cloud Function is down
+      return false; // Assume new user for registration, existing user for login
+    }
+  };
+
+  const checkSMSDeliveryStatus = async (phoneNumber: string, verificationId: string): Promise<any> => {
+    console.log('🔍 AuthContext: checkSMSDeliveryStatus called with:', { phoneNumber, verificationId });
+    
+    try {
+      const functions = getFunctions();
+      const checkSMSStatus = httpsCallable(functions, 'checkSMSDeliveryStatus');
+      
+      console.log('🔍 AuthContext: Calling Cloud Function to check SMS delivery status...');
+      const result = await checkSMSStatus({ phoneNumber, verificationId });
+      
+      console.log('🔍 AuthContext: SMS delivery status result:', result.data);
+      return result.data;
+    } catch (error) {
+      console.error('🚨 AuthContext: Error checking SMS delivery status:', error);
+      return {
+        success: false,
+        error: 'Failed to check SMS delivery status',
+        phoneNumber,
+        verificationId
+      };
+    }
+  };
+
   const verifyCode = async (
     confirmationResult: ConfirmationResult,
     code: string,
@@ -393,8 +497,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       code,
       firstName,
       lastName,
-      phoneNumber
+      phoneNumber,
+      isLogin
     });
+    console.log('🔍 AuthContext: This is a LOGIN attempt:', isLogin);
     
     try {
       console.log('🔍 AuthContext: Confirming verification code...');
@@ -416,26 +522,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         exists: snap.exists(),
         hasData: !!snap.data()
       });
+      
+      console.log('🔍 AuthContext: Processing based on login/registration flow...');
+      console.log('🔍 AuthContext: isLogin =', isLogin, ', document exists =', snap.exists());
 
       if (!snap.exists()) {
-        console.log('🔍 AuthContext: Creating new user document...');
-        // Create new user with all fields
-        const displayName = `${firstName} ${lastName}`.trim();
-        const userData = {
-          email: fbUser.email || '',
-          firstName: firstName,
-          lastName: lastName,
-          displayName: displayName,
-          phoneNumber: phoneNumber,
-          role: 'member',
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        };
-        console.log('🔍 AuthContext: New user data to save:', userData);
-        
-        await setDoc(userRef, userData);
-        console.log('🔍 AuthContext: New user document created successfully');
-        toast.success('Account created successfully!');
+        // Only create user document if we have valid data (not empty strings)
+        if (firstName.trim() && lastName.trim()) {
+          console.log('🔍 AuthContext: Creating new user document...');
+          // Create new user with all fields
+          const displayName = `${firstName} ${lastName}`.trim();
+          const userData = {
+            email: fbUser.email || '',
+            firstName: firstName,
+            lastName: lastName,
+            displayName: displayName,
+            phoneNumber: phoneNumber,
+            role: 'member',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          };
+          console.log('🔍 AuthContext: New user data to save:', userData);
+          
+          await setDoc(userRef, userData);
+          console.log('🔍 AuthContext: New user document created successfully');
+          toast.success('Account created successfully!');
+        } else {
+          console.log('🔍 AuthContext: No user document exists and no valid data provided');
+          console.log('🔍 AuthContext: firstName =', firstName, ', lastName =', lastName);
+          console.log('🔍 AuthContext: This appears to be a new user trying to login - redirecting to registration');
+          // For new users, we should redirect them to registration
+          // Don't set them as logged in without a profile
+          throw new Error('No account found. Please register first.');
+        }
       } else if (isLogin) {
         console.log('🔍 AuthContext: Login detected - NOT updating existing user document');
         console.log('🔍 AuthContext: Existing user data will be loaded via onSnapshot');
@@ -494,7 +613,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const value = useMemo<AuthContextType>(
-    () => ({ currentUser, loading, listenersReady, sendVerificationCode, verifyCode, logout, setupRecaptcha }),
+    () => ({ currentUser, loading, listenersReady, sendVerificationCode, verifyCode, checkIfUserExists, checkSMSDeliveryStatus, logout, setupRecaptcha }),
     [currentUser, loading, listenersReady]
   );
 

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
-import { Calendar, MapPin, Users, Share2, Heart, MessageCircle, Eye, CheckCircle, XCircle, ThumbsUp, ThumbsDown, Clock, Link, Edit, Settings, UserPlus } from 'lucide-react';
+import { Calendar, MapPin, Users, Share2, ThumbsUp, ThumbsDown, Clock, Edit } from 'lucide-react';
 import { format } from 'date-fns';
 import { EventDoc } from '../../hooks/useEvents';
 import { RSVPModalNew as RSVPModal } from './RSVPModalNew';
@@ -11,8 +11,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useUserBlocking } from '../../hooks/useUserBlocking';
 
 import { useAttendees } from '../../hooks/useAttendees';
-import { doc, setDoc, updateDoc, getDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
-import { db } from '../../config/firebase';
 import { CreateAttendeeData, AttendeeStatus } from '../../types/attendee';
 import { getEventAttendeeCount } from '../../services/attendeeService';
 import toast from 'react-hot-toast';
@@ -26,7 +24,7 @@ interface EventCardProps {
 const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
-  const { attendees, counts, addAttendee, setAttendeeStatus, refreshAttendees } = useAttendees(event.id, currentUser?.id || '');
+  const { attendees, addAttendee, setAttendeeStatus, refreshAttendees } = useAttendees(event.id, currentUser?.id || '');
   
   // State
   const [showRSVPModal, setShowRSVPModal] = useState(false);
@@ -70,7 +68,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   // Fetch total attendee count for the event
   useEffect(() => {
     refreshTotalAttendeeCount();
-  }, [event.id]);
+  }, [event.id, currentUser]);
 
   // Overflow detection for description
   useEffect(() => {
@@ -157,7 +155,13 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
 
   // Quick RSVP handlers using new attendee system
   const handleQuickRSVP = async (status: AttendeeStatus) => {
-    if (isBlockedFromRSVP || !currentUser || isEventPast) return;
+    if (isBlockedFromRSVP || isEventPast) return;
+    
+    // If user is not logged in, show teaser modal
+    if (!currentUser) {
+      setShowTeaserModal(true);
+      return;
+    }
     
     console.log('🔍 DEBUG: Quick RSVP started with new attendee system:', {
       status,
@@ -207,7 +211,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
            attendeeType: 'primary',
            relationship: 'self',
            name: currentUser.displayName || 'Primary User',
-           ageGroup: '11+',
+           ageGroup: 'adult',
            rsvpStatus: status
          };
          
@@ -252,7 +256,16 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const handleRSVPModalOpen = (e: React.MouseEvent) => {
     e.stopPropagation();
     console.log('🔍 RSVP Modal opening for event:', event.id);
-    setShowRSVPModal(true);
+    
+    if (isEventPast) {
+      setShowPastEventModal(true);
+    } else if (currentUser) {
+      // User is logged in - show RSVP modal for event management
+      setShowRSVPModal(true);
+    } else {
+      // User is not logged in - show teaser modal
+      setShowTeaserModal(true);
+    }
   };
 
   // Handle share
@@ -314,8 +327,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   };
 
   // Get button disable state
-  const isGoingButtonDisabled = rsvpStatus === 'going' || getRSVPButtonState() !== 'active';
-  const isNotGoingButtonDisabled = rsvpStatus === 'not-going' || getRSVPButtonState() !== 'active';
+  const isGoingButtonDisabled = (currentUser && rsvpStatus === 'going') || getRSVPButtonState() !== 'active';
+  const isNotGoingButtonDisabled = (currentUser && rsvpStatus === 'not-going') || getRSVPButtonState() !== 'active';
 
   return (
     <>

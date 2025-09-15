@@ -161,18 +161,25 @@ export const getUserAttendees = async (eventId: string, userId: string): Promise
 // Get total attendee count for an event (all users)
 export const getEventAttendeeCount = async (eventId: string): Promise<number> => {
   console.log('🔍 DEBUG: getEventAttendeeCount called for eventId:', eventId);
-  const attendeesRef = collection(db, 'events', eventId, 'attendees');
-  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
-  const snapshot = await getDocs(q);
   
-  // Filter to only count attendees with 'going' status
-  const goingAttendees = snapshot.docs.filter(doc => {
-    const data = doc.data();
-    return data.rsvpStatus === 'going';
-  });
-  
-  console.log('🔍 DEBUG: getEventAttendeeCount result:', goingAttendees.length, 'going attendees out of', snapshot.docs.length, 'total attendees');
-  return goingAttendees.length;
+  try {
+    const attendeesRef = collection(db, 'events', eventId, 'attendees');
+    const q = query(attendeesRef, orderBy('createdAt', 'asc'));
+    const snapshot = await getDocs(q);
+    
+    // Filter to only count attendees with 'going' status
+    const goingAttendees = snapshot.docs.filter(doc => {
+      const data = doc.data();
+      return data.rsvpStatus === 'going';
+    });
+    
+    console.log('🔍 DEBUG: getEventAttendeeCount result:', goingAttendees.length, 'going attendees out of', snapshot.docs.length, 'total attendees');
+    return goingAttendees.length;
+  } catch (error) {
+    console.warn('⚠️ Failed to fetch total attendee count:', error);
+    // Return 0 if we can't fetch the count (e.g., private event or permission denied)
+    return 0;
+  }
 };
 
 // Bulk upsert attendees (for family members)

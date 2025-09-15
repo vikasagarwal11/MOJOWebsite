@@ -20,7 +20,7 @@ export const FamilyMemberForm: React.FC<FamilyMemberFormProps> = ({
   const [formData, setFormData] = useState<FamilyMemberFormData>({
     name: '',
     ageGroup: '',
-    isDefaultMember: false
+    isDefaultMember: true
   });
   
   const [errors, setErrors] = useState<string[]>([]);
@@ -62,10 +62,10 @@ export const FamilyMemberForm: React.FC<FamilyMemberFormProps> = ({
 
     setIsSubmitting(true);
     try {
-      // Convert empty string to undefined for ageGroup
+      // Convert empty string to 'adult' for ageGroup (default for family members)
       const submitData = {
         ...formData,
-        ageGroup: formData.ageGroup === '' ? undefined : formData.ageGroup
+        ageGroup: formData.ageGroup === '' ? 'adult' : formData.ageGroup
       };
       await onSubmit(submitData);
     } catch (error) {

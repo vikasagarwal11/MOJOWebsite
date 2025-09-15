@@ -73,6 +73,9 @@ const Profile: React.FC = () => {
   const [address, setAddress] = useState<Address>({ state: '' });
   const [zipStatus, setZipStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const zipAbortRef = useRef<AbortController | null>(null);
+  const [zipSuggestions, setZipSuggestions] = useState<string[]>([]);
+  const [cityStatus, setCityStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
+  const cityAbortRef = useRef<AbortController | null>(null);
   const [interests, setInterests] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [social, setSocial] = useState<SocialLinks>({});
@@ -608,6 +611,34 @@ const Profile: React.FC = () => {
     }
   };
 
+  // City to ZIP lookup
+  const lookupCity = async (city: string, state: string = 'NJ') => {
+    if (!city || city.length < 3) {
+      setZipSuggestions([]);
+      setCityStatus('idle');
+      return;
+    }
+    
+    cityAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    cityAbortRef.current = ctrl;
+    setCityStatus('loading');
+    
+    try {
+      // Use a different API for city-to-ZIP lookup
+      const res = await fetch(`https://api.zippopotam.us/us/${state}/${city}`, { signal: ctrl.signal });
+      if (!res.ok) throw new Error('not found');
+      const data = await res.json();
+      const places = data?.places || [];
+      const zips = places.map((place: any) => place['post code']).filter(Boolean);
+      setZipSuggestions(zips);
+      setCityStatus(zips.length > 0 ? 'ok' : 'error');
+    } catch {
+      setZipSuggestions([]);
+      setCityStatus('error');
+    }
+  };
+
   // Interests
   const addTag = (raw: string) => {
     const t = normalizeTag(raw);
@@ -1128,6 +1159,7 @@ const Profile: React.FC = () => {
             address={address}
             setAddress={setAddress}
             zipStatus={zipStatus}
+            setZipStatus={setZipStatus}
             interests={interests}
             tagInput={tagInput}
             setTagInput={setTagInput}
@@ -1138,6 +1170,11 @@ const Profile: React.FC = () => {
             cityOptions={cityOptions}
             onUploadAvatar={onUploadAvatar}
             lookupZip={lookupZip}
+            lookupCity={lookupCity}
+            zipSuggestions={zipSuggestions}
+            setZipSuggestions={setZipSuggestions}
+            cityStatus={cityStatus}
+            setCityStatus={setCityStatus}
             addTag={addTag}
             removeTag={removeTag}
             onTagKeyDown={onTagKeyDown}

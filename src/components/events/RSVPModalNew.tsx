@@ -441,7 +441,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                     {/* Payment Section */}
                     <PaymentSection 
                       event={event}
-                      attendees={attendees}
+                      attendees={attendees.filter(attendee => attendee.userId === currentUser?.id)}
                       onPaymentComplete={() => {
                         refreshAttendees();
                         onAttendeeUpdate?.();
@@ -701,6 +701,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                       <div className="bg-white border border-gray-200 rounded-lg p-4">
                         <AttendeeList
                           eventId={event.id}
+                          isAdmin={isEventCreator}
                           onAttendeeUpdate={async () => {
                             try { await refreshAttendees(); } catch {}
                             onAttendeeUpdate?.();

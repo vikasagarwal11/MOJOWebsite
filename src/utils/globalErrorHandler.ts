@@ -30,20 +30,33 @@ export function setupGlobalErrorHandling() {
   window.addEventListener('error', (event) => {
     console.error('Uncaught error:', event.error)
     
-    // Only log if it's not a stack overflow error to prevent infinite loops
-    if (!(event.error instanceof Error && event.error.message.includes('Maximum call stack size exceeded'))) {
-      try {
-        errorService.logError(event.error, {
-          component: 'GlobalErrorHandler',
-          severity: 'high',
-          category: 'unknown',
-          showToast: true,
-          customMessage: 'An unexpected error occurred. Please refresh the page.',
-        })
-      } catch (e) {
-        // Silent fail to prevent infinite loops
-        console.warn('Failed to log error:', e)
+    // Skip certain errors that don't need user notification
+    const error = event.error
+    if (error instanceof Error) {
+      // Skip reCAPTCHA DOM manipulation errors
+      if (error.message.includes("Cannot read properties of null (reading 'style')") && 
+          error.stack?.includes('recaptcha')) {
+        console.warn('Skipping reCAPTCHA DOM error - not showing toast to user')
+        return
       }
+      
+      // Skip stack overflow errors to prevent infinite loops
+      if (error.message.includes('Maximum call stack size exceeded')) {
+        return
+      }
+    }
+    
+    try {
+      errorService.logError(error, {
+        component: 'GlobalErrorHandler',
+        severity: 'high',
+        category: 'unknown',
+        showToast: true,
+        customMessage: 'An unexpected error occurred. Please refresh the page.',
+      })
+    } catch (e) {
+      // Silent fail to prevent infinite loops
+      console.warn('Failed to log error:', e)
     }
   })
 

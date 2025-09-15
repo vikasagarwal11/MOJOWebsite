@@ -49,7 +49,9 @@ const MediaControls: React.FC<Props> = ({
             value={maxRecordingTime}
             onChange={e => setMaxRecordingTime(Number(e.target.value))}
             disabled={isRecording}
-            className="border rounded px-3 py-2"
+            className={`w-full border rounded px-3 py-2 ${
+              isRecording ? 'bg-gray-100 cursor-not-allowed opacity-50' : ''
+            }`}
           >
             <option value={15}>15s (Short)</option>
             <option value={30}>30s (Reel)</option>
@@ -88,8 +90,10 @@ const MediaControls: React.FC<Props> = ({
 
         <button
           onClick={onStartCamera}
-          disabled={isStartingCamera}
-          className="px-4 py-3 rounded border"
+          disabled={isStartingCamera || isRecording}
+          className={`px-4 py-3 rounded border ${
+            isRecording ? 'bg-gray-300 cursor-not-allowed opacity-50' : ''
+          }`}
         >
           {isStartingCamera ? 'Starting…' : 'Start camera'}
         </button>

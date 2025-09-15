@@ -292,24 +292,27 @@ service cloud.firestore {
 
       // Attendees subcollection - SECURE VERSION
       match /attendees/{attendeeId} {
-        // Users can read attendees for events they have access to
-        allow read: if isSignedIn() && (
-          // Event creator can read all attendees
-          get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
-          // Admin can read all attendees
-          isAdmin() ||
-          // User can read their own household attendees
-          resource.data.userId == request.auth.uid ||
-          // Users can read attendees for public events (with fallback for legacy events)
+        // Allow public read access for public events (for RSVP counts)
+        // Authenticated users can read attendees for events they have access to
+        allow read: if 
+          // Public events: anyone can read (for RSVP counts)
           (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
            (!('visibility' in get(/databases/$(database)/documents/events/$(eventId)).data) && 
             get(/databases/$(database)/documents/events/$(eventId)).data.public == true)) ||
-          // Users can read attendees for members-only events if they are members
-          (isMember() && get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members') ||
-          // Users can read attendees for private events if they are invited
-          (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'private' && 
-           request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds)
-        );
+          // Authenticated users can read attendees for events they have access to
+          (isSignedIn() && (
+            // Event creator can read all attendees
+            get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
+            // Admin can read all attendees
+            isAdmin() ||
+            // User can read their own household attendees
+            resource.data.userId == request.auth.uid ||
+            // Users can read attendees for members-only events if they are members
+            (isMember() && get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members') ||
+            // Users can read attendees for private events if they are invited
+            (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'private' && 
+             request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds)
+          ));
         
         // Users can create attendees for events they have access to
         allow create: if isSignedIn() && 
@@ -412,7 +415,7 @@ service cloud.firestore {
     
     // --- MEDIA ---
     match /media/{mediaId} {
-      allow read: if (resource.data.isPublic == true) || isMember() || isAdmin();
+      allow read: if true; // Anyone can read all media
       allow create: if isSignedIn() && 
         request.auth.uid == request.resource.data.uploadedBy;
       allow update, delete: if isSignedIn() && 
@@ -505,8 +508,11 @@ service cloud.firestore {
         request.resource.data.method in ['card', 'bank_transfer', 'cash', 'other'] &&
         request.resource.data.refundStatus in ['none', 'partial', 'full', 'requested'];
       
-      // Only admins can update payment transactions (for status updates, refunds)
-      allow update: if isAdmin();
+      // Users can update their own payment transactions, admins can update any
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.userId ||
+        isAdmin()
+      );
       
       // Only admins can delete payment transactions
       allow delete: if isAdmin();

@@ -259,7 +259,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           onClick={() => setActiveAdminSection('events')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeAdminSection === 'events'
-              ? 'bg-purple-600 text-white'
+              ? 'bg-[#F25129] text-white'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
@@ -270,7 +270,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           onClick={() => setActiveAdminSection('messages')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeAdminSection === 'messages'
-              ? 'bg-purple-600 text-white'
+              ? 'bg-[#F25129] text-white'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
@@ -281,7 +281,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           onClick={() => setActiveAdminSection('users')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeAdminSection === 'users'
-              ? 'bg-purple-600 text-white'
+              ? 'bg-[#F25129] text-white'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
@@ -292,7 +292,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           onClick={() => setActiveAdminSection('media')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeAdminSection === 'media'
-              ? 'bg-purple-600 text-white'
+              ? 'bg-[#F25129] text-white'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
@@ -303,7 +303,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           onClick={() => setActiveAdminSection('maintenance')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeAdminSection === 'maintenance'
-              ? 'bg-purple-600 text-white'
+              ? 'bg-[#F25129] text-white'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
@@ -323,7 +323,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                 setEventToEdit(null);
                 setIsCreateModalOpen(true);
               }}
-              className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full hover:from-purple-700 hover:to-pink-700"
+              className="px-4 py-2 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white rounded-full hover:from-[#E0451F] hover:to-[#E55A2B]"
               aria-label="Create new event"
             >
               Create New Event
@@ -331,7 +331,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           </div>
           {loadingAdminEvents ? (
             <div className="text-center py-8 bg-gray-50 rounded-lg">
-              <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+                <div className="animate-spin w-8 h-8 border-4 border-[#F25129] border-t-transparent rounded-full mx-auto mb-2"></div>
               <p className="text-gray-500">Loading admin events...</p>
             </div>
           ) : allEvents.length === 0 ? (
@@ -348,8 +348,8 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                     key={event.id} 
                     className={`space-y-4 p-4 rounded-lg ${
                       index % 2 === 0 
-                        ? 'bg-blue-50/50 border-l-4 border-blue-200' 
-                        : 'bg-pink-50/50 border-l-4 border-pink-200'
+                        ? 'bg-orange-50/50 border-l-4 border-orange-200' 
+                        : 'bg-[#FF6B35]/10 border-l-4 border-[#FF6B35]/30'
                     }`}
                   >
                     <EventCardNew
@@ -369,7 +369,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                     <div className="flex gap-2 mt-3">
                       <button
                         onClick={() => shareEvent(event)}
-                        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                        className="px-3 py-1 bg-[#F25129] text-white rounded hover:bg-[#E0451F] text-sm"
                       >
                         Share Event
                       </button>
@@ -428,7 +428,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">Contact Messages</h2>
             <div className="text-sm text-gray-500">
-              <span className="inline-flex items-center px-2 py-1 rounded-full bg-blue-100 text-blue-800">
+              <span className="inline-flex items-center px-2 py-1 rounded-full bg-orange-100 text-orange-800">
                 📧 Email notifications sent automatically
               </span>
             </div>
@@ -448,12 +448,12 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                 placeholder="Search users by name or email..."
                 value={userSearchQuery}
                 onChange={(e) => setUserSearchQuery(e.target.value)}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
               />
               <button
                 onClick={handleSearchUsers}
                 disabled={isSearching}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] disabled:opacity-50"
               >
                 {isSearching ? 'Searching...' : 'Search'}
               </button>
@@ -492,7 +492,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
 
             {loadingBlockedUsers ? (
               <div className="text-center py-4">
-                <div className="animate-spin w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+                <div className="animate-spin w-6 h-6 border-2 border-[#F25129] border-t-transparent rounded-full mx-auto mb-2"></div>
                 <p className="text-gray-500 text-sm">Loading blocked users...</p>
               </div>
             ) : blockedUsers.length > 0 ? (
@@ -532,7 +532,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           
           {loadingMedia ? (
             <div className="text-center py-8">
-              <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+                <div className="animate-spin w-8 h-8 border-4 border-[#F25129] border-t-transparent rounded-full mx-auto mb-2"></div>
               <p className="text-gray-500">Loading media files...</p>
             </div>
           ) : allMedia.length === 0 ? (
@@ -548,7 +548,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
                         {media.type === 'video' ? (
-                          <Video className="w-5 h-5 text-blue-500" />
+                          <Video className="w-5 h-5 text-[#F25129]" />
                         ) : (
                           <Image className="w-5 h-5 text-green-500" />
                         )}
