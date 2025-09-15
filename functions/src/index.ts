@@ -1,6 +1,7 @@
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onDocumentWritten, onDocumentDeleted, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
+import { onCall } from "firebase-functions/v2/https";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -233,23 +234,6 @@ export const onEventTeaserSync = onDocumentWritten("events/{eventId}", async (ev
   }
 });
 
-// ───────────────── TEST FUNCTION ─────────────────
-export const testFunction = onDocumentWritten("events/{eventId}", async (event) => {
-  console.log(`🔍 TEST: Function triggered for eventId=${event.params.eventId}`);
-});
-
-// ───────────────── TEST ATTENDEE FUNCTION ─────────────────
-export const testAttendeeFunction = onDocumentWritten("events/{eventId}/attendees/{attendeeId}", async (event) => {
-  console.log(`🔍 TEST ATTENDEE: Function triggered for eventId=${event.params.eventId}, attendeeId=${event.params.attendeeId}`);
-  console.log(`🔍 TEST ATTENDEE: Document path: events/${event.params.eventId}/attendees/${event.params.attendeeId}`);
-});
-
-// ───────────────── TEST ALL DOCUMENTS FUNCTION ─────────────────
-export const testAllDocuments = onDocumentWritten("events/{eventId}/attendees/{attendeeId}", async (event) => {
-  console.log(`🔍 TEST ALL: Function triggered for ANY document change`);
-  console.log(`🔍 TEST ALL: Event params:`, event.params);
-  console.log(`🔍 TEST ALL: Document path: events/${event.params.eventId}/attendees/${event.params.attendeeId}`);
-});
 
 // ───────────────── EVENTS: RSVP notifications (New Attendee System) ─────────────────
 export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attendeeId}", async (event) => {
@@ -385,9 +369,40 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
 });
 
 // ───────────────── MEDIA: FFmpeg + Manifest Rewrite ─────────────────
+// Environment-specific bucket selection
+function getBucketForEnvironment(): string {
+  // FIREBASE_CONFIG is present in Functions gen2 and includes projectId
+  const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : {};
+  const projectId =
+    process.env.GOOGLE_CLOUD_PROJECT ||
+    process.env.GCLOUD_PROJECT ||
+    process.env.GCP_PROJECT ||
+    cfg.projectId;
+
+  console.log('🔧 Project ID detected:', projectId);
+
+  switch (projectId) {
+    case 'momfitnessmojo-staging':
+      // Staging default bucket (from your screenshot)
+      console.log('🔧 Using staging bucket: momfitnessmojo-staging.firebasestorage.app');
+      return 'momfitnessmojo-staging.firebasestorage.app';
+
+    case 'momfitnessmojo-prod':
+      // Prod default bucket (from your screenshot)
+      console.log('🔧 Using prod bucket: momfitnessmojo-prod.firebasestorage.app');
+      return 'momfitnessmojo-prod.firebasestorage.app';
+
+    case 'momfitnessmojo':
+    default:
+      // Dev → your custom bucket
+      console.log('🔧 Using dev bucket: mojomediafiles');
+      return 'mojomediafiles';
+  }
+}
+
 export const onMediaFileFinalize = onObjectFinalized(
   {
-    bucket: 'mojomediafiles-staging',
+    bucket: getBucketForEnvironment(),
     region: 'us-east1',
     timeoutSeconds: 540,
     memory: '2GiB',
@@ -700,3 +715,104 @@ export const resetStuckProcessing = onDocumentCreated("manual_fixes/{fixId}", as
     }, { merge: true });
   }
 });
+
+// ───────────────── PHONE NUMBER VALIDATION ─────────────────
+export const checkPhoneNumberExists = onCall({
+  cors: true, // Enable CORS for all origins
+  region: 'us-central1'
+}, async (request) => {
+  console.log('🔍 checkPhoneNumberExists called with:', request.data);
+  
+  const { phoneNumber } = request.data;
+  
+  if (!phoneNumber) {
+    console.log('❌ No phone number provided');
+    return { exists: false, error: 'Phone number is required' };
+  }
+  
+  try {
+    console.log('🔍 Checking if phone number exists:', phoneNumber);
+    
+    // Query Firestore for users with this phone number
+    const usersSnapshot = await db.collection('users')
+      .where('phoneNumber', '==', phoneNumber)
+      .limit(1)
+      .get();
+    
+    const exists = !usersSnapshot.empty;
+    console.log('🔍 Phone number check result:', { phoneNumber, exists, count: usersSnapshot.size });
+    
+    return { 
+      exists, 
+      phoneNumber,
+      message: exists ? 'Phone number is registered' : 'Phone number not found'
+    };
+    
+  } catch (error) {
+    console.error('❌ Error checking phone number:', error);
+    return { 
+      exists: false, 
+      error: 'Failed to check phone number',
+      phoneNumber 
+    };
+  }
+});
+
+// SMS Delivery Status Checker
+export const checkSMSDeliveryStatus = onCall(async (request) => {
+  const { phoneNumber, verificationId } = request.data;
+  
+  console.log('🔍 checkSMSDeliveryStatus called with:', { phoneNumber, verificationId });
+  
+  try {
+    // Check if phone number is valid format
+    const phoneRegex = /^\+[1-9]\d{1,14}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+      return {
+        success: false,
+        error: 'Invalid phone number format',
+        phoneNumber,
+        verificationId
+      };
+    }
+    
+    // Check Firebase project configuration
+    const projectId = process.env.GCLOUD_PROJECT || 'momfitnessmojo';
+    
+    // Log detailed information for debugging
+    const debugInfo = {
+      phoneNumber,
+      verificationId,
+      projectId,
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'production',
+      region: process.env.FUNCTION_REGION || 'us-central1'
+    };
+    
+    console.log('🔍 SMS Delivery Debug Info:', debugInfo);
+    
+    return {
+      success: true,
+      message: 'SMS delivery status checked',
+      debugInfo,
+      recommendations: [
+        'Check Firebase Console → Authentication → Usage for SMS quota',
+        'Verify phone provider is enabled in Firebase Console',
+        'Check billing is enabled for SMS in Firebase Console',
+        'Try a different phone number to test',
+        'Check phone carrier for SMS filtering',
+        'Wait 1-2 minutes for SMS delivery'
+      ]
+    };
+    
+  } catch (error) {
+    console.error('❌ Error checking SMS delivery status:', error);
+    return {
+      success: false,
+      error: 'Failed to check SMS delivery status',
+      phoneNumber,
+      verificationId
+    };
+  }
+});
+

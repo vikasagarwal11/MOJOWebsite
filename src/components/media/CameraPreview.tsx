@@ -19,6 +19,8 @@ interface CameraPreviewProps {
   previewUrl?: string | null;
   /** NEW: media type to determine if preview should be image or video */
   mediaType?: 'image' | 'video';
+  /** NEW: callback to clear the preview and return to live camera */
+  onClearPreview?: () => void;
 }
 
 const CameraPreview: React.FC<CameraPreviewProps> = ({
@@ -35,13 +37,42 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
   onResetZoom,
   previewUrl,
   mediaType,
+  onClearPreview,
 }) => {
   const showRecordedPreview = Boolean(previewUrl);
 
   return (
     <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden">
-      {/* Recorded preview (video or image) */}
-      {showRecordedPreview ? (
+      {/* Live stream - always present for camera functionality */}
+      <video
+        ref={videoRef}
+        className="absolute inset-0 h-full w-full object-cover"
+        muted
+        playsInline
+        style={{
+          filter:
+            videoEffect === 'none'
+              ? undefined
+              : videoEffect === 'grayscale'
+              ? 'grayscale(1)'
+              : videoEffect === 'sepia'
+              ? 'sepia(1)'
+              : videoEffect === 'vintage'
+              ? 'contrast(0.9) saturate(0.9) sepia(0.2)'
+              : videoEffect === 'bright'
+              ? 'brightness(1.15)'
+              : videoEffect === 'contrast'
+              ? 'contrast(1.3)'
+              : undefined,
+          transform: `scale(${zoomLevel})`,
+          transition: 'transform 150ms ease',
+          zIndex: showRecordedPreview ? 1 : 2, // Show live stream behind preview
+        }}
+      />
+      <canvas ref={canvasRef} className="hidden" />
+
+      {/* Recorded preview overlay (video or image) */}
+      {showRecordedPreview && (
         <>
           {mediaType === 'image' ? (
             <img
@@ -49,6 +80,7 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
               src={previewUrl!}
               alt="Captured photo"
               className="absolute inset-0 h-full w-full object-contain bg-black"
+              style={{ zIndex: 2 }}
             />
           ) : (
             <video
@@ -57,44 +89,16 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
               controls
               playsInline
               className="absolute inset-0 h-full w-full object-contain bg-black"
+              style={{ zIndex: 2 }}
             />
           )}
         </>
-      ) : (
-        <>
-          {/* Live stream */}
-          <video
-            ref={videoRef}
-            className="absolute inset-0 h-full w-full object-cover"
-            muted
-            playsInline
-            style={{
-              filter:
-                videoEffect === 'none'
-                  ? undefined
-                  : videoEffect === 'grayscale'
-                  ? 'grayscale(1)'
-                  : videoEffect === 'sepia'
-                  ? 'sepia(1)'
-                  : videoEffect === 'vintage'
-                  ? 'contrast(0.9) saturate(0.9) sepia(0.2)'
-                  : videoEffect === 'bright'
-                  ? 'brightness(1.15)'
-                  : videoEffect === 'contrast'
-                  ? 'contrast(1.3)'
-                  : undefined,
-              transform: `scale(${zoomLevel})`,
-              transition: 'transform 150ms ease',
-            }}
-          />
-          <canvas ref={canvasRef} className="hidden" />
+      )}
 
-          {!cameraOn && (
-            <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
-              <span>{streamReady ? 'Ready' : 'Start camera'}</span>
-            </div>
-          )}
-        </>
+      {!cameraOn && !showRecordedPreview && (
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
+          <span>{streamReady ? 'Ready' : 'Start camera'}</span>
+        </div>
       )}
 
       {/* Flash effect */}
@@ -115,6 +119,15 @@ const CameraPreview: React.FC<CameraPreviewProps> = ({
           className="absolute bottom-2 left-2 text-xs text-white/90 bg-black/40 px-2 py-1 rounded"
         >
           Reset zoom
+        </button>
+      )}
+
+      {showRecordedPreview && onClearPreview && (
+        <button
+          onClick={onClearPreview}
+          className="absolute top-2 right-2 text-xs text-white/90 bg-black/40 px-2 py-1 rounded hover:bg-black/60"
+        >
+          ✕ Clear Preview
         </button>
       )}
     </div>

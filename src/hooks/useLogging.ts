@@ -10,7 +10,7 @@ export function useLogging() {
   useEffect(() => {
     const initializeLogging = async () => {
       await loggingService.initialize()
-      performanceService.initialize()
+      // performanceService is initialized in main.tsx to avoid circular dependency
     }
 
     initializeLogging()

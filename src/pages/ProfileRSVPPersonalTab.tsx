@@ -82,7 +82,7 @@ export const ProfileRSVPPersonalTab: React.FC<ProfileRSVPPersonalTabProps> = ({
           <select
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value as 'all' | 'upcoming' | 'past')}
-            className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-sm"
+            className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-sm"
           >
             <option value="all">All Dates</option>
             <option value="upcoming">Upcoming</option>
@@ -94,7 +94,7 @@ export const ProfileRSVPPersonalTab: React.FC<ProfileRSVPPersonalTabProps> = ({
             <select
               value={rsvpFilter}
               onChange={(e) => setRsvpFilter(e.target.value as 'all' | 'going' | 'not-going' | 'pending')}
-              className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-sm"
+              className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-sm"
             >
               <option value="all">All Statuses</option>
               <option value="going">Going</option>
@@ -114,7 +114,7 @@ export const ProfileRSVPPersonalTab: React.FC<ProfileRSVPPersonalTabProps> = ({
         
         {loadingEvents ? (
           <div className="text-center py-8 bg-gray-50 rounded-lg">
-            <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+            <div className="animate-spin w-8 h-8 border-4 border-[#F25129] border-t-transparent rounded-full mx-auto mb-2"></div>
             <p className="text-gray-500">Loading events...</p>
           </div>
         ) : filteredEvents.length === 0 ? (
@@ -142,16 +142,16 @@ export const ProfileRSVPPersonalTab: React.FC<ProfileRSVPPersonalTabProps> = ({
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-        <h3 className="text-sm font-medium text-purple-800 mb-2">Quick Actions</h3>
+      <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+        <h3 className="text-sm font-medium text-orange-800 mb-2">Quick Actions</h3>
         <div className="flex flex-wrap gap-2">
-          <button className="px-3 py-1 bg-purple-600 text-white text-xs rounded-full hover:bg-purple-700 transition-colors">
+          <button className="px-3 py-1 bg-[#F25129] text-white text-xs rounded-full hover:bg-[#E0451F] transition-colors">
             Export My RSVPs
           </button>
-          <button className="px-3 py-1 bg-purple-600 text-white text-xs rounded-full hover:bg-purple-700 transition-colors">
+          <button className="px-3 py-1 bg-[#F25129] text-white text-xs rounded-full hover:bg-[#E0451F] transition-colors">
             View Calendar
           </button>
-          <button className="px-3 py-1 bg-purple-600 text-white text-xs rounded-full hover:bg-purple-700 transition-colors">
+          <button className="px-3 py-1 bg-[#F25129] text-white text-xs rounded-full hover:bg-[#E0451F] transition-colors">
             Share Events
           </button>
         </div>

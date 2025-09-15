@@ -6,27 +6,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Moms Fitness Mojo</title>
     
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#f97316" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Mojo Fitness" />
+    
+    <!-- PWA Icons -->
+    <link rel="apple-touch-icon" href="/logo-small.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/logo-small.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/logo.png" />
+    
     <!-- Google reCAPTCHA v2 script - required for phone authentication -->
-    <!-- Note: You may need to add your reCAPTCHA site key if you get domain errors -->
-    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    <script src="https://www.google.com/recaptcha/api.js?render=6Letk8grAAAAAAD8AKXQA4reZ9iQwExN51pJ4cot" async defer></script>
   </head>
   <body>
     <div id="root"></div>
+    
+    <!-- reCAPTCHA Container for phone authentication -->
+    <div id="recaptcha-container"></div>
+    
     <script type="module" src="/src/main.tsx"></script>
     
-    <!-- Service Worker Registration -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then((registration) => {
-              console.log('SW registered: ', registration);
-            })
-            .catch((registrationError) => {
-              console.log('SW registration failed: ', registrationError);
-            });
-        });
-      }
-    </script>
+    <!-- Service Worker Registration handled by sw-register.ts -->
   </body>
 </html>

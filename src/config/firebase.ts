@@ -22,8 +22,27 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-XXXXXXXXXX',
 };
 
+// 🚨 CRITICAL DEBUG: Always log the project ID being used
+console.log(`🚨 [CRITICAL] Firebase Project ID: ${firebaseConfig.projectId}`);
+console.log(`🚨 [CRITICAL] Firebase Auth Domain: ${firebaseConfig.authDomain}`);
+console.log(`🚨 [CRITICAL] Firebase Storage Bucket: ${firebaseConfig.storageBucket}`);
+console.log(`🚨 [CRITICAL] Environment Variables:`, {
+  VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  VITE_ENVIRONMENT: import.meta.env.VITE_ENVIRONMENT,
+  MODE: import.meta.env.MODE
+});
+
+// Flag to control local emulators (set VITE_USE_EMULATORS=true in .env.local)
+export const USING_EMULATORS = import.meta.env.VITE_USE_EMULATORS === 'true';
+
 // Helpful runtime check - only warn in development
 if (import.meta.env.DEV) {
+  // Log environment information
+  console.log(`[Firebase] Environment: ${import.meta.env.VITE_ENVIRONMENT || 'development'}`);
+  console.log(`[Firebase] Project ID: ${firebaseConfig.projectId}`);
+  console.log(`[Firebase] Using emulators: ${USING_EMULATORS ? 'YES' : 'NO'}`);
+  
+  // Check for placeholder values
   for (const [k, v] of Object.entries(firebaseConfig)) {
     if (!v || v.includes('demo-') || v.includes('your_') || v === '123456789' || v === 'G-XXXXXXXXXX') {
       console.warn(`[Firebase] Using placeholder value for: ${k}`);
@@ -31,10 +50,17 @@ if (import.meta.env.DEV) {
   }
 }
 
-// Flag to control local emulators (set VITE_USE_EMULATORS=true in .env.local)
-export const USING_EMULATORS = import.meta.env.VITE_USE_EMULATORS === 'true';
-
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+
+// 🚨 CRITICAL DEBUG: Always log the project ID being used
+console.log(`🚨 [CRITICAL] Firebase Project ID: ${firebaseConfig.projectId}`);
+console.log(`🚨 [CRITICAL] Firebase Auth Domain: ${firebaseConfig.authDomain}`);
+console.log(`🚨 [CRITICAL] Firebase Storage Bucket: ${firebaseConfig.storageBucket}`);
+console.log(`🚨 [CRITICAL] Environment Variables:`, {
+  VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  VITE_ENVIRONMENT: import.meta.env.VITE_ENVIRONMENT,
+  MODE: import.meta.env.MODE
+});
 
 // ✅ Firestore with persistent local cache (multi-tab)
 // Use different database based on environment
@@ -66,9 +92,26 @@ export let analytics: Analytics | undefined;
 // export let perf: any | undefined;
 
 if (typeof window !== 'undefined') {
-  isSupported().then(ok => {
-    if (ok) analytics = getAnalytics(app);
-  }).catch(() => {});
+  // Only initialize analytics if we have real Firebase config (not placeholder values)
+  const hasRealConfig = firebaseConfig.measurementId !== 'G-XXXXXXXXXX' && 
+                       firebaseConfig.projectId !== 'demo-project' &&
+                       !firebaseConfig.apiKey.includes('demo-');
+  
+  if (hasRealConfig) {
+    isSupported().then(ok => {
+      if (ok) {
+        analytics = getAnalytics(app);
+        
+        // Optional: Enable Analytics Debug Mode in development
+        // Uncomment the next line if you want to debug analytics events
+        // if (import.meta.env.DEV) {
+        //   console.log('[Firebase] Analytics Debug Mode enabled - check Firebase Console for real-time events');
+        // }
+      }
+    }).catch(() => {});
+  } else {
+    console.warn('[Firebase] Skipping analytics initialization - using placeholder config');
+  }
 
   // Disabled Firebase Performance to prevent invalid attribute errors
   // try {

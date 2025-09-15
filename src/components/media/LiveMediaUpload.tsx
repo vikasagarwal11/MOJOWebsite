@@ -95,7 +95,7 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
     setCountdown,
     setMediaBlob,
     setPreviewUrl,
-  } = useMediaCapture(videoRef, canvasRef);
+  } = useMediaCapture(videoRef, canvasRef, mode);
 
   // Events
   const { data: events } = useRealtimeCollection('events', []);
@@ -296,6 +296,37 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
         <div className="flex h-[calc(90vh-120px)]">
           {/* Left: Camera / Preview */}
           <div className="flex-1 p-6">
+            {/* Camera Selector */}
+            {devices.length > 1 && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-2">Camera</label>
+                <select
+                  value={deviceId || ''}
+                  onChange={(e) => {
+                    console.log('📷 Camera selection changed to:', e.target.value);
+                    setDeviceId(e.target.value || undefined);
+                  }}
+                  className="border rounded px-3 py-2 w-full"
+                >
+                  {devices.map((device, index) => {
+                    // Clean up device labels for better UX
+                    let label = device.label || `Camera ${index + 1}`;
+                    if (label.includes('facing back')) label = 'Back Camera';
+                    if (label.includes('facing front')) label = 'Front Camera';
+                    if (label.includes('Back Dual Wide')) label = 'Back Wide Camera';
+                    if (label.includes('Back Dual Ultra Wide')) label = 'Back Ultra Wide Camera';
+                    if (label.includes('Back Triple')) label = 'Back Triple Camera';
+                    
+                    return (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {label}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+            
             <CameraPreview
               cameraOn={cameraOn}
               streamReady={streamReady}
@@ -310,6 +341,7 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
               onResetZoom={() => setZoomLevel(1)}
               previewUrl={previewUrl}            // <-- NEW: show recorded/picked preview
               mediaType={mode === 'photo' || (mediaBlob && mediaBlob.type.startsWith('image/')) ? 'image' : 'video'}
+              onClearPreview={() => setPreviewUrl(null)}  // <-- NEW: clear preview to return to live camera
             />
 
             {/* Mode selector */}
@@ -318,11 +350,17 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
                 <button
                   key={m}
                   onClick={() => {
+                    if (isRecording) return; // Prevent mode changes during recording
                     setMode(m);
                     setCountdown(0); // cancel any running countdown when switching
                   }}
+                  disabled={isRecording}
                   className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
-                    mode === m ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    isRecording
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-50'
+                      : mode === m 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
                   {m === 'reel' ? (
@@ -360,6 +398,19 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
 
           {/* Right: Settings & Upload */}
           <div className="w-80 border-l p-6 overflow-y-auto space-y-6">
+            {/* Recording Status */}
+            {isRecording && (
+              <div className="bg-red-100 border border-red-300 rounded-lg p-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                  <span className="text-red-700 font-medium">Recording in progress...</span>
+                </div>
+                <p className="text-red-600 text-sm mt-1">
+                  Only the "Stop Recording" button is available during recording.
+                </p>
+              </div>
+            )}
+            
             {/* Effects */}
             <div className="space-y-3">
               <label className="block text-sm font-medium">Filter / Effect</label>
@@ -368,8 +419,11 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
                   <button
                     key={f}
                     onClick={() => (mode === 'photo' ? setPhotoFilter(f) : setVideoEffect(f))}
+                    disabled={isRecording}
                     className={`px-3 py-1 rounded-full text-sm ${
-                      (mode === 'photo' ? photoFilter : videoEffect) === f
+                      isRecording
+                        ? 'bg-gray-300 cursor-not-allowed opacity-50'
+                        : (mode === 'photo' ? photoFilter : videoEffect) === f
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-100 hover:bg-gray-200'
                     }`}
@@ -381,8 +435,13 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
               <div className="flex items-center justify-between">
                 <span className="text-sm">Auto enhance</span>
                 <button
-                  onClick={() => setAutoEnhance((v) => !v)}
-                  className={`h-6 w-11 rounded-full relative ${autoEnhance ? 'bg-blue-600' : 'bg-gray-300'}`}
+                  onClick={() => setAutoEnhance(!autoEnhance)}
+                  disabled={isRecording}
+                  className={`h-6 w-11 rounded-full relative ${
+                    isRecording 
+                      ? 'bg-gray-300 cursor-not-allowed opacity-50' 
+                      : autoEnhance ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
                   aria-label="Toggle auto enhance"
                 >
                   <span
@@ -397,15 +456,23 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
                 <input
                   value={textOverlay}
                   onChange={(e) => setTextOverlay(e.target.value.slice(0, 50))}
-                  className="w-full border rounded px-3 py-2"
+                  disabled={isRecording}
+                  className={`w-full border rounded px-3 py-2 ${
+                    isRecording ? 'bg-gray-100 cursor-not-allowed opacity-50' : ''
+                  }`}
                   placeholder="Add text (max 50 chars)"
                 />
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm">Keep camera active after shot</span>
                 <button
-                  onClick={() => setKeepCameraActive((v) => !v)}
-                  className={`h-6 w-11 rounded-full relative ${keepCameraActive ? 'bg-blue-600' : 'bg-gray-300'}`}
+                  onClick={() => setKeepCameraActive(!keepCameraActive)}
+                  disabled={isRecording}
+                  className={`h-6 w-11 rounded-full relative ${
+                    isRecording 
+                      ? 'bg-gray-300 cursor-not-allowed opacity-50' 
+                      : keepCameraActive ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
                   aria-label="Toggle keep camera active"
                 >
                   <span
@@ -434,8 +501,11 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                disabled={isRecording}
                 rows={3}
-                className="w-full border rounded px-3 py-2"
+                className={`w-full border rounded px-3 py-2 ${
+                  isRecording ? 'bg-gray-100 cursor-not-allowed opacity-50' : ''
+                }`}
                 placeholder="Add a description..."
                 maxLength={280}
               />
@@ -444,23 +514,26 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
             {/* Event */}
             <div>
               <label className="block text-sm font-medium mb-1">Event (optional)</label>
-              <EventTypeahead
-                value={selectedEvent}
-                onChange={setSelectedEvent}
-                seedEvents={events as any}
-                placeholder="Search events..."
-              />
+              <div className={isRecording ? 'opacity-50 pointer-events-none' : ''}>
+                <EventTypeahead
+                  value={selectedEvent}
+                  onChange={setSelectedEvent}
+                  seedEvents={events as any}
+                  placeholder="Search events..."
+                />
+              </div>
             </div>
 
             {/* Social */}
             <div>
               <label className="block text-sm font-medium mb-2">Share to</label>
-              <div className="space-y-2">
+              <div className={`space-y-2 ${isRecording ? 'opacity-50 pointer-events-none' : ''}`}>
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={socialMediaOptions.website}
                     onChange={(e) => setSocialMediaOptions((s) => ({ ...s, website: e.target.checked }))}
+                    disabled={isRecording}
                   />
                   Website
                 </label>
@@ -469,6 +542,7 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
                     type="checkbox"
                     checked={socialMediaOptions.facebook}
                     onChange={(e) => setSocialMediaOptions((s) => ({ ...s, facebook: e.target.checked }))}
+                    disabled={isRecording}
                   />
                   <Facebook className="w-4 h-4" />
                   Facebook
@@ -478,6 +552,7 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
                     type="checkbox"
                     checked={socialMediaOptions.instagram}
                     onChange={(e) => setSocialMediaOptions((s) => ({ ...s, instagram: e.target.checked }))}
+                    disabled={isRecording}
                   />
                   <Instagram className="w-4 h-4" />
                   Instagram
@@ -516,7 +591,13 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
               )}
               <div className="mt-2">
                 <label className="block text-xs text-gray-500">Or pick a file</label>
-                <input type="file" accept="image/*,video/*" onChange={handleFilePicker} />
+                <input 
+                  type="file" 
+                  accept="image/*,video/*" 
+                  onChange={handleFilePicker}
+                  disabled={isRecording}
+                  className={isRecording ? 'opacity-50 cursor-not-allowed' : ''}
+                />
               </div>
             </div>
           </div>

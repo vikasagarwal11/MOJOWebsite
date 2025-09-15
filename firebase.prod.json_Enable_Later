@@ -7,7 +7,11 @@
     "rules": "storage.rules"
   },
   "functions": {
-    "source": "functions"
+    "source": "functions",
+    "runtime": "nodejs22",
+    "environmentVariables": {
+      "STORAGE_BUCKET": "mojomediafiles-prod.firebasestorage.app"
+    }
   },
   "hosting": {
     "public": "dist",

@@ -104,12 +104,12 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
     {(currentUser?.role === 'admin' || userEvents.length > 0) && (
       <div className="grid gap-4">
         <div className="flex items-center gap-2">
-          <Bell className="w-5 h-5 text-purple-600" />
+          <Bell className="w-5 h-5 text-[#F25129]" />
           <h2 className="text-sm font-semibold text-gray-700">Notifications</h2>
           {notifications.length > 0 && (
             <button
               onClick={markAllNotificationsAsRead}
-              className="ml-4 text-xs text-purple-600 hover:underline"
+              className="ml-4 text-xs text-[#F25129] hover:underline"
               aria-label="Mark all notifications as read"
             >
               Mark All as Read
@@ -123,7 +123,7 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
           <select
             value={notificationFilter}
             onChange={(e) => setNotificationFilter(e.target.value as 'all' | 'unread')}
-            className="ml-4 px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
+            className="ml-4 px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-xs"
             aria-label="Filter notifications"
           >
             <option value="all">All</option>
@@ -132,7 +132,7 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
         </div>
         {loadingNotifications ? (
           <div className="text-center py-8 bg-gray-50 rounded-lg">
-            <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+            <div className="animate-spin w-8 h-8 border-4 border-[#F25129] border-t-transparent rounded-full mx-auto mb-2"></div>
             <p className="text-gray-500">Loading notifications...</p>
           </div>
         ) : notifications.length === 0 ? (
@@ -148,7 +148,7 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
               .map((notification) => (
                 <div
                   key={notification.id}
-                  className={`p-4 rounded-lg border transition-all duration-200 ${notification.read ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-purple-50 border-purple-200 text-gray-900'}`}
+                  className={`p-4 rounded-lg border transition-all duration-200 ${notification.read ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-orange-50 border-orange-200 text-gray-900'}`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -172,7 +172,7 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
                             if (event) setEventToEdit(event);
                             setIsCreateModalOpen(true);
                           }}
-                          className="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                          className="text-xs px-2 py-1 bg-[#F25129] text-white rounded hover:bg-[#E0451F] transition-colors"
                           aria-label="View event details"
                         >
                           View Event
@@ -195,7 +195,7 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
             {notifications.length >= PAGE_SIZE * notificationsPage && (
                           <button
               onClick={() => setNotificationsPage(notificationsPage + 1)}
-              className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-full hover:bg-purple-700"
+              className="mt-4 px-4 py-2 bg-[#F25129] text-white rounded-full hover:bg-[#E0451F]"
               aria-label="Load more notifications"
             >
               Load More Notifications
@@ -218,7 +218,7 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
             <select
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value as 'all' | 'upcoming' | 'past')}
-              className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-sm"
+              className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-sm"
             >
               <option value="all">All Dates</option>
               <option value="upcoming">Upcoming</option>
@@ -230,7 +230,7 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
               <select
                 value={rsvpFilter}
                 onChange={(e) => setRsvpFilter(e.target.value as 'all' | 'going' | 'not-going' | 'pending')}
-                className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-sm"
+                className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-sm"
               >
                 <option value="all">All Statuses</option>
                 <option value="going">Going</option>

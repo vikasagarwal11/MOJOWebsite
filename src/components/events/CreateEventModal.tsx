@@ -29,7 +29,7 @@ function tsToDate(v: any): Date {
 
 const eventSchema = z.object({
   title: z.string().min(1, 'Event title is required'),
-  description: z.string().min(10, 'Description must be at least 10 characters'),
+  description: z.string().min(200, 'Description must be at least 200 characters to ensure proper display'),
   date: z.string().min(1, 'Event date is required'),
   time: z.string().min(1, 'Event time is required'),
   endTime: z.string().optional(),
@@ -727,7 +727,7 @@ useEffect(() => {
         startAt,
         endAt,
         allDay: data.isAllDay, // Add all-day flag
-        location: data.location.trim(),
+        location: data.location?.trim() || undefined,
         venueName: data.venueName?.trim() || undefined,
         venueAddress: data.venueAddress?.trim() || undefined,
         imageUrl: imageUrl === undefined ? null : imageUrl, // Convert undefined to null for Firestore
@@ -806,6 +806,14 @@ useEffect(() => {
               className={`w-full px-4 py-3 rounded-lg border ${errors.description ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent`}
               placeholder="Describe your event..."
             />
+            <div className="flex justify-between items-center mt-1">
+              <div className="text-xs text-gray-500">
+                {watch('description')?.length || 0} / 200 characters minimum
+              </div>
+              {watch('description') && watch('description').length >= 200 && (
+                <div className="text-xs text-green-600 font-medium">✓ Ready for display</div>
+              )}
+            </div>
             {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description.message}</p>}
           </div>
           {/* Event Start, Type & Duration - All in One Compact Row */}
@@ -1524,18 +1532,6 @@ useEffect(() => {
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Children (3-10) ($)</label>
-                      <input
-                        {...register('childPrice')}
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        disabled={isLoading}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                        placeholder="15.00"
-                      />
-                    </div>
-                    <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Teens (11+) ($)</label>
                       <input
                         {...register('teenPrice')}
@@ -1545,6 +1541,18 @@ useEffect(() => {
                         disabled={isLoading}
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="20.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Children (3-10) ($)</label>
+                      <input
+                        {...register('childPrice')}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        disabled={isLoading}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                        placeholder="15.00"
                       />
                     </div>
                     <div>

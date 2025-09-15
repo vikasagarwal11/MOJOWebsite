@@ -1,0 +1,53 @@
+#!/bin/bash
+# Bash script for deploying to staging environment
+# Usage: ./deploy-staging.sh [component]
+# Components: all, hosting, firestore, functions
+
+COMPONENT=${1:-"all"}
+
+echo "🚀 Deploying to Staging Environment..."
+
+# Set environment variables
+export NODE_ENV="staging"
+export VITE_ENVIRONMENT="staging"
+
+# Build the project for staging
+echo "📦 Building project for staging..."
+npm run build:staging
+
+if [ $? -ne 0 ]; then
+    echo "❌ Build failed!"
+    exit 1
+fi
+
+# Deploy based on component
+case $COMPONENT in
+    "hosting")
+        echo "🌐 Deploying hosting only..."
+        firebase deploy --only hosting --project=staging
+        ;;
+    "firestore")
+        echo "🗄️ Deploying Firestore rules and indexes..."
+        firebase deploy --only firestore --project=staging
+        ;;
+    "functions")
+        echo "⚡ Deploying Cloud Functions..."
+        firebase deploy --only functions --project=staging
+        ;;
+    "all")
+        echo "🚀 Deploying everything..."
+        firebase deploy --project=staging
+        ;;
+    *)
+        echo "❌ Invalid component. Use: all, hosting, firestore, functions"
+        exit 1
+        ;;
+esac
+
+if [ $? -eq 0 ]; then
+    echo "✅ Staging deployment completed successfully!"
+    echo "🌐 Staging URL: https://momfitnessmojo-staging.web.app"
+else
+    echo "❌ Deployment failed!"
+    exit 1
+fi

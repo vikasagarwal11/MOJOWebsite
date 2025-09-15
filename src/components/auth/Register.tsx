@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Phone, Shield, User } from 'lucide-react';
+import { Phone, Shield, User, Clock, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import type { ConfirmationResult } from 'firebase/auth';
 import { normalizeUSPhoneToE164OrNull } from '../../utils/phone';
@@ -29,12 +29,50 @@ const Register: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  
+  // SMS Code improvements
+  const [codeExpiryTime, setCodeExpiryTime] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number>(0);
+  const [isResending, setIsResending] = useState(false);
+  const [resendAttempts, setResendAttempts] = useState(0);
+  const [maxResendAttempts] = useState(3);
+  const [error, setError] = useState<string | null>(null);
+  const [showSMSStatusModal, setShowSMSStatusModal] = useState(false);
+  const [smsStatusData, setSmsStatusData] = useState<any>(null);
 
-  const { sendVerificationCode, verifyCode } = useAuth();
+  const { sendVerificationCode, verifyCode, checkIfUserExists, checkSMSDeliveryStatus } = useAuth();
   const navigate = useNavigate();
 
   const phoneForm = useForm<PhoneFormData>({ resolver: zodResolver(phoneSchema) });
   const codeForm  = useForm<CodeFormData>({ resolver: zodResolver(codeSchema) });
+
+  // Countdown timer effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (codeExpiryTime && timeLeft > 0) {
+      interval = setInterval(() => {
+        const now = Date.now();
+        const remaining = Math.max(0, Math.floor((codeExpiryTime - now) / 1000));
+        setTimeLeft(remaining);
+        
+        if (remaining === 0) {
+          setError('Verification code has expired. Please request a new one.');
+        }
+      }, 1000);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [codeExpiryTime, timeLeft]);
+
+  // Format time for display
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const onPhoneSubmit = async (data: PhoneFormData) => {
     console.log('🔍 Register: onPhoneSubmit called with data:', data);
@@ -58,8 +96,28 @@ const Register: React.FC = () => {
     setPhoneNumber(e164);
 
     try {
+      // Check if phone number is already registered
+      console.log('🔍 Register: Checking if phone number is already registered...');
+      const userExists = await checkIfUserExists(e164);
+      if (userExists) {
+        console.log('🔍 Register: Phone number already registered, showing error');
+        phoneForm.setError('phoneNumber', {
+          message: 'This phone number is already registered. Please sign in instead.'
+        });
+        return;
+      }
+      
+      console.log('🔍 Register: Phone number available, sending verification code...');
       // IMPORTANT: Always send E.164 to Firebase
       const result = await sendVerificationCode(e164);
+      
+      // Set code expiry time (5 minutes from now)
+      const expiryTime = Date.now() + (5 * 60 * 1000);
+      setCodeExpiryTime(expiryTime);
+      setTimeLeft(300); // 5 minutes in seconds
+      setError(null); // Clear any previous errors
+      setResendAttempts(0); // Reset resend attempts
+      
       setConfirmationResult(result);
       setStep('code');
     } catch (err: any) {
@@ -132,13 +190,90 @@ const Register: React.FC = () => {
         errorMessage: err?.message,
         errorStack: err?.stack
       });
-      const msg =
-        err?.code === 'auth/code-expired'
-          ? 'Verification code expired. Request a new one.'
-          : 'Invalid code. Please try again.';
+      
+      let msg = 'Invalid code. Please try again.';
+      
+      if (err?.code === 'auth/invalid-verification-code') {
+        if (timeLeft === 0) {
+          msg = 'Verification code has expired. Please request a new one.';
+          setError('Code expired. Click "Resend Code" to get a new one.');
+        } else {
+          msg = 'Invalid verification code. Please check the code and try again.';
+        }
+      } else if (err?.code === 'auth/code-expired') {
+        msg = 'Verification code has expired. Please request a new one.';
+        setError('Code expired. Click "Resend Code" to get a new one.');
+        setTimeLeft(0);
+      } else if (err?.code === 'auth/too-many-requests') {
+        msg = 'Too many attempts. Please wait before trying again.';
+        setError('Too many failed attempts. Please wait a few minutes before trying again.');
+      }
+      
       codeForm.setError('verificationCode', { message: msg });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCheckSMSStatus = async () => {
+    if (!confirmationResult || !phoneNumber) {
+      console.log('🔍 Register: No confirmation result or phone number available');
+      return;
+    }
+
+    try {
+      console.log('🔍 Register: Checking SMS delivery status...');
+      const status = await checkSMSDeliveryStatus(phoneNumber, confirmationResult.verificationId);
+      console.log('🔍 Register: SMS delivery status:', status);
+      
+      if (status.success) {
+        console.log('🔍 Register: SMS status check successful');
+        console.log('🔍 Register: Debug info:', status.debugInfo);
+        console.log('🔍 Register: Recommendations:', status.recommendations);
+        
+        // Store status data and show modal
+        setSmsStatusData(status);
+        setShowSMSStatusModal(true);
+      } else {
+        console.error('🔍 Register: SMS status check failed:', status.error);
+        setError('Failed to check SMS status. Please try again.');
+      }
+    } catch (error) {
+      console.error('🔍 Register: Error checking SMS status:', error);
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (resendAttempts >= maxResendAttempts) {
+      setError(`Maximum resend attempts (${maxResendAttempts}) reached. Please try again later.`);
+      return;
+    }
+
+    if (!phoneNumber) {
+      setError('Phone number not available for resend.');
+      return;
+    }
+
+    setIsResending(true);
+    setError(null);
+
+    try {
+      console.log('🔍 Register: Resending verification code...');
+      const result = await sendVerificationCode(phoneNumber);
+      
+      // Reset timer for new code
+      const expiryTime = Date.now() + (5 * 60 * 1000);
+      setCodeExpiryTime(expiryTime);
+      setTimeLeft(300);
+      setResendAttempts(prev => prev + 1);
+      
+      setConfirmationResult(result);
+      console.log('🔍 Register: New verification code sent successfully');
+    } catch (err: any) {
+      console.error('🔍 Register: Resend error:', err);
+      setError('Failed to resend code. Please try again.');
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -232,7 +367,17 @@ const Register: React.FC = () => {
           ) : (
             <form onSubmit={codeForm.handleSubmit(onCodeSubmit)} className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Verification Code</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">Verification Code</label>
+                  {timeLeft > 0 && (
+                    <div className="flex items-center space-x-1 text-sm">
+                      <Clock className="w-4 h-4 text-orange-500" />
+                      <span className={`font-mono ${timeLeft < 60 ? 'text-red-600' : 'text-gray-600'}`}>
+                        {formatTime(timeLeft)}
+                      </span>
+                    </div>
+                  )}
+                </div>
                 <div className="relative">
                   <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
@@ -249,23 +394,66 @@ const Register: React.FC = () => {
                     {codeForm.formState.errors.verificationCode.message}
                   </p>
                 )}
+                {error && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {error}
+                  </p>
+                )}
               </div>
 
-              <div className="flex space-x-3">
+              <div className="space-y-3">
+                <div className="flex space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setStep('phone')}
+                    className="flex-1 py-3 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isLoading || timeLeft === 0}
+                    className="flex-1 py-3 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-medium hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isLoading ? 'Verifying...' : timeLeft === 0 ? 'Code Expired' : 'Create Account'}
+                  </button>
+                </div>
+                
+                {/* Resend Code Button */}
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={handleResendCode}
+                    disabled={isResending || resendAttempts >= maxResendAttempts || timeLeft > 0}
+                    className="text-sm text-[#F25129] hover:text-[#E0451F] font-medium disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {isResending ? 'Sending...' : 
+                     resendAttempts >= maxResendAttempts ? `Max attempts (${maxResendAttempts})` :
+                     timeLeft > 0 ? `Resend in ${formatTime(timeLeft)}` : 'Resend Code'}
+                  </button>
+                </div>
+                
+                {/* SMS Status Check Button */}
                 <button
                   type="button"
-                  onClick={() => setStep('phone')}
-                  className="flex-1 py-3 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                  onClick={handleCheckSMSStatus}
+                  className="w-full py-2 px-4 rounded-lg border border-blue-300 text-blue-700 font-medium hover:bg-blue-50 transition-colors text-sm"
                 >
-                  Back
+                  🔍 Check SMS Delivery Status
                 </button>
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="flex-1 py-3 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-medium hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isLoading ? 'Verifying...' : 'Create Account'}
-                </button>
+                
+                {/* Test Different Phone Numbers */}
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800 font-medium mb-2">🚨 SMS Not Received? Try These:</p>
+                  <div className="space-y-2 text-xs text-yellow-700">
+                    <p>• <a href="https://console.firebase.google.com/project/momfitnessmojo/authentication/usage" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">Check Firebase Console → Authentication → Usage (SMS quota)</a></p>
+                    <p>• <a href="https://console.firebase.google.com/project/momfitnessmojo/settings/billing" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">Verify billing is enabled in Firebase Console</a></p>
+                    <p>• Try a different phone number (different carrier)</p>
+                    <p>• Check spam folder on your phone</p>
+                    <p>• Wait 2-3 minutes for delivery</p>
+                    <p>• Try from a different device/network</p>
+                  </div>
+                </div>
               </div>
             </form>
           )}
@@ -281,6 +469,89 @@ const Register: React.FC = () => {
         </div>
       </div>
 
+      {/* SMS Status Modal */}
+      {showSMSStatusModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">SMS Delivery Status</h3>
+              <button
+                onClick={() => setShowSMSStatusModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm text-green-800 font-medium">✅ SMS Status Check Complete!</p>
+              </div>
+              
+              <div className="space-y-3">
+                <p className="text-sm text-gray-700 font-medium">Check these Firebase Console pages:</p>
+                
+                <div className="space-y-2">
+                  <a
+                    href="https://console.firebase.google.com/project/momfitnessmojo/authentication/usage"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block p-3 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-blue-600 font-medium">1. Authentication Usage</span>
+                      <span className="text-xs text-blue-500">(SMS quota & limits)</span>
+                    </div>
+                  </a>
+                  
+                  <a
+                    href="https://console.firebase.google.com/project/momfitnessmojo/authentication/providers"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block p-3 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-blue-600 font-medium">2. Authentication Settings</span>
+                      <span className="text-xs text-blue-500">(Phone provider enabled)</span>
+                    </div>
+                  </a>
+                  
+                  <a
+                    href="https://console.firebase.google.com/project/momfitnessmojo/settings/billing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block p-3 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-blue-600 font-medium">3. Billing Settings</span>
+                      <span className="text-xs text-blue-500">(SMS billing enabled)</span>
+                    </div>
+                  </a>
+                </div>
+              </div>
+              
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800 font-medium mb-2">Other things to try:</p>
+                <ul className="text-xs text-yellow-700 space-y-1">
+                  <li>• Check your phone's spam folder</li>
+                  <li>• Try a different phone number (different carrier)</li>
+                  <li>• Wait 2-3 minutes for delivery</li>
+                  <li>• Try from a different device/network</li>
+                </ul>
+              </div>
+              
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowSMSStatusModal(false)}
+                  className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -257,7 +257,7 @@ export const familyMemberService = {
       // Create new family member data
       const familyMemberData: CreateFamilyMemberData = {
         name: attendee.name,
-        ageGroup: (attendee.ageGroup as any) || '11+',
+        ageGroup: (attendee.ageGroup as any) || 'adult',
         isDefaultMember: false
       };
 

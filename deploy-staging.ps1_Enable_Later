@@ -1,20 +1,21 @@
-# PowerShell script for deploying to production environment
-# Usage: .\deploy-prod.ps1 [component]
+# PowerShell script for deploying to staging environment
+# Usage: .\deploy-staging.ps1 [component]
 # Components: all, hosting, firestore, functions
 
 param(
     [string]$Component = "all"
 )
 
-Write-Host "🚀 Deploying to Production Environment..." -ForegroundColor Green
+Write-Host "🚀 Deploying to Staging Environment..." -ForegroundColor Green
 
 # Set environment variables
-$env:NODE_ENV = "production"
-$env:VITE_ENVIRONMENT = "production"
+$env:NODE_ENV = "staging"
+$env:VITE_ENVIRONMENT = "staging"
+$env:STORAGE_BUCKET = "mojomediafiles-staging"
 
-# Build the project for production
-Write-Host "📦 Building project for production..." -ForegroundColor Yellow
-npm run build:prod
+# Build the project for staging
+Write-Host "📦 Building project for staging..." -ForegroundColor Yellow
+npm run build:staging
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "❌ Build failed!" -ForegroundColor Red
@@ -25,19 +26,19 @@ if ($LASTEXITCODE -ne 0) {
 switch ($Component.ToLower()) {
     "hosting" {
         Write-Host "🌐 Deploying hosting only..." -ForegroundColor Cyan
-        firebase deploy --only hosting --project=prod --config=firebase.prod.json
+        firebase deploy --only hosting --project=staging
     }
     "firestore" {
         Write-Host "🗄️ Deploying Firestore rules and indexes..." -ForegroundColor Cyan
-        firebase deploy --only firestore --project=prod --config=firebase.prod.json
+        firebase deploy --only firestore --project=staging
     }
     "functions" {
         Write-Host "⚡ Deploying Cloud Functions..." -ForegroundColor Cyan
-        firebase deploy --only functions --project=prod --config=firebase.prod.json
+        firebase deploy --only functions --project=staging
     }
     "all" {
         Write-Host "🚀 Deploying everything..." -ForegroundColor Cyan
-        firebase deploy --project=prod --config=firebase.prod.json
+        firebase deploy --project=staging
     }
     default {
         Write-Host "❌ Invalid component. Use: all, hosting, firestore, functions" -ForegroundColor Red
@@ -46,7 +47,8 @@ switch ($Component.ToLower()) {
 }
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Host "✅ Production deployment completed successfully!" -ForegroundColor Green
+    Write-Host "✅ Staging deployment completed successfully!" -ForegroundColor Green
+    Write-Host "🌐 Staging URL: https://momfitnessmojo-staging.web.app" -ForegroundColor Cyan
 } else {
     Write-Host "❌ Deployment failed!" -ForegroundColor Red
     exit 1

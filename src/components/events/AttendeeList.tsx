@@ -23,11 +23,13 @@ import toast from 'react-hot-toast';
 interface AttendeeListProps {
   eventId: string;
   onAttendeeUpdate?: () => void;
+  isAdmin?: boolean;
 }
 
 export const AttendeeList: React.FC<AttendeeListProps> = ({ 
   eventId, 
-  onAttendeeUpdate 
+  onAttendeeUpdate,
+  isAdmin = false
 }) => {
   const { currentUser } = useAuth();
   const { 
@@ -37,7 +39,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     updateAttendee, 
     removeAttendee, 
     refreshAttendees 
-  } = useAttendees(eventId, currentUser?.id || '');
+  } = useAttendees(eventId, currentUser?.id || '', isAdmin);
 
 
   

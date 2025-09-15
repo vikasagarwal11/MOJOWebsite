@@ -1,17 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  Mail, 
-  Phone, 
-  Calendar, 
   MessageSquare, 
-  CheckCircle, 
   Clock, 
-  XCircle,
   Eye,
   Reply,
   Archive,
-  Filter,
   Search
 } from 'lucide-react';
 import { ContactService } from '../../services/contactService';
@@ -28,6 +22,7 @@ const ContactMessagesAdmin: React.FC<ContactMessagesAdminProps> = ({ className =
   const [loading, setLoading] = useState(true);
   const [selectedMessage, setSelectedMessage] = useState<ContactMessage | null>(null);
   const [statusFilter, setStatusFilter] = useState<ContactMessage['status'] | 'all'>('all');
+  const [inquiryTypeFilter, setInquiryTypeFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
   const [stats, setStats] = useState({
@@ -59,12 +54,13 @@ const ContactMessagesAdmin: React.FC<ContactMessagesAdminProps> = ({ className =
 
   const filteredMessages = messages.filter(message => {
     const matchesStatus = statusFilter === 'all' || message.status === statusFilter;
+    const matchesInquiryType = inquiryTypeFilter === 'all' || message.inquiryType === inquiryTypeFilter;
     const matchesSearch = searchTerm === '' || 
       message.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       message.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       message.message.toLowerCase().includes(searchTerm.toLowerCase());
     
-    return matchesStatus && matchesSearch;
+    return matchesStatus && matchesInquiryType && matchesSearch;
   });
 
   const handleStatusUpdate = async (messageId: string, newStatus: ContactMessage['status']) => {
@@ -153,34 +149,62 @@ const ContactMessagesAdmin: React.FC<ContactMessagesAdminProps> = ({ className =
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4">
-        <div className="flex-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search messages..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-            />
-          </div>
+      <div className="space-y-4">
+        {/* Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <input
+            type="text"
+            placeholder="Search messages..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+          />
         </div>
         
-        <div className="flex gap-2">
-          {(['all', 'new', 'read', 'replied', 'closed'] as const).map((status) => (
-            <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                statusFilter === status
-                  ? 'bg-[#F25129] text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
-            </button>
-          ))}
+        {/* Filter Buttons */}
+        <div className="space-y-3">
+          {/* Status Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Status Filter:</label>
+            <div className="flex flex-wrap gap-2">
+              {(['all', 'new', 'read', 'replied', 'closed'] as const).map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setStatusFilter(status)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    statusFilter === status
+                      ? 'bg-[#F25129] text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          
+          {/* Inquiry Type Filter */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Message Type:</label>
+            <div className="flex flex-wrap gap-2">
+              {(['all', 'general', 'events', 'membership', 'technical', 'partnership', 'founder_message', 'other'] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => setInquiryTypeFilter(type)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    inquiryTypeFilter === type
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {type === 'all' ? 'All Types' : 
+                   type === 'founder_message' ? '👑 Founder Messages' :
+                   type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -213,6 +237,11 @@ const ContactMessagesAdmin: React.FC<ContactMessagesAdminProps> = ({ className =
                       {getStatusIcon(message.status)}
                       <span className="ml-1">{message.status}</span>
                     </span>
+                    {message.inquiryType === 'founder_message' && (
+                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                        👑 Founder Message
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-gray-500">
                     {format(message.createdAt, 'MMM d, yyyy')}

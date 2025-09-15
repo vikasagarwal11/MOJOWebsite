@@ -403,7 +403,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
           setShowAdvancedSearch(false); // Hide advanced search
           setSortBy('date');           // Reset sorting to date
         }}
-        className="ml-4 text-xs text-purple-600 hover:underline"
+        className="ml-4 text-xs text-[#F25129] hover:underline"
         aria-label="Reset all filters"
       >
         Reset All Filters
@@ -422,12 +422,12 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
           </div>
         </div>
       </div>
-      <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+      <div className="p-4 bg-gradient-to-br from-[#F25129]/10 to-[#FF6B35]/10 rounded-lg border border-[#F25129]/20">
         <div className="flex items-center gap-2">
           <span className="text-2xl">✅</span>
           <div>
-            <div className="text-sm text-blue-600 font-medium">Going</div>
-            <div className="text-2xl font-bold text-blue-800">
+            <div className="text-sm text-[#F25129] font-medium">Going</div>
+            <div className="text-2xl font-bold text-[#F25129]">
               {Object.values(rsvpsByEvent).reduce((sum, rsvps) => sum + rsvps.filter(r => r.status === 'going').length, 0)}
             </div>
           </div>
@@ -532,8 +532,8 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
     {/* COMMENTED OUT: Development note removed as requested */}
     {/* 
     
-    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-      <div className="flex items-center gap-2 text-blue-800">
+    <div className="p-4 bg-[#FF6B35]/10 border border-[#FF6B35]/20 rounded-lg">
+      <div className="flex items-center gap-2 text-[#FF6B35]">
         <span className="text-lg">💡</span>
         <div className="text-sm">
           <strong>Note:</strong> User blocking and management is now handled exclusively in the <strong>Admin</strong> tab.
@@ -545,17 +545,17 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
     */}
     
     {/* NEW: Event Filtering Section */}
-    <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+    <div className="p-4 bg-gradient-to-r from-[#F25129]/5 to-[#FF6B35]/5 rounded-lg border border-[#F25129]/20">
              <div className="flex items-center justify-between mb-3">
-         <h3 className="text-lg font-semibold text-purple-800">Event Filtering</h3>
+         <h3 className="text-lg font-semibold text-[#F25129]">Event Filtering</h3>
          <div className="flex items-center gap-3">
            {/* NEW: Sorting Options */}
            <div className="flex items-center gap-2">
-             <span className="text-xs text-purple-600 font-medium">Sort by:</span>
+             <span className="text-xs text-[#F25129] font-medium">Sort by:</span>
              <select
                value={sortBy}
                onChange={(e) => setSortBy(e.target.value as 'date' | 'title' | 'location' | 'rsvp-count')}
-               className="px-2 py-1 text-xs border border-purple-200 rounded focus:ring-1 focus:ring-purple-500"
+               className="px-2 py-1 text-xs border border-[#F25129]/20 rounded focus:ring-1 focus:ring-[#F25129]"
              >
                <option value="date">📅 Date</option>
                <option value="title">📝 Title</option>
@@ -563,7 +563,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                <option value="rsvp-count">👥 RSVP Count</option>
              </select>
            </div>
-           <span className="text-sm text-purple-600">
+           <span className="text-sm text-[#F25129]">
              {filteredEvents.length} of {allEvents.length} events
            </span>
          </div>
@@ -582,8 +582,8 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
             onClick={() => setDateFilter(filter.value as 'all' | 'upcoming' | 'this-week' | 'past')}
             className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
               dateFilter === filter.value
-                ? 'bg-purple-100 border-purple-300 text-purple-800 ring-2 ring-purple-200'
-                : 'bg-white border-purple-200 text-purple-700 hover:bg-purple-50'
+                ? 'bg-[#F25129]/10 border-[#F25129]/30 text-[#F25129] ring-2 ring-[#F25129]/20'
+                : 'bg-white border-[#F25129]/20 text-[#F25129] hover:bg-[#F25129]/5'
             }`}
             title={`Filter by ${filter.label}`}
           >
@@ -605,8 +605,8 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
              onClick={() => setActivityFilter(filter.value as 'all' | 'has-rsvps' | 'no-rsvps' | 'high-activity')}
              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                activityFilter === filter.value
-                 ? 'bg-blue-100 border-blue-300 text-blue-800 ring-2 ring-blue-200'
-                 : 'bg-white border-blue-200 text-blue-700 hover:bg-blue-50'
+                 ? 'bg-blue-100 border-[#FF6B35]/30 text-[#FF6B35] ring-2 ring-[#FF6B35]/20'
+                 : 'bg-white border-[#FF6B35]/20 text-[#FF6B35] hover:bg-[#FF6B35]/10'
              }`}
              title={`${filter.label}: ${filter.count} events`}
            >
@@ -621,15 +621,15 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
             onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
             className={`p-2 rounded-full transition-all ${
               showAdvancedSearch 
-                ? 'bg-purple-100 text-purple-800 ring-2 ring-purple-300' 
-                : 'bg-white text-purple-600 hover:bg-purple-50 hover:scale-105'
+                ? 'bg-[#F25129]/10 text-[#F25129] ring-2 ring-[#F25129]/30' 
+                : 'bg-white text-[#F25129] hover:bg-[#F25129]/5 hover:scale-105'
             }`}
             title={showAdvancedSearch ? 'Hide Advanced Search' : 'Show Advanced Search'}
             aria-label={showAdvancedSearch ? 'Hide Advanced Search' : 'Show Advanced Search'}
           >
             {showAdvancedSearch ? '🔽' : '⚙️'}
           </button>
-          <span className="text-xs text-purple-600">
+          <span className="text-xs text-[#F25129]">
             {showAdvancedSearch ? (
               <span className="flex items-center gap-1">
                 <span className="w-2 h-2 bg-green-500 rounded-full"></span>
@@ -643,7 +643,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
        
        {/* NEW: Advanced Search Panel */}
        {showAdvancedSearch && (
-         <div className="p-4 bg-white border border-purple-200 rounded-lg mb-3">
+         <div className="p-4 bg-white border border-[#F25129]/20 rounded-lg mb-3">
            <div className="grid md:grid-cols-2 gap-4">
              {/* Location Filter */}
              <div>
@@ -655,7 +655,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                  placeholder="Filter by location..."
                  value={locationFilter}
                  onChange={(e) => setLocationFilter(e.target.value)}
-                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
                />
              </div>
              
@@ -669,7 +669,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                  placeholder="Filter by creator..."
                  value={creatorFilter}
                  onChange={(e) => setCreatorFilter(e.target.value)}
-                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
                />
              </div>
              
@@ -683,7 +683,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                    type="checkbox"
                    checked={dateRangeFilter.enabled}
                    onChange={(e) => setDateRangeFilter(prev => ({ ...prev, enabled: e.target.checked }))}
-                   className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                   className="rounded border-gray-300 text-[#F25129] focus:ring-[#F25129]"
                  />
                  <span className="text-sm text-gray-600">Enable date range</span>
                </div>
@@ -693,13 +693,13 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                      type="date"
                      value={dateRangeFilter.startDate}
                      onChange={(e) => setDateRangeFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
                    />
                    <input
                      type="date"
                      value={dateRangeFilter.endDate}
                      onChange={(e) => setDateRangeFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
                    />
                  </div>
                )}
@@ -715,7 +715,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                    type="checkbox"
                    checked={maxAttendeesFilter.enabled}
                    onChange={(e) => setMaxAttendeesFilter(prev => ({ ...prev, enabled: e.target.checked }))}
-                   className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                   className="rounded border-gray-300 text-[#F25129] focus:ring-[#F25129]"
                  />
                  <span className="text-sm text-gray-600">Enable attendee range</span>
                </div>
@@ -726,14 +726,14 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                      placeholder="Min"
                      value={maxAttendeesFilter.min}
                      onChange={(e) => setMaxAttendeesFilter(prev => ({ ...prev, min: e.target.value }))}
-                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
                    />
                    <input
                      type="number"
                      placeholder="Max"
                      value={maxAttendeesFilter.max}
                      onChange={(e) => setMaxAttendeesFilter(prev => ({ ...prev, max: e.target.value }))}
-                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
                    />
                  </div>
                )}
@@ -779,11 +779,11 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
           placeholder="Search events by title, description, or location..."
           value={eventFilter}
           onChange={(e) => setEventFilter(e.target.value)}
-          className="flex-1 px-4 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+          className="flex-1 px-4 py-2 border border-[#F25129]/30 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
         />
         <button
           onClick={() => setEventFilter('')}
-          className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors"
         >
           Clear Filter
         </button>
@@ -793,7 +793,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
     {/* Events with RSVP Management */}
     {loadingAdminEvents ? (
       <div className="text-center py-8 bg-gray-50 rounded-lg">
-        <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+        <div className="animate-spin w-8 h-8 border-4 border-[#F25129] border-t-transparent rounded-full mx-auto mb-2"></div>
         <p className="text-gray-500">Loading admin events...</p>
       </div>
     ) : filteredEvents.length === 0 ? (
@@ -814,7 +814,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
             key={event.id} 
             className={`space-y-4 p-4 rounded-lg ${
               index % 2 === 0 
-                ? 'bg-blue-50/50 border-l-4 border-blue-200' 
+                ? 'bg-[#FF6B35]/10/50 border-l-4 border-[#FF6B35]/20' 
                 : 'bg-pink-50/50 border-l-4 border-pink-200'
             }`}
           >
@@ -858,11 +858,11 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
               </div>
               
                              {/* ATTENDANCE MANAGEMENT - COMPACT & PROFESSIONAL */}
-               <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+               <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-[#FF6B35]/20">
                  <div className="flex items-center justify-between">
                    <div className="flex items-center gap-3">
-                     <span className="text-sm text-blue-600">
-                       Update attendance (<strong className="text-blue-800 font-bold text-base">{Math.max(0, event.attendingCount || 0)} checked in</strong>)
+                     <span className="text-sm text-[#FF6B35]">
+                       Update attendance (<strong className="text-[#FF6B35] font-bold text-base">{Math.max(0, event.attendingCount || 0)} checked in</strong>)
                      </span>
                    </div>
                    <div className="flex gap-2">
@@ -924,7 +924,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                             <span>Not Going: <strong>{billingSummary.notGoing}</strong></span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
+                            <span className="w-3 h-3 bg-[#FF6B35]/100 rounded-full"></span>
                             <span>Total: <strong>{billingSummary.total}</strong></span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -965,7 +965,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                             <select
                               value={currentFilter}
                               onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'not-going' | 'pending')}
-                              className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
+                              className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-xs"
                               aria-label={`Filter RSVPs for ${event.title}`}
                             >
                               <option value="all">All</option>
@@ -1013,7 +1013,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                   {rsvp.name || rsvp.attendeeName || userNames[rsvp.userId] || 'Loading...'}
                                 </span>
                                                                           {rsvp.attendeeType === 'primary' ? (
-                                            <span className="text-xs text-blue-600 font-medium">
+                                            <span className="text-xs text-[#FF6B35] font-medium">
                                               (Primary User)
                                             </span>
                                           ) : (
@@ -1031,7 +1031,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                           )}
                                 <button
                                   onClick={() => toggleContactInfo(rsvp.userId)}
-                                  className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                  className="text-xs text-[#FF6B35] hover:text-[#FF6B35] flex items-center gap-1"
                                   title={showContactInfo[rsvp.userId] ? 'Hide contact info' : 'Show contact info'}
                                 >
                                   {showContactInfo[rsvp.userId] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
@@ -1041,7 +1041,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               
                               {/* Show contact info when toggled */}
                               {showContactInfo[rsvp.userId] && userDetails[rsvp.userId] && (
-                                <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-800 space-y-1">
+                                <div className="mt-2 p-2 bg-[#FF6B35]/10 rounded text-xs text-[#FF6B35] space-y-1">
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium">📧 Email:</span>
                                     <span>{userDetails[rsvp.userId].email}</span>
@@ -1080,7 +1080,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               {/* RSVP HISTORY VIEW - Easy to develop, low risk */}
                               {rsvp.statusHistory && rsvp.statusHistory.length > 1 && (
                                 <details className="mt-2 text-xs">
-                                  <summary className="cursor-pointer text-blue-600 hover:text-blue-800 font-medium">
+                                  <summary className="cursor-pointer text-[#FF6B35] hover:text-[#FF6B35] font-medium">
                                     📋 View RSVP History ({rsvp.statusHistory.length} changes)
                                   </summary>
                                   <div className="mt-2 pl-4 space-y-1">
@@ -1125,7 +1125,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                   const newStatus = e.target.value as 'going' | 'not-going' | 'pending' | '';
                                   updateRsvp(event.id, rsvp.id, newStatus || null);
                                 }}
-                                className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-purple-500 text-xs"
+                                className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-xs"
                                 aria-label={`Change RSVP status for ${userNames[rsvp.userId] || rsvp.userId}`}
                               >
                                 <option value="going">✅ Going</option>
@@ -1156,7 +1156,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                   <span className="text-4xl">📭</span>
                   <p className="text-sm text-gray-600 mt-2">No RSVPs yet for this event</p>
                   <p className="text-xs text-gray-500">Responses will appear here as members RSVP</p>
-                  <p className="text-xs text-blue-600 mt-2">
+                  <p className="text-xs text-[#FF6B35] mt-2">
                     💡 Use the +Count/-Count buttons above to manually adjust attendance for walk-ins or corrections
                   </p>
                 </div>
@@ -1167,7 +1167,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
         {filteredEvents.length >= PAGE_SIZE * eventsPage && (
           <button
             onClick={() => setEventsPage(eventsPage + 1)}
-            className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-full hover:bg-purple-700"
+            className="mt-4 px-4 py-2 bg-[#F25129] text-white rounded-full hover:bg-[#E0451F]"
             aria-label="Load more events"
           >
             Load More Events

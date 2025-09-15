@@ -1,0 +1,79 @@
+# MOJO Website - Cursor Agent Rules
+
+## Project Overview
+This is a React/TypeScript fitness community website built with Vite, Firebase, and modern web technologies.
+
+## Tech Stack
+- React 18 with TypeScript
+- Vite for build tooling
+- Firebase (Auth, Firestore, Storage, Functions, Cloud Messaging)
+- Tailwind CSS for styling
+- Framer Motion for animations
+- React Router for navigation
+- Workbox for PWA functionality
+
+## Architecture Principles
+- Use Riverpod and hooks (flutter_riverpod, hooks_riverpod) with StreamProvider for real-time updates
+- Follow clean architecture with reusable services, data models, and clean separation of business logic, UI, and state
+- Use stateless widgets where possible and prefer final variables
+- Modular design with reusable components
+
+## Code Standards
+- Use the logger package to log info, warnings, errors, and debug messages, integrated with Firebase Analytics/Crashlytics
+- Avoid using print() statements
+- Use Material 3 components with playful minimalism (1–2 buttons per screen, vibrant colors)
+- Implement micro-interactions with Lottie animations and gamification elements
+- Prioritize fast rendering and accessibility
+
+## Firebase Integration
+- Use Firebase Auth for authentication
+- Use Firestore for database with soft delete columns (isDeleted, deletedAt, deletedBy)
+- Use Firebase Storage for file uploads
+- Use Firebase Cloud Messaging for notifications
+- Use Firebase Cloud Functions for ephemeral Moments and challenge logic
+
+## Environment File Handling
+- **ALWAYS** reference the .env file when making environment-related changes
+- The .env file contains the actual Firebase configuration for development
+- Environment variables are prefixed with VITE_ for client-side access
+- Never hardcode environment values - always use process.env.VITE_* variables
+- When suggesting environment changes, always check what's currently in .env first
+
+## UI/UX Guidelines
+- Design advanced chat UI (sleek bubbles, swipe-to-reply, animated reactions, typing indicators)
+- Create event UI (animated RSVP, confetti check-in, clean calendar)
+- Use modern UI components with playful minimalism
+- Implement micro-interactions and gamification
+- Ensure responsive design and accessibility
+
+## File Structure
+- Components in src/components/ organized by feature
+- Services in src/services/ for business logic
+- Hooks in src/hooks/ for reusable logic
+- Types in src/types/ for TypeScript definitions
+- Utils in src/utils/ for helper functions
+
+## Environment Configuration
+- **CRITICAL**: Always check .env file before making environment-related changes
+- The project uses .env as the development environment file (not .env.local)
+- Current Firebase project: momfitnessmojo (development)
+- Storage bucket: mojomediafiles
+- Functions region: us-east1
+- Environment: development
+- Use momsfitnessmojo@gmail.com for email communications
+
+## Database Rules
+- Every table includes soft delete columns (isDeleted, deletedAt, deletedBy)
+- Firebase project ID: momfitnessmojo
+- Storage bucket: mojomediafiles
+
+## Testing
+- Write unit tests for services and utilities
+- Test React components with React Testing Library
+- Use Vitest for test runner
+
+## Performance
+- Optimize for fast rendering
+- Use lazy loading where appropriate
+- Implement proper caching strategies
+- Monitor bundle size and performance metrics

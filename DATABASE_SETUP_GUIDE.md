@@ -3,16 +3,22 @@
 ## 🗄️ Current Database Architecture
 
 ### **Development Environment**
-- **Project**: `momfitnessmojo-dev`
-- **Database**: `(default)`
-- **Purpose**: Testing, development, and staging
-- **URL**: https://console.firebase.google.com/project/momfitnessmojo-dev
-
-### **Production Environment**
 - **Project**: `momfitnessmojo`
 - **Database**: `(default)`
-- **Purpose**: Live production data
+- **Purpose**: Development and testing
 - **URL**: https://console.firebase.google.com/project/momfitnessmojo
+
+### **Staging Environment**
+- **Project**: `momfitnessmojo-staging`
+- **Database**: `(default)`
+- **Purpose**: Pre-production testing
+- **URL**: https://console.firebase.google.com/project/momfitnessmojo-staging
+
+### **Production Environment**
+- **Project**: `momfitnessmojo-prod` ✅ (Created)
+- **Database**: `(default)`
+- **Purpose**: Live production data
+- **URL**: https://console.firebase.google.com/project/momfitnessmojo-prod
 
 ## 🚀 How to Use Different Databases
 
@@ -34,9 +40,11 @@ npm run deploy:prod
 
 ## 🔧 Environment Configuration
 
-### **Development (.env.local)**
+> **📝 Note**: We currently have both `.env` and `.env.development` for gradual migration. Eventually, we'll use only `.env.development`, `.env.staging`, and `.env.production`.
+
+### **Development (.env.development)**
 ```env
-VITE_FIREBASE_PROJECT_ID=momfitnessmojo-dev
+VITE_FIREBASE_PROJECT_ID=momfitnessmojo
 VITE_FIREBASE_DATABASE_ID=(default)
 VITE_ENVIRONMENT=development
 ```
@@ -79,13 +87,19 @@ firebase firestore:databases:create prod --project=momfitnessmojo --location=us-
 ### **Development Deployment**
 ```bash
 npm run deploy:dev
-# Deploys to momfitnessmojo-dev project
+# Deploys to momfitnessmojo project (development)
+```
+
+### **Staging Deployment**
+```bash
+npm run deploy:staging
+# Deploys to momfitnessmojo-staging project
 ```
 
 ### **Production Deployment**
 ```bash
 npm run deploy:prod
-# Deploys to momfitnessmojo project
+# Deploys to momfitnessmojo-prod project (production)
 ```
 
 ## 🔍 Verification
@@ -93,7 +107,7 @@ npm run deploy:prod
 To verify you're using the correct database:
 
 1. Check the browser console for Firebase project ID
-2. Look for: `[Firebase] Project ID: momfitnessmojo-dev` (dev) or `momfitnessmojo` (prod)
+2. Look for: `[Firebase] Project ID: momfitnessmojo` (dev) or `momfitnessmojo-staging` (staging) or `momfitnessmojo-prod` (prod)
 3. Check the Firebase Console to see which project you're connected to
 
 ## 📝 Notes

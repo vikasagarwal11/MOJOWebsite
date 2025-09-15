@@ -10,9 +10,13 @@ import { performanceService } from './services/performanceService';
 // Configure reCAPTCHA v2 early to prevent Enterprise probing
 configureRecaptchaV2();
 
-// Initialize logging and performance monitoring
-loggingService.initialize();
+// Initialize performance monitoring first (no dependencies)
 performanceService.initialize();
+
+// Initialize logging service after performance service to avoid circular dependency
+setTimeout(() => {
+  loggingService.initialize();
+}, 0);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -20,4 +24,5 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>
 );
 
+// Register service worker only in production
 registerSW();

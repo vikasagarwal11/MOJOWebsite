@@ -2,10 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Fix for mobile image orientation - respect EXIF data */
+/* Mobile full-screen friendly Lightbox root */
+.lb-root {
+  height: 100dvh;           /* iOS/Android modern viewport */
+  width: 100vw;
+}
+
+/* Respect EXIF where supported (harmless if not) */
 img {
   image-orientation: from-image;
   -webkit-image-orientation: from-image;
+}
+
+/* Lightbox rotation wrapper */
+.lb-img-wrap {
+  display: inline-block;
+  transform-origin: center;
+}
+
+.rotate-90-wrap {
+  transform: rotate(90deg);
+}
+
+.lb-img-wrap > img {
+  display: block;
+  max-width: 85vw;
+  max-height: 85vh;
+  object-fit: contain;
 }
 
 /* Hide scrollbars utility */

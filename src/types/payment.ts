@@ -47,6 +47,21 @@ export interface PaymentTransaction {
     ageGroup: string;
     eventTitle: string;
     eventDate: string;
+    totalAttendees: number;
+    breakdown: {
+      attendeeId: string;
+      attendeeName: string;
+      ageGroup: string;
+      price: number;
+      quantity: number;
+      subtotal: number;
+    }[];
+    paidAttendees: {
+      attendeeId: string;
+      name: string;
+      ageGroup: string;
+      amount: number;
+    }[];
   };
   createdAt: Timestamp;
   updatedAt: Timestamp;
