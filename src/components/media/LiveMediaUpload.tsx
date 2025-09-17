@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Camera, Video as VideoIcon, Upload, X, Instagram, Facebook } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 import { uploadBytesResumable, ref, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -186,7 +187,16 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
         type: finalBlob.type || (isPhoto ? 'image/jpeg' : 'video/webm'),
       });
 
-      const path = getStoragePath('media', file.name);
+      // Generate UUID once for consistent path
+      const batchId = uuidv4();
+      const path = `media/${currentUser.id}/${batchId}/${file.name}`;
+      
+      console.log('🔍 LiveUpload path consistency check:', { 
+        path, 
+        fileName: file.name,
+        batchId 
+      });
+      
       const storageRef = ref(storage, path);
       const task = uploadBytesResumable(storageRef, file);
       setUploadTask(task);
@@ -232,7 +242,7 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
         viewCount: 0,
         // CRITICAL: Add fields that Cloud Function needs to find and process this media
         filePath: path,                           // Full path to file in Storage
-        storageFolder: path.substring(0, path.lastIndexOf('/')),   // Directory path in Storage
+        storageFolder: path.substring(0, path.lastIndexOf('/') + 1),   // Directory path in Storage (with trailing slash)
         transcodeStatus: 'pending',               // Initial status for Cloud Function
       });
 
