@@ -7,11 +7,11 @@ param(
     [switch]$Verbose = $false
 )
 
-Write-Host "🔍 Starting automated code review..." -ForegroundColor Green
+Write-Host "[INFO] Starting automated code review..." -ForegroundColor Green
 
 # Check if cursor CLI is available
 if (!(Get-Command cursor -ErrorAction SilentlyContinue)) {
-    Write-Host "❌ Cursor CLI not found. Please install it first." -ForegroundColor Red
+    Write-Host "[ERROR] Cursor CLI not found. Please install it first." -ForegroundColor Red
     exit 1
 }
 
@@ -20,7 +20,7 @@ $reviewFile = "temp-code-review.md"
 
 try {
     # Review TypeScript/React files
-    Write-Host "📝 Reviewing TypeScript and React files..." -ForegroundColor Yellow
+    Write-Host "[INFO] Reviewing TypeScript and React files..." -ForegroundColor Yellow
     
     $tsFiles = Get-ChildItem -Path $Path -Recurse -Include "*.ts", "*.tsx" | Where-Object { 
         $_.FullName -notmatch "node_modules|dist|build" 
@@ -35,13 +35,13 @@ try {
     }
     
     # Review service worker
-    Write-Host "🔧 Reviewing service worker..." -ForegroundColor Yellow
+    Write-Host "[INFO] Reviewing service worker..." -ForegroundColor Yellow
     if (Test-Path "public/sw.js") {
         Write-Host "  Service worker found: public/sw.js" -ForegroundColor Cyan
     }
     
     # Review Firebase configuration
-    Write-Host "🔥 Reviewing Firebase configuration..." -ForegroundColor Yellow
+    Write-Host "[INFO] Reviewing Firebase configuration..." -ForegroundColor Yellow
     $firebaseFiles = @("firebase.json", "firestore.rules", "src/config/firebase.ts")
     foreach ($file in $firebaseFiles) {
         if (Test-Path $file) {
@@ -50,18 +50,18 @@ try {
     }
     
     # Review environment configuration
-    Write-Host "🌍 Reviewing environment configuration..." -ForegroundColor Yellow
+    Write-Host "[INFO] Reviewing environment configuration..." -ForegroundColor Yellow
     if (Test-Path ".env") {
-        Write-Host "  ✅ .env file found" -ForegroundColor Green
+        Write-Host "  [OK] .env file found" -ForegroundColor Green
         $envContent = Get-Content .env
         $envVarCount = ($envContent | Where-Object { $_ -match "^VITE_" }).Count
         Write-Host "  Environment variables: $envVarCount" -ForegroundColor Cyan
     } else {
-        Write-Host "  ❌ .env file missing" -ForegroundColor Red
+        Write-Host "  [ERROR] .env file missing" -ForegroundColor Red
     }
     
     # Generate summary report
-    Write-Host "📊 Generating review summary..." -ForegroundColor Yellow
+    Write-Host "[INFO] Generating review summary..." -ForegroundColor Yellow
     
     $summary = @"
 # Code Review Summary - $(Get-Date -Format "yyyy-MM-dd HH:mm")
@@ -72,12 +72,12 @@ try {
 - Firebase Configuration: firebase.json, firestore.rules
 
 ## Key Areas Checked
-- ✅ Coding standards compliance
-- ✅ Logger usage (no console.log)
-- ✅ Firebase integration
-- ✅ React/TypeScript best practices
-- ✅ PWA functionality
-- ✅ Security considerations
+- [OK] Coding standards compliance
+- [OK] Logger usage (no console.log)
+- [OK] Firebase integration
+- [OK] React/TypeScript best practices
+- [OK] PWA functionality
+- [OK] Security considerations
 
 ## Recommendations
 1. Ensure all console.log statements are replaced with logger
@@ -93,14 +93,14 @@ try {
     
     $summary | Out-File -FilePath $reviewFile -Encoding UTF8
     
-    Write-Host "✅ Code review completed!" -ForegroundColor Green
-    Write-Host "📄 Review summary saved to: $reviewFile" -ForegroundColor Cyan
+    Write-Host "[OK] Code review completed!" -ForegroundColor Green
+    Write-Host "[INFO] Review summary saved to: $reviewFile" -ForegroundColor Cyan
     
     if ($Verbose) {
         Get-Content $reviewFile
     }
     
 } catch {
-    Write-Host "❌ Code review failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "[ERROR] Code review failed: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }

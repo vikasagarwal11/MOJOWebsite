@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-// import exifr from 'exifr'; // Temporarily disabled due to initialization issues
+import exifr from 'exifr';
 
 export interface ImageOrientationResult {
   needsRotation: boolean;
@@ -45,110 +45,45 @@ export function useImageOrientation() {
   const correctImageOrientation = React.useCallback(async (img: HTMLImageElement) => {
     if (!img || !img.isConnected) return;
 
-    // Check if this image URL has already been processed globally
-    if (processedImages.has(img.src)) {
-      console.log('🖼️ Image URL already processed globally, skipping:', img.src);
+    console.log('🖼️ [DEBUG] Image orientation check triggered:', {
+      src: img.src,
+      naturalWidth: img.naturalWidth,
+      naturalHeight: img.naturalHeight,
+      clientWidth: img.clientWidth,
+      clientHeight: img.clientHeight,
+      currentTransform: img.style.transform,
+      cssImageOrientation: getComputedStyle(img).imageOrientation,
+      alreadyProcessed: img.dataset.oriented === '1'
+    });
+
+    // Check if already processed
+    if (img.dataset.oriented === '1') {
+      console.log('🖼️ [DEBUG] Image already processed, skipping');
       return;
     }
 
-    // If we already oriented this exact src, skip
-    if (img.dataset.srcApplied === img.src && img.dataset.oriented === '1') return;
-    img.dataset.srcApplied = img.src;
-
-    // Add to cache immediately to prevent concurrent processing
-    processedImages.add(img.src);
-
-    console.log('🖼️ Image orientation correction triggered:', img.src);
-
-    // Hide to prevent the "rotate → unrotate" flash
-    const prevVisibility = img.style.visibility;
-    if (!prevVisibility) img.style.visibility = 'hidden';
-
-    // Disable browser EXIF so we fully control orientation
-    (img.style as any).imageOrientation = 'none';
-    (img.style as any).webkitImageOrientation = 'none';
-
-    // Clear any prior transforms/wrapper rotation (e.g., when src changes)
-    const wrap = img.closest('.lb-img-wrap') as HTMLElement | null;
-    if (wrap) wrap.classList.remove('rotate-90-wrap');
-    img.style.transform = '';
-
-    await afterDecodeAndFrame(img);
-
-    const target = wrap ?? img;
-    let oriented = false;
-
-    // --- 1) EXIF-first path (temporarily disabled due to initialization issues) ---
-    // try {
-    //   // Small and fast: orientation only
-    //   const orientation = await exifr.orientation(img.src);
-    //   if (orientation && orientation !== 1) {
-    //     const css = mapExifToCss(orientation);
-    //     console.log('🖼️ Applied EXIF-based orientation:', { orientation, css, hasWrapper: !!wrap });
-    //     // For pure 90°, keep your wrapper class in Lightbox for consistency
-    //     if (wrap && css === 'rotate(90deg)') {
-    //       wrap.classList.add('rotate-90-wrap');
-    //     } else {
-    //       applyTransform(target, css);
-    //     }
-    //     oriented = true;
-    //   }
-    // } catch (error) {
-    //   console.log('🖼️ EXIF parsing failed, falling back to heuristics:', error);
-    //   // EXIF not available/parseable (common for webp thumbs) → fall through
-    // }
-
-    // --- 2) Fallback heuristic (only if EXIF unavailable) ---
-    if (!oriented) {
-      const nw = img.naturalWidth, nh = img.naturalHeight;
-      if (nw && nh) {
-        const rect = img.getBoundingClientRect();
-        let dw = rect.width || img.clientWidth || 1;
-        let dh = rect.height || img.clientHeight || 1;
-
-        if (dw <= 1 || dh <= 1) { // very rare, wait one more frame
-          await nextFrame();
-          const r2 = img.getBoundingClientRect();
-          dw = r2.width || img.clientWidth || dw;
-          dh = r2.height || img.clientHeight || dh;
-        }
-
-        const naturalPortrait = nh > nw;
-        const displayRatio = dw / dh;
-        const displayedPortrait  = displayRatio < 0.83;
-        const displayedLandscape = displayRatio > 1.20;
-
-        // Only rotate when the rendered box is clearly the opposite orientation
-        const needs90 =
-          (naturalPortrait && displayedLandscape) ||
-          (!naturalPortrait && displayedPortrait);
-
-        if (needs90) {
-          console.log('🖼️ Applied heuristic-based rotation:', { 
-            naturalPortrait, 
-            displayedPortrait, 
-            displayedLandscape, 
-            displayRatio,
-            hasWrapper: !!wrap 
-          });
-          if (wrap) wrap.classList.add('rotate-90-wrap');
-          else applyTransform(target, 'rotate(90deg)');
-          oriented = true;
-        } else {
-          console.log('🖼️ No rotation needed, CSS EXIF orientation applied');
-        }
-      }
-    }
-
-    // Mark done, reveal image
+    // Check what CSS is doing
+    const computedStyle = getComputedStyle(img);
+    const cssImageOrientation = computedStyle.imageOrientation;
+    
+    console.log('🖼️ [DEBUG] CSS image-orientation value:', cssImageOrientation);
+    console.log('🖼️ [DEBUG] Image natural dimensions:', img.naturalWidth, 'x', img.naturalHeight);
+    console.log('🖼️ [DEBUG] Image display dimensions:', img.clientWidth, 'x', img.clientHeight);
+    console.log('🖼️ [DEBUG] Image current transform:', img.style.transform || 'none');
+    
+    // Let CSS handle it, but log what's happening
+    console.log('🖼️ [DEBUG] Letting CSS handle rotation via image-orientation: from-image');
+    
+    // Mark as processed to prevent any other rotation attempts
     img.dataset.oriented = '1';
-    img.style.visibility = prevVisibility || 'visible';
-  }, []); // Empty dependency array since we don't use any external variables
+    
+    return;
+  }, []);
 
   return { correctImageOrientation };
 }
 
-// Optional: legacy detect/apply helpers (unchanged API for callers that might import them)
+// Optional: legacy detect/apply helpers (simplified for server-side processing)
 export function detectImageOrientation(
   naturalWidth: number,
   naturalHeight: number,
@@ -156,25 +91,12 @@ export function detectImageOrientation(
   displayHeight: number,
   _img?: HTMLImageElement
 ): ImageOrientationResult {
-  const naturalRatio = naturalWidth / naturalHeight;
-  const displayRatio = displayWidth / displayHeight;
-  const naturalPortrait = naturalRatio < 1;
-  const displayedPortrait = displayRatio < 0.83;
-  const displayedLandscape = displayRatio > 1.20;
-
-  let needsRotation = false;
-  let rotation: 0 | 90 | 180 | 270 = 0;
-
-  if ((naturalPortrait && !displayedPortrait) || (!naturalPortrait && displayedPortrait)) {
-    needsRotation = true; rotation = 90;
-  }
-  return { needsRotation, rotation };
+  // Server-side processing handles all rotation - no client-side rotation needed
+  return { needsRotation: false, rotation: 0 };
 }
 
 export function applyImageOrientation(img: HTMLImageElement): void {
-  const r = detectImageOrientation(img.naturalWidth, img.naturalHeight, img.clientWidth, img.clientHeight, img);
-  if (r.needsRotation) {
-    img.style.transform = `rotate(${r.rotation}deg)`;
-    img.style.transformOrigin = 'center';
-  }
+  // Server-side processing handles all rotation - no client-side rotation needed
+  console.log('🖼️ applyImageOrientation: Server-side rotation active, skipping client-side rotation');
+  return;
 }

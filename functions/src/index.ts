@@ -479,14 +479,37 @@ export const onMediaFileFinalize = onObjectFinalized(
       console.log(`Found media doc: ${mediaRef.id}, current status: ${mediaData?.transcodeStatus || 'none'}`);
       console.log(`Media type: ${mediaData?.type}, uploaded by: ${mediaData?.uploadedBy}`);
 
-      // Images → thumbnail
+      // Images → thumbnail with EXIF auto-rotation
       if (looksLikeImage) {
+        console.log(`📸 [DEBUG] Image processing started for: ${name}`);
+        console.log(`📸 [DEBUG] Media document found:`, {
+          mediaId: mediaRef.id,
+          currentStatus: mediaData?.transcodeStatus,
+          type: mediaData?.type,
+          uploadedBy: mediaData?.uploadedBy,
+          hasFilePath: !!mediaData?.filePath,
+          hasStorageFolder: !!mediaData?.storageFolder
+        });
+
         const meta = await sharp(tmpOriginal).metadata();
         const thumbLocal = path.join(os.tmpdir(), `thumb_${base}.webp`);
+        
+        console.log(`📸 [DEBUG] Sharp metadata:`, {
+          width: meta.width,
+          height: meta.height,
+          format: meta.format,
+          orientation: meta.orientation || 'none',
+          hasProfile: !!meta.icc,
+          density: meta.density
+        });
+        
         await sharp(tmpOriginal)
+          .rotate() // Automatically rotates based on EXIF orientation and removes EXIF data
           .resize({ width: 1280, withoutEnlargement: true })
           .webp({ quality: 80 })
           .toFile(thumbLocal);
+
+        console.log(`📸 [DEBUG] Thumbnail created successfully`);
 
         const thumbPath = `${dir}/thumb_${base}.webp`;
         await bucket.upload(thumbLocal, {
@@ -497,14 +520,48 @@ export const onMediaFileFinalize = onObjectFinalized(
           },
         });
 
+        console.log(`📸 [DEBUG] Thumbnail uploaded to: ${thumbPath}`);
+
+        // Also create a properly rotated full-size version
+        const rotatedOriginalLocal = path.join(os.tmpdir(), `rotated_${base}.webp`);
+        const rotatedMeta = await sharp(tmpOriginal)
+          .rotate() // Auto-rotate based on EXIF
+          .webp({ quality: 90 }) // Higher quality for full-size
+          .toFile(rotatedOriginalLocal);
+          
+        const rotatedOriginalPath = `${dir}/rotated_${base}.webp`;
+        await bucket.upload(rotatedOriginalLocal, {
+          destination: rotatedOriginalPath,
+          metadata: {
+            contentType: 'image/webp',
+            cacheControl: 'public,max-age=31536000,immutable'
+          },
+        });
+
+        console.log(`📸 [DEBUG] Updating Firestore document with processed image data`);
+
         await mediaRef.set({
           thumbnailPath: thumbPath,
+          rotatedImagePath: rotatedOriginalPath, // New field for properly rotated full-size image
           transcodeStatus: 'ready',
-          dimensions: { width: meta.width ?? null, height: meta.height ?? null },
+          dimensions: { 
+            width: rotatedMeta.width ?? meta.width ?? null, 
+            height: rotatedMeta.height ?? meta.height ?? null 
+          },
+          originalOrientation: meta.orientation || null, // Track original EXIF orientation
+          processedAt: FieldValue.serverTimestamp(),
+          processingVersion: '2.0' // Track which version processed this
         }, { merge: true });
 
-        console.log(`Image processing complete for ${mediaRef.id}, thumbnail: ${thumbPath}`);
+        console.log(`📸 [DEBUG] ✅ Image processing complete for ${mediaRef.id}`);
+        console.log(`📸 [DEBUG]    - Original: ${name}`);
+        console.log(`📸 [DEBUG]    - Thumbnail: ${thumbPath}`);
+        console.log(`📸 [DEBUG]    - Rotated original: ${rotatedOriginalPath}`);
+        console.log(`📸 [DEBUG]    - Original EXIF orientation: ${meta.orientation || 'none'}`);
+        console.log(`📸 [DEBUG]    - Final dimensions: ${rotatedMeta.width}x${rotatedMeta.height}`);
+        
         fs.unlinkSync(thumbLocal);
+        fs.unlinkSync(rotatedOriginalLocal);
         return;
       }
 

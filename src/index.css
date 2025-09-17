@@ -8,7 +8,7 @@
   width: 100vw;
 }
 
-/* Respect EXIF where supported (harmless if not) */
+/* EXIF rotation handled by server-side processing, CSS as fallback */
 img {
   image-orientation: from-image;
   -webkit-image-orientation: from-image;

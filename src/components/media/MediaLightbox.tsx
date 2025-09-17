@@ -35,6 +35,7 @@ export default function MediaLightbox({
   const [playing, setPlaying] = useState(autoPlay);
   const [userActive, setUserActive] = useState(false);
   const [posterUrl, setPosterUrl] = useState<string>('');
+  const [rotatedImageUrl, setRotatedImageUrl] = useState<string>('');
   const [scale, setScale] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -84,6 +85,21 @@ export default function MediaLightbox({
     }
     return () => { mounted = false; };
   }, [isVideo, item?.thumbnailPath]);
+
+  // Load rotated image URL for full-size display (images only)
+  useEffect(() => {
+    let mounted = true;
+    setRotatedImageUrl('');
+    if (!isVideo && item.rotatedImagePath) {
+      getDownloadURL(ref(storage, item.rotatedImagePath))
+        .then((u) => mounted && setRotatedImageUrl(u))
+        .catch(() => {
+          console.warn('Failed to load rotated image, using original');
+          mounted && setRotatedImageUrl('');
+        });
+    }
+    return () => { mounted = false; };
+  }, [isVideo, item?.rotatedImagePath]);
 
   // Attach HLS (if available) in lightbox; fallback to original url
   useEffect(() => {
@@ -265,7 +281,7 @@ export default function MediaLightbox({
                 <div className="lb-img-wrap">
                   <img
                     key={item.id}                    // stable: no more thumb->full swaps
-                    src={item.url}                   // always the full image
+                    src={rotatedImageUrl || item.url} // use server-rotated image if available, fallback to original
                     alt={item.title || ''}
                     className="max-h-[85vh] max-w-[85vw] rounded-2xl object-contain"
                     draggable={false}

@@ -64,29 +64,52 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
   useEffect(() => {
     if (!media.id) return;
     
+    console.log('🔄 [DEBUG] Setting up real-time sync for media:', {
+      mediaId: media.id,
+      currentStatus: media.transcodeStatus,
+      mediaType: media.type
+    });
+    
     const unsubscribe = onSnapshot(
       doc(db, 'media', media.id),
       (docSnapshot) => {
         if (docSnapshot.exists()) {
           const serverData = docSnapshot.data();
-          setLocalMedia((prev: any) => ({
-            ...prev,
-            ...serverData
-          }));
+          
+          console.log('🔄 [DEBUG] Real-time update received:', {
+            mediaId: media.id,
+            serverStatus: serverData.transcodeStatus,
+            localStatus: localMedia.transcodeStatus,
+            hasHls: !!serverData.sources?.hls,
+            hasThumbnailPath: !!serverData.thumbnailPath,
+            hasRotatedImagePath: !!serverData.rotatedImagePath,
+            serverDataKeys: Object.keys(serverData)
+          });
+          
+          setLocalMedia((prev: any) => {
+            console.log('🔄 [DEBUG] Updating localMedia from:', prev.transcodeStatus, 'to:', serverData.transcodeStatus);
+            return {
+              ...prev,
+              ...serverData
+            };
+          });
           
           // Debug: Log status changes
           if (serverData.transcodeStatus !== media.transcodeStatus) {
-            console.log('🔄 Media status updated:', {
+            console.log('🔄 [DEBUG] Status change detected:', {
               mediaId: media.id,
               oldStatus: media.transcodeStatus,
               newStatus: serverData.transcodeStatus,
-              hasHls: !!serverData.sources?.hls
+              hasHls: !!serverData.sources?.hls,
+              changeReason: 'Real-time sync'
             });
           }
+        } else {
+          console.log('🔄 [DEBUG] Document does not exist for media:', media.id);
         }
       },
       (error: any) => {
-        console.warn('Failed to sync media data:', error);
+        console.warn('🔄 [DEBUG] Real-time sync error:', error);
       }
     );
     
@@ -95,23 +118,36 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
   
   // Load thumbnail URL if available
   useEffect(() => {
+    console.log('🖼️ [DEBUG] Loading thumbnail for media:', {
+      mediaId: localMedia.id,
+      mediaType: localMedia.type,
+      hasThumbnailPath: !!localMedia.thumbnailPath,
+      thumbnailPath: localMedia.thumbnailPath,
+      originalUrl: localMedia.url,
+      hasRotatedImagePath: !!localMedia.rotatedImagePath,
+      rotatedImagePath: localMedia.rotatedImagePath
+    });
+
     setIsThumbnailLoading(true);
     if (localMedia.thumbnailPath) {
+      console.log('🖼️ [DEBUG] Using thumbnailPath:', localMedia.thumbnailPath);
       getDownloadURL(ref(storage, localMedia.thumbnailPath))
         .then(url => {
+          console.log('🖼️ [DEBUG] Thumbnail URL resolved:', url);
           setThumbnailUrl(url);
           setIsThumbnailLoading(false);
         })
         .catch(error => {
-          console.warn('Failed to load thumbnail:', error);
+          console.warn('🖼️ [DEBUG] Failed to load thumbnail, using original URL:', error);
           setThumbnailUrl(localMedia.url); // Fallback to original
           setIsThumbnailLoading(false);
         });
     } else {
+      console.log('🖼️ [DEBUG] No thumbnailPath, using original URL:', localMedia.url);
       setThumbnailUrl(localMedia.url);
       setIsThumbnailLoading(false);
     }
-  }, [localMedia.thumbnailPath, localMedia.url]);
+  }, [localMedia.thumbnailPath, localMedia.url, localMedia.rotatedImagePath]);
 
   // Enhanced debugging for video playback issues (reduced logging)
   useEffect(() => {
@@ -389,7 +425,16 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
           loading="lazy" 
           onDoubleClick={onDoubleTap} 
           onClick={onOpen}
-          onLoad={(e) => correctImageOrientation(e.currentTarget)}
+          onLoad={(e) => {
+            console.log('🖼️ [DEBUG] Image onLoad triggered:', {
+              mediaId: localMedia.id,
+              src: e.currentTarget.src,
+              naturalDimensions: `${e.currentTarget.naturalWidth}x${e.currentTarget.naturalHeight}`,
+              displayDimensions: `${e.currentTarget.clientWidth}x${e.currentTarget.clientHeight}`,
+              cssImageOrientation: getComputedStyle(e.currentTarget).imageOrientation
+            });
+            correctImageOrientation(e.currentTarget);
+          }}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
         />
       )
