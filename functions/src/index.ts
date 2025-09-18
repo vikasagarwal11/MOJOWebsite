@@ -345,27 +345,129 @@ export const onRsvpNotification = notifyRsvp;
 
 // ───────────────── MEDIA: Storage Cleanup ─────────────────
 export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async (event) => {
-  const data = event.data?.data() as any;
-  if (!data) return;
-
-  const storage = getStorage().bucket();
-  const folder = data.storageFolder as string | undefined;
-  if (!folder) {
-    console.log(`No storageFolder found for media ${event.params.mediaId}, skipping cleanup`);
+  const mediaId = event.params.mediaId;
+  const deletedData = event.data?.data();
+  
+  if (!deletedData) {
+    console.log(`🗑️ [CLOUD] No data found for deleted media document: ${mediaId}`);
     return;
   }
 
-  try {
-    const [files] = await storage.getFiles({ prefix: folder });
-    if (files.length > 0) {
-      await Promise.all(files.map(f => f.delete().catch(() => {})));
-      console.log(`Cleaned up ${files.length} files from folder: ${folder}`);
-    } else {
-      console.log(`No files found in folder: ${folder}`);
-    }
-  } catch (error) {
-    console.error(`Failed to cleanup storage for media ${event.params.mediaId}:`, error);
+  console.log(`🗑️ [CLOUD] Starting storage cleanup for deleted media: ${mediaId}`, {
+    filePath: deletedData.filePath,
+    thumbnailPath: deletedData.thumbnailPath,
+    rotatedImagePath: deletedData.rotatedImagePath,
+    type: deletedData.type,
+    sources: deletedData.sources,
+    usingBucket: 'mojomediafiles', // Force deployment update
+    version: '2.3-FIXED-VIDEO-DELETION' // Force complete redeployment
+  });
+
+  const bucket = getStorage().bucket('mojomediafiles'); // Use custom bucket where files are actually stored
+  const filesToDelete: Array<{path: string, type: string, isFolder?: boolean}> = [];
+  
+  // 1. Original file
+  if (deletedData.filePath) {
+    filesToDelete.push({ path: deletedData.filePath, type: 'original' });
   }
+  
+  // 2. Custom thumbnail  
+  if (deletedData.thumbnailPath) {
+    filesToDelete.push({ path: deletedData.thumbnailPath, type: 'thumbnail' });
+  }
+  
+  // 3. Rotated image
+  if (deletedData.rotatedImagePath) {
+    filesToDelete.push({ path: deletedData.rotatedImagePath, type: 'rotated' });
+  }
+  
+  // 4. HLS segments for videos (delete entire HLS folder)
+  if (deletedData.sources?.hls) {
+    // Add the main HLS playlist
+    filesToDelete.push({ path: deletedData.sources.hls, type: 'hls-playlist' });
+    
+    // For videos, we also need to delete the entire HLS folder with all segments
+    const folderPath = deletedData.filePath.substring(0, deletedData.filePath.lastIndexOf('/'));
+    filesToDelete.push({ 
+      path: `${folderPath}/hls/`, 
+      type: 'hls-folder',
+      isFolder: true // Mark as folder for special handling
+    });
+  }
+  
+  // 5. Extension thumbnails (cleanup all formats in correct location)
+  if (deletedData.filePath && (deletedData.type === 'image' || deletedData.type === 'video')) {
+    const fileName = deletedData.filePath.split('/').pop(); // Get just filename
+    const folderPath = deletedData.filePath.substring(0, deletedData.filePath.lastIndexOf('/'));
+    const baseName = fileName.substring(0, fileName.lastIndexOf('.')); // Remove extension
+    const originalExt = fileName.substring(fileName.lastIndexOf('.') + 1); // Get original extension
+    
+    console.log(`🗑️ [CLOUD] [DEBUG] Filename parsing:`, {
+      fullPath: deletedData.filePath,
+      fileName: fileName,
+      baseName: baseName,
+      originalExt: originalExt,
+      folderPath: folderPath
+    });
+    
+    // Extensions create: original format + other formats
+    // Pattern: baseName_400x400.originalExt + baseName_400x400.format
+    const extensionFormats = [originalExt.toLowerCase(), 'webp', 'jpeg', 'png', 'avif', 'gif', 'tiff'];
+    const uniqueFormats = [...new Set(extensionFormats)]; // Remove duplicates
+    
+    uniqueFormats.forEach(format => {
+      const thumbnailPath = `${folderPath}/thumbnails/${baseName}_400x400.${format}`;
+      console.log(`🗑️ [CLOUD] [DEBUG] Generated thumbnail path:`, thumbnailPath);
+      filesToDelete.push({ 
+        path: thumbnailPath, 
+        type: `extension-thumbnail-${format}` 
+      });
+    });
+    
+    // Also attempt to delete the thumbnails folder itself (after individual files)
+    filesToDelete.push({ 
+      path: `${folderPath}/thumbnails/`, 
+      type: 'thumbnails-folder',
+      isFolder: true 
+    });
+  }
+
+  console.log(`🗑️ [CLOUD] Files to delete:`, filesToDelete);
+  
+  let deletedCount = 0;
+  let failedCount = 0;
+  
+  for (const file of filesToDelete) {
+    try {
+      if (file.isFolder) {
+        // Delete entire folder (for HLS segments)
+        console.log(`🗑️ [CLOUD] [DEBUG] Deleting folder: ${file.path}`);
+        const [files] = await bucket.getFiles({ prefix: file.path });
+        if (files.length > 0) {
+          await Promise.all(files.map(f => f.delete().catch(() => {})));
+          console.log(`🗑️ [CLOUD] ✅ Deleted ${file.type}: ${files.length} files in ${file.path}`);
+          deletedCount += files.length;
+        } else {
+          console.log(`🗑️ [CLOUD] ⚠️ Folder empty or not found: ${file.path}`);
+        }
+      } else {
+        // Delete individual file
+        await bucket.file(file.path).delete();
+        console.log(`🗑️ [CLOUD] ✅ Deleted ${file.type}: ${file.path}`);
+        deletedCount++;
+      }
+    } catch (error: any) {
+      // 404 errors are expected for files that don't exist
+      if (error.code === 404) {
+        console.log(`🗑️ [CLOUD] ⚠️ File not found (expected): ${file.path}`);
+      } else {
+        console.warn(`🗑️ [CLOUD] ❌ Failed to delete ${file.type}: ${error.message}`);
+        failedCount++;
+      }
+    }
+  }
+  
+  console.log(`🗑️ [CLOUD] Storage cleanup complete: ${deletedCount} deleted, ${failedCount} failed`);
 });
 
 // ───────────────── MEDIA: FFmpeg + Manifest Rewrite ─────────────────
@@ -479,89 +581,24 @@ export const onMediaFileFinalize = onObjectFinalized(
       console.log(`Found media doc: ${mediaRef.id}, current status: ${mediaData?.transcodeStatus || 'none'}`);
       console.log(`Media type: ${mediaData?.type}, uploaded by: ${mediaData?.uploadedBy}`);
 
-      // Images → thumbnail with EXIF auto-rotation
+      // Images → Let Firebase Extensions handle processing
       if (looksLikeImage) {
-        console.log(`📸 [DEBUG] Image processing started for: ${name}`);
-        console.log(`📸 [DEBUG] Media document found:`, {
+        console.log(`📸 [EXTENSION] Image uploaded: ${name} - Firebase Extensions will handle processing`);
+        console.log(`📸 [EXTENSION] Media document:`, {
           mediaId: mediaRef.id,
-          currentStatus: mediaData?.transcodeStatus,
           type: mediaData?.type,
-          uploadedBy: mediaData?.uploadedBy,
-          hasFilePath: !!mediaData?.filePath,
-          hasStorageFolder: !!mediaData?.storageFolder
-        });
-
-        const meta = await sharp(tmpOriginal).metadata();
-        const thumbLocal = path.join(os.tmpdir(), `thumb_${base}.webp`);
-        
-        console.log(`📸 [DEBUG] Sharp metadata:`, {
-          width: meta.width,
-          height: meta.height,
-          format: meta.format,
-          orientation: meta.orientation || 'none',
-          hasProfile: !!meta.icc,
-          density: meta.density
+          filePath: mediaData?.filePath,
+          extensionWillProcess: true
         });
         
-        await sharp(tmpOriginal)
-          .rotate() // Automatically rotates based on EXIF orientation and removes EXIF data
-          .resize({ width: 1280, withoutEnlargement: true })
-          .webp({ quality: 80 })
-          .toFile(thumbLocal);
-
-        console.log(`📸 [DEBUG] Thumbnail created successfully`);
-
-        const thumbPath = `${dir}/thumb_${base}.webp`;
-        await bucket.upload(thumbLocal, {
-          destination: thumbPath,
-          metadata: {
-            contentType: 'image/webp',
-            cacheControl: 'public,max-age=31536000,immutable'
-          },
-        });
-
-        console.log(`📸 [DEBUG] Thumbnail uploaded to: ${thumbPath}`);
-
-        // Also create a properly rotated full-size version
-        const rotatedOriginalLocal = path.join(os.tmpdir(), `rotated_${base}.webp`);
-        const rotatedMeta = await sharp(tmpOriginal)
-          .rotate() // Auto-rotate based on EXIF
-          .webp({ quality: 90 }) // Higher quality for full-size
-          .toFile(rotatedOriginalLocal);
-          
-        const rotatedOriginalPath = `${dir}/rotated_${base}.webp`;
-        await bucket.upload(rotatedOriginalLocal, {
-          destination: rotatedOriginalPath,
-          metadata: {
-            contentType: 'image/webp',
-            cacheControl: 'public,max-age=31536000,immutable'
-          },
-        });
-
-        console.log(`📸 [DEBUG] Updating Firestore document with processed image data`);
-
+        // Just mark as ready - Firebase Extensions will process automatically
         await mediaRef.set({
-          thumbnailPath: thumbPath,
-          rotatedImagePath: rotatedOriginalPath, // New field for properly rotated full-size image
-          transcodeStatus: 'ready',
-          dimensions: { 
-            width: rotatedMeta.width ?? meta.width ?? null, 
-            height: rotatedMeta.height ?? meta.height ?? null 
-          },
-          originalOrientation: meta.orientation || null, // Track original EXIF orientation
-          processedAt: FieldValue.serverTimestamp(),
-          processingVersion: '2.0' // Track which version processed this
+          transcodeStatus: 'ready', // Extensions work independently
+          processedBy: 'firebase-extension',
+          processedAt: FieldValue.serverTimestamp()
         }, { merge: true });
 
-        console.log(`📸 [DEBUG] ✅ Image processing complete for ${mediaRef.id}`);
-        console.log(`📸 [DEBUG]    - Original: ${name}`);
-        console.log(`📸 [DEBUG]    - Thumbnail: ${thumbPath}`);
-        console.log(`📸 [DEBUG]    - Rotated original: ${rotatedOriginalPath}`);
-        console.log(`📸 [DEBUG]    - Original EXIF orientation: ${meta.orientation || 'none'}`);
-        console.log(`📸 [DEBUG]    - Final dimensions: ${rotatedMeta.width}x${rotatedMeta.height}`);
-        
-        fs.unlinkSync(thumbLocal);
-        fs.unlinkSync(rotatedOriginalLocal);
+        console.log(`📸 [EXTENSION] ✅ Image marked as ready - Extensions will handle thumbnails and optimization`);
         return;
       }
 

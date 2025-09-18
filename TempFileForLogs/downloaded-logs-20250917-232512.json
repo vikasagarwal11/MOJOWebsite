@@ -1,0 +1,775 @@
+[
+  {
+    "insertId": "68cb7b710006f77de728cf80",
+    "httpRequest": {
+      "requestMethod": "POST",
+      "requestUrl": "https://onmediadeletedcleanup-swaezp437a-uc.a.run.app/?__GCP_CloudEventsMode=CE_PUBSUB_BINDING",
+      "requestSize": "3933",
+      "status": 200,
+      "responseSize": "82",
+      "userAgent": "APIs-Google; (+https://developers.google.com/webmasters/APIs-Google.html)",
+      "remoteIp": "66.102.6.162",
+      "serverIp": "34.143.79.2",
+      "latency": "2.065339649s",
+      "protocol": "HTTP/1.1"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "onmediadeletedcleanup",
+        "project_id": "momfitnessmojo",
+        "configuration_name": "onmediadeletedcleanup",
+        "location": "us-central1",
+        "revision_name": "onmediadeletedcleanup-00053-yiw"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:31.375718Z",
+    "severity": "INFO",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "goog-managed-by": "cloudfunctions",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "run.googleapis.com/cloud_event_id": "ff9c6e85-883d-4af8-a96b-57b9fb22bdeb",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "run.googleapis.com/cloud_event_source": "//firestore.googleapis.com/projects/momfitnessmojo/databases/(default)",
+      "goog-drz-cloudfunctions-location": "us-central1"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Frequests",
+    "trace": "projects/momfitnessmojo/traces/ad90af6be9ae61550381296d60efd71d",
+    "receiveTimestamp": "2025-09-18T03:24:33.475897190Z",
+    "spanId": "e57d72d60e57a43b",
+    "traceSampled": true
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] Starting storage cleanup for deleted media: 5hhBoi42omMmp66W2iHS {\n  filePath: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/14085683_1920_1080_25fps.mp4',\n  thumbnailPath: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/poster_14085683_1920_1080_25fps.jpg',\n  rotatedImagePath: undefined,\n  type: 'video',\n  sources: {\n    hls: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/hls/14085683_1920_1080_25fps/index.m3u8'\n  },\n  usingBucket: 'mojomediafiles',\n  version: '2.3-FIXED-VIDEO-DELETION'\n}\n",
+    "insertId": "68cb7b6f000669af2e5eb5bd",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "onmediadeletedcleanup",
+        "project_id": "momfitnessmojo",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "service_name": "onmediadeletedcleanup",
+        "location": "us-central1"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:31.420271Z",
+    "labels": {
+      "execution_id": "oukcobl9sbr8",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:31.427330631Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] [DEBUG] Filename parsing: {\n  fullPath: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/14085683_1920_1080_25fps.mp4',\n  fileName: '14085683_1920_1080_25fps.mp4',\n  baseName: '14085683_1920_1080_25fps',\n  originalExt: 'mp4',\n  folderPath: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca'\n}\n",
+    "insertId": "68cb7b6f000d0e9cec42e8b3",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "location": "us-central1",
+        "project_id": "momfitnessmojo",
+        "configuration_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:31.855708Z",
+    "labels": {
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "execution_id": "oukcobl9sbr8"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.092401196Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] [DEBUG] Generated thumbnail path: media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.mp4\n",
+    "insertId": "68cb7b6f000d1139022c99a2",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "onmediadeletedcleanup",
+        "location": "us-central1",
+        "project_id": "momfitnessmojo",
+        "service_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00053-yiw"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:31.856377Z",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "execution_id": "oukcobl9sbr8",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.092401196Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] [DEBUG] Generated thumbnail path: media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.webp\n",
+    "insertId": "68cb7b6f000d143aad1b3da6",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momfitnessmojo",
+        "location": "us-central1",
+        "configuration_name": "onmediadeletedcleanup",
+        "service_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00053-yiw"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:31.857146Z",
+    "labels": {
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "execution_id": "oukcobl9sbr8",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.092401196Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] [DEBUG] Generated thumbnail path: media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.jpeg\n",
+    "insertId": "68cb7b6f000d1d5a276516f4",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "onmediadeletedcleanup",
+        "configuration_name": "onmediadeletedcleanup",
+        "project_id": "momfitnessmojo",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "location": "us-central1"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:31.859482Z",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "execution_id": "oukcobl9sbr8",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.092401196Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] [DEBUG] Generated thumbnail path: media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.png\n",
+    "insertId": "68cb7b6f000d1e49c33ce63d",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "us-central1",
+        "service_name": "onmediadeletedcleanup",
+        "configuration_name": "onmediadeletedcleanup",
+        "project_id": "momfitnessmojo",
+        "revision_name": "onmediadeletedcleanup-00053-yiw"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:31.859721Z",
+    "labels": {
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "execution_id": "oukcobl9sbr8",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "goog-managed-by": "cloudfunctions",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.092401196Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] [DEBUG] Generated thumbnail path: media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.avif\n",
+    "insertId": "68cb7b6f000d1ed996d621f8",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momfitnessmojo",
+        "configuration_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "service_name": "onmediadeletedcleanup",
+        "location": "us-central1"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:31.859865Z",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "execution_id": "oukcobl9sbr8",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "goog-managed-by": "cloudfunctions",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.092401196Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] [DEBUG] Generated thumbnail path: media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.gif\n",
+    "insertId": "68cb7b6f000d2094bd8df0d5",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momfitnessmojo",
+        "location": "us-central1",
+        "configuration_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "service_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:31.860308Z",
+    "labels": {
+      "execution_id": "oukcobl9sbr8",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.092401196Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] [DEBUG] Generated thumbnail path: media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.tiff\n",
+    "insertId": "68cb7b6f000d211d0951488b",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "onmediadeletedcleanup",
+        "configuration_name": "onmediadeletedcleanup",
+        "location": "us-central1",
+        "project_id": "momfitnessmojo",
+        "revision_name": "onmediadeletedcleanup-00053-yiw"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:31.860445Z",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "goog-managed-by": "cloudfunctions",
+      "execution_id": "oukcobl9sbr8",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.092401196Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] Files to delete: [\n  {\n    path: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/14085683_1920_1080_25fps.mp4',\n    type: 'original'\n  },\n  {\n    path: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/poster_14085683_1920_1080_25fps.jpg',\n    type: 'thumbnail'\n  },\n  {\n    path: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/hls/14085683_1920_1080_25fps/index.m3u8',\n    type: 'hls-playlist'\n  },\n  {\n    path: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/hls/',\n    type: 'hls-folder',\n    isFolder: true\n  },\n  {\n    path: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.mp4',\n    type: 'extension-thumbnail-mp4'\n  },\n  {\n    path: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.webp',\n    type: 'extension-thumbnail-webp'\n  },\n  {\n    path: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.jpeg',\n    type: 'extension-thumbnail-jpeg'\n  },\n  {\n    path: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.png',\n    type: 'extension-thumbnail-png'\n  },\n  {\n    path: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.avif',\n    type: 'extension-thumbnail-avif'\n  },\n  {\n    path: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.gif',\n    type: 'extension-thumbnail-gif'\n  },\n  {\n    path: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.tiff',\n    type: 'extension-thumbnail-tiff'\n  },\n  {\n    path: 'media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/',\n    type: 'thumbnails-folder',\n    isFolder: true\n  }\n]\n",
+    "insertId": "68cb7b6f000d256d7f819310",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "onmediadeletedcleanup",
+        "project_id": "momfitnessmojo",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "service_name": "onmediadeletedcleanup",
+        "location": "us-central1"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:31.861549Z",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "goog-managed-by": "cloudfunctions",
+      "execution_id": "oukcobl9sbr8",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.092401196Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] ✅ Deleted original: media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/14085683_1920_1080_25fps.mp4\n",
+    "insertId": "68cb7b70000171cac66faac2",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "onmediadeletedcleanup",
+        "project_id": "momfitnessmojo",
+        "configuration_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "location": "us-central1"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:32.094666Z",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "execution_id": "oukcobl9sbr8",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.434541545Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] ✅ Deleted thumbnail: media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/poster_14085683_1920_1080_25fps.jpg\n",
+    "insertId": "68cb7b7000039a4ca41e10ce",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "location": "us-central1",
+        "project_id": "momfitnessmojo",
+        "configuration_name": "onmediadeletedcleanup",
+        "service_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:32.236108Z",
+    "labels": {
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "execution_id": "oukcobl9sbr8",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.434541545Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] ✅ Deleted hls-playlist: media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/hls/14085683_1920_1080_25fps/index.m3u8\n",
+    "insertId": "68cb7b7000054f6668414bac",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "us-central1",
+        "service_name": "onmediadeletedcleanup",
+        "configuration_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "project_id": "momfitnessmojo"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:32.348006Z",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "execution_id": "oukcobl9sbr8",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "goog-drz-cloudfunctions-location": "us-central1"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.434541545Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] [DEBUG] Deleting folder: media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/hls/\n",
+    "insertId": "68cb7b7000054fc2541a8227",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "onmediadeletedcleanup",
+        "location": "us-central1",
+        "project_id": "momfitnessmojo",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "configuration_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:32.348098Z",
+    "labels": {
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "execution_id": "oukcobl9sbr8",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.434541545Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] ✅ Deleted hls-folder: 1 files in media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/hls/\n",
+    "insertId": "68cb7b70000924cff14e70ab",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "onmediadeletedcleanup",
+        "project_id": "momfitnessmojo",
+        "configuration_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "location": "us-central1"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:32.599247Z",
+    "labels": {
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "execution_id": "oukcobl9sbr8",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.757166190Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] ⚠️ File not found (expected): media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.mp4\n",
+    "insertId": "68cb7b70000a615670a25620",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "configuration_name": "onmediadeletedcleanup",
+        "location": "us-central1",
+        "project_id": "momfitnessmojo",
+        "service_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:32.680278Z",
+    "labels": {
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "goog-managed-by": "cloudfunctions",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "execution_id": "oukcobl9sbr8"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:32.757166190Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] ⚠️ File not found (expected): media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.webp\n",
+    "insertId": "68cb7b70000c8bc7a7e65b46",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momfitnessmojo",
+        "location": "us-central1",
+        "configuration_name": "onmediadeletedcleanup",
+        "service_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00053-yiw"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:32.822215Z",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "execution_id": "oukcobl9sbr8",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:33.090110595Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] ⚠️ File not found (expected): media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.jpeg\n",
+    "insertId": "68cb7b70000dba11e27a23fd",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "onmediadeletedcleanup",
+        "location": "us-central1",
+        "project_id": "momfitnessmojo",
+        "service_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00053-yiw"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:32.899601Z",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "execution_id": "oukcobl9sbr8"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:33.090110595Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] ⚠️ File not found (expected): media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.png\n",
+    "insertId": "68cb7b710000a1e41b66c126",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momfitnessmojo",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "configuration_name": "onmediadeletedcleanup",
+        "location": "us-central1",
+        "service_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:33.041444Z",
+    "labels": {
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "execution_id": "oukcobl9sbr8",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:33.090110595Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] ⚠️ File not found (expected): media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.avif\n",
+    "insertId": "68cb7b710001958a49b22998",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momfitnessmojo",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "configuration_name": "onmediadeletedcleanup",
+        "location": "us-central1",
+        "service_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:33.103818Z",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "execution_id": "oukcobl9sbr8",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:33.422922983Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] ⚠️ File not found (expected): media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.gif\n",
+    "insertId": "68cb7b7100025d6a598d1aa5",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "us-central1",
+        "configuration_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "service_name": "onmediadeletedcleanup",
+        "project_id": "momfitnessmojo"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:33.154986Z",
+    "labels": {
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "goog-managed-by": "cloudfunctions",
+      "execution_id": "oukcobl9sbr8",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:33.422922983Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] ⚠️ File not found (expected): media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/14085683_1920_1080_25fps_400x400.tiff\n",
+    "insertId": "68cb7b7100039f1846a091b8",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "onmediadeletedcleanup",
+        "service_name": "onmediadeletedcleanup",
+        "location": "us-central1",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "project_id": "momfitnessmojo"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:33.237336Z",
+    "labels": {
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "execution_id": "oukcobl9sbr8"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:33.422922983Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] [DEBUG] Deleting folder: media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/\n",
+    "insertId": "68cb7b7100039f48c4427878",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "configuration_name": "onmediadeletedcleanup",
+        "project_id": "momfitnessmojo",
+        "service_name": "onmediadeletedcleanup",
+        "location": "us-central1"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:33.237384Z",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "execution_id": "oukcobl9sbr8",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:33.422922983Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] ✅ Deleted thumbnails-folder: 7 files in media/a43dFuwNKGaUn6b40ZU7MoXEM2I2/c3302b9d-1aff-4d85-99e4-80d8389043ca/thumbnails/\n",
+    "insertId": "68cb7b710006bd77f74934e0",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "us-central1",
+        "configuration_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "service_name": "onmediadeletedcleanup",
+        "project_id": "momfitnessmojo"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:33.441719Z",
+    "labels": {
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "execution_id": "oukcobl9sbr8",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:33.757768312Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] Storage cleanup complete: 11 deleted, 0 failed\n",
+    "insertId": "68cb7b710006bde10f774f38",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momfitnessmojo",
+        "location": "us-central1",
+        "revision_name": "onmediadeletedcleanup-00053-yiw",
+        "configuration_name": "onmediadeletedcleanup",
+        "service_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:33.441825Z",
+    "labels": {
+      "firebase-functions-hash": "89622dad97197bcd3209643bea66499ec4359dd6",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "instanceId": "0069c7a9883ea44c72bf8044e302134d3f50332c4378047ea9042cf3f4da48be7a9772e0f8389d04838ba2ab280d147f627fdcb71cf9db894c6833db8102befebac90f7cad66084c9e50f0b5c305ce",
+      "goog-managed-by": "cloudfunctions",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20250907_22_19_0_RC00",
+      "execution_id": "oukcobl9sbr8"
+    },
+    "logName": "projects/momfitnessmojo/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-09-18T03:24:33.757768312Z",
+    "spanId": "16536499670463521851"
+  },
+  {
+    "textPayload": "Shutting down all Genkit servers...",
+    "insertId": "68cb7b81000107f593cc5d3d",
+    "resource": {
+      "type": "cloud_function",
+      "labels": {
+        "function_name": "ext-storage-resize-images-generateResizedImage",
+        "region": "us-east1",
+        "project_id": "momfitnessmojo"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:49.067573Z",
+    "labels": {
+      "instance_id": "0069c7a988ad072d9ac72e4aca44a3dbc94ac6f5b8fcfc25dc9c0a065c6a65d6f0f8916e4e032cca2cdbf4b6cf27a984231da7e813c0aa310fab6ce03c52bab6d562349399f9cb94974e6ceec8dd",
+      "runtime_version": "nodejs20_20250906_20_19_4_RC00"
+    },
+    "logName": "projects/momfitnessmojo/logs/cloudfunctions.googleapis.com%2Fcloud-functions",
+    "receiveTimestamp": "2025-09-18T03:24:49.071121785Z"
+  },
+  {
+    "textPayload": "Shutting down all Genkit servers...",
+    "insertId": "68cb7b8900016b8843d15eac",
+    "resource": {
+      "type": "cloud_function",
+      "labels": {
+        "region": "us-east1",
+        "function_name": "ext-storage-resize-images-generateResizedImage",
+        "project_id": "momfitnessmojo"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:57.093064Z",
+    "labels": {
+      "instance_id": "0069c7a988a78773ba0dc5b81812047efcc5bcf2f7d55d30d28d307f57010d4a4d7c9f366f80acd94132201292bc0006f953e5acc9059e41229dba51ab72baa09870e71c3bfcd83c629bd01f39",
+      "runtime_version": "nodejs20_20250906_20_19_4_RC00"
+    },
+    "logName": "projects/momfitnessmojo/logs/cloudfunctions.googleapis.com%2Fcloud-functions",
+    "receiveTimestamp": "2025-09-18T03:24:57.097928439Z"
+  },
+  {
+    "textPayload": "Shutting down all Genkit servers...",
+    "insertId": "68cb7b8b000109067d246cc8",
+    "resource": {
+      "type": "cloud_function",
+      "labels": {
+        "function_name": "ext-storage-resize-images-generateResizedImage",
+        "region": "us-east1",
+        "project_id": "momfitnessmojo"
+      }
+    },
+    "timestamp": "2025-09-18T03:24:59.067846Z",
+    "labels": {
+      "instance_id": "0069c7a98802ff24797c106adee50d3eb14dde8c636e7f5e87c48a51631b5057c830cac7971aba54356ec40438ae73e6a8b97311c5c72f747be43a049944f99191c0828b0487072431c8b90140b6",
+      "runtime_version": "nodejs20_20250906_20_19_4_RC00"
+    },
+    "logName": "projects/momfitnessmojo/logs/cloudfunctions.googleapis.com%2Fcloud-functions",
+    "receiveTimestamp": "2025-09-18T03:24:59.397238970Z"
+  }
+]

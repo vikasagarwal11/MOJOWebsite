@@ -168,18 +168,16 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
     if (!confirm('Are you sure you want to delete this media file? This cannot be undone.')) return;
     
     try {
-      // Delete from Firestore
+      console.log('🗑️ [ADMIN] Starting deletion for media:', {
+        mediaId,
+        filePath: mediaData.filePath,
+        thumbnailPath: mediaData.thumbnailPath,
+        type: mediaData.type
+      });
+
+      // Only delete from Firestore - Cloud Function will handle storage cleanup
       await deleteDoc(doc(db, 'media', mediaId));
-      
-      // Delete from Storage if file exists
-      if (mediaData.storageFolder) {
-        try {
-          const storageRef = ref(storage, mediaData.storageFolder);
-          await deleteObject(storageRef);
-        } catch (storageError) {
-          console.warn('Failed to delete from storage:', storageError);
-        }
-      }
+      console.log('🗑️ [ADMIN] Firestore document deleted - Cloud Function will handle storage cleanup');
       
       // Update local state
       setAllMedia(prev => prev.filter(m => m.id !== mediaId));

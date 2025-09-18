@@ -12,5 +12,11 @@
       }
     }
   },
-  "etags": {}
+  "etags": {
+    "momfitnessmojo": {
+      "extensionInstances": {
+        "storage-resize-images": "2e51feaee13bd604f3422362c7daae2538addc08a835d0dc8ad7d6133fad59c6"
+      }
+    }
+  }
 }
