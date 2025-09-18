@@ -8,7 +8,7 @@ import { useViewCounter } from '../../hooks/useViewCounter';
 import { usePagedComments } from '../../hooks/usePagedComments';
 import { shareUrl } from '../../utils/share';
 import { attachHls, detachHls } from '../../utils/hls';
-import { getDownloadURL, ref } from 'firebase/storage';
+import { getDownloadURL, ref, deleteObject } from 'firebase/storage';
 import { storage } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '../ConfirmDialog';
@@ -116,38 +116,78 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
     return unsubscribe;
   }, [media.id, media.transcodeStatus]);
   
-  // Load thumbnail URL if available
+  // Load thumbnail URL - prioritize extension-generated thumbnails
   useEffect(() => {
     console.log('🖼️ [DEBUG] Loading thumbnail for media:', {
       mediaId: localMedia.id,
       mediaType: localMedia.type,
       hasThumbnailPath: !!localMedia.thumbnailPath,
       thumbnailPath: localMedia.thumbnailPath,
+      filePath: localMedia.filePath,
       originalUrl: localMedia.url,
-      hasRotatedImagePath: !!localMedia.rotatedImagePath,
-      rotatedImagePath: localMedia.rotatedImagePath
+      isImage: localMedia.type === 'image'
     });
 
     setIsThumbnailLoading(true);
-    if (localMedia.thumbnailPath) {
-      console.log('🖼️ [DEBUG] Using thumbnailPath:', localMedia.thumbnailPath);
-      getDownloadURL(ref(storage, localMedia.thumbnailPath))
+    
+    // For images: Try extension-generated thumbnails first
+    if (localMedia.type === 'image' && localMedia.filePath) {
+      // Generate extension thumbnail path: media/userId/batchId/thumbnails/image_400x400.webp
+      const fileName = localMedia.filePath.split('/').pop(); // Get just the filename
+      const folderPath = localMedia.filePath.substring(0, localMedia.filePath.lastIndexOf('/'));
+      const baseName = fileName.substring(0, fileName.lastIndexOf('.')); // Remove extension
+      const extensionThumbnailPath = `${folderPath}/thumbnails/${baseName}_400x400.webp`;
+      
+      console.log('🖼️ [DEBUG] Trying extension thumbnail (correct path):', extensionThumbnailPath);
+      
+      getDownloadURL(ref(storage, extensionThumbnailPath))
         .then(url => {
-          console.log('🖼️ [DEBUG] Thumbnail URL resolved:', url);
+          console.log('🖼️ [DEBUG] Extension thumbnail loaded:', url);
           setThumbnailUrl(url);
           setIsThumbnailLoading(false);
         })
         .catch(error => {
-          console.warn('🖼️ [DEBUG] Failed to load thumbnail, using original URL:', error);
-          setThumbnailUrl(localMedia.url); // Fallback to original
-          setIsThumbnailLoading(false);
+          console.log('🖼️ [DEBUG] Extension thumbnail not found, trying fallbacks');
+          // Fallback to custom thumbnail or original
+          if (localMedia.thumbnailPath) {
+            getDownloadURL(ref(storage, localMedia.thumbnailPath))
+              .then(url => {
+                console.log('🖼️ [DEBUG] Custom thumbnail loaded:', url);
+                setThumbnailUrl(url);
+                setIsThumbnailLoading(false);
+              })
+              .catch(() => {
+                console.log('🖼️ [DEBUG] Using original image');
+                setThumbnailUrl(localMedia.url);
+                setIsThumbnailLoading(false);
+              });
+          } else {
+            setThumbnailUrl(localMedia.url);
+            setIsThumbnailLoading(false);
+          }
         });
     } else {
-      console.log('🖼️ [DEBUG] No thumbnailPath, using original URL:', localMedia.url);
-      setThumbnailUrl(localMedia.url);
-      setIsThumbnailLoading(false);
+      // For videos or images without filePath: Use existing logic
+      if (localMedia.thumbnailPath) {
+        console.log('🖼️ [DEBUG] Using existing thumbnailPath:', localMedia.thumbnailPath);
+        getDownloadURL(ref(storage, localMedia.thumbnailPath))
+          .then(url => {
+            console.log('🖼️ [DEBUG] Thumbnail URL resolved:', url);
+            setThumbnailUrl(url);
+            setIsThumbnailLoading(false);
+          })
+          .catch(error => {
+            console.warn('🖼️ [DEBUG] Failed to load thumbnail, using original URL:', error);
+            setThumbnailUrl(localMedia.url);
+            setIsThumbnailLoading(false);
+          });
+      } else {
+        console.log('🖼️ [DEBUG] No thumbnailPath, using original URL:', localMedia.url);
+        setThumbnailUrl(localMedia.url);
+        setIsThumbnailLoading(false);
+      }
     }
-  }, [localMedia.thumbnailPath, localMedia.url, localMedia.rotatedImagePath]);
+  }, [localMedia.thumbnailPath, localMedia.url, localMedia.filePath, localMedia.type]);
 
   // Enhanced debugging for video playback issues (reduced logging)
   useEffect(() => {
@@ -317,10 +357,20 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
   async function actuallyDelete() {
     setConfirmOpen(false);
     try {
+      console.log('🗑️ [USER] Starting deletion for media:', {
+        mediaId: localMedia.id,
+        filePath: localMedia.filePath,
+        thumbnailPath: localMedia.thumbnailPath,
+        type: localMedia.type
+      });
+
+      // Only delete from Firestore - Cloud Function will handle storage cleanup
       await deleteDoc(doc(db, 'media', localMedia.id));
-      // Cloud Function will delete Storage assets (see section 5)
+      console.log('🗑️ [USER] Firestore document deleted - Cloud Function will handle storage cleanup');
+      
       toast.success('Media deleted successfully');
     } catch (e: any) { 
+      console.error('🗑️ [USER] Deletion failed:', e);
       toast.error(e.message || 'Failed to delete media'); 
     }
   }
