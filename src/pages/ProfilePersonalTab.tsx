@@ -167,12 +167,9 @@ export const ProfilePersonalTab: React.FC<ProfilePersonalTabProps> = ({
         className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-gray-50 text-gray-600 cursor-not-allowed"
         placeholder="Phone number"
       />
-      <div className="mt-2 flex items-center gap-2 p-3 bg-[#F25129]/10 border border-[#F25129]/20 rounded-lg">
-        <div className="w-2 h-2 bg-[#F25129] rounded-full"></div>
-        <p className="text-xs text-[#F25129]">
-          To change your phone number, please contact an administrator.
-        </p>
-      </div>
+      <p className="mt-1 text-xs text-gray-500">
+        To change your phone number, please contact an administrator.
+      </p>
     </div>
     <div className="grid gap-4">
       <h2 className="text-sm font-semibold text-gray-700">Address (optional)</h2>
