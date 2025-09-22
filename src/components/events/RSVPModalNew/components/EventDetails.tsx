@@ -82,7 +82,7 @@ export const EventDetails: React.FC<EventDetailsProps> = ({
                 {event.description && (
                   <div>
                     <span className="font-bold text-gray-800">Description:</span>
-                    <p className="text-gray-700 mt-1 leading-relaxed">
+                    <p className="text-gray-700 mt-1 leading-relaxed break-words">
                       {event.description}
                     </p>
                   </div>

@@ -23,6 +23,8 @@ export type EventDoc = {
   isTeaser?: boolean;
   maxAttendees?: number;
   attendingCount?: number;
+  waitlistEnabled?: boolean;
+  waitlistLimit?: number;
   // QR Code Attendance Tracking
   qrCode?: string; // Generated QR code data
   qrCodeGeneratedAt?: any; // Timestamp when QR was generated

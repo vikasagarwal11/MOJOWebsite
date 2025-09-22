@@ -6,20 +6,31 @@ export function setupGlobalErrorHandling() {
   window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason)
     
-    // Only log if it's not a stack overflow error to prevent infinite loops
-    if (!(event.reason instanceof Error && event.reason.message.includes('Maximum call stack size exceeded'))) {
-      try {
-        errorService.logError(event.reason, {
-          component: 'GlobalErrorHandler',
-          severity: 'high',
-          category: 'unknown',
-          showToast: true,
-          customMessage: 'An unexpected error occurred. Please try again.',
-        })
-      } catch (e) {
-        // Silent fail to prevent infinite loops
-        console.warn('Failed to log error:', e)
+    // Skip certain errors that don't need user notification
+    if (event.reason instanceof Error) {
+      // Skip stack overflow errors to prevent infinite loops
+      if (event.reason.message.includes('Maximum call stack size exceeded')) {
+        return
       }
+      
+      // Skip temporal dead zone errors that are likely minification issues
+      if (event.reason.message.includes("Cannot access") && event.reason.message.includes("before initialization")) {
+        console.warn('Skipping temporal dead zone error - likely minification issue')
+        return
+      }
+    }
+    
+    try {
+      errorService.logError(event.reason, {
+        component: 'GlobalErrorHandler',
+        severity: 'high',
+        category: 'unknown',
+        showToast: true,
+        customMessage: 'An unexpected error occurred. Please try again.',
+      })
+    } catch (e) {
+      // Silent fail to prevent infinite loops
+      console.warn('Failed to log error:', e)
     }
     
     // Prevent the default browser behavior
@@ -42,6 +53,12 @@ export function setupGlobalErrorHandling() {
       
       // Skip stack overflow errors to prevent infinite loops
       if (error.message.includes('Maximum call stack size exceeded')) {
+        return
+      }
+      
+      // Skip temporal dead zone errors that are likely minification issues
+      if (error.message.includes("Cannot access") && error.message.includes("before initialization")) {
+        console.warn('Skipping temporal dead zone error - likely minification issue')
         return
       }
     }

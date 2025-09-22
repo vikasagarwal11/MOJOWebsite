@@ -12,7 +12,10 @@ import { useUserBlocking } from '../../hooks/useUserBlocking';
 
 import { useAttendees } from '../../hooks/useAttendees';
 import { CreateAttendeeData, AttendeeStatus } from '../../types/attendee';
-import { getEventAttendeeCount } from '../../services/attendeeService';
+import { getWaitlistPosition } from '../../services/attendeeService';
+import { useCapacityState } from './RSVPModalNew/hooks/useCapacityState';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import toast from 'react-hot-toast';
 
 interface EventCardProps {
@@ -24,16 +27,65 @@ interface EventCardProps {
 const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
-  const { attendees, addAttendee, setAttendeeStatus, refreshAttendees } = useAttendees(event.id, currentUser?.id || '');
+  const { attendees, counts, addAttendee, setAttendeeStatus, refreshAttendees } = useAttendees(event.id, currentUser?.id || '');
+  
+  // Real-time attending count state - initialize with current event count
+  const [realTimeAttendingCount, setRealTimeAttendingCount] = useState<number>(event.attendingCount || 0);
+  
+  // Sync with event prop changes (in case parent updates the event)
+  useEffect(() => {
+    setRealTimeAttendingCount(event.attendingCount || 0);
+  }, [event.attendingCount]);
+  
+  // Real-time listener for event document changes (attendingCount)
+  useEffect(() => {
+    if (!event.id) return;
+
+    const eventRef = doc(db, 'events', event.id);
+    const unsubscribe = onSnapshot(eventRef, (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        const newCount = data.attendingCount || 0;
+        console.log('🔄 EventCardNew: Checking count update:', { 
+          eventId: event.id, 
+          currentState: realTimeAttendingCount, 
+          newCount,
+          eventPropCount: event.attendingCount,
+          shouldUpdate: newCount !== realTimeAttendingCount
+        });
+        
+        // Always update if the count is different, regardless of current state
+        setRealTimeAttendingCount(newCount);
+        console.log('🔄 EventCardNew: Real-time attendingCount updated:', { 
+          eventId: event.id, 
+          oldCount: realTimeAttendingCount, 
+          newCount,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }, (error) => {
+      console.error('EventCardNew: Error listening to event changes:', error);
+    });
+
+    return () => unsubscribe();
+  }, [event.id]); // Only depend on event.id
+  
+  // Create capacity state for this event using real-time count
+  const mockCountsWithRealTime = useMemo(() => ({
+    ...counts,
+    totalGoing: realTimeAttendingCount,
+    goingCount: realTimeAttendingCount
+  }), [counts, realTimeAttendingCount]);
+  
+  const capacityState = useCapacityState(mockCountsWithRealTime, event.maxAttendees, event.waitlistEnabled, event.waitlistLimit);
   
   // State
   const [showRSVPModal, setShowRSVPModal] = useState(false);
   const [showTeaserModal, setShowTeaserModal] = useState(false);
   const [showPastEventModal, setShowPastEventModal] = useState(false);
-  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | null>(null);
+  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | 'waitlisted' | null>(null);
+  const [waitlistPosition, setWaitlistPosition] = useState<number | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [totalAttendeeCount, setTotalAttendeeCount] = useState<number>(0);
-  
   // Overflow detection for description
   const descRef = useRef<HTMLParagraphElement | null>(null);
   const [isClamped, setIsClamped] = useState(false);
@@ -52,23 +104,38 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     setShowPastEventModal(false);
   }, [event.id]);
 
-  // Function to refresh total attendee count
-  const refreshTotalAttendeeCount = async () => {
-    try {
-      console.log('🔍 DEBUG: Refreshing total attendee count for event:', event.id);
-      const count = await getEventAttendeeCount(event.id);
-      console.log('🔍 DEBUG: Total attendee count updated to:', count);
-      setTotalAttendeeCount(count);
-    } catch (error) {
-      console.error('Failed to fetch total attendee count:', error);
-      setTotalAttendeeCount(0);
-    }
-  };
+  // Real-time listener temporarily disabled to fix temporal dead zone error
+  // TODO: Re-enable after fixing the underlying React setState issue
+  // useEffect(() => {
+  //   if (!event.id) return;
 
-  // Fetch total attendee count for the event
+  //   const eventRef = doc(db, 'events', event.id);
+  //   const unsubscribe = onSnapshot(eventRef, (doc) => {
+  //     if (doc.exists()) {
+  //       const data = doc.data();
+  //       const newCount = data.attendingCount || 0;
+  //       setRealTimeAttendingCount(newCount);
+  //       console.log('🔄 Real-time attendingCount updated:', { eventId: event.id, newCount });
+  //     }
+  //   }, (error) => {
+  //     console.error('Error listening to event changes:', error);
+  //   });
+
+  //   return () => unsubscribe();
+  // }, [event.id]);
+
+  // Use real-time attending count
+  const totalAttendeeCount = realTimeAttendingCount;
+  
+  // Debug: Log when component renders with new count
   useEffect(() => {
-    refreshTotalAttendeeCount();
-  }, [event.id, currentUser]);
+    console.log('🔄 EventCardNew: Component rendered with count:', {
+      eventId: event.id,
+      realTimeAttendingCount,
+      totalAttendeeCount,
+      eventAttendingCount: event.attendingCount
+    });
+  }, [realTimeAttendingCount, event.id, event.attendingCount]);
 
   // Overflow detection for description
   useEffect(() => {
@@ -94,14 +161,25 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     if (currentUser && attendees.length > 0) {
       const userAttendee = attendees.find(a => a.userId === currentUser.id && a.attendeeType === 'primary');
       const status = userAttendee ? userAttendee.rsvpStatus : null;
-      // Only set status if it's 'going' or 'not-going', filter out 'pending'
-      if (status === 'going' || status === 'not-going') {
+      // Set status for going, not-going, and waitlisted
+      if (status === 'going' || status === 'not-going' || status === 'waitlisted') {
         setRsvpStatus(status);
+        
+        // If waitlisted, get position
+        if (status === 'waitlisted') {
+          getWaitlistPosition(event.id, currentUser.id).then(position => {
+            setWaitlistPosition(position);
+          });
+        } else {
+          setWaitlistPosition(null);
+        }
       } else {
         setRsvpStatus(null);
+        setWaitlistPosition(null);
       }
     } else if (currentUser) {
       setRsvpStatus(null);
+      setWaitlistPosition(null);
     }
   }, [currentUser, event.id, attendees]);
 
@@ -162,9 +240,25 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       setShowTeaserModal(true);
       return;
     }
+
+    // Check capacity for 'going' status and handle waitlist
+    let finalStatus = status;
+    if (status === 'going' && !capacityState.canAddMore) {
+      if (capacityState.canWaitlist) {
+        // Auto-waitlist for quick RSVP
+        finalStatus = 'waitlisted';
+        // Calculate position (current waitlist count + 1)
+        const position = capacityState.waitlistCount + 1;
+        toast.success(`Event is full. You're #${position} on the waitlist!`);
+      } else {
+        toast.error('Event is at full capacity. No more RSVPs can be accepted.');
+        return;
+      }
+    }
     
     console.log('🔍 DEBUG: Quick RSVP started with new attendee system:', {
-      status,
+      originalStatus: status,
+      finalStatus: finalStatus,
       eventId: event.id,
       currentUser: currentUser.id,
       currentRSVPStatus: rsvpStatus,
@@ -179,13 +273,13 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
         a.userId === currentUser.id && a.attendeeType === 'primary'
       );
       
-             if (existingAttendee) {
-         // Update existing attendee status
-         console.log('🔍 DEBUG: Updating existing primary attendee status to:', status);
-         await setAttendeeStatus(existingAttendee.attendeeId, status);
+      if (existingAttendee) {
+        // Update existing attendee status
+        console.log('🔍 DEBUG: Updating existing primary attendee status to:', finalStatus);
+        await setAttendeeStatus(existingAttendee.attendeeId, finalStatus);
          
         // If primary member is changing to "not-going", update all family members to "not-going" as well
-        if (status === 'not-going') {
+        if (finalStatus === 'not-going') {
           console.log('🔍 DEBUG: Primary member is not going, updating all family members to not-going');
           const familyMembers = attendees.filter(a => 
             a.userId === currentUser.id && 
@@ -202,25 +296,25 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
             toast.success(`${familyMembers.length} family member${familyMembers.length > 1 ? 's' : ''} automatically marked as "Not Going" since you cannot attend.`);
           }
         }
-       } else {
-         // Create new primary attendee
-         console.log('🔍 DEBUG: Creating new primary attendee with status:', status);
-         const attendeeData: CreateAttendeeData = {
-           eventId: event.id,
-           userId: currentUser.id,
-           attendeeType: 'primary',
-           relationship: 'self',
-           name: currentUser.displayName || 'Primary User',
-           ageGroup: 'adult',
-           rsvpStatus: status
-         };
-         
-         await addAttendee(attendeeData);
-       }
+      } else {
+        // Create new primary attendee
+        console.log('🔍 DEBUG: Creating new primary attendee with status:', finalStatus);
+        const attendeeData: CreateAttendeeData = {
+          eventId: event.id,
+          userId: currentUser.id,
+          attendeeType: 'primary',
+          relationship: 'self',
+          name: currentUser.displayName || 'Primary User',
+          ageGroup: 'adult',
+          rsvpStatus: finalStatus
+        };
+        
+        await addAttendee(attendeeData);
+      }
       
-      // Update local state - only set if status is 'going' or 'not-going'
-      if (status === 'going' || status === 'not-going') {
-        setRsvpStatus(status);
+      // Update local state - handle waitlisted status too
+      if (finalStatus === 'going' || finalStatus === 'not-going' || finalStatus === 'waitlisted') {
+        setRsvpStatus(finalStatus); // Keep actual status for proper UI display
       }
       
              // Refresh attendees to get updated counts
@@ -229,11 +323,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
        // Add a small delay to ensure Firestore update has propagated
        await new Promise(resolve => setTimeout(resolve, 500));
        
-               // Refresh total attendee count immediately after RSVP action
-        console.log('🔍 DEBUG: About to refresh total attendee count...');
-        await refreshTotalAttendeeCount();
-        
-        console.log('🔍 DEBUG: Quick RSVP completed successfully. New total count should be updated.');
+        console.log('🔍 DEBUG: Quick RSVP completed successfully. New total count should be updated via real-time updates.');
       
     } catch (error) {
       console.error('❌ Error in quick RSVP:', error);
@@ -248,8 +338,6 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     setShowRSVPModal(false);
     // Refresh data when modal closes
     refreshAttendees();
-    // Refresh total attendee count
-    refreshTotalAttendeeCount();
   };
 
   // Handle RSVP modal open
@@ -327,7 +415,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   };
 
   // Get button disable state
-  const isGoingButtonDisabled = (currentUser && rsvpStatus === 'going') || getRSVPButtonState() !== 'active';
+  const isGoingButtonDisabled = (currentUser && (rsvpStatus === 'going' || rsvpStatus === 'waitlisted')) || getRSVPButtonState() !== 'active';
   const isNotGoingButtonDisabled = (currentUser && rsvpStatus === 'not-going') || getRSVPButtonState() !== 'active';
 
   return (
@@ -384,7 +472,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                    <>
                      <p
                        ref={descRef}
-                       className="text-gray-600 text-sm md:text-base leading-5 md:leading-6 line-clamp-2 md:line-clamp-3 overflow-hidden"
+                       className="text-gray-600 text-sm md:text-base leading-5 md:leading-6 line-clamp-2 md:line-clamp-3 overflow-hidden break-words"
                      >
                        {event.description}
                      </p>
@@ -487,6 +575,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                  className={`flex items-center gap-1 px-2 py-2 rounded-lg font-medium transition-all duration-200 text-xs relative z-50 pointer-events-auto ${
                    rsvpStatus === 'going'
                      ? 'bg-green-100 text-green-700 cursor-not-allowed'
+                     : rsvpStatus === 'waitlisted'
+                     ? 'bg-purple-100 text-purple-700 cursor-not-allowed'
                      : isGoingButtonDisabled
                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                      : 'bg-green-600 text-white hover:bg-green-700'
@@ -497,7 +587,9 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                 ) : (
                   <ThumbsUp className="w-3 h-3" />
                 )}
-                Going
+                {rsvpStatus === 'waitlisted' 
+                  ? `Waitlisted${waitlistPosition ? ` (#${waitlistPosition})` : ''}`
+                  : 'Going'}
               </motion.button>
 
               {/* Not Going Button */}

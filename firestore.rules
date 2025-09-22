@@ -119,7 +119,7 @@ service cloud.firestore {
       return data is map &&
         ('eventId' in data) && isNonEmptyString(data.eventId) &&
         ('userId' in data) && isNonEmptyString(data.userId) &&
-        ('status' in data) && data.status in ['going', 'not-going', 'pending'] &&
+        ('status' in data) && data.status in ['going', 'not-going', 'pending', 'waitlisted'] &&
         (!('adults' in data) || (data.adults is number && data.adults >= 0)) &&
         // childCounts can be:
         //  (A) list of maps: [{ageGroup:'0-2', count:1}, ...] (max 4), OR
@@ -139,6 +139,18 @@ service cloud.firestore {
         (!('email' in data) || (data.email is string || data.email == null));
     }
     
+    // Helper function to check event capacity
+    function checkEventCapacity(eventId, isGoingStatus) {
+      let eventData = get(/databases/$(database)/documents/events/$(eventId)).data;
+      
+      return (!('maxAttendees' in eventData) || eventData.maxAttendees == null || !isGoingStatus) ? 
+        true : 
+        // Get current attendee count with 'going' status
+        // Note: This is a simplified check - in practice, we rely on client-side validation
+        // due to Firestore rules limitations with complex queries
+        eventData.attendingCount < eventData.maxAttendees;
+    }
+
     // Enhanced attendee validation functions
     function validAttendeeData(data) {
       return data is map &&
@@ -148,7 +160,7 @@ service cloud.firestore {
         ('relationship' in data) && data.relationship in ['self', 'spouse', 'child', 'guest'] &&
         ('name' in data) && isNonEmptyString(data.name) && data.name.size() >= 2 &&
         ('ageGroup' in data) && data.ageGroup in ['0-2', '3-5', '6-10', '11+', 'adult'] &&
-        ('rsvpStatus' in data) && data.rsvpStatus in ['going', 'not-going', 'pending'] &&
+        ('rsvpStatus' in data) && data.rsvpStatus in ['going', 'not-going', 'pending', 'waitlisted'] &&
         (!('familyMemberId' in data) || (data.familyMemberId is string || data.familyMemberId == null));
     }
     
@@ -305,19 +317,23 @@ service cloud.firestore {
             get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
             // Admin can read all attendees
             isAdmin() ||
-            // User can read their own household attendees
+            // User can read their own household attendees (most important)
             resource.data.userId == request.auth.uid ||
-            // Users can read attendees for members-only events if they are members
+            // Members can read attendees for members-only events
             (isMember() && get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members') ||
             // Users can read attendees for private events if they are invited
             (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'private' && 
-             request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds)
+             request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds) ||
+            // Fallback: Allow any authenticated user to read their own attendees for public events
+            (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' &&
+             resource.data.userId == request.auth.uid)
           ));
         
         // Users can create attendees for events they have access to
         allow create: if isSignedIn() && 
           request.resource.data.userId == request.auth.uid &&
           validAttendeeData(request.resource.data) &&
+          checkEventCapacity(eventId, request.resource.data.rsvpStatus == 'going') &&
           (
             // Event creator can add attendees
             get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
@@ -348,7 +364,12 @@ service cloud.firestore {
           request.resource.data.userId == request.auth.uid ||
           get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
           isAdmin()
-        ) && validAttendeeData(request.resource.data);
+        ) && validAttendeeData(request.resource.data) &&
+        // Check capacity when changing status to 'going' (but allow promotion from waitlisted)
+        (request.resource.data.rsvpStatus != 'going' || 
+         resource.data.rsvpStatus == 'going' || 
+         resource.data.rsvpStatus == 'waitlisted' ||
+         checkEventCapacity(eventId, true));
         
         // Users can delete their own attendees, event creators can delete all attendees
         allow delete: if isSignedIn() && (

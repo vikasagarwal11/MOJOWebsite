@@ -341,6 +341,8 @@ const Media: React.FC = () => {
       {lightbox.index !== null && (
         <MediaLightbox
           item={filteredMedia[lightbox.index]}
+          nextItem={filteredMedia[lightbox.index + 1]}  // For preloading optimization
+          prevItem={filteredMedia[lightbox.index - 1]}  // For preloading optimization
           onPrev={lightbox.prev}
           onNext={lightbox.next}
           onClose={lightbox.close}

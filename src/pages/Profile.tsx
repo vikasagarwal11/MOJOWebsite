@@ -769,7 +769,7 @@ const Profile: React.FC = () => {
   };
 
   // Update RSVP
-  const updateRsvp = async (eventId: string, attendeeId: string, status: 'going' | 'not-going' | 'pending' | null) => {
+  const updateRsvp = async (eventId: string, attendeeId: string, status: 'going' | 'not-going' | 'pending' | 'waitlisted' | null) => {
     try {
       console.log('DEBUG: updateRsvp called with:', { eventId, attendeeId, status });
       

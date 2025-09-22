@@ -197,21 +197,38 @@ export class ErrorService {
     errorInfo: ErrorInfo,
     customMessage?: string
   ): void {
-    const message = customMessage || this.getUserFriendlyMessage(errorInfo)
-    
-    switch (errorInfo.severity) {
-      case 'critical':
-        toast.error(message, { duration: 10000 })
-        break
-      case 'high':
-        toast.error(message, { duration: 8000 })
-        break
-      case 'medium':
-        toast.error(message, { duration: 5000 })
-        break
-      case 'low':
-        toast.error(message, { duration: 3000 })
-        break
+    // Prevent circular dependency with toast notifications
+    if (this.isLogging) {
+      return
+    }
+
+    try {
+      this.isLogging = true
+      const message = customMessage || this.getUserFriendlyMessage(errorInfo)
+      
+      switch (errorInfo.severity) {
+        case 'critical':
+          toast.error(message, { duration: 10000 })
+          break
+        case 'high':
+          toast.error(message, { duration: 8000 })
+          break
+        case 'medium':
+          toast.error(message, { duration: 5000 })
+          break
+        case 'low':
+          toast.error(message, { duration: 3000 })
+          break
+      }
+    } catch (toastError) {
+      // Fallback to console if toast fails
+      console.error('Toast notification failed:', toastError)
+      console.error('Original error:', errorInfo.message)
+    } finally {
+      // Reset the flag after a short delay to allow for legitimate subsequent errors
+      setTimeout(() => {
+        this.isLogging = false
+      }, 100)
     }
   }
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X, Share2, Download, ChevronLeft, ChevronRight, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { shareUrl } from '../../utils/share';
-import { useSwipe } from '../../hooks/useSwipe';
+import { useSwipeRaw } from '../../hooks/useSwipeRaw';
 import { getDownloadURL, ref } from 'firebase/storage';
 import { storage } from '../../config/firebase';
 import { attachHls, detachHls } from '../../utils/hls';
@@ -10,6 +10,8 @@ import { useImageOrientation } from '../../utils/imageOrientation';
 
 type Props = {
   item: any;
+  nextItem?: any;  // For preloading optimization
+  prevItem?: any;  // For preloading optimization
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
@@ -17,12 +19,12 @@ type Props = {
   intervalMs?: number;
   pauseOnHover?: boolean;
   autoAdvanceVideos?: boolean;
-  /** optional: try to enter OS fullscreen on mobile */
-  fullscreenOnMobile?: boolean;
 };
 
 export default function MediaLightbox({
   item,
+  nextItem,
+  prevItem,
   onClose,
   onNext,
   onPrev,
@@ -30,51 +32,93 @@ export default function MediaLightbox({
   intervalMs = 3500,
   pauseOnHover = true,
   autoAdvanceVideos = true,
-  fullscreenOnMobile = true,
 }: Props) {
   const [playing, setPlaying] = useState(autoPlay);
   const [userActive, setUserActive] = useState(false);
   const [posterUrl, setPosterUrl] = useState<string>('');
   const [rotatedImageUrl, setRotatedImageUrl] = useState<string>('');
   const [scale, setScale] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [showSoundHint, setShowSoundHint] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const { correctImageOrientation } = useImageOrientation();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const isVideo = item?.type === 'video';
 
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 768px)');
+    const handleChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
+  useEffect(() => {
+    console.log('🎬 [DEBUG] MediaLightbox mounted:', {
+      itemId: item?.id,
+      itemType: item?.type,
+      isVideo,
+      isMobile,
+      autoAdvanceVideos,
+      hasUrl: !!item?.url,
+      hasRotatedImageUrl: !!rotatedImageUrl
+    });
+  }, [item?.id, item?.type, isVideo, isMobile, autoAdvanceVideos, rotatedImageUrl]);
+
   if (!item) return null;
 
-  // Attempt OS fullscreen on mobile (Android Chrome supports; iOS falls back to CSS 100dvh)
+  // Preload next/prev
   useEffect(() => {
-    const el = rootRef.current;
-    if (!el || !fullscreenOnMobile) return;
+    const preloadImage = (url: string) => {
+      const img = new Image();
+      img.decoding = 'async';
+      img.loading = 'eager';
+      img.crossOrigin = 'anonymous';
+      img.src = url;
+    };
+    const preloadVideo = (hlsUrl: string) => {
+      fetch(hlsUrl, { mode: 'cors', cache: 'force-cache' }).then(r => r.text()).catch(() => {});
+    };
 
-    const isMobile = window.matchMedia('(max-width: 768px)').matches;
-    if (!isMobile) return;
-
-    // Best-effort
-    const tryFs = async () => {
-      try {
-        // Some browsers need a user gesture; we try anyway.
-        if (!document.fullscreenElement && el.requestFullscreen) {
-          await el.requestFullscreen({ navigationUI: 'hide' } as any);
+    if (nextItem) {
+      if (nextItem.type === 'image') {
+        if (nextItem.url) preloadImage(nextItem.url);
+        if (nextItem.rotatedImagePath) {
+          getDownloadURL(ref(storage, nextItem.rotatedImagePath)).then(preloadImage).catch(() => {});
         }
-      } catch {
-        /* ignore – CSS fallback still gives full-viewport */
+      } else if (nextItem.type === 'video') {
+        if (nextItem.sources?.hls) preloadVideo(nextItem.sources.hls);
+        if (nextItem.thumbnailPath) {
+          getDownloadURL(ref(storage, nextItem.thumbnailPath)).then(preloadImage).catch(() => {});
+        }
       }
-    };
-    tryFs();
+      console.log('🚀 [PRELOAD] next item:', nextItem.id);
+    }
 
-    // Exit fullscreen when closing/unmounting
-    return () => {
-      if (document.fullscreenElement && document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
+    if (prevItem) {
+      if (prevItem.type === 'image') {
+        if (prevItem.url) preloadImage(prevItem.url);
+        if (prevItem.rotatedImagePath) {
+          getDownloadURL(ref(storage, prevItem.rotatedImagePath)).then(preloadImage).catch(() => {});
+        }
+      } else if (prevItem.type === 'video') {
+        if (prevItem.sources?.hls) preloadVideo(prevItem.sources.hls);
+        if (prevItem.thumbnailPath) {
+          getDownloadURL(ref(storage, prevItem.thumbnailPath)).then(preloadImage).catch(() => {});
+        }
       }
-    };
-  }, [fullscreenOnMobile]);
+      console.log('🚀 [PRELOAD] prev item:', prevItem.id);
+    }
+  }, [nextItem?.id, prevItem?.id]);
 
-  // Only resolve poster for VIDEO (prevents double image loads & 429s)
+  // Poster for video
   useEffect(() => {
     let mounted = true;
     setPosterUrl('');
@@ -86,58 +130,56 @@ export default function MediaLightbox({
     return () => { mounted = false; };
   }, [isVideo, item?.thumbnailPath]);
 
-  // Load rotated image URL for full-size display (images only)
+  // Rotated image url
   useEffect(() => {
     let mounted = true;
     setRotatedImageUrl('');
     if (!isVideo && item.rotatedImagePath) {
       getDownloadURL(ref(storage, item.rotatedImagePath))
         .then((u) => mounted && setRotatedImageUrl(u))
-        .catch(() => {
-          console.warn('Failed to load rotated image, using original');
-          mounted && setRotatedImageUrl('');
-        });
+        .catch(() => mounted && setRotatedImageUrl(''));
     }
     return () => { mounted = false; };
   }, [isVideo, item?.rotatedImagePath]);
 
-  // Attach HLS (if available) in lightbox; fallback to original url
+  // HLS attach
   useEffect(() => {
     if (!isVideo || !videoRef.current) return;
     const v = videoRef.current;
+    setVideoLoading(true);
 
-    // Dev: skip HLS due to typical CORS during local runs
     if (import.meta.env.DEV) {
       v.src = item.url;
-      v.play().catch(() => {});
-      const onEnded = () => { if (autoAdvanceVideos) onNext(); };
-      v.addEventListener('ended', onEnded);
-      return () => v.removeEventListener('ended', onEnded);
+      v.play().catch(() => {}).finally(() => setVideoLoading(false));
+      return () => {};
     }
 
     let cancelled = false;
     (async () => {
       try {
         if (item.sources?.hls) {
-          await attachHls(v, item.sources.hls);
+          const canNativeHls = !!v.canPlayType?.('application/vnd.apple.mpegURL');
+          if (canNativeHls) {
+            v.src = item.sources.hls;
+          } else {
+            await attachHls(v, item.sources.hls);
+          }
         } else {
           v.src = item.url;
         }
-        if (!cancelled) v.play().catch(() => {});
+        if (!cancelled) v.play().catch(() => {}).finally(() => setVideoLoading(false));
       } catch {
         v.src = item.url;
+        if (!cancelled) v.play().catch(() => {}).finally(() => setVideoLoading(false));
       }
     })();
 
-    const onEnded = () => { if (autoAdvanceVideos) onNext(); };
-    v.addEventListener('ended', onEnded);
-
     return () => {
       cancelled = true;
-      v.removeEventListener('ended', onEnded);
+      setVideoLoading(false);
       try { detachHls(v); } catch {}
     };
-  }, [isVideo, item, onNext, autoAdvanceVideos]);
+  }, [isVideo, item?.sources?.hls, item?.url]);
 
   // Auto-advance images
   useEffect(() => {
@@ -165,147 +207,280 @@ export default function MediaLightbox({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, onNext, onPrev, isVideo]);
 
-  // Sync video muted state
+  // Sync muted
   useEffect(() => {
     if (videoRef.current && isVideo) videoRef.current.muted = isMuted;
   }, [isMuted, isVideo]);
 
-  // Swipe; disable when zoomed so pan doesn't trigger slide
-  const swipe = useSwipe({ onLeft: onNext, onRight: onPrev });
-  const swipeHandlers = scale > 1.02 ? {} : swipe;
+  // Sound hint
+  useEffect(() => {
+    if (!isVideo || !isMuted) return;
+    const video = videoRef.current;
+    if (!video) return;
 
-  // Reset zoom when slide changes
+    let playTimerId: ReturnType<typeof setTimeout>;
+    let pauseTimerId: ReturnType<typeof setTimeout>;
+
+    const handlePlay = () => {
+      setShowSoundHint(true);
+      clearTimeout(playTimerId);
+      playTimerId = setTimeout(() => setShowSoundHint(false), 2500);
+    };
+
+    const handlePause = () => {
+      if (isMuted) {
+        setShowSoundHint(true);
+        clearTimeout(pauseTimerId);
+        pauseTimerId = setTimeout(() => setShowSoundHint(false), 2000);
+      }
+    };
+
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+
+    return () => {
+      clearTimeout(playTimerId);
+      clearTimeout(pauseTimerId);
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+    };
+  }, [isVideo, isMuted]);
+
   useEffect(() => { setScale(1); }, [item?.id]);
 
-  // Inactivity timer to replace aggressive hover detection
+  // Controls visibility + slideshow hover
   useEffect(() => {
-    if (!pauseOnHover) return;
+    let slideshowTimeoutId: ReturnType<typeof setTimeout>;
+    let controlsTimeoutId: ReturnType<typeof setTimeout>;
 
-    let timeoutId: ReturnType<typeof setTimeout>;
-    const setUserInactive = () => setUserActive(false);
+    const handleUserActivity = () => {
+      if (pauseOnHover) {
+        setUserActive(true);
+        clearTimeout(slideshowTimeoutId);
+        slideshowTimeoutId = setTimeout(() => setUserActive(false), 1200);
+      }
 
-    const setUserActiveAndReset = () => {
-      setUserActive(true);
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(setUserInactive, 1200); // Resume after 1.2s idle
+      setControlsVisible(true);
+      clearTimeout(controlsTimeoutId);
+      if (isMobile) {
+        controlsTimeoutId = setTimeout(() => setControlsVisible(false), 3000);
+      }
     };
+
+    handleUserActivity();
 
     const mediaArea = document.getElementById('lightbox-media-area');
     if (mediaArea) {
-      mediaArea.addEventListener('mousemove', setUserActiveAndReset);
-      mediaArea.addEventListener('touchstart', setUserActiveAndReset);
-      mediaArea.addEventListener('click', setUserActiveAndReset);
-      setUserActive(false);
+      mediaArea.addEventListener('mousemove', handleUserActivity);
+      mediaArea.addEventListener('touchstart', handleUserActivity);
+      mediaArea.addEventListener('pointermove', handleUserActivity);
     }
+
     return () => {
-      clearTimeout(timeoutId);
+      clearTimeout(slideshowTimeoutId);
+      clearTimeout(controlsTimeoutId);
       if (mediaArea) {
-        mediaArea.removeEventListener('mousemove', setUserActiveAndReset);
-        mediaArea.removeEventListener('touchstart', setUserActiveAndReset);
-        mediaArea.removeEventListener('click', setUserActiveAndReset);
+        mediaArea.removeEventListener('mousemove', handleUserActivity);
+        mediaArea.removeEventListener('touchstart', handleUserActivity);
+        mediaArea.removeEventListener('pointermove', handleUserActivity);
       }
     };
-  }, [pauseOnHover]);
+  }, [pauseOnHover, isMobile]);
+
+  // Body scroll lock
+  useEffect(() => {
+    const prev = document.documentElement.style.overflow;
+    const prevOB = (document.documentElement.style as any).overscrollBehavior;
+    document.documentElement.style.overflow = 'hidden';
+    (document.documentElement.style as any).overscrollBehavior = 'contain';
+    return () => {
+      document.documentElement.style.overflow = prev;
+      (document.documentElement.style as any).overscrollBehavior = prevOB || '';
+    };
+  }, []);
+
+  // ---- SWIPE: TikTok-style vertical navigation with native pointer events
+  const bindSwipeRef = useSwipeRaw<HTMLDivElement>({
+    onUp: onNext,        // Up swipe = Next item (TikTok style)
+    onDown: onPrev,      // Down swipe = Previous item
+    axis: 'y',           // Vertical swipes only
+    thresholdPx: 20,     // Slightly generous for phones
+    restraintPx: 80,     // Don't cancel for small diagonal noise
+    slopPx: 8,
+    edgeGuardPx: 24,     // Avoid edge gestures
+    allowMouse: true,    // Nice for desktop testing
+    disabled: !item || (!isVideo && scale > 1.02), // Keep zoom rule
+    debug: true          // Enable debugging to see what's happening
+  });
 
   return (
     <div
       ref={rootRef}
-      className="lb-root fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
+      className={`lb-root fixed inset-0 z-50 ${isMobile ? 'bg-black' : 'bg-black/80 backdrop-blur-sm'}`}
       aria-modal
       role="dialog"
     >
-      <div className="absolute inset-0 flex flex-col">
+      <div className="absolute inset-0 flex flex-col sa-top sa-bottom">
         {/* Top bar */}
-        <div className="flex items-center justify-between p-3">
-          <button onClick={onClose} className="p-2 rounded-full bg-white/10 hover:bg-white/20" aria-label="Close">
+        <div className={`flex items-center justify-between p-3 lb-controls transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <button data-no-swipe onClick={onClose} className="p-2 rounded-full bg-white/10 hover:bg-white/20" aria-label="Close">
             <X className="w-5 h-5 text-white" />
           </button>
-          <div className="flex gap-2">
-            {isVideo && (
-              <button
-                onClick={() => setIsMuted(!isMuted)}
-                className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1"
-                title={isMuted ? 'Unmute audio' : 'Mute audio'}
-              >
-                {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                {isMuted ? 'Unmute' : 'Mute'}
+          {!isMobile && (
+            <div className="flex gap-2">
+              {isVideo && (
+                <button
+                  data-no-swipe
+                  onClick={() => setIsMuted(!isMuted)}
+                  className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1"
+                  title={isMuted ? 'Unmute audio' : 'Mute audio'}
+                >
+                  {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                  {isMuted ? 'Unmute' : 'Mute'}
+                </button>
+              )}
+              <button data-no-swipe onClick={() => shareUrl(item.url, item.title)} className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1">
+                <Share2 className="w-4 h-4" /> Share
               </button>
-            )}
-            <button onClick={() => shareUrl(item.url, item.title)} className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1">
-              <Share2 className="w-4 h-4" /> Share
-            </button>
-            <a href={item.url} download className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1">
-              <Download className="w-4 h-4" /> Download
-            </a>
-          </div>
+              <a data-no-swipe href={item.url} download className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1">
+                <Download className="w-4 h-4" /> Download
+              </a>
+            </div>
+          )}
         </div>
 
-        {/* Body */}
+        {/* Media Stage (only place we bind swipe) */}
         <div
           id="lightbox-media-area"
-          className="flex-1 flex items-center justify-center p-3 gap-4"
-          style={{ touchAction: (scale > 1.02 ? 'auto' : 'pan-y') }}
-          {...swipeHandlers}
+          ref={bindSwipeRef}
+          className={`flex-1 ${isMobile ? 'lb-stage' : 'flex items-center justify-center p-3 gap-4'}`}
+          style={{ touchAction: isMobile ? 'pan-x pinch-zoom' : (scale > 1.02 ? 'auto' : 'pan-y') }}
+          onClick={() => { if (isMobile) setControlsVisible(v => !v); }}
         >
-          <button
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onPrev(); }}
-            className="text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors"
-            aria-label="Previous"
-          >
-            <ChevronLeft className="w-8 h-8" />
-          </button>
+          {/* Prev button (desktop) */}
+          {!isMobile && (
+            <button
+              data-no-swipe
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onPrev(); }}
+              className={`text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors lb-controls transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+              aria-label="Previous"
+            >
+              <ChevronLeft className="w-8 h-8" />
+            </button>
+          )}
 
-          <TransformWrapper
-            initialScale={1}
-            minScale={0.5}
-            maxScale={4}
-            centerOnInit
-            wheel={{ step: 0.1 }}
-            pinch={{ step: 5 }}
-            onTransformed={({ state }) => setScale(state.scale)}
-          >
-            <TransformComponent>
-              {isVideo ? (
-                <video
-                  ref={videoRef}
-                  controls
-                  autoPlay
-                  muted={isMuted}
-                  playsInline
-                  preload="metadata"
-                  poster={posterUrl || undefined}
-                  className="max-h-[85vh] max-w-[85vw] rounded-2xl object-contain"
-                />
-              ) : (
-                <div className="lb-img-wrap">
-                  <img
-                    key={item.id}                    // stable: no more thumb->full swaps
-                    src={rotatedImageUrl || item.url} // use server-rotated image if available, fallback to original
-                    alt={item.title || ''}
-                    className="max-h-[85vh] max-w-[85vw] rounded-2xl object-contain"
-                    draggable={false}
-                    onLoad={(e) => correctImageOrientation(e.currentTarget)}
-                  />
+          {/* Media */}
+          {isVideo ? (
+            <div className={`relative ${isMobile ? 'w-full h-full' : 'flex items-center justify-center'}`}>
+              {videoLoading && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
+                  <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 </div>
               )}
-            </TransformComponent>
-          </TransformWrapper>
+              <video
+                ref={videoRef}
+                data-no-swipe
+                controls={!isMobile}
+                controlsList="nodownload noplaybackrate noremoteplayback"
+                disablePictureInPicture
+                autoPlay
+                muted={isMuted}
+                playsInline
+                loop={false}
+                preload="metadata"
+                poster={posterUrl || undefined}
+                className={`${isMobile ? 'lb-media fill' : 'max-h-[85vh] max-w-[85vw] object-contain'} rounded-2xl`}
+                style={{ touchAction: isMobile ? 'none' : 'auto' }}
+                onEnded={() => {
+                  if (autoAdvanceVideos) {
+                    onNext();
+                  } else if (videoRef.current) {
+                    videoRef.current.currentTime = 0;
+                    videoRef.current.play().catch(() => {});
+                  }
+                }}
+                onPlay={() => setVideoLoading(false)}
+                onClick={() => {
+                  if (!videoRef.current) return;
+                  if (videoRef.current.paused) videoRef.current.play().catch(() => {});
+                  else videoRef.current.pause();
+                }}
+              />
+            </div>
+          ) : (
+            isMobile ? (
+              // NOTE: NO swipe handlers here; the stage handles them
+              <div className="lb-media">
+                <img
+                  key={item.id}
+                  src={rotatedImageUrl || item.url}
+                  alt={item.title || ''}
+                  className="w-full h-full object-contain rounded-2xl"
+                  draggable={false}
+                  data-no-swipe
+                  onLoad={(e) => correctImageOrientation(e.currentTarget)}
+                />
+              </div>
+            ) : (
+              <TransformWrapper
+                initialScale={1}
+                minScale={0.5}
+                maxScale={4}
+                centerOnInit
+                wheel={{ step: 0.1 }}
+                pinch={{ step: 5 }}
+                onTransformed={({ state }) => setScale(state.scale)}
+              >
+                <TransformComponent>
+                  <div className="lb-img-wrap">
+                    <img
+                      key={item.id}
+                      src={rotatedImageUrl || item.url}
+                      alt={item.title || ''}
+                      className="max-h-[85vh] max-w-[85vw] rounded-2xl object-contain"
+                      draggable={false}
+                      data-no-swipe
+                      onLoad={(e) => correctImageOrientation(e.currentTarget)}
+                    />
+                  </div>
+                </TransformComponent>
+              </TransformWrapper>
+            )
+          )}
 
-          <button
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onNext(); }}
-            className="text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors"
-            aria-label="Next"
-          >
-            <ChevronRight className="w-8 h-8" />
-          </button>
+          {/* Next button (desktop) */}
+          {!isMobile && (
+            <button
+              data-no-swipe
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onNext(); }}
+              className={`text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors lb-controls transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+              aria-label="Next"
+            >
+              <ChevronRight className="w-8 h-8" />
+            </button>
+          )}
+
+          {/* Sound pill (mobile) */}
+          {isMobile && showSoundHint && isVideo && isMuted && (
+            <div
+              data-no-swipe
+              onClick={() => { setIsMuted(false); setShowSoundHint(false); }}
+              className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-black/70 hover:bg-black/90 text-white px-4 py-2 rounded-full text-sm backdrop-blur-sm flex items-center gap-2 animate-pulse z-30 transition-all duration-200 cursor-pointer"
+              style={{ marginBottom: `env(safe-area-inset-bottom)` }}
+            >
+              <Volume2 className="w-4 h-4" />
+              <span>Tap for sound</span>
+            </div>
+          )}
         </div>
 
         {/* Bottom controls */}
-        <div className="flex items-center justify-center gap-4 pb-4">
+        <div className={`flex items-center justify-center gap-4 pb-4 lb-controls transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
           {item.type === 'image' && (
             <button
+              data-no-swipe
               onClick={() => setPlaying(p => !p)}
               className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center gap-2 transition-colors"
               aria-label={playing ? 'Pause slideshow' : 'Play slideshow'}
@@ -313,11 +488,6 @@ export default function MediaLightbox({
               {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               <span className="text-sm">{playing ? 'Pause' : 'Play'}</span>
             </button>
-          )}
-          {isVideo && (
-            <div className="text-white/70 text-sm">
-              Press <kbd className="px-2 py-1 bg-white/20 rounded text-xs">M</kbd> to toggle audio
-            </div>
           )}
         </div>
       </div>

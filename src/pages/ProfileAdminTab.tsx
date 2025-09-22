@@ -239,15 +239,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
     }
   }, [activeAdminSection]);
 
-  // Debug logging
-  console.log('🔍 ProfileAdminTab: Current state', {
-    allEvents: allEvents.length,
-    loadingAdminEvents,
-    eventsPage,
-    PAGE_SIZE,
-    activeAdminSection,
-    eventsData: allEvents.map(e => ({ id: e.id, title: e.title, createdBy: e.createdBy }))
-  });
+  // Debug logging moved to useEffect to prevent setState during render
+  useEffect(() => {
+    console.log('🔍 ProfileAdminTab: Current state', {
+      allEvents: allEvents.length,
+      loadingAdminEvents,
+      eventsPage,
+      PAGE_SIZE,
+      activeAdminSection,
+      eventsData: allEvents.map(e => ({ id: e.id, title: e.title, createdBy: e.createdBy }))
+    });
+  }, [allEvents, loadingAdminEvents, eventsPage, activeAdminSection]);
 
   return (
     <div className="grid gap-6">
@@ -340,7 +342,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           ) : (
             <div className="space-y-6">
               {allEvents.slice(eventsPage * PAGE_SIZE, (eventsPage + 1) * PAGE_SIZE).map((event, index) => {
-                console.log('🔍 Rendering event in admin tab:', { eventId: event.id, title: event.title, index });
+                // Removed console.log from render to prevent setState during render
                 return (
                   <div 
                     key={event.id} 
@@ -363,6 +365,18 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                       <p><strong>Event ID:</strong> {event.id}</p>
                       <p><strong>Created by:</strong> {userNames[event.createdBy || ''] || 'Unknown User'}</p>
                       <p><strong>Attendees:</strong> {event.attendingCount || 0} / {event.maxAttendees || 'No limit'}</p>
+                      {event.maxAttendees && (
+                        <p><strong>Status:</strong> 
+                          {(event.attendingCount || 0) >= event.maxAttendees ? 
+                            <span className="text-red-600 font-medium"> Full</span> : 
+                            <span className="text-green-600"> Available ({event.maxAttendees - (event.attendingCount || 0)} spots left)</span>
+                          }
+                          {/* Waitlist indicator - will show actual count when integrated */}
+                          {(event.attendingCount || 0) >= event.maxAttendees && (
+                            <span className="text-purple-600"> • Waitlist enabled</span>
+                          )}
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-2 mt-3">
                       <button

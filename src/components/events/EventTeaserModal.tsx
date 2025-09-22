@@ -205,7 +205,7 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
                 {/* Impressive Title with Event Description */}
                 <div className="text-center mb-3">
                   <h3 className="text-lg font-bold text-gray-900 mb-1.5">Discover Your Next Adventure</h3>
-                  <p className="text-gray-600 text-sm leading-relaxed">
+                  <p className="text-gray-600 text-sm leading-relaxed break-words">
                     {event.description || 'Join us for an exciting fitness event! More details available to members.'}
                   </p>
                 </div>

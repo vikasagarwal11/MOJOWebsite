@@ -2,6 +2,7 @@ import {
   collection, 
   doc, 
   getDocs, 
+  getDoc,
   setDoc, 
   updateDoc, 
   deleteDoc, 
@@ -47,11 +48,84 @@ export const validateAttendee = (data: CreateAttendeeData): { isValid: boolean; 
   };
 };
 
+// Check event capacity before allowing new RSVPs
+export const checkEventCapacity = async (eventId: string, requestedAttendeeCount: number = 1): Promise<{ canAdd: boolean; remaining: number; message?: string }> => {
+  try {
+    // Get event details to check maxAttendees
+    const eventRef = doc(db, 'events', eventId);
+    const eventDoc = await getDoc(eventRef);
+    
+    if (!eventDoc.exists()) {
+      throw new Error('Event not found');
+    }
+    
+    const eventData = eventDoc.data();
+    const maxAttendees = eventData.maxAttendees;
+    
+    // If no capacity limit set, allow unlimited
+    if (!maxAttendees) {
+      return { canAdd: true, remaining: Infinity };
+    }
+    
+    // Get current attendee count (only those with 'going' status)
+    const attendeesRef = collection(db, 'events', eventId, 'attendees');
+    const goingQuery = query(attendeesRef, where('rsvpStatus', '==', 'going'));
+    const goingSnapshot = await getDocs(goingQuery);
+    const currentGoingCount = goingSnapshot.size;
+    
+    const remaining = maxAttendees - currentGoingCount;
+    const canAdd = remaining >= requestedAttendeeCount;
+    
+    if (!canAdd) {
+      return {
+        canAdd: false,
+        remaining,
+        message: remaining === 0 
+          ? 'Event is at full capacity. No more RSVPs can be accepted.'
+          : `Only ${remaining} spot${remaining === 1 ? '' : 's'} remaining, but you're trying to add ${requestedAttendeeCount}.`
+      };
+    }
+    
+    return { canAdd: true, remaining };
+  } catch (error) {
+    console.error('Error checking event capacity:', error);
+    // In case of error, be conservative and block the addition
+    return { 
+      canAdd: false, 
+      remaining: 0, 
+      message: 'Unable to verify event capacity. Please try again.' 
+    };
+  }
+};
+
 // Create or update a single attendee
 export const upsertAttendee = async (attendeeData: CreateAttendeeData): Promise<string> => {
   const validation = validateAttendee(attendeeData);
   if (!validation.isValid) {
     throw new Error(`Invalid attendee data: ${validation.errors.join(', ')}`);
+  }
+
+  // Check capacity only for 'going' status
+  if (attendeeData.rsvpStatus === 'going') {
+    const capacityCheck = await checkEventCapacity(attendeeData.eventId, 1);
+    if (!capacityCheck.canAdd) {
+      // Check if we should auto-waitlist instead
+      const eventRef = doc(db, 'events', attendeeData.eventId);
+      const eventDoc = await getDoc(eventRef);
+      
+      if (eventDoc.exists()) {
+        const eventData = eventDoc.data();
+        if (eventData.waitlistEnabled) {
+          // Auto-waitlist the user instead of throwing error
+          attendeeData.rsvpStatus = 'waitlisted';
+          console.log('Auto-waitlisting attendee due to capacity limit');
+        } else {
+          throw new Error(capacityCheck.message || 'Event is at capacity');
+        }
+      } else {
+        throw new Error(capacityCheck.message || 'Event is at capacity');
+      }
+    }
   }
 
   const attendeeId = generateAttendeeId();
@@ -184,6 +258,17 @@ export const getEventAttendeeCount = async (eventId: string): Promise<number> =>
 
 // Bulk upsert attendees (for family members)
 export const bulkUpsertAttendees = async (eventId: string, attendees: CreateAttendeeData[]): Promise<string[]> => {
+  // Count how many 'going' attendees we're trying to add
+  const goingAttendeesCount = attendees.filter(a => a.rsvpStatus === 'going').length;
+  
+  // Check capacity only if we have 'going' attendees
+  if (goingAttendeesCount > 0) {
+    const capacityCheck = await checkEventCapacity(eventId, goingAttendeesCount);
+    if (!capacityCheck.canAdd) {
+      throw new Error(capacityCheck.message || 'Event capacity exceeded');
+    }
+  }
+
   const batch = writeBatch(db);
   const attendeeIds: string[] = [];
 
@@ -224,11 +309,13 @@ export const calculateAttendeeCounts = (attendees: Attendee[]): AttendeeCounts =
     goingCount: 0,
     notGoingCount: 0,
     pendingCount: 0,
+    waitlistedCount: 0,
     totalGoingByAgeGroup: {
       '0-2': 0,
       '3-5': 0,
       '6-10': 0,
-      '11+': 0
+      '11+': 0,
+      'adult': 0
     },
     totalGoing: 0
   };
@@ -246,10 +333,41 @@ export const calculateAttendeeCounts = (attendees: Attendee[]): AttendeeCounts =
       case 'pending':
         counts.pendingCount++;
         break;
+      case 'waitlisted':
+        counts.waitlistedCount++;
+        break;
     }
   });
 
   return counts;
+};
+
+// Get waitlist position for a specific user
+export const getWaitlistPosition = async (eventId: string, userId: string): Promise<number | null> => {
+  try {
+    const attendeesRef = collection(db, 'events', eventId, 'attendees');
+    const waitlistQuery = query(
+      attendeesRef, 
+      where('rsvpStatus', '==', 'waitlisted'),
+      orderBy('createdAt', 'asc') // First come, first served
+    );
+    
+    const waitlistSnapshot = await getDocs(waitlistQuery);
+    const waitlistedAttendees = waitlistSnapshot.docs.map(doc => doc.data());
+    
+    // Find the user's position (1-based)
+    const userPosition = waitlistedAttendees.findIndex(attendee => attendee.userId === userId);
+    
+    return userPosition >= 0 ? userPosition + 1 : null; // Return 1-based position or null if not found
+  } catch (error) {
+    // If index is missing, return null gracefully (position will be calculated after index is created)
+    if (error instanceof Error && error.message.includes('requires an index')) {
+      console.warn('Firestore index for waitlist position is being created. Position will be available shortly.');
+      return null;
+    }
+    console.error('Error getting waitlist position:', error);
+    return null;
+  }
 };
 
 // Recompute event attendee count (for cloud functions)

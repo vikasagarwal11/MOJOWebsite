@@ -40,11 +40,13 @@ export const useAttendees = (eventId: string, userId: string, isAdmin: boolean =
     goingCount: 0,
     notGoingCount: 0,
     pendingCount: 0,
+    waitlistedCount: 0,
     totalGoingByAgeGroup: {
       '0-2': 0,
       '3-5': 0,
       '6-10': 0,
-      '11+': 0
+      '11+': 0,
+      'adult': 0
     },
     totalGoing: 0
   });
