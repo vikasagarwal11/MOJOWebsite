@@ -69,13 +69,14 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
     [prefersReduced]
   );
   
-  // Check if current user is the event creator (admin)
+  // Check if current user is the event creator (admin) or has admin role
   const isEventCreator = currentUser?.id === event.createdBy;
+  const isAdmin = currentUser?.role === 'admin' || isEventCreator;
   
-  const { attendees, counts, addAttendee, bulkAddAttendees, refreshAttendees, updateAttendee } = useAttendees(
+  const { attendees, counts, addAttendee, bulkAddAttendees, refreshAttendees, updateAttendee, error: attendeesError } = useAttendees(
     event.id,
     currentUser?.id || '',
-    isEventCreator // Pass admin flag to use different data source
+    isAdmin // Use admin flag for both admin role and event creator
   );
   const { familyMembers } = useFamilyMembers();
 
@@ -123,7 +124,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   } = useEventDates(event);
 
   // Use our new capacity state hook
-  const capacityState = useCapacityState(counts, event.maxAttendees);
+  const capacityState = useCapacityState(counts, event.maxAttendees, event.waitlistEnabled, event.waitlistLimit);
 
   // Memoize the ready to add count to prevent unnecessary re-renders
   const readyToAddCount = useMemo(() => 
@@ -177,6 +178,26 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
     if (!currentUser || bulkFormData.familyMembers.length === 0) return;
     const validMembers = bulkFormData.familyMembers.filter((m) => m.name.trim());
     if (validMembers.length === 0) return;
+
+    // Check capacity before attempting to add
+    if (!capacityState.canAddMore && !capacityState.canWaitlist) {
+      toast.error('Event is at full capacity and waitlist is not available.');
+      return;
+    }
+
+    // If event is full but waitlist is available, ask user
+    if (!capacityState.canAddMore && capacityState.canWaitlist) {
+      const shouldWaitlist = confirm('Event is full. Would you like to join the waitlist instead? You\'ll be notified if spots open up.');
+      if (!shouldWaitlist) {
+        return;
+      }
+      // Update form data to set waitlisted status
+      setBulkFormData(prev => ({
+        familyMembers: prev.familyMembers.map(m => 
+          m.name.trim() ? { ...m, rsvpStatus: 'waitlisted' as AttendeeStatus } : m
+        )
+      }));
+    }
 
     try {
       setLoading(true);
@@ -430,6 +451,18 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                     <h3 className="text-xl font-semibold text-gray-900 mb-2">RSVP Access Restricted</h3>
                     <p className="text-gray-600">You are currently blocked from RSVPing to events. Please contact an administrator.</p>
                   </div>
+                ) : attendeesError ? (
+                  <div className="p-6 text-center">
+                    <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">Error loading attendees</h3>
+                    <p className="text-gray-600 mb-4">{attendeesError}</p>
+                    <button
+                      onClick={() => refreshAttendees()}
+                      className="px-4 py-2 bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] transition-colors"
+                    >
+                      Retry
+                    </button>
+                  </div>
                 ) : isEventPast ? (
                   <div className="p-6 text-center">
                     <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -466,6 +499,10 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                           <span className="flex items-center gap-1">
                             <div className="w-2 h-2 bg-yellow-500 rounded-full" />
                             <span>{counts.pendingCount} Pending</span>
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <div className="w-2 h-2 bg-purple-500 rounded-full" />
+                            <span>{counts.waitlistedCount} Waitlisted</span>
                           </span>
 
                         </div>
@@ -559,12 +596,20 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                 <div className="mt-4 pt-3 border-t border-[#F25129]/20">
                                   <button
                                     onClick={handleBulkAddFamilyMembers}
-                                    disabled={loading || bulkFormData.familyMembers.every((m) => !m.name.trim())}
+                                    disabled={
+                                      loading || 
+                                      bulkFormData.familyMembers.every((m) => !m.name.trim()) ||
+                                      (!capacityState.canAddMore && !capacityState.canWaitlist)
+                                    }
                                     className="w-full px-3.5 py-2 text-sm bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                   >
                                     {loading
                                       ? 'Adding...'
-                                      : `Add ${readyToAddCount} Attendee(s)`}
+                                      : !capacityState.canAddMore && !capacityState.canWaitlist
+                                        ? 'Event Full'
+                                        : !capacityState.canAddMore && capacityState.canWaitlist
+                                          ? `Join Waitlist (${readyToAddCount})`
+                                          : `Add ${readyToAddCount} Attendee(s)`}
                                   </button>
                                 </div>
                               </div>
@@ -714,7 +759,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                       <div className="mt-6 bg-gray-50 rounded-lg p-4">
                         <h4 className="font-medium text-gray-900 mb-2">Event Details</h4>
                         <div className="relative">
-                          <p className={`text-gray-700 leading-relaxed ${!isDescriptionExpanded ? 'line-clamp-2' : ''}`}>
+                          <p className={`text-gray-700 leading-relaxed break-words ${!isDescriptionExpanded ? 'line-clamp-2' : ''}`}>
                             {event.description}
                           </p>
                           {event.description.length > 120 && (

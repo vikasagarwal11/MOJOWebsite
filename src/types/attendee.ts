@@ -1,4 +1,4 @@
-export type AttendeeStatus = 'going' | 'not-going' | 'pending';
+export type AttendeeStatus = 'going' | 'not-going' | 'pending' | 'waitlisted';
 export type AttendeeType = 'primary' | 'family_member' | 'guest';
 export type Relationship = 'self' | 'spouse' | 'child' | 'guest';
 export type AgeGroup = '0-2' | '3-5' | '6-10' | '11+' | 'adult';
@@ -44,6 +44,7 @@ export interface AttendeeCounts {
   goingCount: number;
   notGoingCount: number;
   pendingCount: number;
+  waitlistedCount: number;
   totalGoingByAgeGroup: Record<AgeGroup, number>;
   totalGoing: number;
 }

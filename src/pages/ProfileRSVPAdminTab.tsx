@@ -22,7 +22,7 @@ type ProfileRSVPAdminTabProps = {
   rsvpsByEvent: { [eventId: string]: any[] };
   allEvents: Event[];
   userNames: { [userId: string]: string };
-  updateRsvp: (eventId: string, attendeeId: string, status: 'going' | 'not-going' | 'pending' | null) => Promise<void>;
+  updateRsvp: (eventId: string, attendeeId: string, status: 'going' | 'not-going' | 'pending' | 'waitlisted' | null) => Promise<void>;
   exportRsvps: (event: Event) => Promise<void>;
   exportingRsvps: string | null;
   adjustAttendingCount: (eventId: string, increment: boolean) => Promise<void>;
@@ -68,7 +68,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   // const [showAuditTrail, setShowAuditTrail] = useState(false);
   
   // NEW: Per-event RSVP filter state (instead of global)
-  const [eventRsvpFilters, setEventRsvpFilters] = useState<{[eventId: string]: 'all' | 'going' | 'not-going'}>({});
+  const [eventRsvpFilters, setEventRsvpFilters] = useState<{[eventId: string]: 'all' | 'going' | 'not-going' | 'pending' | 'waitlisted'}>({});
   
   // NEW: Date and Activity filter state
   const [dateFilter, setDateFilter] = useState<'all' | 'upcoming' | 'this-week' | 'past'>('all');
@@ -160,7 +160,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   };
   
   // Function to update per-event RSVP filter
-  const updateEventRsvpFilter = (eventId: string, filter: 'all' | 'going' | 'not-going' | 'pending') => {
+  const updateEventRsvpFilter = (eventId: string, filter: 'all' | 'going' | 'not-going' | 'pending' | 'waitlisted') => {
     setEventRsvpFilters(prev => ({
       ...prev,
       [eventId]: filter
@@ -964,7 +964,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                             <span className="text-sm font-medium text-gray-700">👥 Primary Users & Their Attendees</span>
                             <select
                               value={currentFilter}
-                              onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'not-going' | 'pending')}
+                              onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'not-going' | 'pending' | 'waitlisted')}
                               className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-xs"
                               aria-label={`Filter RSVPs for ${event.title}`}
                             >
@@ -972,6 +972,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               <option value="going">Going</option>
                               <option value="not-going">Not Going</option>
                               <option value="pending">Pending</option>
+                              <option value="waitlisted">Waitlisted</option>
                             </select>
                           </div>
                       
@@ -981,11 +982,12 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               { value: 'all', label: 'All', count: attendees.length, color: 'bg-gray-100 text-gray-700' },
                               { value: 'going', label: 'Going', count: attendees.filter(r => r.status === 'going').length, color: 'bg-green-100 text-green-700' },
                               { value: 'not-going', label: 'Not Going', count: attendees.filter(r => r.status === 'not-going').length, color: 'bg-red-100 text-red-700' },
-                              { value: 'pending', label: 'Pending', count: attendees.filter(r => r.status === 'pending').length, color: 'bg-yellow-100 text-yellow-700' }
+                              { value: 'pending', label: 'Pending', count: attendees.filter(r => r.status === 'pending').length, color: 'bg-yellow-100 text-yellow-700' },
+                              { value: 'waitlisted', label: 'Waitlisted', count: attendees.filter(r => r.status === 'waitlisted').length, color: 'bg-purple-100 text-purple-700' }
                             ].map(filter => (
                               <button
                                 key={filter.value}
-                                onClick={() => updateEventRsvpFilter(event.id, filter.value as 'all' | 'going' | 'not-going' | 'pending')}
+                                onClick={() => updateEventRsvpFilter(event.id, filter.value as 'all' | 'going' | 'not-going' | 'pending' | 'waitlisted')}
                                 className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                                   currentFilter === filter.value
                                     ? filter.color + ' ring-2 ring-offset-1 ring-gray-400'
@@ -1122,7 +1124,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               <select
                                 value={rsvp.status}
                                 onChange={(e) => {
-                                  const newStatus = e.target.value as 'going' | 'not-going' | 'pending' | '';
+                                  const newStatus = e.target.value as 'going' | 'not-going' | 'pending' | 'waitlisted' | '';
                                   updateRsvp(event.id, rsvp.id, newStatus || null);
                                 }}
                                 className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-xs"
@@ -1131,8 +1133,19 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                 <option value="going">✅ Going</option>
                                 <option value="not-going">❌ Not Going</option>
                                 <option value="pending">⏳ Pending</option>
+                                <option value="waitlisted">🟣 Waitlisted</option>
                                 <option value="">🗑️ Remove</option>
                               </select>
+                              {rsvp.status === 'waitlisted' && (
+                                <button
+                                  onClick={() => updateRsvp(event.id, rsvp.id, 'going')}
+                                  className="ml-2 px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
+                                  aria-label={`Promote ${userNames[rsvp.userId] || rsvp.userId} from waitlist to going`}
+                                  title="Promote from waitlist to going"
+                                >
+                                  ⬆️ Promote
+                                </button>
+                              )}
                               {analyzeLastMinuteChanges(rsvp, event.startAt) > 0 && (
                                 <button
                                   onClick={() => blockUserFromRsvp(rsvp.userId)}

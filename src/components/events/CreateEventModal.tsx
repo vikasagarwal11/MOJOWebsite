@@ -40,6 +40,8 @@ const eventSchema = z.object({
   venueName: z.string().optional(),
   venueAddress: z.string().optional(),
   maxAttendees: z.string().optional(),
+  waitlistEnabled: z.boolean().optional(),
+  waitlistLimit: z.string().optional(),
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
   attendanceEnabled: z.boolean().optional(),
   // Payment fields
@@ -95,6 +97,9 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const [isManuallyOverridden, setIsManuallyOverridden] = useState(false); // Track if end date/time are manually overridden
   // Payment state
   const [requiresPayment, setRequiresPayment] = useState(false);
+  
+  // Waitlist state
+  const [waitlistEnabled, setWaitlistEnabled] = useState(false);
   
   // Address autocomplete state
   const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
@@ -155,6 +160,8 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     isAllDay: false, // Default to false for existing events
     location: eventToEdit.location,
     maxAttendees: eventToEdit.maxAttendees,
+    waitlistEnabled: eventToEdit.waitlistEnabled || false,
+    waitlistLimit: eventToEdit.waitlistLimit?.toString() || '',
     imageUrl: eventToEdit.imageUrl || '',
     attendanceEnabled: eventToEdit.attendanceEnabled || false,
     // Payment fields
@@ -244,6 +251,7 @@ useEffect(() => {
       setValue('venueName', eventToEdit.venueName || '');
       setValue('venueAddress', eventToEdit.venueAddress || '');
       setValue('maxAttendees', eventToEdit.maxAttendees?.toString() || '');
+      setValue('waitlistLimit', eventToEdit.waitlistLimit?.toString() || '');
       setValue('attendanceEnabled', eventToEdit.attendanceEnabled || false);
       
       // Set dates
@@ -312,6 +320,9 @@ useEffect(() => {
         // Update payment state
         setRequiresPayment(eventToEdit.pricing.requiresPayment || false);
       }
+      
+      // Update waitlist state
+      setWaitlistEnabled(eventToEdit.waitlistEnabled || false);
     }
   }, [eventToEdit, setValue]);
 
@@ -732,6 +743,8 @@ useEffect(() => {
         venueAddress: data.venueAddress?.trim() || undefined,
         imageUrl: imageUrl === undefined ? null : imageUrl, // Convert undefined to null for Firestore
         maxAttendees: data.maxAttendees ? Number(data.maxAttendees) : undefined,
+        waitlistEnabled: waitlistEnabled,
+        waitlistLimit: data.waitlistLimit ? Number(data.waitlistLimit) : undefined,
         attendanceEnabled: data.attendanceEnabled || false,
         tags: tags.length > 0 ? tags : undefined,
         createdBy: currentUser.id,
@@ -1134,23 +1147,61 @@ useEffect(() => {
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Max Attendees (Optional)</label>
-              <div className="relative">
-                <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  {...register('maxAttendees')}
-                  type="number"
-                  min="1"
-                  step="1"
-                  inputMode="numeric"
-                  disabled={isLoading}
-                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                  placeholder="No limit"
-                />
+          {/* Single Row: Max Attendees and Waitlist Settings */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">Capacity & Waitlist Settings</label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Max Attendees */}
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Max Attendees (Optional)</label>
+                <div className="relative">
+                  <Users className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    {...register('maxAttendees')}
+                    type="number"
+                    min="1"
+                    step="1"
+                    inputMode="numeric"
+                    disabled={isLoading}
+                    className="w-full pl-8 pr-3 py-2 text-sm rounded-md border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                    placeholder="No limit"
+                  />
+                </div>
               </div>
+              
+              {/* Waitlist Enable */}
+              <div className="flex flex-col justify-center">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={waitlistEnabled}
+                    onChange={(e) => setWaitlistEnabled(e.target.checked)}
+                    disabled={isLoading}
+                    className="rounded border-gray-300 text-[#F25129] focus:ring-[#F25129]"
+                  />
+                  <span className="text-xs text-gray-700">Enable waitlist</span>
+                </label>
+              </div>
+              
+              {/* Waitlist Limit */}
+              {waitlistEnabled && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Waitlist Limit (Optional)</label>
+                  <input
+                    {...register('waitlistLimit')}
+                    type="number"
+                    min="1"
+                    step="1"
+                    inputMode="numeric"
+                    disabled={isLoading}
+                    className="w-full px-3 py-2 text-sm rounded-md border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                    placeholder="No limit"
+                  />
+                </div>
+              )}
             </div>
+          </div>
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Event Image (Optional)</label>
               
@@ -1228,57 +1279,36 @@ useEffect(() => {
                 </div>
               )}
               
-              <div className="space-y-3">
-                <input
-                  type="file"
-                  accept="image/*"
-                  disabled={isLoading}
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                />
+              {/* Single Row: File Upload and URL Input */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Upload Image</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={isLoading}
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    className="w-full px-3 py-2 text-sm rounded-md border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                  />
+                  {selectedFile && (
+                    <p className="text-xs text-green-600 mt-1">
+                      📎 {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                    </p>
+                  )}
+                </div>
                 
-                {/* File Preview */}
-                {selectedFile && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-blue-700">
-                        📎 {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedFile(null)}
-                        className="text-blue-600 hover:text-blue-800"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-                
-                <div className="text-center text-gray-500">or</div>
-                <input
-                  {...register('imageUrl')}
-                  type="url"
-                  disabled={isLoading}
-                  className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                  placeholder="Enter image URL..."
-                />
-                
-                {/* Image Management Help */}
-                <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
-                  <p className="font-medium mb-1">💡 Image Management Tips:</p>
-                  <ul className="space-y-1">
-                    <li>• <strong>Upload new image:</strong> Select a file above</li>
-                    <li>• <strong>Use URL:</strong> Enter an external image URL</li>
-                    {isEditing && eventToEdit?.imageUrl && (
-                      <li>• <strong>Remove current image:</strong> Click "Remove Image" above</li>
-                    )}
-                    <li>• <strong>Recommended:</strong> Use JPG/PNG files under 5MB for best performance</li>
-                  </ul>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Or Image URL</label>
+                  <input
+                    {...register('imageUrl')}
+                    type="url"
+                    disabled={isLoading}
+                    className="w-full px-3 py-2 text-sm rounded-md border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                    placeholder="https://example.com/image.jpg"
+                  />
                 </div>
               </div>
             </div>
-          </div>
           
           {/* QR Code Attendance Toggle */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">

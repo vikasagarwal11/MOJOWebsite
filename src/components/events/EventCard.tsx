@@ -4,14 +4,16 @@ import { useInView } from 'react-intersection-observer';
 import { Calendar, MapPin, Users, Share2, Heart, MessageCircle, Eye, CheckCircle, XCircle, ThumbsUp, ThumbsDown, Clock, Link, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { EventDoc } from '../../hooks/useEvents';
-import { RSVPModal } from './RSVPModal';
+import { RSVPModalNew as RSVPModal } from './RSVPModalNew';
 import { EventTeaserModal } from './EventTeaserModal';
 import { PastEventModal } from './PastEventModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserBlocking } from '../../hooks/useUserBlocking';
 import { useUserRSVPs } from '../../hooks/useUserRSVPs';
+import { useCapacityState } from './RSVPModalNew/hooks/useCapacityState';
 import { doc, setDoc, updateDoc, getDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import toast from 'react-hot-toast';
 
 interface EventCardProps {
   event: EventDoc;
@@ -194,10 +196,21 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const [imageError, setImageError] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
-  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | null>(null);
+  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | 'pending' | null>(null);
   
   // State to track if attendee count needs attention
   const [attendeeCountNeedsAttention, setAttendeeCountNeedsAttention] = useState(false);
+
+  // Create capacity state for this event
+  const mockCounts = useMemo(() => ({
+    goingCount: event.attendingCount || 0,
+    notGoingCount: 0,
+    pendingCount: 0,
+    waitlistedCount: 0,
+    totalGoing: event.attendingCount || 0
+  }), [event.attendingCount]);
+  
+  const capacityState = useCapacityState(mockCounts, event.maxAttendees);
   
   // Intersection Observer for lazy loading
   const [ref, inView] = useInView({
@@ -338,6 +351,12 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   // Quick RSVP handlers
   const handleQuickRSVP = async (status: 'going' | 'not-going') => {
     if (isBlockedFromRSVP || !currentUser) return;
+    
+    // Check capacity for 'going' status
+    if (status === 'going' && !capacityState.canAddMore) {
+      toast.error('Event is at full capacity. No more RSVPs can be accepted.');
+      return;
+    }
     
     console.log('🔍 DEBUG: Quick RSVP started:', {
       status,
@@ -550,10 +569,15 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
         recalculatedTotalCount: finalCount,
         rsvpData: rsvpData
       });
+      
+      // Show success toast
+      toast.success(status === 'going' ? 'RSVP confirmed! You\'re going to this event.' : 'RSVP updated. You\'re not going to this event.');
     } catch (error) {
       console.error('❌ Quick RSVP failed:', error);
       // Revert local state on error
       setRsvpStatus(rsvpStatus);
+      // Show error toast
+      toast.error('Failed to update RSVP. Please try again.');
     }
   };
 
@@ -766,7 +790,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
 
           {/* Event Description */}
           {event.description && (
-            <p className="text-gray-600 text-sm leading-relaxed mb-3 line-clamp-3">
+            <p className="text-gray-600 text-sm leading-relaxed mb-3 line-clamp-3 break-words">
               {event.description}
             </p>
           )}

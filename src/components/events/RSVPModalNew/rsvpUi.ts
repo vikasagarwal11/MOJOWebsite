@@ -45,10 +45,12 @@ export const ANIMATION_CONFIG = {
 } as const;
 
 // CSS class helpers
-export const getCapacityBadgeClasses = (state: 'ok' | 'near' | 'full') => {
+export const getCapacityBadgeClasses = (state: 'ok' | 'near' | 'full' | 'waitlist') => {
   switch (state) {
     case 'full':
       return 'bg-red-50 border border-red-200 text-red-800';
+    case 'waitlist':
+      return 'bg-purple-50 border border-purple-200 text-purple-800';
     case 'near':
       return 'bg-yellow-50 border border-yellow-200 text-yellow-800';
     default:

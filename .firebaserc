@@ -15,6 +15,7 @@
   "etags": {
     "momfitnessmojo": {
       "extensionInstances": {
+        "firestore-stripe-payments": "9997182b4e96eed525a51cf7c3a5929052cc0a182669c9ee3af608d6d9eeee07",
         "storage-resize-images": "2e51feaee13bd604f3422362c7daae2538addc08a835d0dc8ad7d6133fad59c6"
       }
     }

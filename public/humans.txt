@@ -1,0 +1,30 @@
+# humanstxt.org/
+# The humans responsible & technology colophon
+
+# TEAM
+
+    Developer: Vikas
+    Contact: momsfitnessmojo@gmail.com
+    From: Short Hills, New Jersey, USA
+
+# THANKS
+
+    Community: Moms Fitness Mojo Members
+    Inspiration: Fitness communities worldwide
+
+# TECHNOLOGY COLOPHON
+
+    Standards: HTML5, CSS3, ES6+
+    Components: React 18, TypeScript, Vite
+    Design: Tailwind CSS, Framer Motion
+    Backend: Firebase (Auth, Firestore, Storage, Functions)
+    Hosting: Firebase Hosting
+    Analytics: Firebase Analytics, Google Analytics
+    PWA: Service Worker, Web App Manifest
+
+# SITE
+
+    Last update: 2024/01/15
+    Language: English
+    Doctype: HTML5
+    IDE: Cursor

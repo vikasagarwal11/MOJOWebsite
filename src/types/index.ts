@@ -20,6 +20,8 @@ export interface Event {
   location: string;
   imageUrl?: string;
   maxAttendees?: number;
+  waitlistEnabled?: boolean;
+  waitlistLimit?: number;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;

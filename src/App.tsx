@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './contexts/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { setupGlobalErrorHandling } from './utils/globalErrorHandler';
+// import { OrganizationSchema } from './components/seo/StructuredData';
 import Layout from './components/layout/Layout';
 import Home from './pages/Home';
 import Events from './pages/Events';
@@ -33,6 +34,15 @@ function App() {
     >
       <AuthProvider>
         <Router>
+          {/* Global SEO Structured Data - Temporarily disabled */}
+          {/* <OrganizationSchema 
+            socialMedia={{
+              facebook: "https://facebook.com/momsfitnessmojo",
+              instagram: "https://instagram.com/momsfitnessmojo",
+              twitter: "https://twitter.com/momsfitnessmojo"
+            }}
+          /> */}
+          
           <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
             <Toaster
               position="bottom-right"

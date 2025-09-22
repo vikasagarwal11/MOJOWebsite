@@ -2,16 +2,88 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Mobile full-screen friendly Lightbox root */
-.lb-root {
-  height: 100dvh;           /* iOS/Android modern viewport */
-  width: 100vw;
-}
+/* Mobile full-screen friendly Lightbox root - see enhanced version below */
 
 /* EXIF rotation handled by server-side processing, CSS as fallback */
 img {
   image-orientation: from-image;
   -webkit-image-orientation: from-image;
+}
+
+/* ===== MOBILE LIGHTBOX: TikTok-Style Full Screen ===== */
+
+/* Full viewport on mobile, including iOS address bar quirks */
+.lb-root {
+  width: 100vw;
+  height: 100svh;           /* modern iOS/Android */
+}
+
+@supports not (height: 100svh) {
+  .lb-root { 
+    height: 100dvh;  /* fallback for older browsers */
+  }
+}
+
+/* Respect notches/home indicators */
+.sa-top { 
+  padding-top: env(safe-area-inset-top); 
+}
+
+.sa-bottom { 
+  padding-bottom: env(safe-area-inset-bottom); 
+}
+
+/* Media stage = full-bleed canvas */
+.lb-stage {
+  position: relative;
+  width: 100vw;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+/* Media fills stage; switch contain/cover via a class */
+.lb-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;  /* no crop by default */
+  z-index: 1;          /* ensure media shows above background */
+}
+
+.lb-media.fill { 
+  object-fit: cover;  /* TikTok full-bleed style */
+}
+
+/* Ensure images are visible on mobile */
+.lb-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: inherit;
+}
+
+/* Overlay controls with smooth transitions */
+.lb-controls {
+  transition: opacity 0.3s ease-in-out;
+}
+
+.lb-controls.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Mobile-optimized control positioning */
+.lb-nav-button {
+  @apply absolute top-1/2 -translate-y-1/2 z-10 text-white text-3xl p-3 hover:bg-white/10 rounded-full transition-colors;
+}
+
+.lb-nav-left {
+  left: 0.5rem;
+}
+
+.lb-nav-right {
+  right: 0.5rem;
 }
 
 /* Lightbox rotation wrapper */
@@ -24,11 +96,25 @@ img {
   transform: rotate(90deg);
 }
 
-.lb-img-wrap > img {
+/* Only cap desktop images that don't use full-stage layout */
+.lb-img-wrap > img:not(.lb-media) {
   display: block;
   max-width: 85vw;
   max-height: 85vh;
   object-fit: contain;
+}
+
+/* ===== RAW EVENTS: CSS Hardening for Touch Reliability ===== */
+/* Make the stage friendly to TikTok-style vertical swipes while keeping horizontal scroll/pinch */
+.lb-stage {
+  touch-action: pan-x pinch-zoom;  /* Allow horizontal pan and pinch, own vertical */
+  overscroll-behavior: contain;    /* Block pull-to-refresh & rubber-banding */
+}
+
+/* Media elements should not interfere with stage swipe detection */
+#lightbox-media-area .lb-media,
+#lightbox-media-area video {
+  overscroll-behavior: contain;    /* Block pull-to-refresh & rubber-banding */
 }
 
 /* Hide scrollbars utility */
@@ -94,6 +180,8 @@ img {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .line-clamp-2 {
@@ -101,6 +189,8 @@ img {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .line-clamp-3 {
@@ -108,6 +198,8 @@ img {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .line-clamp-4 {
@@ -115,6 +207,8 @@ img {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Event Card specific fixes */
