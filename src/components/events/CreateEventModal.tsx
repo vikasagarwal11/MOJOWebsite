@@ -148,7 +148,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     onClose();
   };
 
-  const { register, handleSubmit, formState: { errors }, reset, watch, setValue } = useForm<EventFormData>({
+  const { register, handleSubmit, formState: { errors }, reset, watch, setValue, getValues } = useForm<EventFormData>({
   resolver: zodResolver(eventSchema),
   defaultValues: isEditing ? {
     title: eventToEdit.title,
@@ -375,7 +375,7 @@ useEffect(() => {
         })));
         setShowAddressSuggestions(true);
       }
-    } catch (error) {
+    } catch (error: any) {
       if (error.name !== 'AbortError') {
         console.error('Address search error:', error);
         setAddressSuggestions([]);
@@ -400,7 +400,46 @@ useEffect(() => {
   };
 
   const selectAddress = (suggestion: any) => {
-    setValue('venueAddress', suggestion.description);
+    const currentVenueName = getValues('venueName');
+    const fullAddress = suggestion.description;
+    
+    // Extract venue name from address (first part before comma)
+    const extractedVenueName = suggestion.mainText || fullAddress.split(',')[0].trim();
+    
+    // Check if venue name is already manually set by user
+    const isVenueManuallySet = currentVenueName && currentVenueName.length > 0;
+    
+    if (isVenueManuallySet) {
+      // User has manually set venue name, preserve it and clean the address
+      let cleanAddress = fullAddress;
+      
+      // If the address starts with the venue name, remove it to avoid duplication
+      if (cleanAddress.toLowerCase().startsWith(currentVenueName.toLowerCase())) {
+        cleanAddress = cleanAddress.substring(currentVenueName.length).trim();
+        // Remove leading comma if present
+        if (cleanAddress.startsWith(',')) {
+          cleanAddress = cleanAddress.substring(1).trim();
+        }
+      }
+      
+      setValue('venueAddress', cleanAddress);
+    } else {
+      // No venue name set, auto-populate both fields
+      setValue('venueName', extractedVenueName);
+      
+      // Strip venue name from address to avoid duplication
+      let cleanAddress = fullAddress;
+      if (cleanAddress.toLowerCase().startsWith(extractedVenueName.toLowerCase())) {
+        cleanAddress = cleanAddress.substring(extractedVenueName.length).trim();
+        // Remove leading comma if present
+        if (cleanAddress.startsWith(',')) {
+          cleanAddress = cleanAddress.substring(1).trim();
+        }
+      }
+      
+      setValue('venueAddress', cleanAddress);
+    }
+    
     setShowAddressSuggestions(false);
     setAddressSuggestions([]);
   };
@@ -445,10 +484,10 @@ useEffect(() => {
           toast.success(`📍 Address found: ${venue.name || venueName}`);
         } else {
           // No venue found, show helpful message
-          toast.info(`No address found for "${venueName}". Try typing the address manually.`);
+          toast(`No address found for "${venueName}". Try typing the address manually.`, { icon: 'ℹ️' });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       if (error.name !== 'AbortError') {
         console.log('Venue address resolution failed:', error);
         // Don't show error to user, just silently fail
@@ -501,7 +540,7 @@ useEffect(() => {
         })));
         setShowVenueSuggestions(true);
       }
-    } catch (error) {
+    } catch (error: any) {
       if (error.name !== 'AbortError') {
         console.error('Venue search error:', error);
         setVenueSuggestions([]);

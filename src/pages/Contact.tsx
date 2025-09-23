@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Send, CheckCircle, AlertCircle } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
+import { useSearchParams } from 'react-router-dom';
 import { ContactService } from '../services/contactService';
 import { ContactMessageFormData } from '../types/contact';
 
@@ -23,15 +24,35 @@ type ContactFormData = z.infer<typeof contactSchema>;
 const Contact: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [searchParams] = useSearchParams();
+  
+  // Get inquiry type from URL parameters
+  const urlInquiryType = searchParams.get('inquiryType') as 'general' | 'events' | 'membership' | 'technical' | 'partnership' | 'other' | null;
 
   const {
     register,
     handleSubmit,
     formState: { errors },
     reset,
+    setValue,
   } = useForm<ContactFormData>({
     resolver: zodResolver(contactSchema),
+    defaultValues: {
+      inquiryType: urlInquiryType || 'general',
+      message: urlInquiryType === 'partnership' ? 'I am interested in becoming a sponsor for Moms Fitness Mojo. Please provide me with information about sponsorship opportunities, packages, and how we can collaborate to benefit your community.' : '',
+    },
   });
+
+  // Set the inquiry type and message when URL parameter changes
+  useEffect(() => {
+    if (urlInquiryType) {
+      setValue('inquiryType', urlInquiryType);
+      if (urlInquiryType === 'partnership') {
+        setValue('message', 'I am interested in becoming a sponsor for Moms Fitness Mojo. Please provide me with information about sponsorship opportunities, packages, and how we can collaborate to benefit your community.');
+        setValue('subject', 'Sponsorship Inquiry - Partnership Opportunities');
+      }
+    }
+  }, [urlInquiryType, setValue]);
 
   const onSubmit = async (data: ContactFormData) => {
     setIsSubmitting(true);
@@ -88,9 +109,19 @@ const Contact: React.FC = () => {
             Get in Touch
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            We'd love to hear from you! Whether you have questions about our community, 
-            want to join an event, or just want to say hello, we're here to help. 
-            Your message will be sent directly to our team.
+            {urlInquiryType === 'partnership' ? (
+              <>
+                Interested in partnering with Moms Fitness Mojo? We'd love to explore 
+                sponsorship opportunities and collaborations that benefit our community. 
+                Let's create meaningful partnerships together!
+              </>
+            ) : (
+              <>
+                We'd love to hear from you! Whether you have questions about our community, 
+                want to join an event, or just want to say hello, we're here to help. 
+                Your message will be sent directly to our team.
+              </>
+            )}
           </p>
         </motion.div>
 

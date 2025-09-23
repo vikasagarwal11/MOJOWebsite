@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useId, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import {
   AlertTriangle,
   Calendar,
   UserPlus,
   Users,
-  Plus,
-  Minus,
   ChevronDown,
   Heart,
   QrCode,
@@ -18,7 +16,7 @@ import { useUserBlocking } from '../../hooks/useUserBlocking';
 import { useAttendees } from '../../hooks/useAttendees';
 import { useFamilyMembers } from '../../hooks/useFamilyMembers';
 import { AttendeeList } from './AttendeeList';
-import { LoadingSpinner, LoadingButton } from '../ui/LoadingSpinner';
+import { LoadingButton } from '../ui/LoadingSpinner';
 import { CreateAttendeeData, AttendeeStatus, AgeGroup, Relationship } from '../../types/attendee';
 import { FamilyMember } from '../../types/family';
 
@@ -28,6 +26,9 @@ import { useEventDates } from './RSVPModalNew/hooks/useEventDates';
 import { useCapacityState } from './RSVPModalNew/hooks/useCapacityState';
 import { useModalA11y } from './RSVPModalNew/hooks/useModalA11y';
 import { getCapacityBadgeClasses } from './RSVPModalNew/rsvpUi';
+import { useWaitlistPositions } from '../../hooks/useWaitlistPositions';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 // Import new components
 import { Header } from './RSVPModalNew/components/Header';
 import { EventDetails } from './RSVPModalNew/components/EventDetails';
@@ -59,8 +60,8 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   }, []);
 
   // Accessible, collision-free IDs for aria-controls/labelledby
-  const addId = useId();
-  const famId = useId();
+  // const addId = useId();
+  // const famId = useId();
 
   // Reduced-motion aware transitions
   const prefersReduced = useReducedMotion();
@@ -86,6 +87,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   const [showFamilyMembers, setShowFamilyMembers] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'attendees' | 'qr'>('attendees');
+  const [familySizeInfo, setFamilySizeInfo] = useState<{ current: number; max: number; canAdd: boolean }>({ current: 0, max: 4, canAdd: true });
 
 
 
@@ -123,8 +125,68 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
     isEventPast
   } = useEventDates(event);
 
-  // Use our new capacity state hook
-  const capacityState = useCapacityState(counts, event.maxAttendees, event.waitlistEnabled, event.waitlistLimit);
+  // Use real-time event data for capacity state (like EventCardNew does)
+  const [realTimeAttendingCount, setRealTimeAttendingCount] = useState<number>(event.attendingCount || 0);
+  
+  // Real-time listener for event document changes (attendingCount)
+  useEffect(() => {
+    if (!event.id) return;
+
+    const eventRef = doc(db, 'events', event.id);
+    const unsubscribe = onSnapshot(eventRef, (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        const newCount = data.attendingCount || 0;
+        setRealTimeAttendingCount(newCount);
+      }
+    }, (error) => {
+      console.error('RSVPModalNew: Error listening to event changes:', error);
+    });
+
+    return () => unsubscribe();
+  }, [event.id]);
+
+  // Real-time waitlist positions
+  const { positions: waitlistPositions, myPosition: waitlistPosition, waitlistCount } = useWaitlistPositions(event.id, currentUser?.id);
+
+  // Create capacity state using real-time count and waitlist data
+  const mockCountsWithRealTime = useMemo(() => ({
+    ...counts,
+    totalGoing: realTimeAttendingCount,
+    goingCount: realTimeAttendingCount,
+    waitlistedCount: waitlistCount // Use real-time waitlist count
+  }), [counts, realTimeAttendingCount, waitlistCount]);
+
+  // Use our new capacity state hook with real-time data
+  const capacityState = useCapacityState(mockCountsWithRealTime, event.maxAttendees, event.waitlistEnabled, event.waitlistLimit);
+
+  // Calculate family size info
+  useEffect(() => {
+    if (!currentUser) {
+      setFamilySizeInfo({ current: 0, max: 4, canAdd: false });
+      return;
+    }
+
+    // Check if primary member is "going"
+    const primaryAttendee = attendees.find(
+      attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'primary'
+    );
+    const isPrimaryGoing = primaryAttendee?.rsvpStatus === 'going';
+
+    // Count current family members
+    const familyMembers = attendees.filter(
+      attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'family_member'
+    );
+    const currentFamilyCount = familyMembers.length;
+    const maxFamilyMembers = 4;
+    const canAddMore = isPrimaryGoing && currentFamilyCount < maxFamilyMembers;
+
+    setFamilySizeInfo({
+      current: currentFamilyCount,
+      max: maxFamilyMembers,
+      canAdd: canAddMore
+    });
+  }, [currentUser, attendees]);
 
   // Memoize the ready to add count to prevent unnecessary re-renders
   const readyToAddCount = useMemo(() => 
@@ -537,7 +599,12 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                   <AlertTriangle className="w-4 h-4" />
                                   <span className="font-medium">{capacityState.warningMessage}</span>
                                 </div>
-                                <p className="mt-1 text-xs opacity-90">{capacityState.slotsRemainingText}</p>
+                                <p className="mt-1 text-xs opacity-90">
+                                  {waitlistPosition 
+                                    ? `You are waitlisted (#${waitlistPosition}). ${capacityState.slotsRemainingText}`
+                                    : capacityState.slotsRemainingText
+                                  }
+                                </p>
                               </div>
                             )}
 
@@ -574,7 +641,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                       className="max-h-[180px] overflow-y-auto rsvp-modal-scrollbar modalScroll"
                                       style={{ scrollbarGutter: 'stable both-edges' }}
                                     >
-                                      {bulkFormData.familyMembers.map((member, index) => (
+                                      {bulkFormData.familyMembers.map((member) => (
                                         <div 
                                           key={member.id}
                                           className="py-2"
@@ -631,7 +698,9 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                             <div className="flex items-center gap-2">
                               <Heart className="w-4 h-4 text-[#F25129]" />
                               <h4 className="font-medium text-gray-900 text-[13px]">Add from Family Profile</h4>
-                              <span className="text-[12px] text-gray-500">({availableFamilyMembers.length} available)</span>
+                              <span className="text-[12px] text-gray-500">
+                                ({availableFamilyMembers.length} available, {familySizeInfo.current}/{familySizeInfo.max} used)
+                              </span>
                             </div>
                             <motion.div animate={{ rotate: showFamilyMembers ? 0 : 180 }} transition={{ duration: 0.2 }}>
                               <ChevronDown className="w-5 h-5 text-gray-500" />
@@ -651,13 +720,38 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                 className="overflow-hidden"
                               >
                                 <div className="p-4 pt-0">
-                                  {capacityState.isNearlyFull && (
+                                  {!familySizeInfo.canAdd && (
+                                    <div className="mb-4 p-3 rounded-lg text-sm bg-yellow-50 border border-yellow-200">
+                                      <div className="flex items-center gap-2">
+                                        <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                                        <span className="font-medium text-yellow-800">
+                                          {familySizeInfo.current >= familySizeInfo.max 
+                                            ? `Maximum family size reached (${familySizeInfo.max} family members)`
+                                            : 'Primary member must be "going" to add family members'
+                                          }
+                                        </span>
+                                      </div>
+                                      <p className="mt-1 text-xs text-yellow-700">
+                                        {familySizeInfo.current >= familySizeInfo.max 
+                                          ? 'You can add up to 4 family members per event.'
+                                          : 'Please set your status to "going" first, then you can add family members.'
+                                        }
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {capacityState.isNearlyFull && familySizeInfo.canAdd && (
                                     <div className={`mb-4 p-3 rounded-lg text-sm ${getCapacityBadgeClasses(capacityState.state)}`}>
                                       <div className="flex items-center gap-2">
                                         <AlertTriangle className="w-4 h-4" />
                                         <span className="font-medium">{capacityState.warningMessage}</span>
                                       </div>
-                                      <p className="mt-1 text-xs opacity-90">{capacityState.slotsRemainingText}</p>
+                                      <p className="mt-1 text-xs opacity-90">
+                                        {waitlistPosition 
+                                          ? `You are waitlisted (#${waitlistPosition}). ${capacityState.slotsRemainingText}`
+                                          : capacityState.slotsRemainingText
+                                        }
+                                      </p>
                                     </div>
                                   )}
 
@@ -705,10 +799,10 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                                 <div className="sm:col-span-2">
                                                   <button
                                                     onClick={() => handleAddFamilyMember(familyMember)}
-                                                    disabled={loading}
+                                                    disabled={loading || !familySizeInfo.canAdd}
                                                     className="w-full px-2 py-1.5 text-[12px] bg-[#F25129] text-white rounded hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                                   >
-                                                    {loading ? 'Adding...' : 'Add'}
+                                                    {loading ? 'Adding...' : !familySizeInfo.canAdd ? 'Cannot Add' : 'Add'}
                                                   </button>
                                                 </div>
                                               </div>
@@ -720,10 +814,11 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                                       <div className="mt-4 pt-3 border-t border-[#F25129]/20">
                                         <LoadingButton
                                           loading={loading}
+                                          disabled={!familySizeInfo.canAdd}
                                           onClick={() => handleBulkAddFromProfile(availableFamilyMembers)}
                                           className="w-full px-3.5 py-2 text-sm bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                         >
-                                          Add All {availableFamilyMembers.length} Family Members
+                                          {!familySizeInfo.canAdd ? 'Cannot Add Family Members' : `Add All ${availableFamilyMembers.length} Family Members`}
                                         </LoadingButton>
                                       </div>
                                     </>
@@ -746,7 +841,9 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                       <div className="bg-white border border-gray-200 rounded-lg p-4">
                         <AttendeeList
                           eventId={event.id}
-                          isAdmin={isEventCreator}
+                          isAdmin={isAdmin}
+                          waitlistPositions={waitlistPositions}
+                          capacityState={capacityState}
                           onAttendeeUpdate={async () => {
                             try { await refreshAttendees(); } catch {}
                             onAttendeeUpdate?.();

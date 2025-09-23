@@ -24,12 +24,20 @@ interface AttendeeListProps {
   eventId: string;
   onAttendeeUpdate?: () => void;
   isAdmin?: boolean;
+  waitlistPositions?: Map<string, number>; // Map of userId to waitlist position
+  capacityState?: {
+    canAddMore: boolean;
+    canWaitlist: boolean;
+    isAtCapacity: boolean;
+  };
 }
 
 export const AttendeeList: React.FC<AttendeeListProps> = ({ 
   eventId, 
   onAttendeeUpdate,
-  isAdmin = false
+  isAdmin = false,
+  waitlistPositions = new Map(),
+  capacityState
 }) => {
   const { currentUser } = useAuth();
   const { 
@@ -47,7 +55,8 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   const [collapsedSections, setCollapsedSections] = useState({
     going: false,
     notGoing: false,
-    pending: false
+    pending: false,
+    waitlisted: false
   });
 
   // State for tracking attendees being added to family
@@ -64,6 +73,11 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   }, [userFamilyMembers]);
 
   const getDisplayName = (attendee: Attendee): string => {
+    // Handle bulk-uploaded attendees (no user account)
+    if (!attendee.userId) {
+      return `${attendee.name} (Bulk Uploaded)`;
+    }
+    
     if (attendee.familyMemberId) {
       const fm = familyMemberById.get(attendee.familyMemberId);
       if (fm?.name) return fm.name;
@@ -76,8 +90,27 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     return age || attendee.ageGroup;
   };
 
+  const getWaitlistPosition = (attendee: Attendee): number | null => {
+    if (!attendee.userId) return null;
+    return waitlistPositions.get(attendee.userId) || null;
+  };
+
+  // Check if an attendee can be edited (only real users can edit their own attendees)
+  const canEditAttendee = (attendee: Attendee): boolean => {
+    // Bulk-uploaded attendees cannot be edited
+    if (!attendee.userId) return false;
+    
+    // Only the attendee's owner can edit
+    return attendee.userId === currentUser?.id;
+  };
+
   // Check if an attendee is already linked to a family member
   const isAttendeeLinkedToFamily = (attendee: Attendee): boolean => {
+    // Bulk-uploaded attendees are never linked to family members
+    if (!attendee.userId) {
+      return false;
+    }
+    
     // Check if this is the logged-in user's own entry
     if (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary') {
       return true; // Always consider the user as "linked" to their own family
@@ -101,7 +134,8 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   const attendeesByStatus = useMemo(() => ({
     going: attendees.filter(a => a.rsvpStatus === 'going'),
     'not-going': attendees.filter(a => a.rsvpStatus === 'not-going'),
-    pending: attendees.filter(a => a.rsvpStatus === 'pending')
+    pending: attendees.filter(a => a.rsvpStatus === 'pending'),
+    waitlisted: attendees.filter(a => a.rsvpStatus === 'waitlisted')
   }), [attendees]);
 
   const handleUpdateAttendee = async (attendeeId: string, updateData: any) => {
@@ -218,6 +252,22 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     );
     
     return goingFamilyMembers.length > 0;
+  };
+
+  // Helper function to check if "Going" option should be disabled
+  const isGoingOptionDisabled = (attendee: Attendee): boolean => {
+    // Only check capacity for primary members, not family members
+    if (attendee.attendeeType !== 'primary') {
+      return false;
+    }
+    
+    // If no capacity state provided, allow going
+    if (!capacityState) {
+      return false;
+    }
+    
+    // Disable "Going" if event is at capacity and waitlist is not available
+    return capacityState.isAtCapacity && !capacityState.canWaitlist;
   };
 
   // Handle adding attendee to family profile
@@ -360,7 +410,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                  
                                  {/* Status Dropdown */}
                                  <div className="col-span-3">
-                                   {attendee.userId === currentUser?.id ? (
+                                   {canEditAttendee(attendee) ? (
                                      <select
                                        value={attendee.rsvpStatus}
                                        onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
@@ -386,7 +436,9 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                  {/* Actions */}
                                  <div className="col-span-2">
                                    <div className="flex items-center justify-center gap-1">
-                                     {attendee.userId === currentUser?.id && (
+                                     {!attendee.userId ? (
+                                       <span className="text-xs text-gray-500 italic">Bulk Uploaded</span>
+                                     ) : canEditAttendee(attendee) && (
                                        <>
                                          {/* Add to Family Button */}
                                          <button
@@ -394,15 +446,15 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                            disabled={
                                              addingToFamily.has(attendee.attendeeId) || 
                                              isAttendeeLinkedToFamily(attendee) ||
-                                             (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                             (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                            }
                                            className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
-                                             isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                             isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                                ? 'bg-green-100 text-green-600 cursor-not-allowed' 
                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
                                            }`}
                                            title={
-                                             (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                             (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                                ? "This is you - cannot add yourself to family profile"
                                                : isAttendeeLinkedToFamily(attendee) 
                                                ? "Already in Family Profile" 
@@ -411,7 +463,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          >
                                            {addingToFamily.has(attendee.attendeeId) ? (
                                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                           ) : isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary') ? (
+                                           ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
                                              <CheckCircle className="w-3 h-3" />
                                            ) : (
                                              <Heart className="w-3 h-3" />
@@ -514,7 +566,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                  
                                  {/* Status Dropdown */}
                                  <div className="col-span-3">
-                                   {attendee.userId === currentUser?.id ? (
+                                   {canEditAttendee(attendee) ? (
                                      <select
                                        value={attendee.rsvpStatus}
                                        onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
@@ -540,7 +592,9 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                  {/* Actions */}
                                  <div className="col-span-2">
                                    <div className="flex items-center justify-center gap-1">
-                                     {attendee.userId === currentUser?.id && (
+                                     {!attendee.userId ? (
+                                       <span className="text-xs text-gray-500 italic">Bulk Uploaded</span>
+                                     ) : canEditAttendee(attendee) && (
                                        <>
                                          {/* Add to Family Button */}
                                          <button
@@ -548,15 +602,15 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                            disabled={
                                              addingToFamily.has(attendee.attendeeId) || 
                                              isAttendeeLinkedToFamily(attendee) ||
-                                             (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                             (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                            }
                                            className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
-                                             isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                             isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                                ? 'bg-green-100 text-green-600 cursor-not-allowed' 
                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
                                            }`}
                                            title={
-                                             (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                             (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                                ? "This is you - cannot add yourself to family profile"
                                                : isAttendeeLinkedToFamily(attendee) 
                                                ? "Already in Family Profile" 
@@ -565,7 +619,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          >
                                            {addingToFamily.has(attendee.attendeeId) ? (
                                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                           ) : isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary') ? (
+                                           ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
                                              <CheckCircle className="w-3 h-3" />
                                            ) : (
                                              <Heart className="w-3 h-3" />
@@ -668,7 +722,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                  
                                  {/* Status Dropdown */}
                                  <div className="col-span-3">
-                                   {attendee.userId === currentUser?.id ? (
+                                   {canEditAttendee(attendee) ? (
                                      <select
                                        value={attendee.rsvpStatus}
                                        onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
@@ -685,8 +739,14 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                        <option value="pending" className="text-yellow-700">Pending</option>
                                      </select>
                                    ) : (
-                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium bg-yellow-100 text-yellow-800">
-                                       Pending
+                                     <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium ${
+                                       attendee.rsvpStatus === 'going' ? 'bg-green-100 text-green-800' :
+                                       attendee.rsvpStatus === 'not-going' ? 'bg-red-100 text-red-800' :
+                                       'bg-yellow-100 text-yellow-800'
+                                     }`}>
+                                       {attendee.rsvpStatus === 'going' ? 'Going' :
+                                        attendee.rsvpStatus === 'not-going' ? 'Not Going' :
+                                        'Pending'}
                                      </span>
                                    )}
                                  </div>
@@ -694,7 +754,9 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                  {/* Actions */}
                                  <div className="col-span-2">
                                    <div className="flex items-center justify-center gap-1">
-                                     {attendee.userId === currentUser?.id && (
+                                     {!attendee.userId ? (
+                                       <span className="text-xs text-gray-500 italic">Bulk Uploaded</span>
+                                     ) : canEditAttendee(attendee) && (
                                        <>
                                          {/* Add to Family Button */}
                                          <button
@@ -702,15 +764,15 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                            disabled={
                                              addingToFamily.has(attendee.attendeeId) || 
                                              isAttendeeLinkedToFamily(attendee) ||
-                                             (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                             (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                            }
                                            className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
-                                             isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                             isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                                ? 'bg-green-100 text-green-600 cursor-not-allowed' 
                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
                                            }`}
                                            title={
-                                             (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary')
+                                             (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                                ? "This is you - cannot add yourself to family profile"
                                                : isAttendeeLinkedToFamily(attendee) 
                                                ? "Already in Family Profile" 
@@ -719,7 +781,177 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          >
                                            {addingToFamily.has(attendee.attendeeId) ? (
                                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                           ) : isAttendeeLinkedToFamily(attendee) || (attendee.userId === currentUser?.id && attendee.attendeeType === 'primary') ? (
+                                           ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
+                                             <CheckCircle className="w-3 h-3" />
+                                           ) : (
+                                             <Heart className="w-3 h-3" />
+                                           )}
+                                         </button>
+                                         
+                                         {/* Delete Button - Disabled for primary members */}
+                                         <button
+                                           onClick={() => handleDeleteAttendee(attendee.attendeeId)}
+                                           disabled={attendee.attendeeType === 'primary'}
+                                           className={`px-1 py-0.5 rounded flex items-center justify-center transition-colors ${
+                                             attendee.attendeeType === 'primary' 
+                                               ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                                               : 'bg-gray-600 text-white hover:bg-gray-700'
+                                           }`}
+                                           title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
+                                         >
+                                           <Trash2 className="w-3 h-3" />
+                                         </button>
+                                       </>
+                                     )}
+                                   </div>
+                                 </div>
+                               </div>
+                             </div>
+                           ))}
+                         </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
+        {/* Waitlisted */}
+        {attendeesByStatus.waitlisted.length > 0 && (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg">
+            {/* Collapsible Header */}
+            <motion.button
+              onClick={() => toggleSection('waitlisted')}
+              className="w-full p-3 flex items-center justify-between hover:bg-purple-100 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-purple-600" />
+                <h4 className="font-medium text-gray-900 text-[13px]">Waitlisted ({attendeesByStatus.waitlisted.length})</h4>
+              </div>
+              <motion.div
+                animate={{ rotate: collapsedSections.waitlisted ? 0 : 180 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              </motion.div>
+            </motion.button>
+            
+            {/* Collapsible Content */}
+            <AnimatePresence>
+              {!collapsedSections.waitlisted && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: 'easeInOut' }}
+                  className="overflow-hidden"
+                >
+                  <div className="p-3 pt-0">
+                    {/* Excel-like Table Layout */}
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      {/* Table Header */}
+                      <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
+                        <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
+                          <div className="col-span-4">Name</div>
+                          <div className="col-span-3">Age</div>
+                          <div className="col-span-3">Status</div>
+                          <div className="col-span-2">Actions</div>
+                        </div>
+                      </div>
+                      
+                      {/* Table Rows */}
+                      <div className="divide-y divide-gray-100">
+                        {attendeesByStatus.waitlisted.map((attendee, index) => (
+                          <div 
+                            key={attendee.attendeeId} 
+                            className={`px-3 py-2 hover:bg-purple-50 transition-colors ${
+                              index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                            }`}
+                          >
+                            <div className="grid grid-cols-12 gap-2 items-center">
+                              {/* Name */}
+                              <div className="col-span-4">
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
+                                  {getWaitlistPosition(attendee) && (
+                                    <span className="text-xs text-purple-600 font-medium">
+                                      Position #{getWaitlistPosition(attendee)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              {/* Age */}
+                              <div className="col-span-3">
+                                <span className="text-[12px] text-gray-500">
+                                  {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
+                                </span>
+                              </div>
+                              
+                              {/* Status Dropdown */}
+                              <div className="col-span-3">
+                                {canEditAttendee(attendee) ? (
+                                  <select
+                                    value={attendee.rsvpStatus}
+                                    onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
+                                    disabled={isPrimaryMemberStatusLocked(attendee)}
+                                    className={`w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-purple-500 focus:border-purple-500 ${
+                                      isPrimaryMemberStatusLocked(attendee) 
+                                        ? 'bg-gray-100 cursor-not-allowed opacity-75' 
+                                        : 'bg-white'
+                                    }`}
+                                    title={isPrimaryMemberStatusLocked(attendee) ? 'Status locked because family members are attending' : ''}
+                                  >
+                                    <option 
+                                      value="going" 
+                                      className="text-green-700"
+                                      disabled={isGoingOptionDisabled(attendee)}
+                                    >
+                                      {isGoingOptionDisabled(attendee) ? 'Going (Event Full)' : 'Going'}
+                                    </option>
+                                    <option value="not-going" className="text-red-700">Not Going</option>
+                                    <option value="pending" className="text-yellow-700">Pending</option>
+                                    <option value="waitlisted" className="text-purple-700">Waitlisted</option>
+                                  </select>
+                                ) : (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium bg-purple-100 text-purple-800">
+                                    Waitlisted
+                                  </span>
+                                )}
+                              </div>
+                              
+                              {/* Actions */}
+                              <div className="col-span-2">
+                                <div className="flex items-center justify-center gap-1">
+                                  {!attendee.userId ? (
+                                    <span className="text-xs text-gray-500 italic">Bulk Uploaded</span>
+                                  ) : canEditAttendee(attendee) && (
+                                    <>
+                                      {/* Add to Family Button */}
+                                      <button
+                                        onClick={() => handleAddToFamily(attendee)}
+                                        disabled={
+                                          addingToFamily.has(attendee.attendeeId) || 
+                                          isAttendeeLinkedToFamily(attendee) ||
+                                          (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
+                                        }
+                                        className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
+                                          isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
+                                            ? 'bg-green-100 text-green-600 cursor-not-allowed' 
+                                            : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                                        }`}
+                                        title={
+                                          (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
+                                            ? "This is you - cannot add yourself to family profile"
+                                            : isAttendeeLinkedToFamily(attendee) 
+                                            ? "Already in Family Profile" 
+                                            : "Add to Family Profile"
+                                        }
+                                      >
+                                        {addingToFamily.has(attendee.attendeeId) ? (
+                                          <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                        ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
                                              <CheckCircle className="w-3 h-3" />
                                            ) : (
                                              <Heart className="w-3 h-3" />

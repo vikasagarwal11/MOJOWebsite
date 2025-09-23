@@ -577,9 +577,10 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
               )}
             </button>
           </div>
-          {typeof localMedia.viewsCount === 'number' && (
+          {/* View count hidden from UI but still tracked in background */}
+          {/* {typeof localMedia.viewsCount === 'number' && (
             <div className="text-xs text-gray-400">{localMedia.viewsCount} views</div>
-          )}
+          )} */}
         </div>
 
         {/* Show latest comment preview when collapsed */}
