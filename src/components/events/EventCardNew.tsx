@@ -12,8 +12,8 @@ import { useUserBlocking } from '../../hooks/useUserBlocking';
 
 import { useAttendees } from '../../hooks/useAttendees';
 import { CreateAttendeeData, AttendeeStatus } from '../../types/attendee';
-import { getWaitlistPosition } from '../../services/attendeeService';
 import { useCapacityState } from './RSVPModalNew/hooks/useCapacityState';
+import { useWaitlistPositions } from '../../hooks/useWaitlistPositions';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import toast from 'react-hot-toast';
@@ -79,12 +79,33 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   
   const capacityState = useCapacityState(mockCountsWithRealTime, event.maxAttendees, event.waitlistEnabled, event.waitlistLimit);
   
+  // Real-time waitlist positions
+  const { myPosition: waitlistPosition } = useWaitlistPositions(event.id, currentUser?.id);
+
+  // Smart display logic for venue information
+  const getDisplayVenueInfo = (venueName: string, venueAddress: string, isMobile: boolean) => {
+    if (!venueAddress && !venueName) return 'TBD';
+    
+    // If we have both venue name and address
+    if (venueName && venueAddress) {
+      if (isMobile) {
+        // Mobile: Prioritize address, show venue name if space permits
+        return venueAddress;
+      } else {
+        // Desktop: Show venue name + address
+        return `${venueName} - ${venueAddress}`;
+      }
+    }
+    
+    // Fallback to whatever is available
+    return venueAddress || venueName;
+  };
+  
   // State
   const [showRSVPModal, setShowRSVPModal] = useState(false);
   const [showTeaserModal, setShowTeaserModal] = useState(false);
   const [showPastEventModal, setShowPastEventModal] = useState(false);
   const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | 'waitlisted' | null>(null);
-  const [waitlistPosition, setWaitlistPosition] = useState<number | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   // Overflow detection for description
   const descRef = useRef<HTMLParagraphElement | null>(null);
@@ -164,22 +185,11 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       // Set status for going, not-going, and waitlisted
       if (status === 'going' || status === 'not-going' || status === 'waitlisted') {
         setRsvpStatus(status);
-        
-        // If waitlisted, get position
-        if (status === 'waitlisted') {
-          getWaitlistPosition(event.id, currentUser.id).then(position => {
-            setWaitlistPosition(position);
-          });
-        } else {
-          setWaitlistPosition(null);
-        }
       } else {
         setRsvpStatus(null);
-        setWaitlistPosition(null);
       }
     } else if (currentUser) {
       setRsvpStatus(null);
-      setWaitlistPosition(null);
     }
   }, [currentUser, event.id, attendees]);
 
@@ -417,6 +427,9 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   // Get button disable state
   const isGoingButtonDisabled = (currentUser && (rsvpStatus === 'going' || rsvpStatus === 'waitlisted')) || getRSVPButtonState() !== 'active';
   const isNotGoingButtonDisabled = (currentUser && rsvpStatus === 'not-going') || getRSVPButtonState() !== 'active';
+  
+  // Check if event is sold out (at capacity regardless of waitlist availability) - for watermark only
+  const isSoldOutForWatermark = capacityState.isAtCapacity;
 
   return (
     <>
@@ -426,8 +439,26 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
          initial={{ opacity: 0, y: 20 }}
          animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
          transition={{ duration: 0.5 }}
-                                                                                         className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 h-[460px] sm:h-[480px] md:h-[500px] lg:h-[520px] xl:h-[540px] flex flex-col mb-4 scroll-mt-20"
+                                                                                         className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 h-[460px] sm:h-[480px] md:h-[500px] lg:h-[520px] xl:h-[540px] flex flex-col mb-4 scroll-mt-20 relative"
        >
+                 {/* SOLD OUT Watermark */}
+                 {isSoldOutForWatermark && (
+                   <div 
+                     className="absolute inset-0 flex items-center justify-center pointer-events-none z-20"
+                     aria-hidden="true"
+                   >
+                     <div 
+                       className="text-6xl sm:text-7xl md:text-8xl font-black text-red-500/20 transform -rotate-12 select-none text-center"
+                       style={{ 
+                         textShadow: '2px 2px 4px rgba(0,0,0,0.1)',
+                         letterSpacing: '0.1em',
+                         width: '100%'
+                       }}
+                     >
+                       SOLD OUT
+                     </div>
+                   </div>
+                 )}
                  {/* Event Image - Always show image section for consistent height */}
          <div className="relative h-48 overflow-hidden">
            {event.imageUrl ? (
@@ -536,14 +567,12 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
               <div className="flex items-start text-gray-600">
                 <MapPin className="w-4 h-4 mr-2 text-[#F25129] mt-0.5 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  {event.venueName && (
-                    <div className="font-medium line-clamp-1">{event.venueName}</div>
-                  )}
-                  {event.venueAddress && (
-                    <div className="text-xs opacity-75 line-clamp-1">{event.venueAddress}</div>
-                  )}
-                  {!event.venueName && !event.venueAddress && event.location && (
+                  {event.location ? (
                     <div className="line-clamp-1">{event.location}</div>
+                  ) : (
+                    <div className="line-clamp-1">
+                      {getDisplayVenueInfo(event.venueName || '', event.venueAddress || '', false)}
+                    </div>
                   )}
                 </div>
               </div>
@@ -563,25 +592,25 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
           <div className="flex items-center justify-between mt-auto pt-2 pb-4 relative z-10" style={{ minHeight: '60px' }}>
             {/* Quick RSVP Buttons - Made much smaller to fit Manage button */}
             <div className="flex gap-1 flex-1">
-              {/* Going Button */}
-                             <motion.button
-                 whileHover={!isGoingButtonDisabled ? { scale: 1.05 } : {}}
-                 whileTap={!isGoingButtonDisabled ? { scale: 0.95 } : {}}
-                 onClick={(e) => {
-                   e.stopPropagation();
-                   handleQuickRSVP('going');
-                 }}
-                 disabled={isGoingButtonDisabled}
-                 className={`flex items-center gap-1 px-2 py-2 rounded-lg font-medium transition-all duration-200 text-xs relative z-50 pointer-events-auto ${
-                   rsvpStatus === 'going'
-                     ? 'bg-green-100 text-green-700 cursor-not-allowed'
-                     : rsvpStatus === 'waitlisted'
-                     ? 'bg-purple-100 text-purple-700 cursor-not-allowed'
-                     : isGoingButtonDisabled
-                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                     : 'bg-green-600 text-white hover:bg-green-700'
-                 }`}
-               >
+              {/* Going Button - Always show, never "SOLD OUT" */}
+              <motion.button
+                whileHover={!isGoingButtonDisabled ? { scale: 1.05 } : {}}
+                whileTap={!isGoingButtonDisabled ? { scale: 0.95 } : {}}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleQuickRSVP('going');
+                }}
+                disabled={isGoingButtonDisabled}
+                className={`flex items-center gap-1 px-2 py-2 rounded-lg font-medium transition-all duration-200 text-xs relative z-50 pointer-events-auto ${
+                  rsvpStatus === 'going'
+                    ? 'bg-green-100 text-green-700 cursor-not-allowed'
+                    : rsvpStatus === 'waitlisted'
+                    ? 'bg-purple-100 text-purple-700 cursor-not-allowed'
+                    : isGoingButtonDisabled
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-green-600 text-white hover:bg-green-700'
+                }`}
+              >
                 {isUpdating ? (
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
                 ) : (

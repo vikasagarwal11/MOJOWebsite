@@ -19,6 +19,8 @@ import FamilyManagement from './pages/FamilyManagement';
 import Founder from './pages/Founder';
 import Contact from './pages/Contact';
 import About from './pages/About';
+import AdminBulkAttendees from './pages/AdminBulkAttendees';
+import AdminCleanup from './pages/AdminCleanup';
 
 function App() {
   // Set up global error handling
@@ -70,6 +72,8 @@ function App() {
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/admin/bulk-attendees" element={<AdminBulkAttendees />} />
+        <Route path="/admin/cleanup" element={<AdminCleanup />} />
               <Route path="/" element={<Layout />}>
                 <Route index element={<Home />} />
                 <Route path="events" element={<Events />} />

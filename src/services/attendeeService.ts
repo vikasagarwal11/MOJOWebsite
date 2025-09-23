@@ -20,9 +20,7 @@ import {
   CreateAttendeeData, 
   UpdateAttendeeData, 
   AttendeeCounts, 
-  AttendeeStatus,
-  AgeGroup,
-  BulkAttendeeOperation
+  AttendeeStatus
 } from '../types/attendee';
 
 // Generate unique attendee ID
@@ -46,6 +44,81 @@ export const validateAttendee = (data: CreateAttendeeData): { isValid: boolean; 
     isValid: errors.length === 0,
     errors
   };
+};
+
+// Check if primary member is "going" (required for family members to join)
+export const checkPrimaryMemberStatus = async (eventId: string, userId: string): Promise<{ canAdd: boolean; primaryStatus: string; message?: string }> => {
+  try {
+    const attendeesRef = collection(db, 'events', eventId, 'attendees');
+    const primaryQuery = query(
+      attendeesRef, 
+      where('userId', '==', userId),
+      where('attendeeType', '==', 'primary')
+    );
+    const primarySnapshot = await getDocs(primaryQuery);
+    
+    if (primarySnapshot.empty) {
+      return {
+        canAdd: false,
+        primaryStatus: 'not_found',
+        message: 'Primary member must join first before adding family members.'
+      };
+    }
+    
+    const primaryAttendee = primarySnapshot.docs[0].data();
+    const isPrimaryGoing = primaryAttendee.rsvpStatus === 'going';
+    
+    if (!isPrimaryGoing) {
+      return {
+        canAdd: false,
+        primaryStatus: primaryAttendee.rsvpStatus,
+        message: `Primary member must be "going" to add family members. Current status: ${primaryAttendee.rsvpStatus}`
+      };
+    }
+    
+    return { canAdd: true, primaryStatus: primaryAttendee.rsvpStatus };
+  } catch (error) {
+    console.error('Error checking primary member status:', error);
+    return { 
+      canAdd: false, 
+      primaryStatus: 'error', 
+      message: 'Unable to verify primary member status. Please try again.' 
+    };
+  }
+};
+
+// Check family size limit (max 4 family members per primary)
+export const checkFamilySizeLimit = async (eventId: string, userId: string): Promise<{ canAdd: boolean; currentCount: number; message?: string }> => {
+  try {
+    const attendeesRef = collection(db, 'events', eventId, 'attendees');
+    const familyQuery = query(
+      attendeesRef, 
+      where('userId', '==', userId),
+      where('attendeeType', '==', 'family_member')
+    );
+    const familySnapshot = await getDocs(familyQuery);
+    const currentFamilyCount = familySnapshot.size;
+    
+    const maxFamilyMembers = 4; // Primary + 4 family members = 5 total
+    const canAdd = currentFamilyCount < maxFamilyMembers;
+    
+    if (!canAdd) {
+      return {
+        canAdd: false,
+        currentCount: currentFamilyCount,
+        message: `Maximum family size reached (${maxFamilyMembers} family members). You can add up to ${maxFamilyMembers} family members.`
+      };
+    }
+    
+    return { canAdd: true, currentCount: currentFamilyCount };
+  } catch (error) {
+    console.error('Error checking family size limit:', error);
+    return { 
+      canAdd: false, 
+      currentCount: 0, 
+      message: 'Unable to verify family size limit. Please try again.' 
+    };
+  }
 };
 
 // Check event capacity before allowing new RSVPs
@@ -105,25 +178,48 @@ export const upsertAttendee = async (attendeeData: CreateAttendeeData): Promise<
     throw new Error(`Invalid attendee data: ${validation.errors.join(', ')}`);
   }
 
+  // Check primary member status and family size limit for family members
+  if (attendeeData.attendeeType === 'family_member') {
+    // First check if primary member is "going"
+    const primaryStatusCheck = await checkPrimaryMemberStatus(attendeeData.eventId, attendeeData.userId);
+    if (!primaryStatusCheck.canAdd) {
+      throw new Error(primaryStatusCheck.message || 'Primary member must be "going" to add family members');
+    }
+    
+    // Then check family size limit
+    const familySizeCheck = await checkFamilySizeLimit(attendeeData.eventId, attendeeData.userId);
+    if (!familySizeCheck.canAdd) {
+      throw new Error(familySizeCheck.message || 'Maximum family size reached');
+    }
+  }
+
   // Check capacity only for 'going' status
   if (attendeeData.rsvpStatus === 'going') {
     const capacityCheck = await checkEventCapacity(attendeeData.eventId, 1);
     if (!capacityCheck.canAdd) {
-      // Check if we should auto-waitlist instead
-      const eventRef = doc(db, 'events', attendeeData.eventId);
-      const eventDoc = await getDoc(eventRef);
-      
-      if (eventDoc.exists()) {
-        const eventData = eventDoc.data();
-        if (eventData.waitlistEnabled) {
-          // Auto-waitlist the user instead of throwing error
-          attendeeData.rsvpStatus = 'waitlisted';
-          console.log('Auto-waitlisting attendee due to capacity limit');
+      // Only auto-waitlist primary users, not family members
+      // Family members should be allowed to join as "going" even when event is full
+      if (attendeeData.attendeeType === 'primary') {
+        // Check if we should auto-waitlist the primary user instead of throwing error
+        const eventRef = doc(db, 'events', attendeeData.eventId);
+        const eventDoc = await getDoc(eventRef);
+        
+        if (eventDoc.exists()) {
+          const eventData = eventDoc.data();
+          if (eventData.waitlistEnabled) {
+            // Auto-waitlist the primary user instead of throwing error
+            attendeeData.rsvpStatus = 'waitlisted';
+            console.log('Auto-waitlisting primary user due to capacity limit');
+          } else {
+            throw new Error(capacityCheck.message || 'Event is at capacity');
+          }
         } else {
           throw new Error(capacityCheck.message || 'Event is at capacity');
         }
       } else {
-        throw new Error(capacityCheck.message || 'Event is at capacity');
+        // For family members, allow them to join as "going" even when event is full
+        // This allows the primary user to bring family members to a full event
+        console.log('Allowing family member to join as "going" despite capacity limit');
       }
     }
   }
@@ -142,6 +238,47 @@ export const upsertAttendee = async (attendeeData: CreateAttendeeData): Promise<
   return attendeeId;
 };
 
+// Cascade status change from primary member to all family members
+export const cascadePrimaryStatusChange = async (
+  eventId: string, 
+  userId: string, 
+  newStatus: AttendeeStatus
+): Promise<void> => {
+  try {
+    console.log('DEBUG: Cascading primary status change:', { eventId, userId, newStatus });
+    
+    // Get all family members for this user
+    const attendeesRef = collection(db, 'events', eventId, 'attendees');
+    const familyQuery = query(
+      attendeesRef, 
+      where('userId', '==', userId),
+      where('attendeeType', '==', 'family_member')
+    );
+    const familySnapshot = await getDocs(familyQuery);
+    
+    if (familySnapshot.empty) {
+      console.log('DEBUG: No family members found to cascade status change');
+      return;
+    }
+    
+    // Update all family members to match primary status
+    const batch = writeBatch(db);
+    familySnapshot.docs.forEach(doc => {
+      const familyRef = doc.ref;
+      batch.update(familyRef, {
+        rsvpStatus: newStatus,
+        updatedAt: new Date()
+      });
+    });
+    
+    await batch.commit();
+    console.log('DEBUG: Successfully cascaded status change to', familySnapshot.size, 'family members');
+  } catch (error) {
+    console.error('Error cascading primary status change:', error);
+    throw error;
+  }
+};
+
 // Update existing attendee
 export const updateAttendee = async (
   eventId: string, 
@@ -151,6 +288,47 @@ export const updateAttendee = async (
   console.log('DEBUG: updateAttendee service called with:', { eventId, attendeeId, updateData });
   const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
   
+  // Get the current attendee data to check if it's a primary member
+  const attendeeDoc = await getDoc(attendeeRef);
+  if (!attendeeDoc.exists()) {
+    throw new Error('Attendee not found');
+  }
+  
+  const attendeeData = attendeeDoc.data();
+  const isPrimaryMember = attendeeData.attendeeType === 'primary';
+  const isStatusChange = updateData.rsvpStatus && updateData.rsvpStatus !== attendeeData.rsvpStatus;
+  
+  // Check capacity limits when changing to 'going' status
+  if (isStatusChange && updateData.rsvpStatus === 'going') {
+    // Only check capacity for primary members, not family members
+    // Family members can exceed capacity to allow complete families to attend together
+    if (attendeeData.attendeeType === 'primary') {
+      const capacityCheck = await checkEventCapacity(eventId, 1);
+      if (!capacityCheck.canAdd) {
+        // Check if waitlist is enabled for auto-waitlisting
+        const eventRef = doc(db, 'events', eventId);
+        const eventDoc = await getDoc(eventRef);
+        
+        if (eventDoc.exists()) {
+          const eventData = eventDoc.data();
+          if (eventData.waitlistEnabled) {
+            // Auto-waitlist the primary user instead of allowing them to go
+            updateData.rsvpStatus = 'waitlisted';
+            console.log('DEBUG: Auto-waitlisting primary user due to capacity limit');
+          } else {
+            throw new Error(capacityCheck.message || 'Event is at capacity. Cannot change status to "going".');
+          }
+        } else {
+          throw new Error(capacityCheck.message || 'Event is at capacity. Cannot change status to "going".');
+        }
+      }
+    } else {
+      // For family members, allow them to join as "going" even when event is full
+      // This allows the primary user to bring family members to a full event
+      console.log('DEBUG: Allowing family member to join as "going" despite capacity limit');
+    }
+  }
+  
   const updatePayload = {
     ...updateData,
     updatedAt: new Date()
@@ -159,6 +337,12 @@ export const updateAttendee = async (
   
   await updateDoc(attendeeRef, updatePayload);
   console.log('DEBUG: updateAttendee completed successfully');
+  
+  // If primary member status changed, cascade to family members
+  if (isPrimaryMember && isStatusChange && updateData.rsvpStatus) {
+    console.log('DEBUG: Primary member status changed, cascading to family members');
+    await cascadePrimaryStatusChange(eventId, attendeeData.userId, updateData.rsvpStatus);
+  }
 };
 
 // Delete attendee

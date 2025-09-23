@@ -315,7 +315,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       {/* Event Management Section */}
       {activeAdminSection === 'events' && (
         <>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-sm font-semibold text-gray-700">Admin Event Management</h2>
             <span className="text-xs text-gray-500">({allEvents.length} events)</span>
             <button
@@ -327,6 +327,13 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
               aria-label="Create new event"
             >
               Create New Event
+            </button>
+            <button
+              onClick={() => window.open('/admin/bulk-attendees', '_blank')}
+              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-full hover:from-blue-700 hover:to-blue-800"
+              aria-label="Bulk add attendees"
+            >
+              Bulk Add Attendees
             </button>
           </div>
           {loadingAdminEvents ? (

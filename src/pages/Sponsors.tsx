@@ -3,6 +3,7 @@ import { ExternalLink, Gift, Calendar, Star } from 'lucide-react';
 import { format } from 'date-fns';
 import { orderBy } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 import { useFirestore } from '../hooks/useFirestore';
 import { Sponsor } from '../types';
 
@@ -153,13 +154,13 @@ const Sponsors: React.FC = () => {
           Partner with Moms Fitness Mojo to reach an engaged community of health-conscious mothers. 
           Let's create meaningful partnerships that benefit our members.
         </p>
-        <a
-          href="mailto:momsfitnessmojo@gmail.com"
+        <Link
+          to="/contact?inquiryType=partnership"
           className="inline-flex items-center px-8 py-3 bg-white text-[#F25129] font-semibold rounded-full hover:bg-gray-100 transition-all duration-300 transform hover:scale-105 shadow-lg"
         >
           Contact Us
           <ExternalLink className="w-4 h-4 ml-2" />
-        </a>
+        </Link>
       </div>
     </div>
   );

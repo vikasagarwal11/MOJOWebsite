@@ -26,7 +26,7 @@ const Footer: React.FC = () => {
               </div>
               <div className="flex items-center">
                 <MapPin className="w-4 h-4 mr-2" />
-                Community Center, Your City
+                Short Hills, NJ
               </div>
             </div>
           </div>
