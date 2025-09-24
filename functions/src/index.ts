@@ -193,7 +193,167 @@ export const onPostCommentWrite = onDocumentWritten("posts/{postId}/comments/{co
     .update({ commentsCount: FieldValue.increment(delta) });
 });
 
-// ───────────────── EVENTS: RSVP counter ─────────────────
+// ───────────────── COMMENT AGGREGATION FUNCTIONS ─────────────────
+// Update comment reply count when replies are added/removed
+export const onCommentReplyWrite = onDocumentWritten("posts/{postId}/comments/{commentId}", async (event) => {
+  const beforeData = event.data?.before.exists ? event.data?.before.data() : null;
+  const afterData = event.data?.after.exists ? event.data?.after.data() : null;
+  
+  // Only process if this is a reply (has parentCommentId)
+  if (!afterData?.parentCommentId) return;
+  
+  const parentCommentId = afterData.parentCommentId;
+  const wasReply = beforeData?.parentCommentId === parentCommentId;
+  const isReply = afterData?.parentCommentId === parentCommentId;
+  
+  let delta = 0;
+  if (isReply && !wasReply) delta = 1;  // New reply added
+  if (!isReply && wasReply) delta = -1; // Reply removed
+  
+  if (delta === 0) return;
+  
+  try {
+    await db.doc(`posts/${event.params.postId}/comments/${parentCommentId}`)
+      .update({ replyCount: FieldValue.increment(delta) });
+    console.log(`✅ Reply count updated for comment ${parentCommentId}: ${delta}`);
+  } catch (error) {
+    console.error('❌ Failed to update reply count:', error);
+  }
+});
+
+// Update comment likes count
+export const onCommentLikeWrite = onDocumentWritten("posts/{postId}/comments/{commentId}/likes/{userId}", async (event) => {
+  const beforeExists = event.data?.before.exists || false;
+  const afterExists = event.data?.after.exists || false;
+  const delta = afterExists && !beforeExists ? 1 : !afterExists && beforeExists ? -1 : 0;
+  if (delta === 0) return;
+  
+  try {
+    await db.doc(`posts/${event.params.postId}/comments/${event.params.commentId}`)
+      .update({ likesCount: FieldValue.increment(delta) });
+    console.log(`✅ Comment like count updated for ${event.params.commentId}: ${delta}`);
+  } catch (error) {
+    console.error('❌ Failed to update comment like count:', error);
+  }
+});
+
+// Update comment reactions summary - Force deploy
+export const onCommentReactionWrite = onDocumentWritten("posts/{postId}/comments/{commentId}/reactions/{userId_emoji}", async (event) => {
+  const beforeExists = event.data?.before.exists || false;
+  const afterExists = event.data?.after.exists || false;
+  
+  if (beforeExists === afterExists) return; // No change
+  
+  const commentRef = db.doc(`posts/${event.params.postId}/comments/${event.params.commentId}`);
+  
+  try {
+    // Get current reaction summary
+    const commentDoc = await commentRef.get();
+    const currentSummary = commentDoc.data()?.reactionSummary || {};
+    
+    // Extract emoji from compound key (userId_emoji)
+    const emoji = event.params.userId_emoji.split('_').pop();
+    if (!emoji) return;
+    
+    if (afterExists && !beforeExists) {
+      // Reaction added
+      currentSummary[emoji] = (currentSummary[emoji] || 0) + 1;
+    } else if (!afterExists && beforeExists) {
+      // Reaction removed
+      currentSummary[emoji] = Math.max(0, (currentSummary[emoji] || 0) - 1);
+      if (currentSummary[emoji] === 0) {
+        delete currentSummary[emoji];
+      }
+    }
+    
+    await commentRef.update({ reactionSummary: currentSummary });
+    console.log(`✅ Comment reaction summary updated for ${event.params.commentId}:`, currentSummary);
+  } catch (error) {
+    console.error('❌ Failed to update comment reaction summary:', error);
+  }
+});
+
+// ───────────────── MEDIA COMMENT AGGREGATION FUNCTIONS ─────────────────
+// Update media comment reply count when replies are added/removed
+export const onMediaCommentReplyWrite = onDocumentWritten("media/{mediaId}/comments/{commentId}", async (event) => {
+  const beforeData = event.data?.before.exists ? event.data?.before.data() : null;
+  const afterData = event.data?.after.exists ? event.data?.after.data() : null;
+  
+  // Only process if this is a reply (has parentCommentId)
+  if (!afterData?.parentCommentId) return;
+  
+  const parentCommentId = afterData.parentCommentId;
+  const wasReply = beforeData?.parentCommentId === parentCommentId;
+  const isReply = afterData?.parentCommentId === parentCommentId;
+  
+  let delta = 0;
+  if (isReply && !wasReply) delta = 1;  // New reply added
+  if (!isReply && wasReply) delta = -1; // Reply removed
+  
+  if (delta === 0) return;
+  
+  try {
+    await db.doc(`media/${event.params.mediaId}/comments/${parentCommentId}`)
+      .update({ replyCount: FieldValue.increment(delta) });
+    console.log(`✅ Media comment reply count updated for comment ${parentCommentId}: ${delta}`);
+  } catch (error) {
+    console.error('❌ Failed to update media comment reply count:', error);
+  }
+});
+
+// Update media comment likes count
+export const onMediaCommentLikeWrite = onDocumentWritten("media/{mediaId}/comments/{commentId}/likes/{userId}", async (event) => {
+  const beforeExists = event.data?.before.exists || false;
+  const afterExists = event.data?.after.exists || false;
+  const delta = afterExists && !beforeExists ? 1 : !afterExists && beforeExists ? -1 : 0;
+  if (delta === 0) return;
+  
+  try {
+    await db.doc(`media/${event.params.mediaId}/comments/${event.params.commentId}`)
+      .update({ likesCount: FieldValue.increment(delta) });
+    console.log(`✅ Media comment like count updated for ${event.params.commentId}: ${delta}`);
+  } catch (error) {
+    console.error('❌ Failed to update media comment like count:', error);
+  }
+});
+
+// Update media comment reactions summary - Force deploy
+export const onMediaCommentReactionWrite = onDocumentWritten("media/{mediaId}/comments/{commentId}/reactions/{userId_emoji}", async (event) => {
+  const beforeExists = event.data?.before.exists || false;
+  const afterExists = event.data?.after.exists || false;
+  
+  if (beforeExists === afterExists) return; // No change
+  
+  const commentRef = db.doc(`media/${event.params.mediaId}/comments/${event.params.commentId}`);
+  
+  try {
+    // Get current reaction summary
+    const commentDoc = await commentRef.get();
+    const currentSummary = commentDoc.data()?.reactionSummary || {};
+    
+    // Extract emoji from compound key (userId_emoji)
+    const emoji = event.params.userId_emoji.split('_').pop();
+    if (!emoji) return;
+    
+    if (afterExists && !beforeExists) {
+      // Reaction added
+      currentSummary[emoji] = (currentSummary[emoji] || 0) + 1;
+    } else if (!afterExists && beforeExists) {
+      // Reaction removed
+      currentSummary[emoji] = Math.max(0, (currentSummary[emoji] || 0) - 1);
+      if (currentSummary[emoji] === 0) {
+        delete currentSummary[emoji];
+      }
+    }
+    
+    await commentRef.update({ reactionSummary: currentSummary });
+    console.log(`✅ Media comment reaction summary updated for ${event.params.commentId}:`, currentSummary);
+  } catch (error) {
+    console.error('❌ Failed to update media comment reaction summary:', error);
+  }
+});
+
+ger for // ───────────────── EVENTS: RSVP counter ─────────────────
 export const onRsvpWrite = onDocumentWritten("events/{eventId}/rsvps/{userId}", async (event) => {
   const beforeData = event.data?.before.exists ? event.data?.before.data() : null;
   const afterData = event.data?.after.exists ? event.data?.after.data() : null;

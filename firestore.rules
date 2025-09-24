@@ -22,6 +22,7 @@ service cloud.firestore {
     // Enhanced user blocking functions
     function isUserBlockedFromRsvp(userId) { 
       return exists(/databases/$(database)/documents/users/$(userId)) &&
+        ('blockedFromRsvp' in get(/databases/$(database)/documents/users/$(userId)).data) &&
         get(/databases/$(database)/documents/users/$(userId)).data.blockedFromRsvp == true; 
     }
     
@@ -310,7 +311,7 @@ service cloud.firestore {
           validRSVPData(request.resource.data);
         
         // Enhanced: Allow admins to modify any RSVP
-        allow delete: if (isMember() || isAdmin()) && 
+        allow delete: if isSignedIn() && 
           (request.auth.uid == userId || isAdmin());
       }
 
@@ -370,9 +371,7 @@ service cloud.firestore {
             (userDoc() != null && request.resource.data.attendeeType == 'family_member')
           );
         
-        // TEMPORARY: Allow any authenticated user to create attendees for testing
-        // TODO: Remove this rule after testing
-        allow create: if isSignedIn() && (validAttendeeData(request.resource.data) || validBulkAttendeeData(request.resource.data));
+        // TEMPORARY RULE REMOVED - Security vulnerability fixed
         
         // Users can update their own attendees, event creators can update all attendees
         allow update: if isSignedIn() && (
@@ -417,20 +416,20 @@ service cloud.firestore {
         isMember() || isAdmin();
       
       allow create: if isSignedIn() && 
-        (isMember() || isAdmin()) && 
-        request.auth.uid == request.resource.data.authorId;
+        request.auth.uid == request.resource.data.authorId &&
+        !isUserBlockedFromRsvp(request.auth.uid);
       
       allow update, delete: if isSignedIn() && 
         (request.auth.uid == resource.data.authorId || isAdmin());
       
       match /likes/{userId} {
         allow read: if true;
-        allow create: if (isMember() || isAdmin()) && 
+        allow create: if isSignedIn() && 
           request.auth.uid == userId && 
           request.resource.data.keys().hasOnly(['userId','createdAt']) && 
           request.resource.data.userId == userId;
         allow update: if false;
-        allow delete: if (isMember() || isAdmin()) && 
+        allow delete: if isSignedIn() && 
           (request.auth.uid == userId || isAdmin());
       }
       
@@ -438,14 +437,41 @@ service cloud.firestore {
         allow read: if true;
         allow create: if isSignedIn() && 
           request.auth.uid == request.resource.data.authorId && 
-          isNonEmptyString(request.resource.data.text) && 
-          request.resource.data.text.size() <= 1000 && 
-          request.resource.data.keys().hasOnly(['authorId','authorName','text','createdAt']);
+          (isNonEmptyString(request.resource.data.text) || ('mediaUrls' in request.resource.data && request.resource.data.mediaUrls is list)) && 
+          (!('text' in request.resource.data) || request.resource.data.text.size() <= 1000) && 
+          request.resource.data.keys().hasOnly(['authorId','authorName','text','mediaUrls','createdAt','threadLevel','parentCommentId','replyCount']) &&
+          !isUserBlockedFromRsvp(request.auth.uid);
         allow update: if isSignedIn() && 
           (request.auth.uid == resource.data.authorId || isAdmin()) && 
           request.resource.data.diff(resource.data).changedKeys().hasOnly(['text','updatedAt']);
         allow delete: if isSignedIn() && 
           (request.auth.uid == resource.data.authorId || isAdmin());
+        
+        // Comment likes subcollection
+        match /likes/{userId} {
+          allow read: if true;
+          allow create: if isSignedIn() && 
+            request.auth.uid == userId && 
+            request.resource.data.keys().hasOnly(['userId','createdAt']) && 
+            request.resource.data.userId == userId;
+          allow update: if false;
+          allow delete: if isSignedIn() && 
+            (request.auth.uid == userId || isAdmin());
+        }
+        
+         // Comment reactions subcollection - compound key userId_emoji
+         match /reactions/{userId_emoji} {
+           allow read: if true;
+           allow create: if isSignedIn() && 
+             request.auth.uid == request.resource.data.userId && 
+             request.resource.data.keys().hasOnly(['userId','emoji','createdAt']) && 
+             request.resource.data.userId == request.auth.uid &&
+             request.resource.data.emoji in ['❤️','😂','😮','👍','👎','😢','😡'] &&
+             userId_emoji == request.resource.data.userId + '_' + request.resource.data.emoji;
+           allow update: if false;
+           allow delete: if isSignedIn() && 
+             (request.auth.uid == resource.data.userId || isAdmin());
+         }
       }
     }
     
@@ -461,12 +487,12 @@ service cloud.firestore {
       
       match /likes/{userId} {
         allow read: if true;
-        allow create: if (isMember() || isAdmin()) && 
+        allow create: if isSignedIn() && 
           request.auth.uid == userId && 
           request.resource.data.keys().hasOnly(['userId','createdAt']) && 
           request.resource.data.userId == userId;
         allow update: if false;
-        allow delete: if (isMember() || isAdmin()) && 
+        allow delete: if isSignedIn() && 
           (request.auth.uid == userId || isAdmin());
       }
       
@@ -474,14 +500,41 @@ service cloud.firestore {
         allow read: if true;
         allow create: if isSignedIn() && 
           request.auth.uid == request.resource.data.authorId && 
-          isNonEmptyString(request.resource.data.text) && 
-          request.resource.data.text.size() <= 1000 && 
-          request.resource.data.keys().hasOnly(['authorId','authorName','text','createdAt']);
+          (isNonEmptyString(request.resource.data.text) || ('mediaUrls' in request.resource.data && request.resource.data.mediaUrls is list)) && 
+          (!('text' in request.resource.data) || request.resource.data.text.size() <= 1000) && 
+          request.resource.data.keys().hasOnly(['authorId','authorName','text','mediaUrls','createdAt','threadLevel','parentCommentId','replyCount']) &&
+          !isUserBlockedFromRsvp(request.auth.uid);
         allow update: if isSignedIn() && 
           (request.auth.uid == resource.data.authorId || isAdmin()) && 
           request.resource.data.diff(resource.data).changedKeys().hasOnly(['text','updatedAt']);
         allow delete: if isSignedIn() && 
           (request.auth.uid == resource.data.authorId || isAdmin());
+        
+        // Comment likes subcollection
+        match /likes/{userId} {
+          allow read: if true;
+          allow create: if isSignedIn() && 
+            request.auth.uid == userId && 
+            request.resource.data.keys().hasOnly(['userId','createdAt']) && 
+            request.resource.data.userId == userId;
+          allow update: if false;
+          allow delete: if isSignedIn() && 
+            (request.auth.uid == userId || isAdmin());
+        }
+        
+         // Comment reactions subcollection - compound key userId_emoji
+         match /reactions/{userId_emoji} {
+           allow read: if true;
+           allow create: if isSignedIn() && 
+             request.auth.uid == request.resource.data.userId && 
+             request.resource.data.keys().hasOnly(['userId','emoji','createdAt']) && 
+             request.resource.data.userId == request.auth.uid &&
+             request.resource.data.emoji in ['❤️','😂','😮','👍','👎','😢','😡'] &&
+             userId_emoji == request.resource.data.userId + '_' + request.resource.data.emoji;
+           allow update: if false;
+           allow delete: if isSignedIn() && 
+             (request.auth.uid == resource.data.userId || isAdmin());
+         }
       }
     }
     
@@ -524,11 +577,8 @@ service cloud.firestore {
     
     // --- PAYMENT TRANSACTIONS ---
     match /payment_transactions/{transactionId} {
-      // Users can read their own payment transactions
-      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
-      
-      // Only admins can read all payment transactions
-      allow read: if isAdmin();
+      // Users can read their own payment transactions, admins can read all
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
       
       // Users can create payment transactions for their own RSVPs
       allow create: if isSignedIn() && 
@@ -568,11 +618,8 @@ service cloud.firestore {
     
     // --- REFUND REQUESTS ---
     match /refund_requests/{requestId} {
-      // Users can read their own refund requests
-      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
-      
-      // Only admins can read all refund requests
-      allow read: if isAdmin();
+      // Users can read their own refund requests, admins can read all
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
       
       // Users can create refund requests for their own payments
       allow create: if isSignedIn() && 

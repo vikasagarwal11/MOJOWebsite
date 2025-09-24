@@ -18,6 +18,7 @@ import {
   setDoc,
 } from 'firebase/firestore';
 import toast from 'react-hot-toast';
+import CommentSection from '../common/CommentSection';
 
 interface PostCardProps {
   post: Post;
@@ -35,11 +36,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
     (post as any).commentsCount ?? (post as any).comments?.length ?? 0
   );
 
-  const [showComments, setShowComments] = useState(false);
-  const [comments, setComments] = useState<
-    Array<{ id: string; authorId: string; authorName: string; text: string; createdAt?: any }>
-  >([]);
-  const [newComment, setNewComment] = useState('');
+  // Comment functionality now handled by CommentSection component
 
   // Keep my like state in sync
   useEffect(() => {
@@ -59,21 +56,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
     return () => unsub();
   }, [post.id]);
 
-  // Load latest comments when panel opens
-  useEffect(() => {
-    if (!showComments) return;
-    const q = query(
-      collection(db, 'posts', post.id, 'comments'),
-      orderBy('createdAt', 'desc'),
-      limit(20)
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setComments(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-    });
-    return () => unsub();
-  }, [showComments, post.id]);
-
-  // Global comment count listener - always active for real-time updates
+  // Comment count listener - always active for real-time updates
   useEffect(() => {
     const q = query(
       collection(db, 'posts', post.id, 'comments'),
@@ -100,24 +83,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
     }
   };
 
-  const handleComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentUser) return;
-    const text = newComment.trim();
-    if (!text) return;
-    try {
-      await addDoc(collection(db, 'posts', post.id, 'comments'), {
-        authorId: currentUser.id,
-        authorName: currentUser.displayName || 'Member',
-        text,
-        createdAt: serverTimestamp(),
-      });
-      setNewComment('');
-      // Real-time listener will update the count automatically
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to add comment.');
-    }
-  };
+  // Comment handling now done by CommentSection component
 
   const createdAt =
     (post as any).createdAt?.toDate?.()
@@ -179,87 +145,19 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
               <span className="text-sm font-medium">{likesCount}</span>
             </button>
 
-            <button
-              onClick={() => setShowComments((v) => !v)}
-              className="flex items-center space-x-2 text-gray-500 hover:text-[#F25129] transition-colors"
-            >
+            <div className="flex items-center space-x-2 text-gray-500">
               <MessageCircle className="w-5 h-5" />
               <span className="text-sm font-medium">{commentsCount}</span>
-            </button>
+            </div>
           </div>
         </div>
 
-        {/* Comments */}
-        {showComments && (
-          <div className="space-y-3">
-            {comments.map((c) => {
-              const created =
-                (c as any)?.createdAt?.toDate?.()
-                  ? (c as any).createdAt.toDate()
-                  : (c as any).createdAt instanceof Date
-                  ? (c as any).createdAt
-                  : undefined;
-              const mine = c.authorId && currentUser?.id === c.authorId;
-
-              return (
-                <div
-                  key={c.id}
-                  className="relative rounded-xl bg-[#F25129]/10 border border-[#F25129]/20 px-4 py-2 pl-10"
-                >
-                  {/* tiny bullet to keep the sub-bullet look */}
-                  <span className="absolute left-3 top-3 inline-block w-2 h-2 rounded-full bg-amber-300" />
-
-                  <div className="flex flex-col">
-                    {/* line 1: name + comment (bold italic) */}
-                    <div className="flex flex-wrap items-baseline gap-2 text-sm">
-                      <span className="font-semibold text-gray-900">{c.authorName}</span>
-                      {mine && (
-                        <span className="px-1.5 py-0.5 text-[10px] rounded bg-[#F25129]/20 text-[#F25129]">
-                          You
-                        </span>
-                      )}
-                      <span className="italic font-semibold text-gray-800 break-words">
-                        {(c as any).text || (c as any).content}
-                      </span>
-                    </div>
-
-                    {/* line 2: tiny timestamp under the name */}
-                    {created && (
-                      <div className="mt-0.5 pl-0.5 text-[11px] text-gray-400">
-                        {format(created, 'MMM d, yyyy • h:mm a')}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Add comment */}
-            {currentUser && (
-              <form onSubmit={handleComment} className="flex space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-[#F25129] to-[#FF6B35] rounded-full flex items-center justify-center flex-shrink-0">
-                  <User className="w-4 h-4 text-white" />
-                </div>
-                <div className="flex-1">
-                  <input
-                    type="text"
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="Add a comment..."
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={!newComment.trim()}
-                  className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                >
-                  Post
-                </button>
-              </form>
-            )}
-          </div>
-        )}
+        {/* Threaded Comments */}
+        <CommentSection 
+          collectionPath={`posts/${post.id}/comments`}
+          initialOpen={false}
+          pageSize={10}
+        />
       </div>
     </div>
   );
