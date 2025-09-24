@@ -158,6 +158,12 @@ img {
   border-top: 2px solid red;
 }
 
+/* ensure our lightbox media can't exceed viewport */
+.lb-media-clamp {
+  max-width: 90vw;
+  max-height: 80vh;
+}
+
 /* Custom scrollbar for event details */
 .event-details-scrollbar::-webkit-scrollbar {
   width: 4px;

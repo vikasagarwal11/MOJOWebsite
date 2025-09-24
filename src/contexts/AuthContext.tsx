@@ -539,6 +539,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             displayName: displayName,
             phoneNumber: phoneNumber,
             role: 'member',
+            blockedFromRsvp: false,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           };
