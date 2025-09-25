@@ -26,23 +26,33 @@ export function useReactions(commentId: string, collectionPath: string) {
   const [optimisticUpdates, setOptimisticUpdates] = useState<{[key: string]: string}>({});
   const debounceRef = useRef<{[key: string]: NodeJS.Timeout}>({});
 
-  // Load aggregated reaction counts from comment document
+  // Load reaction counts directly from reactions subcollection (temporary fix for Cloud Functions)
   useEffect(() => {
     if (!commentId || !collectionPath) return;
 
-    const commentRef = doc(db, collectionPath, commentId);
-    const unsubscribe = onSnapshot(commentRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        const aggregatedCounts = data.reactionSummary || {};
-        setReactionCounts(aggregatedCounts);
-        setLoading(false);
-      } else {
-        setReactionCounts({});
-        setLoading(false);
-      }
+    console.log('🔄 [useReactions] Setting up direct reaction count listener for:', { commentId, collectionPath });
+
+    const reactionsRef = collection(db, collectionPath, commentId, 'reactions');
+    const unsubscribe = onSnapshot(reactionsRef, (snapshot) => {
+      console.log('🔄 [useReactions] Direct reactions snapshot received:', { 
+        size: snapshot.size, 
+        docs: snapshot.docs.length 
+      });
+      
+      const counts: ReactionCounts = {};
+      snapshot.docs.forEach((doc) => {
+        const data = doc.data();
+        const emoji = data.emoji;
+        if (emoji) {
+          counts[emoji] = (counts[emoji] || 0) + 1;
+        }
+      });
+      
+      console.log('🔄 [useReactions] Calculated reaction counts:', counts);
+      setReactionCounts(counts);
+      setLoading(false);
     }, (error) => {
-      console.error('Error loading aggregated reactions:', error);
+      console.error('❌ [useReactions] Error loading direct reactions:', error);
       setLoading(false);
     });
 
@@ -127,18 +137,31 @@ export function useReactions(commentId: string, collectionPath: string) {
     // Debounced Firestore update
     debounceRef.current[compoundKey] = setTimeout(async () => {
       try {
+        console.log('🔥 [useReactions] Starting Firestore operation:', {
+          compoundKey,
+          emoji,
+          isCurrentlyReacted,
+          commentId,
+          collectionPath
+        });
+
         const reactionRef = doc(db, collectionPath, commentId, 'reactions', compoundKey);
+        console.log('🔥 [useReactions] Reaction ref created:', reactionRef.path);
         
         if (isCurrentlyReacted) {
           // Remove reaction
+          console.log('🔥 [useReactions] Removing reaction from Firestore');
           await deleteDoc(reactionRef);
+          console.log('✅ [useReactions] Reaction removed successfully');
         } else {
           // Add reaction
+          console.log('🔥 [useReactions] Adding reaction to Firestore');
           await setDoc(reactionRef, {
             userId: currentUser.id,
             emoji,
             createdAt: serverTimestamp()
           });
+          console.log('✅ [useReactions] Reaction added successfully');
         }
 
         // Clear optimistic update
@@ -148,8 +171,18 @@ export function useReactions(commentId: string, collectionPath: string) {
           return newUpdates;
         });
 
+        console.log('✅ [useReactions] Firestore operation completed successfully');
+
       } catch (error) {
-        console.error('Error updating reaction:', error);
+        console.error('❌ [useReactions] Error updating reaction:', error);
+        console.error('❌ [useReactions] Error details:', {
+          message: error.message,
+          code: error.code,
+          compoundKey,
+          emoji,
+          commentId,
+          collectionPath
+        });
         
         // Rollback optimistic update
         setUserReactions(prev => ({
@@ -164,7 +197,7 @@ export function useReactions(commentId: string, collectionPath: string) {
 
         toast.error('Failed to update reaction. Please try again.');
       }
-    }, 300); // 300ms debounce
+    }, 100); // 100ms debounce for faster testing
   }, [currentUser, commentId, collectionPath, userReactions, optimisticUpdates]);
 
   // Cleanup debounce timers on unmount

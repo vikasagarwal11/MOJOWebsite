@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 
 interface ReactionPickerProps {
   isOpen: boolean;
@@ -94,43 +93,73 @@ export const ReactionPicker: React.FC<ReactionPickerProps> = ({
     }
   }, [focusedIndex]);
 
+  // Only log when opening/closing to reduce noise
+  useEffect(() => {
+    if (isOpen) {
+      console.log('🎨 [ReactionPicker] Opening picker with', EMOJIS.length, 'emojis');
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  console.log('🎨 [ReactionPicker] Rendering picker with', EMOJIS.length, 'emojis');
-
   return createPortal(
-    <AnimatePresence>
-      <motion.div
-        ref={popoverRef}
-        initial={{ opacity: 0, scale: 0.8, y: 10 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.8, y: 10 }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="fixed z-[9999] bg-white border border-gray-200 rounded-xl shadow-xl p-3 flex space-x-2"
-        style={{ 
-          top: position.top, 
-          left: position.left, 
-          transform: 'translateX(-50%)' 
-        }}
-        role="menu"
-        aria-label="Reaction picker"
-      >
+    <div
+      ref={popoverRef}
+      className="fixed z-[9999] bg-white border border-gray-200 rounded-xl shadow-xl p-3 flex space-x-2"
+      style={{ 
+        top: position.top, 
+        left: position.left, 
+        transform: 'translateX(-50%)' 
+      }}
+      role="menu"
+      aria-label="Reaction picker"
+      onClick={(e) => {
+        console.log('🎨 [ReactionPicker] Container clicked!', e.target);
+      }}
+    >
+        {/* Test button to verify click functionality */}
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🎨 [ReactionPicker] TEST BUTTON CLICKED!');
+            onReaction('🧪');
+            onClose();
+          }}
+          className="text-xl p-2 rounded-full bg-red-100 border-2 border-red-300 mr-2"
+          title="Test button"
+        >
+          🧪
+        </button>
+        
         {EMOJIS.map((emoji, index) => (
           <button
             key={emoji}
-            ref={el => buttonRefs.current[index] = el}
-            onClick={() => {
-              console.log('🎨 [ReactionPicker] Emoji clicked!', {
-                emoji: emoji,
-                disabled: disabled
-              });
+            ref={el => {
+              buttonRefs.current[index] = el;
+              if (el) {
+                console.log('🎨 [ReactionPicker] Button rendered:', { emoji, index, element: el });
+              }
+            }}
+            onClick={(e) => {
+              console.log('🎨 [ReactionPicker] Button clicked!', { emoji, disabled });
+              e.preventDefault();
+              e.stopPropagation();
               if (!disabled) {
-                console.log('🎨 [ReactionPicker] Calling onReaction with:', emoji);
+                console.log('🎨 [ReactionPicker] Calling onReaction and onClose directly');
                 onReaction(emoji);
                 onClose();
               } else {
                 console.log('🎨 [ReactionPicker] Click ignored - disabled');
               }
+            }}
+            onMouseEnter={() => {
+              console.log('🎨 [ReactionPicker] Mouse entered button:', emoji);
+            }}
+            onMouseDown={(e) => {
+              console.log('🎨 [ReactionPicker] Mouse down on button:', emoji);
+              e.preventDefault();
+              e.stopPropagation();
             }}
             disabled={disabled}
             className={`
@@ -153,8 +182,7 @@ export const ReactionPicker: React.FC<ReactionPickerProps> = ({
             {emoji}
           </button>
         ))}
-      </motion.div>
-    </AnimatePresence>,
+    </div>,
     document.body
   );
 };

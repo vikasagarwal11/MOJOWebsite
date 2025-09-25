@@ -7,6 +7,7 @@ import CreateEventModal from '../components/events/CreateEventModal';
 import { useEvents } from '../hooks/useEvents';
 import { useRealTimeEvents } from '../hooks/useRealTimeEvents';
 import { useAuth } from '../contexts/AuthContext';
+import { EventsListSeo } from '../components/seo/EventsListSeo';
 // import { useUserBlocking } from '../hooks/useUserBlocking'; // For future RSVP blocking feature
 import { EventDoc } from '../hooks/useEvents';
 import { RSVPModalNew as RSVPModal } from '../components/events/RSVPModalNew';
@@ -256,6 +257,7 @@ const Events: React.FC = () => {
 
     return (
     <div className="max-w-7xl mx-auto p-6 pb-32">
+      <EventsListSeo events={upcomingEvents} />
       {/* Header Section */}
       <motion.div 
         className="flex items-start justify-between mb-6"

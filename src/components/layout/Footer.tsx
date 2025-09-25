@@ -49,12 +49,22 @@ const Footer: React.FC = () => {
               <li><Link to="/sponsors" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Sponsors</Link></li>
               <li><Link to="/contact" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Contact Us</Link></li>
               <li><Link to="/about" className="text-gray-300 hover:text-[#FF6B35] transition-colors">About Us</Link></li>
+              <li><Link to="/community-guidelines" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Community Guidelines</Link></li>
             </ul>
           </div>
         </div>
         
+        {/* Service Area */}
+        <div className="border-t border-gray-700 mt-12 pt-8">
+          <div className="text-center mb-4">
+            <p className="text-[#FF6B35] font-semibold">
+              Serving Short Hills, Millburn, Maplewood, Summit, Livingston & South Orange — open to all NJ moms
+            </p>
+          </div>
+        </div>
+        
         {/* Copyright */}
-        <div className="border-t border-gray-700 mt-12 pt-8 text-center">
+        <div className="border-t border-gray-700 mt-8 pt-8 text-center">
           <p className="text-gray-400">© 2025 Mom's Fitness Mojo. All rights reserved.</p>
         </div>
       </div>

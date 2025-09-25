@@ -4,13 +4,28 @@ import {
   Calendar,
   Instagram,
   Facebook,
-  Twitter,
   Linkedin,
   MapPin,
   CheckCircle,
   MessageCircle,
+  ChevronRight,
 } from 'lucide-react';
+import { Helmet } from 'react-helmet-async';
 import ContactFormModal from '../components/ContactFormModal';
+
+const Breadcrumbs: React.FC = () => (
+  <nav aria-label="Breadcrumb" className="px-4 sm:px-6 lg:px-16 mt-4">
+    <ol className="flex items-center gap-2 text-sm text-gray-600">
+      <li>
+        <a href="/" className="hover:text-[#F25129]">Home</a>
+      </li>
+      <li aria-hidden="true" className="text-gray-400">
+        <ChevronRight className="w-4 h-4" />
+      </li>
+      <li className="text-gray-900 font-medium">Founder</li>
+    </ol>
+  </nav>
+);
 
 const Founder: React.FC = () => {
   const [showContactModal, setShowContactModal] = useState(false);
@@ -19,102 +34,165 @@ const Founder: React.FC = () => {
     name: 'Aina Rai',
     title: 'Founder & CEO',
     subtitle: 'Moms Fitness Mojo',
-    image: '/images/founder-profile.jpg',
-    coverImage: '/images/founder-cover.jpg',
     location: 'Short Hills, NJ',
-    joined: 'January 2025',
+    joinedLabel: 'January 2025',
+    joinedISO: '2025-01-01',
     followers: '12.5K',
     following: '1.2K',
     posts: '856',
+    // Images: using existing JPGs for now, can add WebP later
+    coverJpg: '/images/founder-cover.jpg',
+    profileJpg: '/images/founder-profile.jpg',
+    ogImage: '/images/founder-profile.jpg', // Using existing image for OG
+    pageUrl: 'https://momfitnessmojo.web.app/founder',
+    orgUrl: 'https://momfitnessmojo.web.app/',
+    email: 'momsfitnessmojo@gmail.com',
+    socials: [
+      { Icon: Instagram, url: 'https://www.instagram.com/momsfitnessmojo/', label: 'Follow on Instagram' },
+      { Icon: Facebook,  url: 'https://www.facebook.com/momsfitnessmojo/',   label: 'Follow on Facebook'  },
+      { Icon: Linkedin,  url: 'https://www.linkedin.com/company/momsfitnessmojo/', label: 'Follow on LinkedIn' },
+    ],
   };
 
-  // Removed unused data arrays - keeping it simple
+  // --- JSON-LD ---
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'AboutPage',
+    name: 'Meet Our Founder — Aina Rai',
+    url: founderData.pageUrl,
+    primaryImageOfPage: founderData.profileJpg,
+    mainEntity: {
+      '@type': 'Person',
+      name: founderData.name,
+      jobTitle: founderData.title,
+      image: founderData.profileJpg,
+      worksFor: {
+        '@type': 'Organization',
+        name: 'Moms Fitness Mojo',
+        url: founderData.orgUrl,
+      },
+      address: {
+        '@type': 'PostalAddress',
+        addressLocality: 'Short Hills',
+        addressRegion: 'NJ',
+        addressCountry: 'US',
+      },
+      sameAs: founderData.socials.map(s => s.url),
+    },
+  };
 
-  const socialLinks = [
-    { icon: <Instagram className="w-5 h-5" />, url: '#', label: 'Instagram' },
-    { icon: <Facebook className="w-5 h-5" />, url: '#', label: 'Facebook' },
-    { icon: <Twitter className="w-5 h-5" />, url: '#', label: 'Twitter' },
-    { icon: <Linkedin className="w-5 h-5" />, url: '#', label: 'LinkedIn' },
-  ];
-
-  // Removed tabs - keeping it simple as a single page
+  const breadcrumbLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: founderData.orgUrl },
+      { '@type': 'ListItem', position: 2, name: 'Founder', item: founderData.pageUrl },
+    ],
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-amber-50">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden">
-        {/* Cover Image with Founder Photo Overlay */}
-        <div className="h-[500px] relative overflow-hidden pb-8 bg-gradient-to-br from-orange-100 to-red-100">
-          <img 
-            src={founderData.coverImage} 
-            alt="Founder cover"
-            className="w-full h-full object-contain"
-            onError={(e) => {
-              // Fallback to gradient if image fails to load
-              const target = e.target as HTMLImageElement;
-              target.style.display = 'none';
-              const fallback = target.nextElementSibling as HTMLElement;
-              if (fallback) fallback.style.display = 'block';
-            }}
+      {/* SEO */}
+      <Helmet>
+        <title>Meet Our Founder — Aina Rai | Moms Fitness Mojo</title>
+        <meta
+          name="description"
+          content="Aina Rai founded Moms Fitness Mojo to bring moms in Short Hills & Millburn, NJ together through fitness, friendship, and accountability."
+        />
+        <link rel="canonical" href={founderData.pageUrl} />
+
+        {/* Open Graph */}
+        <meta property="og:type" content="profile" />
+        <meta property="og:title" content="Aina Rai — Founder of Moms Fitness Mojo" />
+        <meta property="og:description" content="Empowering moms through fitness in Short Hills & Millburn, NJ." />
+        <meta property="og:url" content={founderData.pageUrl} />
+        <meta property="og:image" content={founderData.ogImage} />
+        <meta property="profile:first_name" content="Aina" />
+        <meta property="profile:last_name" content="Rai" />
+
+        {/* Twitter */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Aina Rai — Founder, Moms Fitness Mojo" />
+        <meta name="twitter:description" content="Fit, Fierce & Fabulous — Together." />
+        <meta name="twitter:image" content={founderData.ogImage} />
+
+        {/* JSON-LD */}
+        <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
+        <script type="application/ld+json">{JSON.stringify(breadcrumbLd)}</script>
+      </Helmet>
+
+      {/* Breadcrumbs */}
+      <Breadcrumbs />
+
+      {/* Hero */}
+      <div className="relative overflow-hidden mt-2">
+        {/* Make hero height responsive and not too tall on small screens */}
+        <div className="relative h-[250px] sm:h-[300px] lg:h-[350px] overflow-hidden bg-[#F25129]">
+          <picture>
+            <source media="(min-width:1024px)" srcSet="/images/founder-hero-2400x960.svg" type="image/svg+xml" />
+            <source media="(max-width:1023px)" srcSet="/images/founder-hero-1200x600.svg" type="image/svg+xml" />
+            <img
+              src="/images/founder-hero-2400x960.svg"
+              alt="Aina Rai with the Moms Fitness Mojo community"
+              className="absolute inset-0 h-full w-full object-cover select-none pointer-events-none"
+              width={2400}
+              height={960}
+              fetchPriority="high"
+            />
+          </picture>
+
+          {/* Subtle overlays for text readability */}
+          <div className="absolute inset-0 bg-black/20" aria-hidden="true"></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" aria-hidden="true"></div>
+
+          {/* Keep just one gentle decorative glow */}
+          <div
+            className="absolute top-16 right-16 w-28 h-28 bg-[#FF6B35]/25 rounded-full blur-xl"
+            aria-hidden="true"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#F25129] via-[#FF6B35] to-[#E0451F] hidden"></div>
-          <div className="absolute inset-0 bg-black/30"></div>
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent"></div>
           
-           {/* Hero Content */}
-           <div className="absolute bottom-8 left-8 lg:left-16 right-8 lg:right-16">
-             <div className="text-center lg:text-left">
-               <h1 className="text-4xl lg:text-6xl font-bold text-white mb-4 drop-shadow-2xl">
-                 Meet Our Founder
-               </h1>
-               <p className="text-xl lg:text-2xl text-white/90 mb-2 drop-shadow-lg">
-                 Empowering Moms Through Fitness
-               </p>
-               <p className="text-lg lg:text-xl text-white/80 drop-shadow-lg">
-                 Discover the story behind our community
-               </p>
-             </div>
-           </div>
-          
-          {/* Floating Elements */}
-          <div className="absolute top-10 left-10 w-20 h-20 bg-white/10 rounded-full blur-xl animate-pulse"></div>
-          <div className="absolute top-20 right-20 w-32 h-32 bg-[#FF6B35]/20 rounded-full blur-2xl animate-pulse delay-1000"></div>
-          <div className="absolute bottom-20 left-1/4 w-16 h-16 bg-[#E0451F]/20 rounded-full blur-xl animate-pulse delay-2000"></div>
+          {/* Hero copy (single visible H1 on page) */}
+          <div className="absolute bottom-8 left-8 lg:left-16 right-8 lg:right-16">
+            <div className="text-center lg:text-left">
+              <h1 className="text-4xl lg:text-6xl font-bold text-white mb-3 drop-shadow-2xl">
+                Meet Our Founder
+              </h1>
+              <p className="text-xl lg:text-2xl text-white/90 mb-1 drop-shadow-lg">
+                Empowering Moms Through Fitness
+              </p>
+              <p className="text-lg lg:text-xl text-white/80 drop-shadow-lg">
+                Discover the story behind our community
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Profile Card */}
         <div className="relative -mt-8 mx-4 sm:mx-8 lg:mx-16">
           <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
-            {/* Profile Header */}
+            {/* Header band */}
             <div className="relative p-8 pt-8 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white">
               <div className="flex flex-col lg:flex-row items-center lg:items-start gap-8">
-                {/* Large Profile Image */}
+                {/* Profile image */}
                 <div className="relative flex-shrink-0">
                   <div className="w-48 h-48 lg:w-56 lg:h-56 rounded-2xl bg-white/20 backdrop-blur-sm border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-2xl">
-                    <img 
-                      src={founderData.image} 
-                      alt={founderData.name}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        // Fallback to initials if image fails to load
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        const fallback = target.nextElementSibling as HTMLElement;
-                        if (fallback) fallback.style.display = 'flex';
-                      }}
+                    <img
+                      src={founderData.profileJpg}
+                      alt="Aina Rai, Founder of Moms Fitness Mojo"
+                      className="w-full h-full object-cover object-top rounded-2xl"
+                      width={560}
+                      height={560}
+                      loading="lazy"
                     />
-                    <div className="w-full h-full rounded-2xl bg-gradient-to-br from-[#FF6B35] to-[#E0451F] flex items-center justify-center text-6xl font-bold text-white hidden">
-                      AR
-                    </div>
                   </div>
                   <div className="absolute -bottom-3 -right-3 w-10 h-10 bg-green-500 rounded-full border-4 border-white flex items-center justify-center shadow-lg">
-                    <CheckCircle className="w-6 h-6 text-white" />
+                    <CheckCircle className="w-6 h-6 text-white" aria-hidden="true" />
                   </div>
                 </div>
 
-                {/* Profile Info */}
+                {/* Profile info */}
                 <div className="flex-1 text-center lg:text-left">
-                  <h1 className="text-3xl lg:text-4xl font-bold mb-2">{founderData.name}</h1>
+                  <h2 className="text-3xl lg:text-4xl font-bold mb-2">{founderData.name}</h2>
                   <p className="text-xl text-white/90 mb-1">{founderData.title}</p>
                   <p className="text-lg text-white/80 mb-4">{founderData.subtitle}</p>
                   
@@ -134,94 +212,131 @@ const Founder: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Location & Join Date */}
+                  {/* Location / joined */}
                   <div className="flex flex-wrap justify-center lg:justify-start gap-4 text-white/80">
                     <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4" />
-                      <span>{founderData.location}</span>
+                      <MapPin className="w-4 h-4" aria-hidden="true" />
+                      <address className="not-italic"> {founderData.location} </address>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      <span>Joined {founderData.joined}</span>
+                      <Calendar className="w-4 h-4" aria-hidden="true" />
+                      <time dateTime={founderData.joinedISO}>Joined {founderData.joinedLabel}</time>
                     </div>
                   </div>
                 </div>
 
-                {/* Action Buttons */}
+                {/* Actions */}
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <button 
-                    onClick={() => setShowContactModal(true)}
+                  {/* Button opens modal; anchor provides email fallback */}
+                  <a
+                    href={`mailto:${founderData.email}`}
+                    onClick={(e) => { e.preventDefault(); setShowContactModal(true); }}
                     className="px-6 py-3 bg-white text-[#F25129] rounded-full font-semibold hover:bg-white/90 transition-all duration-200 flex items-center gap-2"
                   >
-                    <MessageCircle className="w-4 h-4" />
+                    <MessageCircle className="w-4 h-4" aria-hidden="true" />
                     Message
-                  </button>
-                  <button className="px-6 py-3 bg-white/20 backdrop-blur-sm text-white rounded-full font-semibold hover:bg-white/30 transition-all duration-200 flex items-center gap-2">
-                    <Heart className="w-4 h-4" />
-                    Follow
-                  </button>
+                  </a>
+                  <a
+                    href="/register"
+                    className="px-6 py-3 bg-white/20 backdrop-blur-sm text-white rounded-full font-semibold hover:bg-white/30 transition-all duration-200 flex items-center gap-2"
+                  >
+                    <Heart className="w-4 h-4" aria-hidden="true" />
+                    Follow / Join
+                  </a>
                 </div>
               </div>
             </div>
 
-            {/* Bio Section */}
+            {/* Body */}
             <div className="p-8">
-              {/* Social Links */}
+              {/* Socials */}
               <div className="flex gap-4 mb-8">
-                {socialLinks.map((social, index) => (
+                {founderData.socials.map(({ Icon, url, label }) => (
                   <a
-                    key={index}
-                    href={social.url}
+                    key={url}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={label}
                     className="w-12 h-12 bg-gray-100 hover:bg-orange-100 rounded-full flex items-center justify-center transition-all duration-200 group"
-                    aria-label={social.label}
                   >
-                    <div className="text-gray-600 group-hover:text-[#F25129] transition-colors">
-                      {social.icon}
-                    </div>
+                    <Icon className="w-5 h-5 text-gray-600 group-hover:text-[#F25129]" aria-hidden="true" />
                   </a>
                 ))}
               </div>
 
-              {/* Aina's Story - Simple Single Page */}
-              <div className="space-y-8">
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-6">My Story</h3>
-                  <div className="prose prose-lg text-gray-700 max-w-none">
-                    <p className="mb-6 text-lg leading-relaxed">
-                      I'm Aina Rai, the heart behind Moms Fitness Mojo.
-                    </p>
-                    <p className="mb-6 text-lg leading-relaxed">
-                      When I became a parent and moved to the suburbs, I thought it would be easy to connect with other moms. Like most new parents, I joined groups, went to meetups, and tried to find my tribe. But every single conversation circled back to kids—nap times, diaper changes, feeding schedules. Don't get me wrong, I adore my children, but I found myself asking: Where am I in all of this? Where are the conversations about who I am as a person, not just as a mom?
-                    </p>
-                    <p className="mb-6 text-lg leading-relaxed">
-                      At the same time, I was on my own fitness journey. During pregnancy, I had gained weight, and I worked tirelessly—sometimes sneaking in workouts at 10 p.m.—to shed those pounds and reclaim my health. But I had no one to share those wins with. Sure, family would notice, but they couldn't fully understand the effort it took to juggle a full-time job, family, home, and still carve out time for myself. It felt like there was nowhere to brag about my achievements outside of work—because let's be real, staying fit, raising kids, and keeping your sanity is an achievement worth celebrating!
-                    </p>
-                    <p className="mb-6 text-lg leading-relaxed">
-                      So one day, I decided to create the space I was looking for. A place where moms could come together to: Talk about goals beyond nap times and snacks, Share fitness wins and celebrate progress, Connect as women, not just as mothers, Laugh, sweat, brunch, dance, and just be themselves.
-                    </p>
-                    <p className="mb-6 text-lg leading-relaxed">
-                      That's how Moms Fitness Mojo was born. And what started as a small idea has grown into a circle of moms who truly inspire one another. This group is more than workouts—it's about friendship, accountability, and rediscovering yourself.
-                    </p>
-                    <p className="mb-6 text-lg leading-relaxed">
-                      Outside of MFM, I'm a mom of two energetic little boys, a wife, and by profession a Technical Program Manager. I love fitness, socializing, and a good party—and through this community, I found a way to bring all of that back into my life while giving other moms the same opportunity. 
-                    </p>
-                    <p className="mb-6 text-lg leading-relaxed">
-                      Moms Fitness Mojo has been life-changing—for me and for so many of us. Together, we are <strong className="text-[#F25129]">Fit, Fierce & Fabulous.</strong>
-                    </p>
-                  </div>
+              {/* Story */}
+              <section aria-labelledby="story-heading" className="space-y-8">
+                <h3 id="story-heading" className="text-2xl font-bold text-gray-900 mb-6">
+                  My Story
+                </h3>
+                <div className="prose prose-lg text-gray-700 max-w-none">
+                  <p className="mb-6 text-lg leading-relaxed">
+                    I'm Aina Rai, the heart behind Moms Fitness Mojo.
+                  </p>
+                  <p className="mb-6 text-lg leading-relaxed">
+                    When I became a parent and moved to the suburbs, I thought it would be easy to connect with other moms. Like most new parents, I joined groups, went to meetups, and tried to find my tribe. But every single conversation circled back to kids—nap times, diaper changes, feeding schedules. I adore my children, but I found myself asking: Where am I in all of this? Where are the conversations about who I am as a person, not just as a mom?
+                  </p>
+                  <p className="mb-6 text-lg leading-relaxed">
+                    At the same time, I was on my own fitness journey. During pregnancy, I gained weight, and I worked tirelessly—sometimes sneaking in workouts at 10 p.m.—to reclaim my health. But I had no one to share those wins with. Sure, family would notice, but they couldn't fully understand the effort it took to juggle a full-time job, family, home, and still carve out time for myself.
+                  </p>
+                  <p className="mb-6 text-lg leading-relaxed">
+                    So I created the space I was looking for: a place where moms could come together to talk about goals beyond nap times, share fitness wins, celebrate progress, and connect as women—not just as mothers. Laugh, sweat, brunch, dance, and just be themselves.
+                  </p>
+                  <p className="mb-6 text-lg leading-relaxed">
+                    That's how Moms Fitness Mojo was born. What started as a small idea has grown into a <a href="/events" className="text-[#F25129] hover:underline font-medium">circle of moms who truly inspire one another</a>. This group is more than workouts—it's about friendship, accountability, and rediscovering yourself.
+                  </p>
+                  <p className="mb-6 text-lg leading-relaxed">
+                    Outside of MFM, I'm a mom of two energetic little boys, a wife, and a Technical Program Manager by profession. Through this community, I found a way to bring all of that back into my life while giving other moms the same opportunity. 
+                  </p>
+                  <p className="mb-6 text-lg leading-relaxed">
+                    Moms Fitness Mojo has been life-changing—for me and for so many of us. Together, we are <strong className="text-[#F25129]">Fit, Fierce & Fabulous.</strong>
+                  </p>
                 </div>
-              </div>
+
+                {/* Meetup Spots */}
+                <div className="bg-orange-50 rounded-xl p-6 my-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Where We Meet</h3>
+                  <p className="text-gray-700">
+                    <strong>Taylor Park • South Mountain Reservation • Reeves-Reed Arboretum • local partner gyms</strong>
+                  </p>
+                </div>
+                
+                {/* Accessibility */}
+                <div className="bg-blue-50 rounded-xl p-6 my-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Inclusive & Accessible</h3>
+                  <p className="text-gray-700">
+                    <strong>Beginner-friendly with postpartum/injury modifications; women-only options available; culturally respectful environment.</strong>
+                  </p>
+                </div>
+
+                {/* CTAs */}
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <a
+                    href="/events"
+                    className="px-6 py-3 rounded-full bg-[#F25129] text-white font-semibold hover:bg-[#E0451F] transition"
+                  >
+                    See Events
+                  </a>
+                  <a
+                    href="/register"
+                    className="px-6 py-3 rounded-full border border-[#F25129] text-[#F25129] font-semibold hover:bg-orange-50 transition"
+                  >
+                    Join the Community
+                  </a>
+                </div>
+              </section>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Contact Form Modal */}
+      {/* Contact Modal */}
       <ContactFormModal
         isOpen={showContactModal}
         onClose={() => setShowContactModal(false)}
         recipient={founderData.name}
-        recipientEmail="momsfitnessmojo@gmail.com"
+        recipientEmail={founderData.email}
         prefillSubject={`Message to ${founderData.name}`}
       />
     </div>
