@@ -19,6 +19,9 @@ import FamilyManagement from './pages/FamilyManagement';
 import Founder from './pages/Founder';
 import Contact from './pages/Contact';
 import About from './pages/About';
+import Reset from './pages/Reset';
+import Press from './pages/Press';
+import CommunityGuidelines from './pages/CommunityGuidelines';
 import AdminBulkAttendees from './pages/AdminBulkAttendees';
 import AdminCleanup from './pages/AdminCleanup';
 
@@ -86,6 +89,9 @@ function App() {
                 <Route path="founder" element={<Founder />} />
                 <Route path="contact" element={<Contact />} />
                 <Route path="about" element={<About />} />
+                <Route path="reset" element={<Reset />} />
+                <Route path="press" element={<Press />} />
+                <Route path="community-guidelines" element={<CommunityGuidelines />} />
               </Route>
             </Routes>
           </div>

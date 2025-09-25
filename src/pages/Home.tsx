@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import {
   Calendar,
   Users,
@@ -11,6 +12,8 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { ResponsiveLogo } from '../components/common/ResponsiveLogo';
+import { MicroWorkoutsSection } from '../components/home/MicroWorkoutsSection';
 
 const Home: React.FC = () => {
   const { currentUser } = useAuth();
@@ -63,69 +66,148 @@ const Home: React.FC = () => {
 
   return (
     <div className="space-y-16">
-             {/* Hero Section */}
-       <section className="relative overflow-hidden bg-[#F25129]">
-         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-          <div className="text-center space-y-8">
-                         <h1 className="text-4xl md:text-6xl font-bold text-white leading-tight">
-               Moms Fitness Mojo
-             </h1>
-                           <p className="text-xl md:text-2xl text-white max-w-3xl mx-auto leading-relaxed">
-                FIT, FIERCE, AND FABULOUS - TOGETHER</p>
-                <p className="text-xl md:text-2xl text-white max-w-3xl mx-auto leading-relaxed">
-                Empowering mothers to prioritize their health, connect with their community,
-                and find their fitness mojo in a supportive, understanding environment.
-              </p>
+      <Helmet>
+        <title>Moms Fitness Mojo | Millburn & Short Hills NJ Mom Fitness Events</title>
+        <meta name="description" content="Local mom fitness community in Millburn & Short Hills, NJ. Join events, classes, and a supportive community—fit, fierce, and fabulous together." />
+        <link rel="canonical" href="https://momfitnessmojo.web.app/" />
+        
+        {/* Open Graph */}
+        <meta property="og:type" content="website" />
+        <meta property="og:title" content="Moms Fitness Mojo - Millburn & Short Hills NJ Mom Fitness" />
+        <meta property="og:description" content="Join our mom fitness events and community in Millburn & Short Hills, NJ." />
+        <meta property="og:url" content="https://momfitnessmojo.web.app/" />
+        <meta property="og:image" content="https://momfitnessmojo.web.app/assets/logo/facebook-post.svg" />
+        
+        {/* Twitter Card */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Moms Fitness Mojo - Millburn & Short Hills NJ" />
+        <meta name="twitter:description" content="Fit, Fierce & Fabulous – Together." />
+        <meta name="twitter:image" content="https://momfitnessmojo.web.app/assets/logo/square-logo.svg" />
+        
+        {/* Structured Data */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": "Moms Fitness Mojo",
+            "url": "https://momfitnessmojo.web.app/",
+            "logo": "https://momfitnessmojo.web.app/assets/logo/mfm-logo.svg",
+            "sameAs": [
+              "https://www.instagram.com/momsfitnessmojo/",
+              "https://www.facebook.com/momsfitnessmojo/"
+            ],
+            "address": {
+              "@type": "PostalAddress",
+              "addressLocality": "Short Hills",
+              "addressRegion": "NJ",
+              "addressCountry": "US"
+            }
+          })}
+        </script>
+      </Helmet>
 
-                         {/* Primary hero actions */}
-             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-               {!isAuthed ? (
-                 <>
-                   <Link
-                     to="/register"
-                     className="px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                   >
-                     Join Our Community
-                   </Link>
-                                                                               <Link
-                       to="/events"
-                       className="px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                     >
-                       View Events
-                     </Link>
-                     <Link
-                       to="/media"
-                       className="px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                     >
-                       Explore Media
-                     </Link>
-                 </>
-               ) : (
+      {/* Hero Section */}
+      <section className="relative overflow-hidden bg-[#F25129]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-20">
+          <div className="text-center space-y-8">
+            {/* Visible H1 for SEO */}
+            <h1 className="text-4xl md:text-6xl font-bold text-white drop-shadow-lg">
+              Make time for <em className="text-orange-200">you</em>
+            </h1>
+            
+            {/* Subheadline */}
+            <p className="text-lg sm:text-xl md:text-2xl text-white/90 max-w-4xl mx-auto mb-8 drop-shadow-lg leading-relaxed">
+              Short, realistic fitness + lifestyle support for busy moms across <span className="hidden sm:inline">Short Hills, Millburn, Maplewood, Summit, Livingston & nearby NJ communities</span><span className="sm:hidden">Short Hills, Millburn & nearby NJ communities</span>—workouts, wellness tips, and a community that gets it.
+            </p>
+            
+            {/* Responsive Logo Component */}
+            <ResponsiveLogo variant="wide" priority />
+
+            {/* Primary hero actions */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              {!isAuthed ? (
                 <>
-                                     <Link
-                     to="/events"
-                     className="px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                   >
-                     View Events
-                   </Link>
-                                       <Link
-                      to="/media"
-                      className="px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                    >
-                      Explore Media
-                    </Link>
+                  <button
+                    onClick={() => document.getElementById('quick-wins')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  >
+                    Start with 10 minutes
+                  </button>
+                  <Link
+                    to="/events"
+                    className="px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  >
+                    See upcoming events
+                  </Link>
+                  <Link
+                    to="/media"
+                    className="px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  >
+                    Share your wins
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => document.getElementById('quick-wins')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  >
+                    Start with 10 minutes
+                  </button>
+                  <Link
+                    to="/events"
+                    className="px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  >
+                    See upcoming events
+                  </Link>
+                  <Link
+                    to="/media"
+                    className="px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  >
+                    Share your wins
+                  </Link>
                 </>
               )}
             </div>
           </div>
         </div>
 
-                 {/* Background decoration */}
-         <div className="absolute inset-0 -z-10">
-           <div className="absolute top-20 left-10 w-32 h-32 bg-[#FF6B35] rounded-full opacity-20 animate-pulse" />
-           <div className="absolute bottom-20 right-10 w-24 h-24 bg-[#FF8C42] rounded-full opacity-20 animate-pulse delay-1000" />
-           <div className="absolute top-1/2 left-1/4 w-16 h-16 bg-[#FFA500] rounded-full opacity-20 animate-pulse delay-2000" />
-         </div>
+        {/* Background decoration */}
+        <div className="absolute inset-0 -z-10">
+          <div className="absolute top-20 left-10 w-32 h-32 bg-[#FF6B35] rounded-full opacity-20 animate-pulse" />
+          <div className="absolute bottom-20 right-10 w-24 h-24 bg-[#FF8C42] rounded-full opacity-20 animate-pulse delay-1000" />
+          <div className="absolute top-1/2 left-1/4 w-16 h-16 bg-[#FFA500] rounded-full opacity-20 animate-pulse delay-2000" />
+        </div>
+      </section>
+
+      {/* Interactive Micro-Workouts Section */}
+      <MicroWorkoutsSection />
+
+      {/* How It Works Section */}
+      <section className="max-w-6xl mx-auto px-6 py-16">
+        <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6">How It Works</h2>
+        <ul className="grid md:grid-cols-2 gap-4 text-gray-700 mb-6">
+          <li className="flex items-start gap-3">
+            <span className="font-bold text-[#F25129] min-w-[3rem]">Mon:</span>
+            <span>5-minute stretch prompt (posted in app/site)</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <span className="font-bold text-[#F25129] min-w-[3rem]">Wed:</span>
+            <span>Stroller-friendly park walk (Taylor Park)</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <span className="font-bold text-[#F25129] min-w-[3rem]">Fri:</span>
+            <span>10-minute strength (bodyweight or light dumbbells)</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <span className="font-bold text-[#F25129] min-w-[3rem]">Sun:</span>
+            <span>Check-in thread—wins, struggles, accountability</span>
+          </li>
+        </ul>
+        <p className="mt-4 text-gray-700 text-lg">
+          Today, day-to-day chat happens in WhatsApp. We're moving mini-workouts, RSVPs,
+          member stories, and badges into this website so everything's easier to find.
+        </p>
       </section>
 
       {/* Features Section */}

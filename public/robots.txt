@@ -1,27 +1,19 @@
 User-agent: *
 Allow: /
-
-# Sitemap location
-Sitemap: https://momsfitnessmojo.com/sitemap.xml
+Sitemap: https://momfitnessmojo.web.app/sitemap.xml
 
 # Crawl-delay for respectful crawling
 Crawl-delay: 1
 
-# Allow all search engines to index the site
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
-# Disallow admin and private areas (if any)
+# Block admin and private areas
 Disallow: /admin/
-Disallow: /private/
 Disallow: /api/
+Disallow: /_next/
+Disallow: /static/
 
-# Allow media files for better indexing
-Allow: /images/
-Allow: /logo*
+# Allow important pages
+Allow: /events/
+Allow: /media/
+Allow: /posts/
+Allow: /founder/
+Allow: /lifestyle/

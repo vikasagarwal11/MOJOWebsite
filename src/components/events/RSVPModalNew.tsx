@@ -35,6 +35,7 @@ import { EventDetails } from './RSVPModalNew/components/EventDetails';
 import { AttendeeInputRowMemo } from './RSVPModalNew/components/AttendeeInputRow';
 import { QRCodeTab } from './QRCodeTab';
 import { PaymentSection } from './PaymentSection';
+import { WhosGoingTab } from './RSVPModalNew/components/WhosGoingTab';
 
 interface RSVPModalProps {
   event: EventDoc;
@@ -86,7 +87,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   const [isAddSectionCollapsed, setIsAddSectionCollapsed] = useState(false);
   const [showFamilyMembers, setShowFamilyMembers] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<'attendees' | 'qr'>('attendees');
+  const [activeTab, setActiveTab] = useState<'attendees' | 'qr' | 'whosGoing'>('attendees');
   const [familySizeInfo, setFamilySizeInfo] = useState<{ current: number; max: number; canAdd: boolean }>({ current: 0, max: 4, canAdd: true });
 
 
@@ -477,19 +478,32 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                     <Users className="w-4 h-4" />
                     Attendees
                   </button>
-                  {event.attendanceEnabled && (
-                    <button
-                      onClick={() => setActiveTab('qr')}
-                      className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                        activeTab === 'qr'
-                          ? 'bg-white text-[#F25129] shadow-sm'
+                  <button
+                    onClick={() => setActiveTab('qr')}
+                    disabled={!event.attendanceEnabled}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      activeTab === 'qr'
+                        ? 'bg-white text-[#F25129] shadow-sm'
+                        : !event.attendanceEnabled
+                          ? 'text-gray-400 cursor-not-allowed'
                           : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                    >
-                      <QrCode className="w-4 h-4" />
-                      QR Code
-                    </button>
-                  )}
+                    }`}
+                    title={!event.attendanceEnabled ? 'QR Code not activated for this event' : ''}
+                  >
+                    <QrCode className="w-4 h-4" />
+                    QR Code
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('whosGoing')}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      activeTab === 'whosGoing'
+                        ? 'bg-white text-[#F25129] shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    Who's Going
+                  </button>
                 </div>
               </div>
 
@@ -505,6 +519,25 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                         // Refresh event data when QR attendance is toggled
                         onAttendeeUpdate?.();
                       }}
+                    />
+                  </div>
+                ) : activeTab === 'qr' && !event.attendanceEnabled ? (
+                  <div className="p-6 text-center">
+                    <QrCode className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">QR Code Not Activated</h3>
+                    <p className="text-gray-600 mb-4">
+                      QR code functionality is not enabled for this event.
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      Contact an administrator to enable QR code features.
+                    </p>
+                  </div>
+                ) : activeTab === 'whosGoing' ? (
+                  <div className="p-6">
+                    <WhosGoingTab 
+                      event={event}
+                      attendees={attendees}
+                      isAdmin={isAdmin}
                     />
                   </div>
                 ) : isBlockedFromRSVP ? (
