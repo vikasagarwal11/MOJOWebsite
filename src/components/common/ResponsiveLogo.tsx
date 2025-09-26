@@ -1,12 +1,11 @@
-import React from 'react';
 
 type Variant = "square" | "wide";
 
 interface ResponsiveLogoProps {
   className?: string;
-  showSupportingText?: boolean;
   variant?: Variant;          // choose container aspect
   priority?: boolean;         // eager load when true (hero)
+  hiddenH1?: boolean;         // optional hidden H1 for SEO
 }
 
 /**
@@ -15,26 +14,21 @@ interface ResponsiveLogoProps {
  */
 export function ResponsiveLogo({
   className = "",
-  showSupportingText = true,
   variant = "wide",
   priority = true,
+  hiddenH1 = false,
 }: ResponsiveLogoProps) {
   // Container aspect based on variant
-  const aspect = variant === "square" ? "aspect-square" : "aspect-[1366/768]";
+  const aspect = variant === "square" ? "aspect-square" : "aspect-[4/3]";
   
   // Asset paths - these will be fingerprinted by the bundler
-  const logoSvg = "/assets/logo/mfm-logo.svg";
+  const logoSvg = "/assets/logo/mfm-logo-outline.svg";
   const logoPng1x = "/assets/logo/mfm-logo-800.png";
   const logoPng2x = "/assets/logo/mfm-logo-1600.png";
   const fallbackSvg = "/assets/logo/mfm-mark.svg";
 
   return (
     <div className={`mx-auto max-w-3xl md:max-w-4xl ${className}`}>
-      {/* Accessible heading for SEO, visually hidden */}
-      <h1 className="sr-only">
-        Moms Fitness Mojo – Fit, Fierce, and Fabulous – Together
-      </h1>
-
       <div className={`mx-auto ${aspect} w-72 sm:w-96 md:w-[28rem] lg:w-[36rem] xl:w-[40rem] max-w-full`}>
         <picture>
           {/* SVG as primary source for modern browsers */}
@@ -49,9 +43,9 @@ export function ResponsiveLogo({
             loading={priority ? "eager" : "lazy"}
             // Chrome hint for LCP image
             {...(priority ? { fetchpriority: "high" as any } : {})}
-            width={1366} 
-            height={768} 
-            className="h-full w-full object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.25)] select-none pointer-events-none"
+            width={800} 
+            height={600} 
+            className="h-full w-full object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.25)] select-none pointer-events-none safari-logo-fix"
             draggable={false}
             onError={(e) => { 
               // Final fallback to mark SVG
@@ -61,11 +55,28 @@ export function ResponsiveLogo({
         </picture>
       </div>
 
-      {showSupportingText && (
-        <p className="mt-3 text-sm sm:text-base md:text-lg text-white/85 max-w-3xl mx-auto text-center">
-          Empowering mothers to prioritize their health, connect, and find their fitness mojo in a supportive environment.
-        </p>
+      {/* Optional accessible heading for SEO, visually hidden */}
+      {hiddenH1 && (
+        <h1 className="sr-only">
+          Moms Fitness Mojo – Fit, Fierce, and Fabulous – Together
+        </h1>
       )}
+
+      {/* Visible H1 for SEO & accessibility */}
+      <h1 className="text-3xl md:text-4xl font-bold text-white drop-shadow-lg mt-6">
+        Moms Fitness Mojo — Fitness, Friendship & Lifestyle for NJ Moms
+      </h1>
+
+      <div className="mt-4 text-sm sm:text-base md:text-lg text-white/90 max-w-4xl mx-auto text-center leading-relaxed space-y-4">
+        <p>
+          Moms Fitness Mojo is more than a moms fitness group — it's a lifestyle and a circle of strength for moms. We bring together health, wellness, and fun while balancing family, careers, and social life.
+        </p>
+        
+        <p>
+          From fitness activities and events like workouts, hikes, tennis, dance, and active meetups to social events like brunches, dinners, cocktail nights, and celebrating festivals together — it's where fitness meets friendship.
+        </p>
+        
+      </div>
     </div>
   );
 }
