@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Dumbbell, Mail, MapPin, Phone } from 'lucide-react';
+import { Mail, MapPin, Phone } from 'lucide-react';
 
 const Footer: React.FC = () => {
   return (
@@ -18,11 +18,11 @@ const Footer: React.FC = () => {
             <div className="space-y-2 text-sm text-gray-300">
               <div className="flex items-center">
                 <Mail className="w-4 h-4 mr-2" />
-                momsfitnessmojo@gmail.com
+                <a href="mailto:momsfitnessmojo@gmail.com" className="hover:underline">momsfitnessmojo@gmail.com</a>
               </div>
               <div className="flex items-center">
                 <Phone className="w-4 h-4 mr-2" />
-                (555) 123-4567
+                <a href="tel:+15551234567" className="hover:underline">(555) 123-4567</a>
               </div>
               <div className="flex items-center">
                 <MapPin className="w-4 h-4 mr-2" />
@@ -56,16 +56,17 @@ const Footer: React.FC = () => {
         
         {/* Service Area */}
         <div className="border-t border-gray-700 mt-12 pt-8">
-          <div className="text-center mb-4">
-            <p className="text-[#FF6B35] font-semibold">
-              Serving Short Hills, Millburn, Maplewood, Summit, Livingston & South Orange — open to all NJ moms
+          {/* SEO Footer */}
+          <div className="text-center">
+            <p className="text-sm text-gray-400">
+              Moms Fitness Mojo | Moms Fitness, Lifestyle & Events | Short Hills • Millburn • Maplewood • Summit • Livingston • New Jersey
             </p>
           </div>
         </div>
         
         {/* Copyright */}
         <div className="border-t border-gray-700 mt-8 pt-8 text-center">
-          <p className="text-gray-400">© 2025 Mom's Fitness Mojo. All rights reserved.</p>
+          <p className="text-gray-400">© 2025 Moms Fitness Mojo. All rights reserved.</p>
         </div>
       </div>
     </footer>
