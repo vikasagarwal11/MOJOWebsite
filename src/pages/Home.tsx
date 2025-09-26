@@ -22,27 +22,27 @@ const Home: React.FC = () => {
   const features = [
     {
       icon: <Calendar className="w-8 h-8" />,
-      title: 'Fitness Events',
+      title: 'Fun Fitness That Fits Your Life',
       description:
-        'Join our regular fitness classes, workshops, and wellness events designed for busy moms.',
+        'From hikes, tennis, and dance sessions to weekly fitness challenges, we make working out fun and motivating.',
     },
     {
       icon: <Users className="w-8 h-8" />,
-      title: 'Supportive Community',
+      title: 'Social Vibes, Not Just Sweat',
       description:
-        'Connect with like-minded mothers who understand the challenges of balancing family and fitness.',
+        'Brunches, dinners, cocktail nights, and glamorous galas where moms connect, laugh, and celebrate together.',
     },
     {
       icon: <Camera className="w-8 h-8" />,
-      title: 'Share Your Journey',
+      title: 'Accountability & Inspiration',
       description:
-        'Upload photos and videos of your fitness progress and celebrate milestones together.',
+        'A circle of moms who keep each other on track, share progress, and cheer every milestone—big or small.',
     },
     {
       icon: <Heart className="w-8 h-8" />,
-      title: 'Wellness Focus',
+      title: 'Not in your area',
       description:
-        'Holistic approach to health including mental wellness, nutrition, and self-care.',
+        'Currently in Short Hills, Millburn, Livingston, Summit, Maplewood & Springfield — and expanding. Reach out and let’s bring Moms Fitness Mojo to you!',
     },
   ];
 
@@ -68,33 +68,38 @@ const Home: React.FC = () => {
     <div className="space-y-16">
       <Helmet>
         <title>Moms Fitness Mojo | Millburn & Short Hills NJ Mom Fitness Events</title>
-        <meta name="description" content="Local mom fitness community in Millburn & Short Hills, NJ. Join events, classes, and a supportive community—fit, fierce, and fabulous together." />
-        <link rel="canonical" href="https://momfitnessmojo.web.app/" />
+        <meta name="description" content="Moms Fitness Mojo - Fitness, Friendship & Lifestyle for Moms in NJ. Join our supportive community in Short Hills, Millburn, Maplewood, Summit & nearby NJ towns for workouts, events, and wellness." />
+        <link rel="canonical" href="https://momsfitnessmojo.web.app/" />
         
         {/* Open Graph */}
         <meta property="og:type" content="website" />
         <meta property="og:title" content="Moms Fitness Mojo - Millburn & Short Hills NJ Mom Fitness" />
-        <meta property="og:description" content="Join our mom fitness events and community in Millburn & Short Hills, NJ." />
-        <meta property="og:url" content="https://momfitnessmojo.web.app/" />
-        <meta property="og:image" content="https://momfitnessmojo.web.app/assets/logo/facebook-post.svg" />
+        <meta property="og:description" content="Moms Fitness Mojo - Fitness, Friendship & Lifestyle for Moms in NJ. Join our supportive community for workouts, events, and wellness." />
+        <meta property="og:url" content="https://momsfitnessmojo.web.app/" />
+        <meta property="og:image" content="https://momsfitnessmojo.web.app/assets/logo/facebook-post.svg" />
         
         {/* Twitter Card */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="Moms Fitness Mojo - Millburn & Short Hills NJ" />
-        <meta name="twitter:description" content="Fit, Fierce & Fabulous – Together." />
-        <meta name="twitter:image" content="https://momfitnessmojo.web.app/assets/logo/square-logo.svg" />
+        <meta name="twitter:description" content="Moms Fitness Mojo - Fitness, Friendship & Lifestyle for Moms in NJ. Join our supportive community for workouts, events, and wellness." />
+        <meta name="twitter:image" content="https://momsfitnessmojo.web.app/assets/logo/square-logo.svg" />
         
         {/* Structured Data */}
         <script type="application/ld+json">
           {JSON.stringify({
             "@context": "https://schema.org",
-            "@type": "Organization",
+            "@type": "CommunityOrganization",
             "name": "Moms Fitness Mojo",
-            "url": "https://momfitnessmojo.web.app/",
-            "logo": "https://momfitnessmojo.web.app/assets/logo/mfm-logo.svg",
+            "url": "https://momsfitnessmojo.web.app/",
+            "logo": "https://momsfitnessmojo.web.app/assets/logo/mfm-logo-outline.svg",
             "sameAs": [
               "https://www.instagram.com/momsfitnessmojo/",
               "https://www.facebook.com/momsfitnessmojo/"
+            ],
+            "foundingDate": "2025",
+            "areaServed": [
+              "Short Hills, NJ", "Millburn, NJ", "Maplewood, NJ",
+              "Summit, NJ", "Livingston, NJ", "South Orange, NJ"
             ],
             "address": {
               "@type": "PostalAddress",
@@ -108,20 +113,10 @@ const Home: React.FC = () => {
 
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-[#F25129]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-20">
-          <div className="text-center space-y-8">
-            {/* Visible H1 for SEO */}
-            <h1 className="text-4xl md:text-6xl font-bold text-white drop-shadow-lg">
-              Make time for <em className="text-orange-200">you</em>
-            </h1>
-            
-            {/* Subheadline */}
-            <p className="text-lg sm:text-xl md:text-2xl text-white/90 max-w-4xl mx-auto mb-8 drop-shadow-lg leading-relaxed">
-              Short, realistic fitness + lifestyle support for busy moms across <span className="hidden sm:inline">Short Hills, Millburn, Maplewood, Summit, Livingston & nearby NJ communities</span><span className="sm:hidden">Short Hills, Millburn & nearby NJ communities</span>—workouts, wellness tips, and a community that gets it.
-            </p>
-            
-            {/* Responsive Logo Component */}
-            <ResponsiveLogo variant="wide" priority />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-8 md:pt-6 md:pb-12">
+          <div className="text-center space-y-6">
+            {/* Responsive Logo Component with H1 */}
+            <ResponsiveLogo variant="wide" priority hiddenH1={false} />
 
             {/* Primary hero actions */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -183,32 +178,6 @@ const Home: React.FC = () => {
       {/* Interactive Micro-Workouts Section */}
       <MicroWorkoutsSection />
 
-      {/* How It Works Section */}
-      <section className="max-w-6xl mx-auto px-6 py-16">
-        <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6">How It Works</h2>
-        <ul className="grid md:grid-cols-2 gap-4 text-gray-700 mb-6">
-          <li className="flex items-start gap-3">
-            <span className="font-bold text-[#F25129] min-w-[3rem]">Mon:</span>
-            <span>5-minute stretch prompt (posted in app/site)</span>
-          </li>
-          <li className="flex items-start gap-3">
-            <span className="font-bold text-[#F25129] min-w-[3rem]">Wed:</span>
-            <span>Stroller-friendly park walk (Taylor Park)</span>
-          </li>
-          <li className="flex items-start gap-3">
-            <span className="font-bold text-[#F25129] min-w-[3rem]">Fri:</span>
-            <span>10-minute strength (bodyweight or light dumbbells)</span>
-          </li>
-          <li className="flex items-start gap-3">
-            <span className="font-bold text-[#F25129] min-w-[3rem]">Sun:</span>
-            <span>Check-in thread—wins, struggles, accountability</span>
-          </li>
-        </ul>
-        <p className="mt-4 text-gray-700 text-lg">
-          Today, day-to-day chat happens in WhatsApp. We're moving mini-workouts, RSVPs,
-          member stories, and badges into this website so everything's easier to find.
-        </p>
-      </section>
 
       {/* Features Section */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
