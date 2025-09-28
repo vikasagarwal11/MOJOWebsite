@@ -109,13 +109,15 @@ const Founder: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Page H1 for accessibility */}
-        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6">Meet Our Founder</h1>
+        <div className="text-center mb-12">
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">Meet Our Founder</h1>
+        </div>
         
         {/* Profile Card */}
         <div className="relative">
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
           {/* Header band */}
-          <div className="relative p-8 pt-8 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white">
+          <div className="relative p-8 pt-8 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white">
             <div className="flex flex-col lg:flex-row items-center lg:items-start gap-8">
               {/* Profile image */}
               <div className="relative flex-shrink-0">
@@ -238,21 +240,8 @@ const Founder: React.FC = () => {
                 </p>
               </div>
 
-              {/* Meetup Spots */}
-              <div className="bg-orange-50 rounded-xl p-6 my-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">Where We Meet</h3>
-                <p className="text-gray-700">
-                  <strong>Taylor Park • South Mountain Reservation • Reeves-Reed Arboretum • local partner gyms</strong>
-                </p>
-              </div>
-              
-              {/* Accessibility */}
-              <div className="bg-blue-50 rounded-xl p-6 my-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">Inclusive & Accessible</h3>
-                <p className="text-gray-700">
-                  <strong>Beginner-friendly with postpartum/injury modifications; women-only options available; culturally respectful environment.</strong>
-                </p>
-              </div>
+
+
 
               {/* CTAs */}
               <div className="mt-4 flex flex-wrap gap-3">

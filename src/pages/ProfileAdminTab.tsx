@@ -323,7 +323,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                 setEventToEdit(null);
                 setIsCreateModalOpen(true);
               }}
-              className="px-4 py-2 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white rounded-full hover:from-[#E0451F] hover:to-[#E55A2B]"
+              className="px-4 py-2 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white rounded-full hover:from-[#E0451F] hover:to-[#E55A2B]"
               aria-label="Create new event"
             >
               Create New Event
@@ -356,7 +356,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                     className={`space-y-4 p-4 rounded-lg ${
                       index % 2 === 0 
                         ? 'bg-orange-50/50 border-l-4 border-orange-200' 
-                        : 'bg-[#FF6B35]/10 border-l-4 border-[#FF6B35]/30'
+                        : 'bg-[#FFC107]/10 border-l-4 border-[#FFC107]/30'
                     }`}
                   >
                     <EventCardNew

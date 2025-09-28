@@ -79,13 +79,13 @@ const Header: React.FC = () => {
     : undefined;
 
   return (
-    <header className="bg-white/90 backdrop-blur-lg border-b border-[#F25129]/20 sticky top-0 z-50">
+    <header className="bg-[#F25129] backdrop-blur-lg border-b border-[#F25129]/30 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Row: Brand | Center nav | User area */}
         <div className="flex items-center gap-4 h-16">
           {/* Brand */}
           <Link to="/" className="flex items-center gap-3 shrink-0">
-            <img src="/logo.png" alt="Moms Fitness Mojo" className="h-12 w-12 rounded-full object-cover" />
+            <img src="/assets/logo/logo 500X500 no text.svg" alt="Moms Fitness Mojo" className="h-12 w-12 object-contain" />
           </Link>
 
           {/* Center nav (kept stable; user area won’t push this) */}
@@ -97,8 +97,8 @@ const Header: React.FC = () => {
                   to={item.href}
                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                     isActive(item.href)
-                      ? 'bg-[#F25129]/10 text-[#F25129]'
-                      : 'text-gray-700 hover:text-[#F25129] hover:bg-[#F25129]/10'
+                      ? 'bg-white/20 text-white'
+                      : 'text-white/90 hover:text-white hover:bg-white/10'
                   }`}
                 >
                   {item.name}
@@ -120,7 +120,7 @@ const Header: React.FC = () => {
                   aria-controls="user-menu"
                   title={`${displayName}${email ? `\n${email}` : ''}`}
                 >
-                  <div className="w-9 h-9 rounded-full overflow-hidden ring-1 ring-[#F25129]/30 bg-gradient-to-br from-[#F25129] to-[#FF6B35] flex items-center justify-center">
+                  <div className="w-9 h-9 rounded-full overflow-hidden ring-1 ring-[#F25129]/30 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center">
                     {avatarSrc ? (
                       <img src={avatarSrc} alt={displayName} className="w-full h-full object-cover" />
                     ) : (
@@ -140,7 +140,7 @@ const Header: React.FC = () => {
                   >
                     <div className="px-4 py-3 border-b">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full overflow-hidden ring-1 ring-[#F25129]/30 bg-gradient-to-br from-[#F25129] to-[#FF6B35] flex items-center justify-center">
+                        <div className="w-9 h-9 rounded-full overflow-hidden ring-1 ring-[#F25129]/30 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center">
                           {avatarSrc ? (
                             <img src={avatarSrc} alt={displayName} className="w-full h-full object-cover" />
                           ) : (
@@ -191,15 +191,15 @@ const Header: React.FC = () => {
               <div className="flex items-center gap-3">
                 <Link
                   to="/login"
-                  className="px-4 py-2 text-sm font-medium text-[#F25129] hover:text-[#E0451F] transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-white/90 hover:text-white transition-colors"
                 >
                   Login
                 </Link>
                 <Link
                   to="/register"
-                  className="px-4 py-2 text-sm font-medium bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-200"
+                  className="px-4 py-2 text-sm font-medium bg-white text-[#F25129] rounded-lg hover:bg-gray-100 transition-all duration-200 border border-white/20"
                 >
-                  Join Us
+                  Join MOJO
                 </Link>
               </div>
             )}
@@ -208,7 +208,7 @@ const Header: React.FC = () => {
           {/* Mobile menu button */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden p-2 rounded-lg text-gray-700 hover:bg-[#F25129]/10 transition-colors ml-auto"
+            className="md:hidden p-2 rounded-lg text-white/90 hover:bg-white/10 transition-colors ml-auto"
             aria-label="Toggle menu"
             aria-expanded={isMobileMenuOpen}
           >
@@ -218,7 +218,7 @@ const Header: React.FC = () => {
 
         {/* Mobile Navigation */}
         {isMobileMenuOpen && (
-          <div className="md:hidden border-t border-[#F25129]/20 py-4">
+          <div className="md:hidden border-t border-white/20 py-4">
             <div className="flex flex-col space-y-2">
               {navigation.map((item) => (
                 <Link
@@ -227,8 +227,8 @@ const Header: React.FC = () => {
                   onClick={() => setIsMobileMenuOpen(false)}
                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                     isActive(item.href)
-                      ? 'bg-[#F25129]/10 text-[#F25129]'
-                      : 'text-gray-700 hover:text-[#F25129] hover:bg-[#F25129]/10'
+                      ? 'bg-white/20 text-white'
+                      : 'text-white/90 hover:text-white hover:bg-white/10'
                   }`}
                 >
                   {item.name}
@@ -238,7 +238,7 @@ const Header: React.FC = () => {
               {currentUser ? (
                 <div className="pt-4 border-t border-[#F25129]/20 mt-4">
                   <div className="flex items-center gap-3 px-3 py-2">
-                    <div className="w-8 h-8 rounded-full overflow-hidden ring-1 ring-[#F25129]/30 bg-gradient-to-br from-[#F25129] to-[#FF6B35] flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-full overflow-hidden ring-1 ring-[#F25129]/30 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center">
                       {avatarSrc ? (
                         <img src={avatarSrc} alt={displayName} className="w-full h-full object-cover" />
                       ) : (
@@ -285,9 +285,9 @@ const Header: React.FC = () => {
                   <Link
                     to="/register"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="block px-3 py-2 text-sm font-medium bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-200"
+                    className="block px-3 py-2 text-sm font-medium bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-200"
                   >
-                    Join Us
+                    Join MOJO
                   </Link>
                 </div>
               )}

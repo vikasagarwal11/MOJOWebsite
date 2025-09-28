@@ -282,7 +282,7 @@ const Register: React.FC = () => {
       <div className="max-w-md w-full">
         <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl p-8 border border-[#F25129]/20">
           <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent leading-relaxed pb-1">
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1">
               Join Our Community
             </h2>
             <p className="text-gray-600 mt-2">
@@ -359,7 +359,7 @@ const Register: React.FC = () => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-medium hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-medium hover:from-[#E0451F] hover:to-[#E5A900] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading ? 'Sending Code...' : 'Send Verification Code'}
               </button>
@@ -413,7 +413,7 @@ const Register: React.FC = () => {
                   <button
                     type="submit"
                     disabled={isLoading || timeLeft === 0}
-                    className="flex-1 py-3 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-medium hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 py-3 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-medium hover:from-[#E0451F] hover:to-[#E5A900] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? 'Verifying...' : timeLeft === 0 ? 'Code Expired' : 'Create Account'}
                   </button>

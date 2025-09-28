@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Helmet } from 'react-helmet-async';
-import { Heart, Shield, Eye, AlertTriangle, Mail, ShieldAlert, Megaphone, X } from 'lucide-react';
+import { Heart, Shield, Eye, AlertTriangle, Mail, ShieldAlert, Megaphone } from 'lucide-react';
 
 const CommunityGuidelines: React.FC = () => {
-  const [showContactModal, setShowContactModal] = useState(false);
 
   const guidelines = [
     {
@@ -54,13 +53,32 @@ const CommunityGuidelines: React.FC = () => {
     '@context': 'https://schema.org',
     '@type': 'WebPage',
     name: 'Community Guidelines - Moms Fitness Mojo',
-    url: 'https://momfitnessmojo.web.app/community-guidelines',
+    url: 'https://momsfitnessmojo.web.app/community-guidelines',
     description: 'Community guidelines and safety rules for Moms Fitness Mojo members',
     mainEntity: {
       '@type': 'Organization',
       name: 'Moms Fitness Mojo',
       email: 'momsfitnessmojo@gmail.com'
     }
+  };
+
+  const breadcrumbLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Home',
+        item: 'https://momsfitnessmojo.web.app/'
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Community Guidelines',
+        item: 'https://momsfitnessmojo.web.app/community-guidelines'
+      }
+    ]
   };
 
   return (
@@ -71,18 +89,21 @@ const CommunityGuidelines: React.FC = () => {
           name="description"
           content="Our positive, privacy-first rules to keep Moms Fitness Mojo welcoming and safe."
         />
-        <link rel="canonical" href="https://momfitnessmojo.web.app/community-guidelines" />
+        <link rel="canonical" href="https://momsfitnessmojo.web.app/community-guidelines" />
         <meta property="og:title" content="Community Guidelines | Moms Fitness Mojo" />
         <meta property="og:description" content="Our positive, privacy-first rules to keep Moms Fitness Mojo welcoming and safe." />
-        <meta property="og:url" content="https://momfitnessmojo.web.app/community-guidelines" />
+        <meta property="og:url" content="https://momsfitnessmojo.web.app/community-guidelines" />
         <meta property="og:type" content="website" />
+        <meta name="date" content="2025-09-01" />
+        <meta property="article:modified_time" content="2025-09-01" />
         <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
+        <script type="application/ld+json">{JSON.stringify(breadcrumbLd)}</script>
       </Helmet>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">
             Community Guidelines
           </h1>
           <p className="text-sm text-gray-500 mt-2">Last updated: September 2025</p>
@@ -117,22 +138,8 @@ const CommunityGuidelines: React.FC = () => {
           ))}
         </div>
 
-        {/* Emergency Disclaimer */}
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 mb-8">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" aria-hidden="true" />
-            <div>
-              <h3 className="text-lg font-semibold text-red-900 mb-2">Emergency Notice</h3>
-              <p className="text-red-800">
-                <strong>If you're in immediate danger or a medical emergency, call 911.</strong> 
-                These guidelines are for community management, not emergency response.
-              </p>
-            </div>
-          </div>
-        </div>
-
         {/* Additional Info */}
-        <div className="bg-gradient-to-r from-[#F25129] to-[#FF6B35] rounded-2xl p-8 text-white">
+        <div className="bg-gradient-to-r from-[#F25129] to-[#FFC107] rounded-2xl p-8 text-white">
           <h2 className="text-2xl font-bold mb-4">Questions or Concerns?</h2>
           <p className="text-white/90 mb-6">
             Our community moderators are here to help. Use our contact form below if you have questions about these guidelines or need support.
@@ -145,13 +152,6 @@ const CommunityGuidelines: React.FC = () => {
               <Mail className="w-5 h-5" aria-hidden="true" />
               Contact Us
             </a>
-            <button
-              onClick={() => setShowContactModal(true)}
-              className="inline-flex items-center gap-2 px-6 py-3 border-2 border-white text-white rounded-xl font-semibold hover:bg-white hover:text-[#F25129] transition-colors"
-            >
-              <Mail className="w-5 h-5" aria-hidden="true" />
-              Report a Concern
-            </button>
             <a
               href="/events"
               className="inline-flex items-center gap-2 px-6 py-3 border-2 border-white text-white rounded-xl font-semibold hover:bg-white hover:text-[#F25129] transition-colors"
@@ -173,40 +173,6 @@ const CommunityGuidelines: React.FC = () => {
         </div>
       </div>
 
-      {/* Contact Modal */}
-      {showContactModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">Report a Concern</h3>
-              <button
-                onClick={() => setShowContactModal(false)}
-                className="p-2 rounded-lg hover:bg-gray-100"
-                aria-label="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <p className="text-gray-600 mb-6">
-              We take all reports seriously. Please use our contact form to report any concerns about community guidelines violations.
-            </p>
-            <div className="flex gap-3">
-              <a
-                href="/contact"
-                className="flex-1 px-4 py-2 bg-[#F25129] text-white rounded-lg font-semibold text-center hover:bg-[#E0451F] transition-colors"
-              >
-                Go to Contact Form
-              </a>
-              <button
-                onClick={() => setShowContactModal(false)}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

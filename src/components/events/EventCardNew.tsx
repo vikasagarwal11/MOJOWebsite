@@ -468,7 +468,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
              />
            ) : (
-             <div className="w-full h-full bg-gradient-to-br from-[#F25129]/10 to-[#FF6B35]/10 flex items-center justify-center">
+             <div className="w-full h-full bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 flex items-center justify-center">
                <Calendar className="w-8 h-8 text-[#F25129]/60" />
              </div>
            )}

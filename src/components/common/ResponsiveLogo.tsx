@@ -1,4 +1,3 @@
-
 type Variant = "square" | "wide";
 
 interface ResponsiveLogoProps {
@@ -18,11 +17,11 @@ export function ResponsiveLogo({
   priority = true,
   hiddenH1 = false,
 }: ResponsiveLogoProps) {
-  // Container aspect based on variant
-  const aspect = variant === "square" ? "aspect-square" : "aspect-[4/3]";
+  // Container aspect based on variant - optimized for logo with text
+  const aspect = variant === "square" ? "aspect-square" : "aspect-[3/2]";
   
   // Asset paths - these will be fingerprinted by the bundler
-  const logoSvg = "/assets/logo/mfm-logo-outline.svg";
+  const logoSvg = "/assets/logo/mfm-logo-new-hero.svg";
   const logoPng1x = "/assets/logo/mfm-logo-800.png";
   const logoPng2x = "/assets/logo/mfm-logo-1600.png";
   const fallbackSvg = "/assets/logo/mfm-mark.svg";
@@ -62,12 +61,7 @@ export function ResponsiveLogo({
         </h1>
       )}
 
-      {/* Visible H1 for SEO & accessibility */}
-      <h1 className="text-3xl md:text-4xl font-bold text-white drop-shadow-lg mt-6">
-        Moms Fitness Mojo — Fitness, Friendship & Lifestyle for NJ Moms
-      </h1>
-
-      <div className="mt-4 text-sm sm:text-base md:text-lg text-white/90 max-w-4xl mx-auto text-center leading-relaxed space-y-4">
+      <div className="mt-2 text-sm sm:text-base md:text-lg text-white/90 max-w-4xl mx-auto text-center leading-relaxed space-y-4">
         <p>
           Moms Fitness Mojo is more than a moms fitness group — it's a lifestyle and a circle of strength for moms. We bring together health, wellness, and fun while balancing family, careers, and social life.
         </p>
@@ -80,4 +74,3 @@ export function ResponsiveLogo({
     </div>
   );
 }
-

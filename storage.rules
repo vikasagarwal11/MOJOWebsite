@@ -57,6 +57,30 @@ service firebase.storage {
                    && isImage();
     }
     
+    // =========================
+    // Post images (members and admins): posts/{...}
+    // =========================
+    match /posts/{fileName=**} {
+      allow read: if true;
+      allow write: if isSignedIn()
+                   && (request.resource.size < 10 * 1024 * 1024) // < 10MB
+                   && (request.resource.contentType.matches('image/.*')
+                       || request.resource.contentType.matches('video/.*'));
+      allow delete: if isSignedIn() && isAdmin(); // Only admins can delete post images
+    }
+    
+    // =========================
+    // Misc files (for existing posts that might have been stored there): misc/{...}
+    // =========================
+    match /misc/{fileName=**} {
+      allow read: if true;
+      allow write: if isSignedIn()
+                   && (request.resource.size < 10 * 1024 * 1024) // < 10MB
+                   && (request.resource.contentType.matches('image/.*')
+                       || request.resource.contentType.matches('video/.*'));
+      allow delete: if isSignedIn() && isAdmin(); // Only admins can delete misc files
+    }
+    
     // Fallback: deny anything not matched above
     match /{path=**} {
       allow read, write: if false;

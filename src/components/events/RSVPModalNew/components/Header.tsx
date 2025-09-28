@@ -54,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
   if (isCompact) {
     return (
       <motion.div 
-        className="bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white p-3 rounded-t-lg"
+        className="bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white p-3 rounded-t-lg"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
@@ -120,7 +120,7 @@ export const Header: React.FC<HeaderProps> = ({
   // Full desktop header (existing layout)
   return (
     <motion.div 
-      className="bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white p-6 rounded-t-lg"
+      className="bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white p-6 rounded-t-lg"
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}

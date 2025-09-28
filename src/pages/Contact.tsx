@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
 import { useSearchParams } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
 import { ContactService } from '../services/contactService';
 import { ContactMessageFormData } from '../types/contact';
 
@@ -95,8 +96,67 @@ const Contact: React.FC = () => {
     { value: 'other', label: 'Other' },
   ];
 
+  // Structured data for SEO
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ContactPage',
+    name: 'Contact Moms Fitness Mojo',
+    url: 'https://momfitnessmojo.web.app/contact',
+    description: 'Get in touch with Moms Fitness Mojo. We\'d love to hear from you! Whether you have questions about our community, want to join an event, or just want to say hello, we\'re here to help.',
+    mainEntity: {
+      '@type': 'Organization',
+      name: 'Moms Fitness Mojo',
+      url: 'https://momfitnessmojo.web.app',
+      logo: 'https://momfitnessmojo.web.app/assets/logo/square-logo.svg',
+      email: 'momsfitnessmojo@gmail.com',
+      address: {
+        '@type': 'PostalAddress',
+        addressLocality: 'Short Hills',
+        addressRegion: 'NJ',
+        addressCountry: 'US',
+      },
+      contactPoint: {
+        '@type': 'ContactPoint',
+        contactType: 'customer service',
+        email: 'momsfitnessmojo@gmail.com',
+        availableLanguage: 'English',
+      },
+      sameAs: [
+        'https://www.instagram.com/momsfitnessmojo/',
+        'https://www.facebook.com/momsfitnessmojo/',
+        'https://www.linkedin.com/company/momsfitnessmojo/',
+      ],
+    },
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-amber-50">
+      {/* SEO */}
+      <Helmet>
+        <title>Contact Us | Moms Fitness Mojo - Millburn & Short Hills NJ</title>
+        <meta
+          name="description"
+          content="Get in touch with Moms Fitness Mojo. We'd love to hear from you! Whether you have questions about our community, want to join an event, or just want to say hello, we're here to help."
+        />
+        <link rel="canonical" href="https://momfitnessmojo.web.app/contact" />
+        
+        {/* Open Graph */}
+        <meta property="og:type" content="website" />
+        <meta property="og:title" content="Contact Moms Fitness Mojo" />
+        <meta property="og:description" content="Get in touch with Moms Fitness Mojo. We'd love to hear from you! Whether you have questions about our community, want to join an event, or just want to say hello, we're here to help." />
+        <meta property="og:url" content="https://momfitnessmojo.web.app/contact" />
+        <meta property="og:image" content="https://momfitnessmojo.web.app/assets/logo/facebook-post.svg" />
+        
+        {/* Twitter */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Contact Moms Fitness Mojo" />
+        <meta name="twitter:description" content="Get in touch with Moms Fitness Mojo. We'd love to hear from you!" />
+        <meta name="twitter:image" content="https://momfitnessmojo.web.app/assets/logo/square-logo.svg" />
+        
+        {/* Structured Data */}
+        <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
+      </Helmet>
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Header */}
         <motion.div
@@ -105,7 +165,7 @@ const Contact: React.FC = () => {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">
             Get in Touch
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
@@ -269,7 +329,7 @@ const Contact: React.FC = () => {
                   disabled={isSubmitting}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className="w-full bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white py-4 px-6 rounded-lg font-semibold text-lg hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-4 focus:ring-[#F25129]/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                  className="w-full bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white py-4 px-6 rounded-lg font-semibold text-lg hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-4 focus:ring-[#F25129]/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                 >
                   {isSubmitting ? (
                     <>

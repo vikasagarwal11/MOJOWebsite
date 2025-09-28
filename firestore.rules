@@ -649,6 +649,13 @@ service cloud.firestore {
         (request.auth.uid == resource.data.authorId || isAdmin());
     }
     
+    // =========================
+    // Admin Logs (admin only): adminLogs/{...}
+    // =========================
+    match /adminLogs/{logId} {
+      allow read, write: if isSignedIn() && isAdmin();
+    }
+    
     // --- Default Security: Deny all unknown collections ---
     match /{document=**} {
       allow read, write: if false;

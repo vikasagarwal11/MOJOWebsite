@@ -99,7 +99,7 @@ export const HomeMetaTags: React.FC = () => (
 
 export const EventsMetaTags: React.FC = () => (
   <MetaTags
-    title="Fitness Events for Moms - Moms Fitness Mojo"
+    title="Events for Moms - Moms Fitness Mojo"
     description="Discover local fitness events designed for moms. Join yoga classes, workout sessions, and wellness activities in your community."
     keywords="fitness events, mom yoga classes, women fitness events, local workout classes, mom wellness activities"
     url="https://momsfitnessmojo.com/events"

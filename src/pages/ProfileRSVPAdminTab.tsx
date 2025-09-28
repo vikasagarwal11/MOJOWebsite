@@ -422,7 +422,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
           </div>
         </div>
       </div>
-      <div className="p-4 bg-gradient-to-br from-[#F25129]/10 to-[#FF6B35]/10 rounded-lg border border-[#F25129]/20">
+      <div className="p-4 bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 rounded-lg border border-[#F25129]/20">
         <div className="flex items-center gap-2">
           <span className="text-2xl">✅</span>
           <div>
@@ -532,8 +532,8 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
     {/* COMMENTED OUT: Development note removed as requested */}
     {/* 
     
-    <div className="p-4 bg-[#FF6B35]/10 border border-[#FF6B35]/20 rounded-lg">
-      <div className="flex items-center gap-2 text-[#FF6B35]">
+    <div className="p-4 bg-[#FFC107]/10 border border-[#FFC107]/20 rounded-lg">
+      <div className="flex items-center gap-2 text-[#FFC107]">
         <span className="text-lg">💡</span>
         <div className="text-sm">
           <strong>Note:</strong> User blocking and management is now handled exclusively in the <strong>Admin</strong> tab.
@@ -545,7 +545,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
     */}
     
     {/* NEW: Event Filtering Section */}
-    <div className="p-4 bg-gradient-to-r from-[#F25129]/5 to-[#FF6B35]/5 rounded-lg border border-[#F25129]/20">
+    <div className="p-4 bg-gradient-to-r from-[#F25129]/5 to-[#FFC107]/5 rounded-lg border border-[#F25129]/20">
              <div className="flex items-center justify-between mb-3">
          <h3 className="text-lg font-semibold text-[#F25129]">Event Filtering</h3>
          <div className="flex items-center gap-3">
@@ -605,8 +605,8 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
              onClick={() => setActivityFilter(filter.value as 'all' | 'has-rsvps' | 'no-rsvps' | 'high-activity')}
              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                activityFilter === filter.value
-                 ? 'bg-blue-100 border-[#FF6B35]/30 text-[#FF6B35] ring-2 ring-[#FF6B35]/20'
-                 : 'bg-white border-[#FF6B35]/20 text-[#FF6B35] hover:bg-[#FF6B35]/10'
+                 ? 'bg-blue-100 border-[#FFC107]/30 text-[#FFC107] ring-2 ring-[#FFC107]/20'
+                 : 'bg-white border-[#FFC107]/20 text-[#FFC107] hover:bg-[#FFC107]/10'
              }`}
              title={`${filter.label}: ${filter.count} events`}
            >
@@ -814,7 +814,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
             key={event.id} 
             className={`space-y-4 p-4 rounded-lg ${
               index % 2 === 0 
-                ? 'bg-[#FF6B35]/10/50 border-l-4 border-[#FF6B35]/20' 
+                ? 'bg-[#FFC107]/10/50 border-l-4 border-[#FFC107]/20' 
                 : 'bg-pink-50/50 border-l-4 border-pink-200'
             }`}
           >
@@ -858,11 +858,11 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
               </div>
               
                              {/* ATTENDANCE MANAGEMENT - COMPACT & PROFESSIONAL */}
-               <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-[#FF6B35]/20">
+               <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-[#FFC107]/20">
                  <div className="flex items-center justify-between">
                    <div className="flex items-center gap-3">
-                     <span className="text-sm text-[#FF6B35]">
-                       Update attendance (<strong className="text-[#FF6B35] font-bold text-base">{Math.max(0, event.attendingCount || 0)} checked in</strong>)
+                     <span className="text-sm text-[#FFC107]">
+                       Update attendance (<strong className="text-[#FFC107] font-bold text-base">{Math.max(0, event.attendingCount || 0)} checked in</strong>)
                      </span>
                    </div>
                    <div className="flex gap-2">
@@ -924,7 +924,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                             <span>Not Going: <strong>{billingSummary.notGoing}</strong></span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="w-3 h-3 bg-[#FF6B35]/100 rounded-full"></span>
+                            <span className="w-3 h-3 bg-[#FFC107]/100 rounded-full"></span>
                             <span>Total: <strong>{billingSummary.total}</strong></span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -1015,7 +1015,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                   {rsvp.name || rsvp.attendeeName || userNames[rsvp.userId] || 'Loading...'}
                                 </span>
                                                                           {rsvp.attendeeType === 'primary' ? (
-                                            <span className="text-xs text-[#FF6B35] font-medium">
+                                            <span className="text-xs text-[#FFC107] font-medium">
                                               (Primary User)
                                             </span>
                                           ) : (
@@ -1033,7 +1033,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                           )}
                                 <button
                                   onClick={() => toggleContactInfo(rsvp.userId)}
-                                  className="text-xs text-[#FF6B35] hover:text-[#FF6B35] flex items-center gap-1"
+                                  className="text-xs text-[#FFC107] hover:text-[#FFC107] flex items-center gap-1"
                                   title={showContactInfo[rsvp.userId] ? 'Hide contact info' : 'Show contact info'}
                                 >
                                   {showContactInfo[rsvp.userId] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
@@ -1043,7 +1043,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               
                               {/* Show contact info when toggled */}
                               {showContactInfo[rsvp.userId] && userDetails[rsvp.userId] && (
-                                <div className="mt-2 p-2 bg-[#FF6B35]/10 rounded text-xs text-[#FF6B35] space-y-1">
+                                <div className="mt-2 p-2 bg-[#FFC107]/10 rounded text-xs text-[#FFC107] space-y-1">
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium">📧 Email:</span>
                                     <span>{userDetails[rsvp.userId].email}</span>
@@ -1082,7 +1082,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               {/* RSVP HISTORY VIEW - Easy to develop, low risk */}
                               {rsvp.statusHistory && rsvp.statusHistory.length > 1 && (
                                 <details className="mt-2 text-xs">
-                                  <summary className="cursor-pointer text-[#FF6B35] hover:text-[#FF6B35] font-medium">
+                                  <summary className="cursor-pointer text-[#FFC107] hover:text-[#FFC107] font-medium">
                                     📋 View RSVP History ({rsvp.statusHistory.length} changes)
                                   </summary>
                                   <div className="mt-2 pl-4 space-y-1">
@@ -1169,7 +1169,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                   <span className="text-4xl">📭</span>
                   <p className="text-sm text-gray-600 mt-2">No RSVPs yet for this event</p>
                   <p className="text-xs text-gray-500">Responses will appear here as members RSVP</p>
-                  <p className="text-xs text-[#FF6B35] mt-2">
+                  <p className="text-xs text-[#FFC107] mt-2">
                     💡 Use the +Count/-Count buttons above to manually adjust attendance for walk-ins or corrections
                   </p>
                 </div>

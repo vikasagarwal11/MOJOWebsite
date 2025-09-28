@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, MessageCircle, Reply, ChevronDown, ChevronRight, Image, X, Smile } from 'lucide-react';
+import { Heart, MessageCircle, Reply, ChevronDown, ChevronRight, Image, X, Smile, MoreVertical, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { collection, addDoc, serverTimestamp, doc, setDoc, deleteDoc, onSnapshot, query } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -9,6 +9,7 @@ import { useThreadedComments, ThreadedComment } from '../../hooks/useThreadedCom
 import { useReactions } from '../../hooks/useReactions';
 import { ReactionPicker } from './ReactionPicker';
 import { CommentMediaLightbox } from './CommentMediaLightbox';
+import AdminThreadDeletionModal from './AdminThreadDeletionModal';
 import toast from 'react-hot-toast';
 
 function usePopoverPosition(anchorRef: React.RefObject<HTMLElement>, open: boolean) {
@@ -71,10 +72,33 @@ const CommentItem: React.FC<CommentItemProps> = ({
   const [isLiked, setIsLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(0);
   const [showReactions, setShowReactions] = useState(false);
+  const [showAdminMenu, setShowAdminMenu] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const adminMenuRef = useRef<HTMLDivElement>(null);
+
+  // Check if current user is admin
+  const isAdmin = currentUser?.role === 'admin';
   
   // Use the new reactions hook
   const { reactionCounts, userReactions, toggleReaction } = useReactions(comment.id, collectionPath);
+
+  // Close admin menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (adminMenuRef.current && !adminMenuRef.current.contains(event.target as Node)) {
+        setShowAdminMenu(false);
+      }
+    };
+
+    if (showAdminMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showAdminMenu]);
 
   // Check if user has liked this comment
   useEffect(() => {
@@ -179,6 +203,33 @@ const CommentItem: React.FC<CommentItemProps> = ({
               </span>
             )}
           </div>
+
+          {/* Admin Menu */}
+          {isAdmin && (
+            <div className="relative" ref={adminMenuRef}>
+              <button
+                onClick={() => setShowAdminMenu(!showAdminMenu)}
+                className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+              >
+                <MoreVertical className="w-4 h-4 text-gray-500" />
+              </button>
+
+              {showAdminMenu && (
+                <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[140px]">
+                  <button
+                    onClick={() => {
+                      setShowAdminMenu(false);
+                      setShowDeleteModal(true);
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Delete Thread</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           
           {/* Comment Actions */}
           <div className="flex items-center space-x-2">
@@ -468,6 +519,18 @@ const CommentItem: React.FC<CommentItemProps> = ({
           </div>
         )}
       </div>
+
+      {/* Admin Thread Deletion Modal */}
+      <AdminThreadDeletionModal
+        comment={comment}
+        collectionPath={collectionPath}
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onThreadDeleted={() => {
+          setShowDeleteModal(false);
+          // The comment will be automatically removed from the UI due to real-time updates
+        }}
+      />
     </div>
   );
 };
@@ -646,6 +709,12 @@ const CommentSection: React.FC<CommentSectionProps> = ({
       return;
     }
 
+    if (text && text.length > 500) {
+      console.log('❌ [CommentSection] Comment too long');
+      toast.error('Comment must be 500 characters or less');
+      return;
+    }
+
     setUploading(true);
     try {
       console.log('💬 [CommentSection] Starting comment submission...');
@@ -703,6 +772,12 @@ const CommentSection: React.FC<CommentSectionProps> = ({
     if (!text && files.length === 0) {
       console.log('❌ [CommentSection] No text or files provided for reply');
       toast.error('Please enter a reply or select a file');
+      return;
+    }
+
+    if (text && text.length > 500) {
+      console.log('❌ [CommentSection] Reply too long');
+      toast.error('Reply must be 500 characters or less');
       return;
     }
 
@@ -830,38 +905,47 @@ const CommentSection: React.FC<CommentSectionProps> = ({
               </div>
             )}
             
-            <form onSubmit={handleSubmitComment} className="flex space-x-2">
-              <input
-                type="text"
-                value={newComment}
-                onChange={(e) => {
-                  setNewComment(e.target.value);
-                  // handleTyping(e.target.value, false);
-                }}
-                placeholder="Add a comment..."
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
-              />
-              <input
-                type="file"
-                id="comment-file"
-                multiple
-                accept="image/*,video/*"
-                onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
-                className="hidden"
-              />
-              <label
-                htmlFor="comment-file"
-                className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer flex items-center"
-              >
-                <Image className="w-4 h-4 text-gray-600" />
-              </label>
-              <button
-                type="submit"
-                disabled={(!newComment.trim() && selectedFiles.length === 0) || uploading}
-                className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-              >
-                {uploading ? 'Posting...' : 'Post'}
-              </button>
+            <form onSubmit={handleSubmitComment} className="space-y-2">
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  value={newComment}
+                  onChange={(e) => {
+                    setNewComment(e.target.value);
+                    // handleTyping(e.target.value, false);
+                  }}
+                  placeholder="Add a comment..."
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
+                />
+                <input
+                  type="file"
+                  id="comment-file"
+                  multiple
+                  accept="image/*,video/*"
+                  onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="comment-file"
+                  className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer flex items-center"
+                >
+                  <Image className="w-4 h-4 text-gray-600" />
+                </label>
+                <button
+                  type="submit"
+                  disabled={(!newComment.trim() && selectedFiles.length === 0) || uploading}
+                  className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                >
+                  {uploading ? 'Posting...' : 'Post'}
+                </button>
+              </div>
+              {newComment.trim().length > 0 && (
+                <div className="text-xs text-gray-500 text-right">
+                  <span className={newComment.trim().length > 500 ? 'text-red-600' : ''}>
+                    {newComment.trim().length}/500 chars
+                  </span>
+                </div>
+              )}
             </form>
           </div>
         </div>
