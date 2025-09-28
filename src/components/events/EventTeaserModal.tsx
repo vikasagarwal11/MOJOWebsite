@@ -132,7 +132,7 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
             exit="exit"
           >
             {/* Header - Reduced height */}
-            <div className="bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white p-4">
+            <div className="bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white p-4">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-xl font-bold">{event.title}</h2>
                 <button
@@ -180,7 +180,7 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
 
             {/* Event Image - Only show when image exists */}
             {event.imageUrl && (
-              <div className="relative w-full h-80 overflow-hidden bg-gradient-to-br from-[#F25129]/10 to-[#FF6B35]/10 flex items-center justify-center">
+              <div className="relative w-full h-80 overflow-hidden bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 flex items-center justify-center">
                 <motion.img
                   src={event.imageUrl}
                   alt={event.title}
@@ -206,7 +206,7 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
                 <div className="text-center mb-3">
                   <h3 className="text-lg font-bold text-gray-900 mb-1.5">Discover Your Next Adventure</h3>
                   <p className="text-gray-600 text-sm leading-relaxed break-words">
-                    {event.description || 'Join us for an exciting fitness event! More details available to members.'}
+                    {event.description || 'Join MOJO for an exciting fitness event! More details available to members.'}
                   </p>
                 </div>
 
@@ -236,7 +236,7 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
                 )}
 
                 {/* Call-to-Action - Optimized and Compact */}
-                <div className="p-3 bg-gradient-to-r from-[#F25129]/10 to-[#FF6B35]/10 border border-[#F25129]/20 rounded-lg">
+                <div className="p-3 bg-gradient-to-r from-[#F25129]/10 to-[#FFC107]/10 border border-[#F25129]/20 rounded-lg">
                   <div className="flex items-start gap-2.5">
                     <Star className="w-4 h-4 text-[#F25129] mt-0.5 flex-shrink-0" />
                     <div className="flex-1 min-w-0">

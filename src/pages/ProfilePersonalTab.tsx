@@ -96,7 +96,7 @@ export const ProfilePersonalTab: React.FC<ProfilePersonalTabProps> = ({
   <div className="grid gap-6">
     <div className="flex items-center gap-6 mb-8">
       <div className="relative">
-        <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-[#F25129]/20 bg-gradient-to-br from-[#F25129] to-[#FF6B35] flex items-center justify-center text-white">
+        <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-[#F25129]/20 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center text-white">
           {photoURL ? (
             <img src={photoURL} alt="avatar" className="w-full h-full object-cover" />
           ) : (
@@ -357,7 +357,7 @@ export const ProfilePersonalTab: React.FC<ProfilePersonalTabProps> = ({
       <button
         onClick={onSave}
         disabled={saving}
-        className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] transition-all disabled:opacity-50 shadow-lg"
+        className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] transition-all disabled:opacity-50 shadow-lg"
       >
         {saving ? 'Saving…' : 'Save Changes'}
       </button>

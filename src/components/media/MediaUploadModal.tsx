@@ -261,7 +261,7 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
 
           <div className="flex justify-end gap-3 pt-6 border-t border-gray-200">
             <button type="button" onClick={onClose} className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={loading} className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-lg disabled:opacity-50 hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300">
+            <button type="submit" disabled={loading} className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-lg disabled:opacity-50 hover:from-[#E0451F] hover:to-[#E5A900] transition-all duration-300">
               {loading ? 'Uploading…' : 'Upload'}
             </button>
           </div>

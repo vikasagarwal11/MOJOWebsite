@@ -827,7 +827,7 @@ useEffect(() => {
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white">
+        <div className="flex items-center justify-between p-6 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white">
           <h2 className="text-2xl font-bold text-white">{isEditing ? 'Edit Event' : 'Create New Event'}</h2>
           <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
             <X className="w-6 h-6 text-white" />
@@ -1277,7 +1277,7 @@ useEffect(() => {
                       Remove Image
                     </button>
                   </div>
-                  <div className="relative w-full h-48 overflow-hidden rounded-lg bg-gradient-to-br from-[#F25129]/10 to-[#FF6B35]/10">
+                  <div className="relative w-full h-48 overflow-hidden rounded-lg bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10">
                     <img
                       src={eventToEdit.imageUrl}
                       alt={eventToEdit.title}
@@ -1681,7 +1681,7 @@ useEffect(() => {
             <button
               type="submit"
               disabled={isLoading}
-              className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] disabled:opacity-50"
+              className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] disabled:opacity-50"
             >
               {isLoading ? (isEditing ? 'Updating...' : 'Creating...') : (isEditing ? 'Update Event' : 'Create Event')}
             </button>

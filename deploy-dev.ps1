@@ -12,11 +12,47 @@ Write-Host "Deploying to Development Environment..." -ForegroundColor Green
 # Set environment variables
 $env:NODE_ENV = "development"
 $env:VITE_ENVIRONMENT = "development"
-$env:STORAGE_BUCKET = "mojomediafiles"
 
-# Run pre-deployment checks
+# Read environment variables from .env.development
+if (Test-Path ".env.development") {
+    $envContent = Get-Content .env.development
+    $storageBucket = ($envContent | Where-Object { $_ -match "^STORAGE_BUCKET=" } | ForEach-Object { $_.Split('=')[1] })
+    $viteStorageBucket = ($envContent | Where-Object { $_ -match "^VITE_FIREBASE_STORAGE_BUCKET=" } | ForEach-Object { $_.Split('=')[1] })
+    
+    if ($storageBucket) {
+        $env:STORAGE_BUCKET = $storageBucket
+        Write-Host "[OK] Using STORAGE_BUCKET from .env.development: $storageBucket" -ForegroundColor Green
+    } else {
+        Write-Host "[WARNING] STORAGE_BUCKET not found in .env.development, using default" -ForegroundColor Yellow
+        $env:STORAGE_BUCKET = "mojomediafiles"
+    }
+    
+    if ($viteStorageBucket) {
+        Write-Host "[OK] Using VITE_FIREBASE_STORAGE_BUCKET from .env.development: $viteStorageBucket" -ForegroundColor Green
+    } else {
+        Write-Host "[WARNING] VITE_FIREBASE_STORAGE_BUCKET not found in .env.development" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "[WARNING] .env.development file not found, using defaults" -ForegroundColor Yellow
+    $env:STORAGE_BUCKET = "mojomediafiles"
+}
+
+# Verify environment variables are loaded
+Write-Host "[INFO] Environment Variables Check:" -ForegroundColor Cyan
+Write-Host "  NODE_ENV: $env:NODE_ENV" -ForegroundColor White
+Write-Host "  VITE_ENVIRONMENT: $env:VITE_ENVIRONMENT" -ForegroundColor White
+Write-Host "  STORAGE_BUCKET: $env:STORAGE_BUCKET" -ForegroundColor White
+Write-Host "  VITE_FIREBASE_STORAGE_BUCKET: $viteStorageBucket" -ForegroundColor White
+
+Write-Host ""
+
+# Copy environment-specific extension configuration
+Write-Host "Copying development extension configuration..." -ForegroundColor Yellow
+Copy-Item "extensions/storage-resize-images.dev.env" "extensions/storage-resize-images.env" -Force
+Write-Host "[OK] Extension configuration copied for development" -ForegroundColor Green
+
+Write-Host ""
 if (-not $SkipChecks) {
-    Write-Host "Running pre-deployment checks..." -ForegroundColor Yellow
     
     # Run code review
     if (Test-Path "scripts/code-review-simple.ps1") {
@@ -52,23 +88,33 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# Set Cloud Functions environment variable for STORAGE_BUCKET
+Write-Host "Setting Cloud Functions environment variable STORAGE_BUCKET to: $env:STORAGE_BUCKET" -ForegroundColor Yellow
+firebase functions:config:set app.storage_bucket="$env:STORAGE_BUCKET" --project=momfitnessmojo
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: Failed to set Cloud Functions environment variable!" -ForegroundColor Red
+    exit 1
+}
+Write-Host "[OK] Cloud Functions environment variable set." -ForegroundColor Green
+
 # Deploy based on component
 switch ($Component.ToLower()) {
     "hosting" {
         Write-Host "Deploying hosting only..." -ForegroundColor Cyan
-        firebase deploy --only hosting --project=dev --config=firebase.dev.json
+        firebase deploy --only hosting --project=momfitnessmojo --config=firebase.dev.json
     }
     "firestore" {
         Write-Host "Deploying Firestore rules and indexes..." -ForegroundColor Cyan
-        firebase deploy --only firestore --project=dev --config=firebase.dev.json
+        firebase deploy --only firestore --project=momfitnessmojo --config=firebase.dev.json
     }
     "functions" {
         Write-Host "Deploying Cloud Functions..." -ForegroundColor Cyan
-        firebase deploy --only functions --project=dev --config=firebase.dev.json
+        firebase deploy --only functions --project=momfitnessmojo --config=firebase.dev.json
     }
     "all" {
         Write-Host "Deploying everything..." -ForegroundColor Cyan
-        firebase deploy --project=dev --config=firebase.dev.json
+        firebase deploy --project=momfitnessmojo --config=firebase.dev.json
     }
     default {
         Write-Host "ERROR: Invalid component. Use: all, hosting, firestore, functions" -ForegroundColor Red

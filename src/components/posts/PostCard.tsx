@@ -1,6 +1,6 @@
 // src/components/posts/PostCard.tsx
-import React, { useEffect, useState } from 'react';
-import { Heart, MessageCircle, User } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Heart, MessageCircle, User, Trash2, MoreVertical } from 'lucide-react';
 import { format } from 'date-fns';
 import { Post } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -19,13 +19,38 @@ import {
 } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import CommentSection from '../common/CommentSection';
+import AdminPostDeletionModal from './AdminPostDeletionModal';
 
 interface PostCardProps {
   post: Post;
+  onPostDeleted?: () => void;
 }
 
-const PostCard: React.FC<PostCardProps> = ({ post }) => {
+const PostCard: React.FC<PostCardProps> = ({ post, onPostDeleted }) => {
   const { currentUser } = useAuth();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showAdminMenu, setShowAdminMenu] = useState(false);
+  const adminMenuRef = useRef<HTMLDivElement>(null);
+
+  // Check if current user is admin
+  const isAdmin = currentUser?.role === 'admin';
+
+  // Close admin menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (adminMenuRef.current && !adminMenuRef.current.contains(event.target as Node)) {
+        setShowAdminMenu(false);
+      }
+    };
+
+    if (showAdminMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showAdminMenu]);
 
   // counts fall back to arrays if you still have them on the doc
   const [isLiked, setIsLiked] = useState(false);
@@ -96,24 +121,53 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
     <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-[#F25129]/20 overflow-hidden">
       {/* Header */}
       <div className="p-6 pb-4">
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-[#F25129] to-[#FF6B35] rounded-full flex items-center justify-center">
-            {post.authorPhoto ? (
-              <img
-                src={post.authorPhoto}
-                alt={post.authorName}
-                className="w-full h-full rounded-full object-cover"
-              />
-            ) : (
-              <User className="w-6 h-6 text-white" />
-            )}
-          </div>
-          <div>
-            <div className="font-semibold text-gray-900">{post.authorName}</div>
-            <div className="text-sm text-gray-500">
-              {createdAt ? format(createdAt, 'MMMM d, yyyy • h:mm a') : null}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-[#F25129] to-[#FFC107] rounded-full flex items-center justify-center">
+              {post.authorPhoto ? (
+                <img
+                  src={post.authorPhoto}
+                  alt={post.authorName}
+                  className="w-full h-full rounded-full object-cover"
+                />
+              ) : (
+                <User className="w-6 h-6 text-white" />
+              )}
+            </div>
+            <div>
+              <div className="font-semibold text-gray-900">{post.authorName}</div>
+              <div className="text-sm text-gray-500">
+                {createdAt ? format(createdAt, 'MMMM d, yyyy • h:mm a') : null}
+              </div>
             </div>
           </div>
+
+          {/* Admin Menu */}
+          {isAdmin && (
+            <div className="relative" ref={adminMenuRef}>
+              <button
+                onClick={() => setShowAdminMenu(!showAdminMenu)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <MoreVertical className="w-5 h-5 text-gray-500" />
+              </button>
+
+              {showAdminMenu && (
+                <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[160px]">
+                  <button
+                    onClick={() => {
+                      setShowAdminMenu(false);
+                      setShowDeleteModal(true);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete Post</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <h2 className="text-xl font-bold text-gray-900 mb-3">{post.title}</h2>
@@ -126,7 +180,7 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
           <img
             src={post.imageUrl}
             alt={post.title}
-            className="w-full rounded-xl object-cover max-h-96"
+            className="w-full rounded-xl object-contain max-h-96"
           />
         </div>
       )}
@@ -159,6 +213,17 @@ const PostCard: React.FC<PostCardProps> = ({ post }) => {
           pageSize={10}
         />
       </div>
+
+      {/* Admin Post Deletion Modal */}
+      <AdminPostDeletionModal
+        post={post}
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onPostDeleted={() => {
+          setShowDeleteModal(false);
+          onPostDeleted?.();
+        }}
+      />
     </div>
   );
 };

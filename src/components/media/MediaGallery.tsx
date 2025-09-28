@@ -109,7 +109,7 @@ const MediaGallery: React.FC = () => {
           </button>
           <button
             onClick={() => setIsUploadModalOpen(true)}
-            className="flex items-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg min-h-[44px]"
+            className="flex items-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E5A900] transition-all duration-300 transform hover:scale-105 shadow-lg min-h-[44px]"
           >
             <Upload className="w-5 h-5 mr-2" /> Upload Media
           </button>
@@ -118,7 +118,7 @@ const MediaGallery: React.FC = () => {
 
       {/* NEW: Processing Status Bar */}
       {(processingStats.processing > 0 || processingStats.enhancing > 0 || processingStats.failed > 0) && (
-        <div className="mb-6 p-4 bg-gradient-to-r from-[#F25129]/10 to-[#FF6B35]/10 rounded-xl border border-[#F25129]/20">
+        <div className="mb-6 p-4 bg-gradient-to-r from-[#F25129]/10 to-[#FFC107]/10 rounded-xl border border-[#F25129]/20">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               {processingStats.processing > 0 && (
@@ -131,8 +131,8 @@ const MediaGallery: React.FC = () => {
               )}
               {processingStats.enhancing > 0 && (
                 <div className="flex items-center gap-2">
-                                  <div className="w-3 h-3 bg-[#FF6B35] rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium text-[#FF6B35]">
+                                  <div className="w-3 h-3 bg-[#FFC107] rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-[#FFC107]">
                     {processingStats.enhancing} enhancing
                   </span>
                 </div>

@@ -18,14 +18,14 @@ const Sponsors: React.FC = () => {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="text-center mb-12">
-        <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent mb-4 leading-relaxed pb-1">
+        <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">
           Our Amazing Sponsors
         </h1>
         <p className="text-gray-600 text-lg max-w-2xl mx-auto">
           We're grateful for our partners who support our community with exclusive deals and promotions.
           {!currentUser && (
             <span className="block mt-2 text-[#F25129] font-medium">
-              Join our community to access exclusive member promotions!
+              Join our MOJO to access exclusive member promotions!
             </span>
           )}
         </p>
@@ -146,7 +146,7 @@ const Sponsors: React.FC = () => {
       </div>
 
       {/* CTA Section */}
-      <div className="mt-16 bg-gradient-to-r from-[#F25129] to-[#FF6B35] rounded-2xl p-8 text-center text-white">
+      <div className="mt-16 bg-gradient-to-r from-[#F25129] to-[#FFC107] rounded-2xl p-8 text-center text-white">
         <h2 className="text-2xl md:text-3xl font-bold mb-4">
           Want to Become a Sponsor?
         </h2>

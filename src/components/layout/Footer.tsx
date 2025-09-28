@@ -1,72 +1,35 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, MapPin, Phone } from 'lucide-react';
 
 const Footer: React.FC = () => {
   return (
-    <footer className="bg-gradient-to-r from-[#1a0f1a] to-[#2d1b2d] text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* Logo and Description */}
-          <div className="md:col-span-2">
-            <div className="flex items-center mb-4">
-              <img src="/logo.png" alt="Moms Fitness Mojo" className="h-12 w-12 rounded-full object-cover mr-3" />
-            </div>
-            <p className="text-gray-300 leading-relaxed mb-6">
-              Empowering mothers to prioritize their health and wellness through fitness, community, and support. Join our vibrant community of strong, dedicated moms!
-            </p>
-            <div className="space-y-2 text-sm text-gray-300">
-              <div className="flex items-center">
-                <Mail className="w-4 h-4 mr-2" />
-                <a href="mailto:momsfitnessmojo@gmail.com" className="hover:underline">momsfitnessmojo@gmail.com</a>
-              </div>
-              <div className="flex items-center">
-                <Phone className="w-4 h-4 mr-2" />
-                <a href="tel:+15551234567" className="hover:underline">(555) 123-4567</a>
-              </div>
-              <div className="flex items-center">
-                <MapPin className="w-4 h-4 mr-2" />
-                Short Hills, NJ
-              </div>
-            </div>
+    <footer className="border-t border-[#F25129]/20 bg-[#EFD8C5]/20">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+        {/* Main Footer Content */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 mb-6">
+          {/* Logo + Brand */}
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="Moms Fitness Mojo" className="h-8 w-8 rounded-full object-cover" />
+            <span className="font-semibold text-[#F25129]">Moms Fitness Mojo</span>
           </div>
-
-          {/* Quick Links */}
-          <div>
-            <h4 className="text-lg font-semibold mb-4 text-[#FF6B35]">Quick Links</h4>
-            <ul className="space-y-2">
-              <li><Link to="/" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Home</Link></li>
-              <li><Link to="/events" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Events</Link></li>
-              <li><Link to="/media" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Media</Link></li>
-              <li><Link to="/posts" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Posts</Link></li>
-            </ul>
-          </div>
-
-          {/* Community */}
-          <div>
-            <h4 className="text-lg font-semibold mb-4 text-[#FF6B35]">Community</h4>
-            <ul className="space-y-2">
-              <li><Link to="/sponsors" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Sponsors</Link></li>
-              <li><Link to="/contact" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Contact Us</Link></li>
-              <li><Link to="/about" className="text-gray-300 hover:text-[#FF6B35] transition-colors">About Us</Link></li>
-              <li><Link to="/community-guidelines" className="text-gray-300 hover:text-[#FF6B35] transition-colors">Community Guidelines</Link></li>
-            </ul>
-          </div>
+          
+          {/* Essential Navigation */}
+          <nav className="flex flex-wrap gap-6 text-sm text-gray-600 justify-center">
+            <Link to="/events" className="hover:text-[#F25129] transition-colors">Events</Link>
+            <Link to="/about" className="hover:text-[#F25129] transition-colors">About Us</Link>
+            <Link to="/community-guidelines" className="hover:text-[#F25129] transition-colors">Guidelines</Link>
+            <Link to="/contact" className="hover:text-[#F25129] transition-colors">Contact</Link>
+            <Link to="/register" className="hover:text-[#F25129] transition-colors">Join MOJO</Link>
+          </nav>
         </div>
         
-        {/* Service Area */}
-        <div className="border-t border-gray-700 mt-12 pt-8">
-          {/* SEO Footer */}
-          <div className="text-center">
-            <p className="text-sm text-gray-400">
-              Moms Fitness Mojo | Moms Fitness, Lifestyle & Events | Short Hills • Millburn • Maplewood • Summit • Livingston • New Jersey
-            </p>
-          </div>
-        </div>
-        
-        {/* Copyright */}
-        <div className="border-t border-gray-700 mt-8 pt-8 text-center">
-          <p className="text-gray-400">© 2025 Moms Fitness Mojo. All rights reserved.</p>
+        {/* SEO Content & Copyright */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+          <p>© {new Date().getFullYear()} Moms Fitness Mojo. All rights reserved.</p>
+          <p className="text-center sm:text-right">
+            <span className="block sm:inline">Moms Fitness, Lifestyle & Events | </span>
+            <span className="block sm:inline">Short Hills • Millburn • Maplewood • Summit • Livingston • New Jersey</span>
+          </p>
         </div>
       </div>
     </footer>

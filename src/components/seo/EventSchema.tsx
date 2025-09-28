@@ -46,7 +46,7 @@ export const EventSchema: React.FC<EventSchemaProps> = ({ event }) => {
     "@context": "https://schema.org",
     "@type": "Event",
     "name": event.title,
-    "description": event.description || `Join us for ${event.title} in ${event.location || 'Short Hills, NJ'}`,
+    "description": event.description || `Join MOJO for ${event.title} in ${event.location || 'Short Hills, NJ'}`,
     "startDate": startDate,
     "endDate": endDate || startDate,
     "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",

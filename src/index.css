@@ -2,6 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Stabilize scrollbar across all routes to prevent layout shift */
+html {
+  scrollbar-gutter: stable both-edges;
+}
+
+/* Typography Enhancement */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400;1,600&display=swap');
+
+/* Typography Utility Classes */
+.font-accent { 
+  font-family: 'Playfair Display', Georgia, serif; 
+}
+
+.subtle-subtitle { 
+  @apply uppercase tracking-widest text-sm; 
+}
+
+.readable { 
+  @apply leading-relaxed; 
+}
+
+.readable-loose { 
+  @apply leading-loose; 
+}
+
 /* Mobile full-screen friendly Lightbox root - see enhanced version below */
 
 /* EXIF rotation handled by server-side processing, CSS as fallback */
@@ -424,3 +449,126 @@ img {
 
 /* Use the unified `.scrollbar` utility instead of a bespoke class */
 .rsvp-modal-scrollbar { @apply scrollbar; }
+
+/* Safari SVG Logo Fix */
+/* Ensure SVG logos display properly in Safari */
+.safari-logo-fix {
+  /* Force proper rendering in Safari */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  /* Ensure the logo appears with proper colors */
+  filter: brightness(1.1) contrast(1.05);
+}
+
+/* Specific fix for SVG elements in Safari */
+@supports (-webkit-appearance: none) {
+  .safari-logo-fix {
+    /* Safari-specific fixes */
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+}
+
+/* Dynamic Hero Image Carousel Styles */
+.hero-carousel-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-carousel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Hero carousel styles - now using Tailwind classes for better control */
+.hero-carousel-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-carousel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* CSS-only fallback animation (disabled when JS is active) */
+.hero-carousel.no-js .hero-slide {
+  opacity: 0;
+  animation: heroCarouselFallback 48s infinite;
+}
+
+.hero-carousel.no-js .hero-slide:nth-child(1) { animation-delay: 0s; }
+.hero-carousel.no-js .hero-slide:nth-child(2) { animation-delay: 4s; }
+.hero-carousel.no-js .hero-slide:nth-child(3) { animation-delay: 8s; }
+.hero-carousel.no-js .hero-slide:nth-child(4) { animation-delay: 12s; }
+.hero-carousel.no-js .hero-slide:nth-child(5) { animation-delay: 16s; }
+.hero-carousel.no-js .hero-slide:nth-child(6) { animation-delay: 20s; }
+.hero-carousel.no-js .hero-slide:nth-child(7) { animation-delay: 24s; }
+.hero-carousel.no-js .hero-slide:nth-child(8) { animation-delay: 28s; }
+.hero-carousel.no-js .hero-slide:nth-child(9) { animation-delay: 32s; }
+.hero-carousel.no-js .hero-slide:nth-child(10) { animation-delay: 36s; }
+.hero-carousel.no-js .hero-slide:nth-child(11) { animation-delay: 40s; }
+.hero-carousel.no-js .hero-slide:nth-child(12) { animation-delay: 44s; }
+
+@keyframes heroCarouselFallback {
+  0%, 7.5% {
+    opacity: 1;
+  }
+  8.33%, 100% {
+    opacity: 0;
+  }
+}
+
+/* Sparkles Overlay */
+.sparkles-overlay {
+  background-image: 
+    radial-gradient(circle at 20% 80%, rgba(255, 255, 255, 0.3) 1px, transparent 1px),
+    radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.3) 1px, transparent 1px),
+    radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.2) 1px, transparent 1px);
+  background-size: 50px 50px, 80px 80px, 120px 120px;
+  animation: sparkle 3s ease-in-out infinite;
+}
+
+@keyframes sparkle {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Enhanced hover effects */
+.hero-carousel-container:hover .hero-slide.active {
+  transform: scale(1.02);
+  transition: all 0.3s ease-out;
+}
+
+.hero-carousel-container:hover .sparkles-overlay {
+  animation-play-state: paused;
+  opacity: 0.8;
+}
+
+/* Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .hero-slide {
+    animation: none;
+    opacity: 1;
+    transform: scale(1);
+    transition: opacity 0.3s ease;
+  }
+  
+  .hero-slide:not(:first-child) {
+    display: none;
+  }
+  
+  .sparkles-overlay {
+    animation: none;
+  }
+  
+  .hero-carousel-container:hover .hero-slide.active {
+    transform: scale(1);
+  }
+}

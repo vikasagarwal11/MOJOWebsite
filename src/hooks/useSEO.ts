@@ -113,7 +113,7 @@ export const seoConfigs = {
   },
   
   events: {
-    title: "Fitness Events for Moms - Moms Fitness Mojo",
+    title: "Events for Moms - Moms Fitness Mojo",
     description: "Discover local fitness events designed for moms. Join yoga classes, workout sessions, and wellness activities in your community.",
     keywords: "fitness events, mom yoga classes, women fitness events, local workout classes, mom wellness activities",
     url: "https://momsfitnessmojo.com/events"
@@ -172,7 +172,7 @@ export const useEventSEO = (event: {
 
   const seoData: SEOData = {
     title: `${event.title} - Moms Fitness Event | Moms Fitness Mojo`,
-    description: `${event.description} Join us at ${locationText} for this amazing fitness event designed for moms.`,
+    description: `${event.description} Join MOJO at ${locationText} for this amazing fitness event designed for moms.`,
     keywords: `fitness event, mom workout, ${event.title}, ${locationText}, moms fitness mojo`,
     image: event.imageUrl || "https://momsfitnessmojo.com/images/founder-cover.jpg",
     type: 'event',

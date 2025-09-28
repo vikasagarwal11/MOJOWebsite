@@ -12,8 +12,12 @@ import { stripUndefined } from '../../utils/firestore';
 import toast from 'react-hot-toast';
 
 const postSchema = z.object({
-  title: z.string().min(1, 'Title is required'),
-  content: z.string().min(10, 'Content must be at least 10 characters'),
+  title: z.string()
+    .min(1, 'Title is required')
+    .max(100, 'Title must be 100 characters or less'),
+  content: z.string()
+    .min(10, 'Content must be at least 10 characters')
+    .max(2000, 'Content must be 2000 characters or less'),
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
 });
 
@@ -178,7 +182,9 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
               />
             </div>
             <div className="mt-1 flex justify-between text-xs text-gray-500">
-              <span>{title.trim().length} chars</span>
+              <span className={title.trim().length > 100 ? 'text-red-600' : ''}>
+                {title.trim().length}/100 chars
+              </span>
               {errors.title && <span className="text-red-600">{errors.title.message}</span>}
             </div>
           </div>
@@ -197,7 +203,9 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
               placeholder="Share your thoughts, experiences, or ask questions..."
             />
             <div className="mt-1 flex justify-between text-xs text-gray-500">
-              <span>{content.trim().length} chars</span>
+              <span className={content.trim().length > 2000 ? 'text-red-600' : ''}>
+                {content.trim().length}/2000 chars
+              </span>
               {errors.content && <span className="text-red-600">{errors.content.message}</span>}
             </div>
           </div>
@@ -246,7 +254,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
             <button
               type="submit"
               disabled={isLoading}
-              className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? 'Publishing…' : 'Publish Post'}
             </button>

@@ -8,6 +8,8 @@
     "dev:network": "vite --host 0.0.0.0 --port 5173 --mode development",
     "build": "vite build --mode production",
     "build:dev": "vite build --mode development",
+    "build:staging": "vite build --mode staging",
+    "build:prod": "vite build --mode production",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
@@ -19,6 +21,14 @@
     "deploy:dev:hosting": "npm run build:dev && firebase deploy --only hosting --project=dev",
     "deploy:dev:firestore": "firebase deploy --only firestore --project=dev",
     "deploy:dev:functions": "firebase deploy --only functions --project=dev",
+    "deploy:staging": "npm run build:staging && firebase deploy --project=staging --config=firebase.staging.json",
+    "deploy:staging:hosting": "npm run build:staging && firebase deploy --only hosting --project=staging --config=firebase.staging.json",
+    "deploy:staging:firestore": "firebase deploy --only firestore --project=staging --config=firebase.staging.json",
+    "deploy:staging:functions": "firebase deploy --only functions --project=staging --config=firebase.staging.json",
+    "deploy:prod": "npm run build:prod && firebase deploy --project=prod --config=firebase.prod.json",
+    "deploy:prod:hosting": "npm run build:prod && firebase deploy --only hosting --project=prod --config=firebase.prod.json",
+    "deploy:prod:firestore": "firebase deploy --only firestore --project=prod --config=firebase.prod.json",
+    "deploy:prod:functions": "firebase deploy --only functions --project=prod --config=firebase.prod.json",
     "emulators": "firebase emulators:start --project=dev"
   },
   "dependencies": {

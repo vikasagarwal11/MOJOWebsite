@@ -8,10 +8,7 @@
   },
   "functions": {
     "source": "functions",
-    "runtime": "nodejs22",
-    "environmentVariables": {
-      "STORAGE_BUCKET": "mojomediafiles"
-    }
+    "runtime": "nodejs22"
   },
   "hosting": {
     "public": "dist",

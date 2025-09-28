@@ -587,7 +587,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       try {
         await navigator.share({
           title: event.title,
-          text: event.description || `Join us for ${event.title}`,
+          text: event.description || `Join MOJO for ${event.title}`,
           url: `${window.location.origin}/events/${event.id}`
         });
       } catch (error) {
@@ -680,8 +680,8 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
           transition: { duration: 0.2 }
         }}
         whileTap={{ scale: 0.98 }}
-        className={`group event-card relative bg-white rounded-xl shadow-lg transition-all duration-300 overflow-hidden h-[480px] flex flex-col ${
-          isEventPast ? 'opacity-75 grayscale cursor-default hover:shadow-lg' : 'cursor-pointer hover:shadow-2xl'
+        className={`group event-card relative bg-white rounded-xl shadow-lg transition-transform overflow-hidden h-[480px] flex flex-col ${
+          isEventPast ? 'opacity-75 grayscale cursor-default hover:shadow-lg' : 'cursor-pointer hover:shadow-2xl hover:-translate-y-2 hover:rotate-[0.25deg]'
         }`}
         onClick={handleCardClick}
       >

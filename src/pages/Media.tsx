@@ -111,20 +111,19 @@ const Media: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header - Optimized for Mobile */}
-      <div className="flex items-center justify-between mb-4 md:mb-8">
-        <div>
-          <h1 className="text-2xl md:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent leading-relaxed">
-            Media Gallery
-          </h1>
-          <p className="hidden md:block text-gray-600 text-lg mt-2">Share and explore moments from our fitness community</p>
-        </div>
-
-        <div className="flex gap-2">
+      {/* Header */}
+      <div className="text-center mb-12">
+        <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">
+          Media Gallery
+        </h1>
+        {/* COMMENTED OUT: Description text for layout consistency testing */}
+        {/* <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-6">Share and explore moments from our fitness community</p> */}
+        
+        <div className="flex gap-2 justify-center">
           {/* Mobile: Icon-only buttons */}
           <button
             onClick={() => setIsUploadModalOpen(true)}
-            className="flex items-center justify-center px-3 py-2 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg md:hidden"
+            className="flex items-center justify-center px-3 py-2 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg md:hidden"
             title="Upload Media"
           >
             <Upload className="w-4 h-4" />
@@ -141,7 +140,7 @@ const Media: React.FC = () => {
           {/* Desktop: Icon + Text buttons */}
           <button
             onClick={() => setIsUploadModalOpen(true)}
-            className="hidden md:flex items-center justify-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg"
+            className="hidden md:flex items-center justify-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg"
           >
             <Upload className="w-5 h-5 mr-2" />
             Upload Media
@@ -310,7 +309,7 @@ const Media: React.FC = () => {
               {currentUser && (
                 <button
                   onClick={() => setIsUploadModalOpen(true)}
-                  className="px-4 py-2 md:px-6 md:py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 text-sm md:text-base"
+                  className="px-4 py-2 md:px-6 md:py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 text-sm md:text-base"
                 >
                   Upload Media
                 </button>

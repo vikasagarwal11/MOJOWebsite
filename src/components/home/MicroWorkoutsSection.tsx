@@ -242,7 +242,7 @@ const MicroWorkoutCard: React.FC<{
     </p>
     <button
       onClick={() => onStart(w)}
-      className="w-full px-4 py-2 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] transition-colors font-medium"
+      className="w-full px-4 py-2 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] transition-colors font-medium"
     >
       {w.cta} {w.est}
     </button>

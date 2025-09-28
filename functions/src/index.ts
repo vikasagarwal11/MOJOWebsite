@@ -353,7 +353,7 @@ export const onMediaCommentReactionWrite = onDocumentWritten("media/{mediaId}/co
   }
 });
 
-ger for // ───────────────── EVENTS: RSVP counter ─────────────────
+// ───────────────── EVENTS: RSVP counter ─────────────────
 export const onRsvpWrite = onDocumentWritten("events/{eventId}/rsvps/{userId}", async (event) => {
   const beforeData = event.data?.before.exists ? event.data?.before.data() : null;
   const afterData = event.data?.after.exists ? event.data?.after.data() : null;
@@ -519,11 +519,16 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
     rotatedImagePath: deletedData.rotatedImagePath,
     type: deletedData.type,
     sources: deletedData.sources,
-    usingBucket: 'mojomediafiles', // Force deployment update
+    usingBucket: process.env.STORAGE_BUCKET, // Use environment variable
     version: '2.3-FIXED-VIDEO-DELETION' // Force complete redeployment
   });
 
-  const bucket = getStorage().bucket('mojomediafiles'); // Use custom bucket where files are actually stored
+  // Use ONLY environment variable
+  const bucket = getStorage().bucket(process.env.STORAGE_BUCKET);
+  
+  // Debug logging
+  console.log('🔧 STORAGE_BUCKET env var:', process.env.STORAGE_BUCKET);
+  console.log('🔧 Final bucket used:', bucket);
   const filesToDelete: Array<{path: string, type: string, isFolder?: boolean}> = [];
   
   // 1. Original file
@@ -631,40 +636,10 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
 });
 
 // ───────────────── MEDIA: FFmpeg + Manifest Rewrite ─────────────────
-// Environment-specific bucket selection
-function getBucketForEnvironment(): string {
-  // FIREBASE_CONFIG is present in Functions gen2 and includes projectId
-  const cfg = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : {};
-  const projectId =
-    process.env.GOOGLE_CLOUD_PROJECT ||
-    process.env.GCLOUD_PROJECT ||
-    process.env.GCP_PROJECT ||
-    cfg.projectId;
-
-  console.log('🔧 Project ID detected:', projectId);
-
-  switch (projectId) {
-    case 'momfitnessmojo-staging':
-      // Staging default bucket (from your screenshot)
-      console.log('🔧 Using staging bucket: momfitnessmojo-staging.firebasestorage.app');
-      return 'momfitnessmojo-staging.firebasestorage.app';
-
-    case 'momfitnessmojo-prod':
-      // Prod default bucket (from your screenshot)
-      console.log('🔧 Using prod bucket: momfitnessmojo-prod.firebasestorage.app');
-      return 'momfitnessmojo-prod.firebasestorage.app';
-
-    case 'momfitnessmojo':
-    default:
-      // Dev → your custom bucket
-      console.log('🔧 Using dev bucket: mojomediafiles');
-      return 'mojomediafiles';
-  }
-}
 
 export const onMediaFileFinalize = onObjectFinalized(
   {
-    bucket: getBucketForEnvironment(),
+    bucket: process.env.STORAGE_BUCKET,
     region: 'us-east1',
     timeoutSeconds: 540,
     memory: '2GiB',

@@ -43,7 +43,7 @@ const About: React.FC = () => {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <h1 className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">
             About Moms Fitness Mojo
           </h1>
           <p className="text-xl text-gray-600 max-w-4xl mx-auto leading-relaxed">
@@ -90,7 +90,7 @@ const About: React.FC = () => {
               that when moms take care of themselves, they can better take care of their families 
               and communities.
             </p>
-            <div className="bg-gradient-to-r from-[#F25129]/10 to-[#FF6B35]/10 rounded-2xl p-8">
+            <div className="bg-gradient-to-r from-[#F25129]/10 to-[#FFC107]/10 rounded-2xl p-8">
               <blockquote className="text-xl font-semibold text-gray-800 italic">
                 "A healthy mom is a happy mom, and a happy mom makes a happy family."
               </blockquote>
@@ -153,7 +153,7 @@ const About: React.FC = () => {
           </div>
           <div className="bg-gradient-to-br from-purple-100 to-pink-100 rounded-3xl p-8">
             <div className="bg-white rounded-2xl p-8 shadow-lg">
-              <h3 className="text-2xl font-bold text-gray-900 mb-6">Join Our Community</h3>
+              <h3 className="text-2xl font-bold text-gray-900 mb-6">Join Our MOJO</h3>
               <p className="text-gray-600 mb-6">
                 Ready to prioritize your health and connect with amazing moms? 
                 Join our community today and start your wellness journey!
@@ -185,7 +185,7 @@ const About: React.FC = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 1.0 }}
-          className="text-center bg-gradient-to-r from-[#F25129] to-[#FF6B35] rounded-3xl p-12 text-white"
+          className="text-center bg-gradient-to-r from-[#F25129] to-[#FFC107] rounded-3xl p-12 text-white"
         >
           <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to Start Your Journey?</h2>
           <p className="text-xl mb-8 opacity-90">

@@ -11,27 +11,31 @@ const Posts: React.FC = () => {
   const { currentUser } = useAuth();
   const { useRealtimeCollection } = useFirestore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Get posts from Firestore in real-time
   const { data: posts, loading } = useRealtimeCollection('posts', [orderBy('createdAt', 'desc')]);
 
+  // Handle post deletion - refresh the posts list
+  const handlePostDeleted = () => {
+    setRefreshKey(prev => prev + 1);
+  };
+
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FF6B35] bg-clip-text text-transparent mb-2 leading-relaxed pb-1">
-            Community Posts
-          </h1>
-          <p className="text-gray-600 text-lg">
-            Share your journey and connect with fellow moms
-          </p>
-        </div>
+      <div className="text-center mb-12">
+        <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">
+          Community Posts
+        </h1>
+        <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-6">
+          Share your journey and connect with fellow moms
+        </p>
         
         {currentUser && (
           <button
             onClick={() => setIsCreateModalOpen(true)}
-            className="mt-4 md:mt-0 flex items-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg"
+            className="flex items-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg mx-auto"
           >
             <Plus className="w-5 h-5 mr-2" />
             Share Post
@@ -40,9 +44,9 @@ const Posts: React.FC = () => {
       </div>
 
       {/* Posts Feed */}
-      <div className="space-y-6">
+      <div className="space-y-6" key={refreshKey}>
         {posts.map((post) => (
-          <PostCard key={post.id} post={post} />
+          <PostCard key={post.id} post={post} onPostDeleted={handlePostDeleted} />
         ))}
       </div>
 
@@ -59,7 +63,7 @@ const Posts: React.FC = () => {
           {currentUser && (
             <button
               onClick={() => setIsCreateModalOpen(true)}
-              className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FF6B35] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105"
+              className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105"
             >
               Create First Post
             </button>

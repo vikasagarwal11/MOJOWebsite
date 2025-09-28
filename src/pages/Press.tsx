@@ -63,7 +63,7 @@ const Press: React.FC = () => {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">
             Press & Media
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
@@ -149,7 +149,7 @@ const Press: React.FC = () => {
         </div>
 
         {/* Quick Facts */}
-        <div className="mt-12 bg-gradient-to-r from-[#F25129] to-[#FF6B35] rounded-2xl p-8 text-white">
+        <div className="mt-12 bg-gradient-to-r from-[#F25129] to-[#FFC107] rounded-2xl p-8 text-white">
           <h2 className="text-2xl font-bold mb-6">Quick Facts</h2>
           <div className="grid md:grid-cols-2 gap-6">
             <div>
