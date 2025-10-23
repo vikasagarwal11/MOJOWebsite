@@ -13,7 +13,11 @@ import {
 import { useAttendees } from '../../hooks/useAttendees';
 import { 
   Attendee, 
-  AttendeeStatus
+  AttendeeStatus,
+  CreateAttendeeData,
+  AttendeeType,
+  AgeGroup,
+  Relationship
 } from '../../types/attendee';
 import { useAuth } from '../../contexts/AuthContext';
 import { familyMemberService } from '../../services/familyMemberService';
@@ -44,6 +48,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     attendees, 
     loading, 
     error, 
+    addAttendee,
     updateAttendee, 
     removeAttendee, 
     refreshAttendees 
@@ -55,12 +60,27 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   const [collapsedSections, setCollapsedSections] = useState({
     going: false,
     notGoing: false,
-    pending: false,
+    
     waitlisted: false
   });
 
   // State for tracking attendees being added to family
   const [addingToFamily, setAddingToFamily] = useState<Set<string>>(new Set());
+
+  // Track per-attendee status errors so we can surface inline feedback
+  const [statusErrors, setStatusErrors] = useState<Record<string, string>>({});
+
+  const updateStatusError = (attendeeId: string, message?: string) => {
+    setStatusErrors(prev => {
+      const next = { ...prev };
+      if (message) {
+        next[attendeeId] = message;
+      } else {
+        delete next[attendeeId];
+      }
+      return next;
+    });
+  };
 
   // Get family members to check if attendees are already linked
   const { familyMembers: userFamilyMembers, refreshFamilyMembers } = useFamilyMembers();
@@ -71,6 +91,11 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     userFamilyMembers.forEach(m => map.set(m.id, { name: m.name, ageGroup: m.ageGroup }));
     return map;
   }, [userFamilyMembers]);
+
+  // Safely resolve an attendee's identifier
+  const getAttendeeId = (attendee: Attendee): string => {
+    return (attendee as any).attendeeId || (attendee as any).id || '';
+  };
 
   const getDisplayName = (attendee: Attendee): string => {
     // Handle bulk-uploaded attendees (no user account)
@@ -95,13 +120,31 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     return waitlistPositions.get(attendee.userId) || null;
   };
 
+  const getCapacityBlockedMessage = () => {
+    if (capacityState?.canWaitlist) {
+      return "This event is already full, but a waitlist is available. Please move this attendee to 'Waitlisted' or contact the organizer.";
+    }
+    return "This event is already full. Please contact the organizer to open additional spots.";
+  };
+
   // Check if an attendee can be edited (only real users can edit their own attendees)
   const canEditAttendee = (attendee: Attendee): boolean => {
     // Bulk-uploaded attendees cannot be edited
-    if (!attendee.userId) return false;
+    if (!attendee.userId) {
+      console.log('DEBUG: canEditAttendee = false (no userId)', { attendeeId: getAttendeeId(attendee), attendee });
+      return false;
+    }
     
     // Only the attendee's owner can edit
-    return attendee.userId === currentUser?.id;
+    const canEdit = attendee.userId === currentUser?.id;
+    console.log('DEBUG: canEditAttendee check', { 
+      attendeeId: getAttendeeId(attendee), 
+      attendeeUserId: attendee.userId, 
+      currentUserId: currentUser?.id, 
+      canEdit,
+      attendeeName: getDisplayName(attendee)
+    });
+    return canEdit;
   };
 
   // Check if an attendee is already linked to a family member
@@ -134,29 +177,53 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   const attendeesByStatus = useMemo(() => ({
     going: attendees.filter(a => a.rsvpStatus === 'going'),
     'not-going': attendees.filter(a => a.rsvpStatus === 'not-going'),
-    pending: attendees.filter(a => a.rsvpStatus === 'pending'),
+    
     waitlisted: attendees.filter(a => a.rsvpStatus === 'waitlisted')
   }), [attendees]);
 
   const handleUpdateAttendee = async (attendeeId: string, updateData: any) => {
     try {
       console.log('DEBUG: handleUpdateAttendee called with:', { attendeeId, updateData });
-      
-      // Find the attendee being updated
-      const attendeeToUpdate = attendees.find(a => a.attendeeId === attendeeId);
-      if (!attendeeToUpdate || !currentUser) {
-        await updateAttendee(attendeeId, updateData);
-        onAttendeeUpdate?.();
+
+      // Enhanced validation
+      if (!attendeeId) {
+        console.error('Cannot update attendee: attendeeId is missing');
+        toast.error('Unable to update attendee. Please try again.');
         return;
       }
       
-      // Check if this is a primary member trying to change status
+      if (!updateData || Object.keys(updateData).length === 0) {
+        console.error('Cannot update attendee: no update data provided');
+        toast.error('No changes to update.');
+        return;
+      }
+      
+      // Find the attendee being updated
+      const attendeeToUpdate = attendees.find(a => getAttendeeId(a) === attendeeId);
+      if (!attendeeToUpdate) {
+        console.error('Cannot update attendee: attendee not found', { attendeeId });
+        toast.error('Attendee not found. Please refresh and try again.');
+        return;
+      }
+      
+      if (!currentUser) {
+        console.error('Cannot update attendee: user not authenticated');
+        toast.error('Please log in to update attendees.');
+        return;
+      }
+
+      let pendingUpdate = { ...updateData };
+      updateStatusError(attendeeId);
+
+      // Check if this is a primary member changing to "not-going"
       if (attendeeToUpdate.userId === currentUser.id && 
           attendeeToUpdate.attendeeType === 'primary' && 
-          updateData.rsvpStatus && 
-          updateData.rsvpStatus !== 'going') {
+          pendingUpdate.rsvpStatus === 'not-going') {
         
-        // Check if there are any family members marked as "going"
+        console.log('DEBUG: Primary member changing to not-going - will cascade to family members');
+        
+        // Business Rule: When primary member changes to "not-going", 
+        // all family members should also be set to "not-going"
         const goingFamilyMembers = attendees.filter(
           a => a.userId === currentUser.id && 
                a.attendeeType === 'family_member' && 
@@ -164,8 +231,19 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
         );
         
         if (goingFamilyMembers.length > 0) {
-          toast.error('You cannot change your status to "not going" or "pending" while family members are marked as "going". Please remove family members first or change their status.');
-          return;
+          console.log(`DEBUG: Found ${goingFamilyMembers.length} family members to update to not-going`);
+          
+          // Update all family members to "not-going"
+          for (const familyMember of goingFamilyMembers) {
+            try {
+              await updateAttendee(getAttendeeId(familyMember), { rsvpStatus: 'not-going' });
+              console.log(`DEBUG: Updated family member ${familyMember.name} to not-going`);
+            } catch (error) {
+              console.error(`DEBUG: Failed to update family member ${familyMember.name}:`, error);
+            }
+          }
+          
+          toast.success(`${goingFamilyMembers.length} family member${goingFamilyMembers.length > 1 ? 's' : ''} automatically marked as "Not Going" since you cannot attend.`);
         }
       }
       
@@ -174,17 +252,37 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
         attendeeUserId: attendeeToUpdate.userId,
         currentUserId: currentUser.id,
         attendeeType: attendeeToUpdate.attendeeType,
-        newStatus: updateData.rsvpStatus,
+        newStatus: pendingUpdate.rsvpStatus,
         isFamilyMember: attendeeToUpdate.attendeeType === 'family_member',
         isCurrentUser: attendeeToUpdate.userId === currentUser.id,
-        isChangingToGoing: updateData.rsvpStatus === 'going'
+        isChangingToGoing: pendingUpdate.rsvpStatus === 'going'
       });
-      
+
+      // Check if this is a primary member changing to "going" while at capacity
+      if (attendeeToUpdate.userId === currentUser.id &&
+          attendeeToUpdate.attendeeType === 'primary' &&
+          pendingUpdate.rsvpStatus === 'going') {
+        
+        if (capacityState?.isAtCapacity) {
+          if (capacityState.canWaitlist) {
+            console.log('DEBUG: Event at capacity with waitlist - converting primary update to waitlisted');
+            pendingUpdate = { ...pendingUpdate, rsvpStatus: 'waitlisted' };
+            toast.success('Event is full, so you have been added to the waitlist.');
+          } else {
+            const blockedMessage = getCapacityBlockedMessage();
+            console.log('DEBUG: Blocking primary update due to capacity with no waitlist');
+            updateStatusError(attendeeId, blockedMessage);
+            toast.error(blockedMessage);
+            return;
+          }
+        }
+      }
+
       if (attendeeToUpdate.userId === currentUser.id && 
           attendeeToUpdate.attendeeType === 'family_member' && 
-          updateData.rsvpStatus === 'going') {
+          pendingUpdate.rsvpStatus === 'going') {
         
-        console.log('DEBUG: Family member changing to going - looking for primary member');
+        console.log('DEBUG: Family member changing to going - checking primary member status');
         
         // Find the primary member for this user
         const primaryAttendee = attendees.find(
@@ -193,34 +291,113 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
         
         console.log('DEBUG: Primary member found:', {
           exists: !!primaryAttendee,
-          currentStatus: primaryAttendee?.rsvpStatus,
-          needsUpdate: primaryAttendee && primaryAttendee.rsvpStatus !== 'going'
+          currentStatus: primaryAttendee?.rsvpStatus
         });
         
-        // If primary member exists and is not already "going", update them to "going"
-        if (primaryAttendee && primaryAttendee.rsvpStatus !== 'going') {
-          console.log('DEBUG: Auto-updating primary member to going status');
-          await updateAttendee(primaryAttendee.attendeeId, { rsvpStatus: 'going' });
-          toast.success('You have been automatically set to "going" since a family member is attending.');
+        // Business Rule: Family members can only attend if primary member is "going"
+        if (!primaryAttendee) {
+          console.log('DEBUG: No primary member found - blocking family member');
+          const message = 'You must first set yourself to "going" before family members can attend.';
+          updateStatusError(attendeeId, message);
+          toast.error(message);
+          return;
         }
+        
+        if (primaryAttendee.rsvpStatus !== 'going') {
+          console.log('DEBUG: Primary member is not going - checking if we can auto-update');
+          
+          // Check capacity before attempting to auto-update primary member
+          if (capacityState?.isAtCapacity && !capacityState?.canWaitlist) {
+            console.log('DEBUG: Event is at capacity with no waitlist - blocking family member');
+            const blockedMessage = getCapacityBlockedMessage();
+            updateStatusError(attendeeId, blockedMessage);
+            toast.error(blockedMessage);
+            return;
+          }
+
+          console.log('DEBUG: Capacity allows - auto-updating primary member to going');
+          try {
+            await updateAttendee(getAttendeeId(primaryAttendee), { rsvpStatus: 'going' });
+          toast.success('You have been automatically set to "going" since a family member is attending.');
+          } catch (primaryUpdateError) {
+            const message = primaryUpdateError instanceof Error ? primaryUpdateError.message : String(primaryUpdateError);
+            const lowerMessage = message.toLowerCase();
+
+            if (lowerMessage.includes('over capacity') || lowerMessage.includes('cannot change status to "going"') || lowerMessage.includes('event is full')) {
+              console.warn('DEBUG: Capacity blocked during primary auto-update:', message);
+              const blockedMessage = getCapacityBlockedMessage();
+              updateStatusError(attendeeId, blockedMessage);
+              toast.error(blockedMessage);
+            } else {
+              console.error('DEBUG: Failed to auto-update primary member:', primaryUpdateError);
+              toast.error('Failed to update your status. Please try again.');
+            }
+            return;
+          }
+        }
+        
+        console.log('DEBUG: Primary member is going - allowing family member to attend');
       }
       
       // Note: We removed the auto-removal logic for family members changing status
       // The primary member should only be removed when they explicitly set their own status to "not-going"
       // This allows the primary member to attend alone without family members
       
-      await updateAttendee(attendeeId, updateData);
+      await updateAttendee(attendeeId, pendingUpdate);
       console.log('DEBUG: updateAttendee completed successfully');
+      updateStatusError(attendeeId);
       onAttendeeUpdate?.();
     } catch (error) {
       console.error('Failed to update attendee:', error);
+
+      // Robust error message extraction
+      let message = 'Unknown error';
+      try {
+        if (error && typeof error === 'object') {
+          if ('message' in error && typeof error.message === 'string') {
+            message = error.message;
+          } else if ('code' in error && typeof error.code === 'string') {
+            message = error.code;
+          } else {
+            message = String(error);
+          }
+        } else {
+          message = String(error);
+        }
+      } catch (e) {
+        message = 'Error processing error message';
+      }
+
+      const lowerMessage = message.toLowerCase();
+
+      if (lowerMessage.includes('over capacity') || lowerMessage.includes('cannot change status to "going"') || lowerMessage.includes('event is full')) {
+        const blockedMessage = getCapacityBlockedMessage();
+        updateStatusError(attendeeId, blockedMessage);
+        toast.error(blockedMessage);
+        return;
+      }
+      
+      // Enhanced error handling with specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('permission')) {
+          toast.error('You do not have permission to update this attendee.');
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          toast.error('Network error. Please check your connection and try again.');
+        } else if (error.message.includes('indexOf')) {
+          toast.error('Invalid attendee data. Please refresh the page and try again.');
+        } else {
+          toast.error('Failed to update attendee: ' + error.message);
+        }
+      } else {
+        toast.error('An unexpected error occurred. Please try again.');
+      }
     }
   };
 
   const handleDeleteAttendee = async (attendeeId: string) => {
     try {
       // Find the attendee being deleted
-      const attendeeToDelete = attendees.find(a => a.attendeeId === attendeeId);
+      const attendeeToDelete = attendees.find(a => getAttendeeId(a) === attendeeId);
       if (!attendeeToDelete) return;
 
       // Remove the attendee
@@ -238,44 +415,79 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
 
   // Status changes are handled inline via handleUpdateAttendee
 
-  // Helper function to check if primary member status should be locked
-  const isPrimaryMemberStatusLocked = (attendee: Attendee): boolean => {
-    if (!currentUser || attendee.userId !== currentUser.id || attendee.attendeeType !== 'primary') {
+  // Helper function to check if a primary attendee has family members marked as "going"
+  const hasGoingFamilyMembers = (attendee: Attendee): boolean => {
+    if (!attendee.userId || attendee.attendeeType !== 'primary') {
       return false;
     }
     
-    // Check if there are any family members marked as "going"
-    const goingFamilyMembers = attendees.filter(
-      a => a.userId === currentUser.id && 
-           a.attendeeType === 'family_member' && 
-           a.rsvpStatus === 'going'
+    return attendees.some(
+      family =>
+        family.userId === attendee.userId &&
+        family.attendeeType === 'family_member' &&
+        family.rsvpStatus === 'going'
     );
-    
-    return goingFamilyMembers.length > 0;
   };
 
   // Helper function to check if "Going" option should be disabled
   const isGoingOptionDisabled = (attendee: Attendee): boolean => {
-    // Only check capacity for primary members, not family members
-    if (attendee.attendeeType !== 'primary') {
+    if (attendee.attendeeType === 'primary') {
+      // Let primary members attempt the change so we can surface capacity messaging in handleUpdateAttendee
       return false;
     }
-    
-    // If no capacity state provided, allow going
-    if (!capacityState) {
-      return false;
+
+    // Check business rules for family members
+    if (attendee.attendeeType === 'family_member') {
+      // Find the primary member for this user
+      const primaryAttendee = attendees.find(
+        a => a.userId === attendee.userId && a.attendeeType === 'primary'
+      );
+      
+      // Disable "Going" if primary member is not "going"
+      return !primaryAttendee || primaryAttendee.rsvpStatus !== 'going';
     }
     
-    // Disable "Going" if event is at capacity and waitlist is not available
-    return capacityState.isAtCapacity && !capacityState.canWaitlist;
+    return false;
   };
+
+  // Helper function to get tooltip message for disabled options
+  const getDisabledTooltip = (attendee: Attendee): string => {
+    if (attendee.attendeeType === 'primary') {
+      if (capacityState?.isAtCapacity && !capacityState?.canWaitlist) {
+        return 'Event is at capacity';
+      }
+    }
+    
+    if (attendee.attendeeType === 'family_member') {
+      const primaryAttendee = attendees.find(
+        a => a.userId === attendee.userId && a.attendeeType === 'primary'
+      );
+      
+      if (!primaryAttendee) {
+        return 'You must first set yourself to "going"';
+      }
+      
+      if (primaryAttendee.rsvpStatus !== 'going') {
+        return 'You must first set yourself to "going" before family members can attend';
+      }
+    }
+    
+    return '';
+  };
+
+  // Whether the current user has a primary attendee for this event
+  const hasCurrentUserPrimary = useMemo(() => {
+    if (!currentUser) return false;
+    return attendees.some(a => a.userId === currentUser.id && a.attendeeType === 'primary');
+  }, [attendees, currentUser]);
 
   // Handle adding attendee to family profile
   const handleAddToFamily = async (attendee: Attendee) => {
     if (!currentUser) return;
 
     try {
-      setAddingToFamily(prev => new Set(prev).add(attendee.attendeeId));
+      const attendeeIdValue = getAttendeeId(attendee);
+      setAddingToFamily(prev => new Set(prev).add(attendeeIdValue));
       // Create or get existing family member
       const fm = await familyMemberService.createFromAttendee(currentUser.id, {
         name: attendee.name,
@@ -284,7 +496,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
       });
 
       // Link attendee -> familyMemberId and sync name/age for future consistency
-      await handleUpdateAttendee(attendee.attendeeId, {
+      await handleUpdateAttendee(getAttendeeId(attendee), {
         familyMemberId: fm.id,
         name: fm.name,
         ageGroup: (fm.ageGroup as any) || attendee.ageGroup
@@ -300,11 +512,80 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
       console.error('Failed to add attendee to family:', error);
       toast.error('Failed to add to family profile. Please try again.');
     } finally {
+      const attendeeIdValue = getAttendeeId(attendee);
       setAddingToFamily(prev => {
         const newSet = new Set(prev);
-        newSet.delete(attendee.attendeeId);
+        newSet.delete(attendeeIdValue);
         return newSet;
       });
+    }
+  };
+
+  // Handle adding the current user as an attendee
+  const handleAddYourself = async () => {
+    if (!currentUser) {
+      toast.error('Please log in to RSVP for events.');
+      return;
+    }
+
+    try {
+      // Check if user already has a primary attendee
+      const existingPrimary = attendees.find(
+        a => a.userId === currentUser.id && a.attendeeType === 'primary'
+      );
+      
+      if (existingPrimary) {
+        toast.error('You are already RSVP\'d for this event.');
+        return;
+      }
+
+      // Determine the appropriate status based on capacity
+      let rsvpStatus: AttendeeStatus = 'going';
+      
+      if (capacityState?.isAtCapacity) {
+        if (capacityState.canWaitlist) {
+          rsvpStatus = 'waitlisted';
+        } else {
+          toast.error('Event is at full capacity and waitlist is not available.');
+          return;
+        }
+      }
+
+      const attendeeData: CreateAttendeeData = {
+        eventId: eventId,
+        userId: currentUser.id,
+        attendeeType: 'primary' as AttendeeType,
+        relationship: 'self' as Relationship,
+        name: currentUser.displayName || currentUser.firstName || 'You',
+        ageGroup: 'adult' as AgeGroup,
+        rsvpStatus: rsvpStatus
+      };
+
+      await addAttendee(attendeeData);
+      
+      const statusText = rsvpStatus === 'waitlisted' ? 'added to waitlist' : 'added as going';
+      toast.success(`You've been ${statusText}!`);
+      
+      // Refresh the attendee list
+      onAttendeeUpdate?.();
+      
+    } catch (error) {
+      console.error('Failed to add yourself:', error);
+      
+      // Enhanced error handling with specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('permission')) {
+          toast.error('You do not have permission to RSVP for this event.');
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          toast.error('Network error. Please check your connection and try again.');
+        } else if (error.message.includes('capacity') || error.message.includes('full')) {
+          toast.error('Event is at capacity. Please try joining the waitlist.');
+        } else {
+          toast.error(`Failed to add yourself: ${error.message}`);
+        }
+      } else {
+        toast.error('An unexpected error occurred. Please try again.');
+      }
     }
   };
 
@@ -341,6 +622,39 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
 
   return (
     <div className="space-y-4">
+      {/* Add Yourself CTA when current user has no primary - Show at top */}
+      {currentUser && !hasCurrentUserPrimary && (
+        <div className="mb-4 p-3 border border-orange-200 rounded-lg bg-orange-50">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-orange-800">You haven't RSVP'd yet</p>
+              <p className="text-xs text-orange-600">Add yourself to this event</p>
+            </div>
+            <div>
+              {capacityState?.isAtCapacity ? (
+                capacityState.canWaitlist ? (
+                  <button
+                    onClick={handleAddYourself}
+                    className="px-3 py-1.5 bg-orange-500 text-white rounded-md hover:bg-orange-600 text-sm transition-colors"
+                  >
+                    Join Waitlist
+                  </button>
+                ) : (
+                  <div className="text-sm text-red-600">Event is full and waitlist is not available.</div>
+                )
+              ) : (
+                <button
+                  onClick={handleAddYourself}
+                  className="px-3 py-1.5 bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] text-sm transition-colors"
+                >
+                  Add Yourself
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Attendee Lists by Status */}
       <div className="space-y-4">
         {/* Going */}
@@ -388,13 +702,19 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                          
                          {/* Table Rows */}
                          <div className="divide-y divide-gray-100">
-                           {attendeesByStatus.going.map((attendee, index) => (
-                             <div 
-                               key={attendee.attendeeId} 
-                               className={`px-3 py-2 hover:bg-green-50 transition-colors ${
-                                 index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                               }`}
-                             >
+                           {attendeesByStatus.going.map((attendee, index) => {
+                             const attendeeIdValue = getAttendeeId(attendee);
+                             const showFamilyWarning = attendee.attendeeType === 'primary' && hasGoingFamilyMembers(attendee);
+                             const statusError = statusErrors[attendeeIdValue];
+                             const goingOptionDisabled = isGoingOptionDisabled(attendee);
+
+                             return (
+                               <div 
+                                 key={attendeeIdValue} 
+                                 className={`px-3 py-2 hover:bg-green-50 transition-colors ${
+                                   index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                                 }`}
+                               >
                                <div className="grid grid-cols-12 gap-2 items-center">
                                  {/* Name */}
                                  <div className="col-span-4">
@@ -411,21 +731,40 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                  {/* Status Dropdown */}
                                  <div className="col-span-3">
                                    {canEditAttendee(attendee) ? (
-                                     <select
-                                       value={attendee.rsvpStatus}
-                                       onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
-                                       disabled={isPrimaryMemberStatusLocked(attendee)}
-                                       className={`w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-green-500 focus:border-green-500 ${
-                                         isPrimaryMemberStatusLocked(attendee) 
-                                           ? 'bg-gray-100 cursor-not-allowed opacity-75' 
-                                           : 'bg-white'
-                                       }`}
-                                       title={isPrimaryMemberStatusLocked(attendee) ? 'Status locked because family members are attending' : ''}
-                                     >
-                                       <option value="going" className="text-green-700">Going</option>
-                                       <option value="not-going" className="text-red-700">Not Going</option>
-                                       <option value="pending" className="text-yellow-700">Pending</option>
-                                     </select>
+                                     <>
+                                       <select
+                                         value={attendee.rsvpStatus}
+                                         onClick={(e) => {
+                                           console.log('DEBUG: Dropdown onClick fired! (Going section)', { 
+                                             attendeeId: attendeeIdValue, 
+                                             currentValue: attendee.rsvpStatus,
+                                             canEdit: canEditAttendee(attendee)
+                                           });
+                                         }}
+                                         onChange={(e) => {
+                                           console.log('DEBUG: Dropdown onChange fired! (Going section)', { 
+                                             attendeeId: attendeeIdValue, 
+                                             newValue: e.target.value,
+                                             currentValue: attendee.rsvpStatus 
+                                           });
+                                           handleUpdateAttendee(attendeeIdValue, { rsvpStatus: e.target.value as AttendeeStatus });
+                                         }}
+                                         className={`w-full px-1.5 py-0.5 text-[11px] border rounded focus:ring-1 focus:ring-green-500 focus:border-green-500 ${showFamilyWarning ? 'border-yellow-300 bg-yellow-50 focus:ring-yellow-500 focus:border-yellow-500' : 'border-gray-300 bg-white'}`}
+                                         title={showFamilyWarning ? 'Changing your status to "Not Going" will also update your family members.' : getDisabledTooltip(attendee)}
+                                       >
+                                         <option 
+                                           value="going" 
+                                           className="text-green-700"
+                                           disabled={goingOptionDisabled} title={goingOptionDisabled ? getCapacityBlockedMessage() : ''}
+                                         >
+                                           Going
+                                         </option>
+                                         <option value="not-going" className="text-red-700">Not Going</option>
+                                       </select>
+                                       {statusError && (
+                                         <p className="mt-1 text-[11px] text-red-600">{statusError}</p>
+                                       )}
+                                     </>
                                    ) : (
                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium bg-green-100 text-green-800">
                                        Going
@@ -444,7 +783,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          <button
                                            onClick={() => handleAddToFamily(attendee)}
                                            disabled={
-                                             addingToFamily.has(attendee.attendeeId) || 
+                                             addingToFamily.has(getAttendeeId(attendee)) || 
                                              isAttendeeLinkedToFamily(attendee) ||
                                              (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                            }
@@ -461,7 +800,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                                : "Add to Family Profile"
                                            }
                                          >
-                                           {addingToFamily.has(attendee.attendeeId) ? (
+                                           {addingToFamily.has(getAttendeeId(attendee)) ? (
                                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                                            ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
                                              <CheckCircle className="w-3 h-3" />
@@ -472,7 +811,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          
                                          {/* Delete Button - Disabled for primary members */}
                                          <button
-                                           onClick={() => handleDeleteAttendee(attendee.attendeeId)}
+                                           onClick={() => handleDeleteAttendee(getAttendeeId(attendee))}
                                            disabled={attendee.attendeeType === 'primary'}
                                            className={`px-1 py-0.5 rounded flex items-center justify-center transition-colors ${
                                              attendee.attendeeType === 'primary' 
@@ -489,8 +828,193 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                  </div>
                                </div>
                              </div>
-                           ))}
+                           );
+                         })}
                          </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+
+        {/* Waitlisted */}
+        {attendeesByStatus.waitlisted.length > 0 && (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg">
+            <motion.button
+              onClick={() => toggleSection('waitlisted')}
+              className="w-full p-3 flex items-center justify-between hover:bg-purple-100 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Clock className="w-5 h-5 text-purple-600" />
+                <h4 className="font-medium text-gray-900 text-[13px]">
+                  Waitlisted ({attendeesByStatus.waitlisted.length})
+                </h4>
+              </div>
+              <motion.div
+                animate={{ rotate: collapsedSections.waitlisted ? 0 : 180 }}
+                transition={{ duration: 0.2 }}
+              >
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              </motion.div>
+            </motion.button>
+
+            <AnimatePresence>
+              {!collapsedSections.waitlisted && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: 'easeInOut' }}
+                  className="overflow-hidden"
+                >
+                  <div className="p-3 pt-0">
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
+                        <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
+                          <div className="col-span-4">Name</div>
+                          <div className="col-span-3">Age</div>
+                          <div className="col-span-3">Status</div>
+                          <div className="col-span-2">Actions</div>
+                        </div>
+                      </div>
+
+                      <div className="divide-y divide-gray-100">
+                        {attendeesByStatus.waitlisted.map((attendee, index) => {
+                          const attendeeIdValue = getAttendeeId(attendee);
+                          const statusError = statusErrors[attendeeIdValue];
+                          const goingOptionDisabled = isGoingOptionDisabled(attendee);
+                          const waitlistPosition = getWaitlistPosition(attendee);
+
+                          return (
+                            <div
+                              key={attendeeIdValue}
+                              className={`px-3 py-2 hover:bg-purple-50 transition-colors ${
+                                index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                              }`}
+                            >
+                              <div className="grid grid-cols-12 gap-2 items-center">
+                                <div className="col-span-4">
+                                  <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
+                                  {waitlistPosition !== null && (
+                                    <span className="block text-[11px] text-purple-600 mt-0.5">
+                                      Position #{waitlistPosition}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="col-span-3">
+                                  <span className="text-[12px] text-gray-500">
+                                    {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
+                                  </span>
+                                </div>
+
+                                <div className="col-span-3">
+                                  {canEditAttendee(attendee) ? (
+                                    <>
+                                      <select
+                                        value={attendee.rsvpStatus}
+                                        onClick={() => {
+                                          console.log('DEBUG: Dropdown onClick fired! (Waitlisted section)', {
+                                            attendeeId: attendeeIdValue,
+                                            currentValue: attendee.rsvpStatus,
+                                            canEdit: canEditAttendee(attendee)
+                                          });
+                                        }}
+                                        onChange={(e) => {
+                                          console.log('DEBUG: Dropdown onChange fired! (Waitlisted section)', {
+                                            attendeeId: attendeeIdValue,
+                                            newValue: e.target.value,
+                                            currentValue: attendee.rsvpStatus
+                                          });
+                                          handleUpdateAttendee(attendeeIdValue, { rsvpStatus: e.target.value as AttendeeStatus });
+                                        }}
+                                        className="w-full px-1.5 py-0.5 text-[11px] border border-purple-300 bg-white rounded focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+                                        title={getDisabledTooltip(attendee)}
+                                      >
+                                        <option
+                                          value="going"
+                                          className="text-green-700"
+                                          disabled={goingOptionDisabled}
+                                          title={goingOptionDisabled ? getCapacityBlockedMessage() : ''}
+                                        >
+                                          Going
+                                        </option>
+                                        <option value="not-going" className="text-red-700">
+                                          Not Going
+                                        </option>
+                                        <option value="waitlisted" className="text-purple-700">
+                                          Waitlisted
+                                        </option>
+                                      </select>
+                                      {statusError && <p className="mt-1 text-[11px] text-red-600">{statusError}</p>}
+                                    </>
+                                  ) : (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium bg-purple-100 text-purple-800">
+                                      Waitlisted
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="col-span-2">
+                                  <div className="flex items-center justify-center gap-1">
+                                    {!attendee.userId ? (
+                                      <span className="text-xs text-gray-500 italic">Bulk Uploaded</span>
+                                    ) : (
+                                      canEditAttendee(attendee) && (
+                                        <>
+                                          <button
+                                            onClick={() => handleAddToFamily(attendee)}
+                                            disabled={
+                                              addingToFamily.has(getAttendeeId(attendee)) ||
+                                              isAttendeeLinkedToFamily(attendee) ||
+                                              (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
+                                            }
+                                            className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
+                                              isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
+                                                ? 'bg-green-100 text-green-600 cursor-not-allowed'
+                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                                            }`}
+                                            title={
+                                              (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
+                                                ? 'This is you - cannot add yourself to family profile'
+                                                : isAttendeeLinkedToFamily(attendee)
+                                                ? 'Already in Family Profile'
+                                                : 'Add to Family Profile'
+                                            }
+                                          >
+                                            {addingToFamily.has(getAttendeeId(attendee)) ? (
+                                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                            ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
+                                              <CheckCircle className="w-3 h-3" />
+                                            ) : (
+                                              <Heart className="w-3 h-3" />
+                                            )}
+                                          </button>
+
+                                          <button
+                                            onClick={() => handleDeleteAttendee(getAttendeeId(attendee))}
+                                            disabled={attendee.attendeeType === 'primary'}
+                                            className={`px-1 py-0.5 rounded flex items-center justify-center transition-colors ${
+                                              attendee.attendeeType === 'primary'
+                                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                : 'bg-gray-600 text-white hover:bg-gray-700'
+                                            }`}
+                                            title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        </>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </motion.div>
@@ -544,50 +1068,79 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                          
                          {/* Table Rows */}
                          <div className="divide-y divide-gray-100">
-                           {attendeesByStatus['not-going'].map((attendee, index) => (
-                             <div 
-                               key={attendee.attendeeId} 
-                               className={`px-3 py-2 hover:bg-red-50 transition-colors ${
-                                 index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                               }`}
-                             >
-                               <div className="grid grid-cols-12 gap-2 items-center">
-                                 {/* Name */}
-                                 <div className="col-span-4">
-                                   <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
-                                 </div>
-                                 
-                                 {/* Age */}
-                                 <div className="col-span-3">
-                                   <span className="text-[12px] text-gray-500">
-                                     {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
-                                   </span>
-                                 </div>
-                                 
-                                 {/* Status Dropdown */}
-                                 <div className="col-span-3">
-                                   {canEditAttendee(attendee) ? (
-                                     <select
-                                       value={attendee.rsvpStatus}
-                                       onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
-                                       disabled={isPrimaryMemberStatusLocked(attendee)}
-                                       className={`w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 ${
-                                         isPrimaryMemberStatusLocked(attendee) 
-                                           ? 'bg-gray-100 cursor-not-allowed opacity-75' 
-                                           : 'bg-white'
-                                       }`}
-                                       title={isPrimaryMemberStatusLocked(attendee) ? 'Status locked because family members are attending' : ''}
-                                     >
-                                       <option value="going" className="text-green-700">Going</option>
-                                       <option value="not-going" className="text-red-700">Not Going</option>
-                                       <option value="pending" className="text-yellow-700">Pending</option>
-                                     </select>
-                                   ) : (
-                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium bg-red-100 text-red-800">
-                                       Not Going
+                           {attendeesByStatus['not-going'].map((attendee, index) => {
+                             const attendeeIdValue = getAttendeeId(attendee);
+                             const showFamilyWarning = attendee.attendeeType === 'primary' && hasGoingFamilyMembers(attendee);
+                             const statusError = statusErrors[attendeeIdValue];
+                             const goingOptionDisabled = isGoingOptionDisabled(attendee);
+
+                             return (
+                               <div 
+                                 key={attendeeIdValue} 
+                                 className={`px-3 py-2 hover:bg-red-50 transition-colors ${
+                                   index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                                 }`}
+                               >
+                                 <div className="grid grid-cols-12 gap-2 items-center">
+                                   {/* Name */}
+                                   <div className="col-span-4">
+                                     <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
+                                   </div>
+                                   
+                                   {/* Age */}
+                                   <div className="col-span-3">
+                                     <span className="text-[12px] text-gray-500">
+                                       {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
                                      </span>
-                                   )}
-                                 </div>
+                                   </div>
+                                   
+                                   {/* Status Dropdown */}
+                                   <div className="col-span-3">
+                                     {canEditAttendee(attendee) ? (
+                                       <>
+                                         <select
+                                           value={attendee.rsvpStatus}
+                                           onClick={(e) => {
+                                             console.log('DEBUG: Dropdown onClick fired! (Not Going section)', { 
+                                               attendeeId: attendeeIdValue, 
+                                               currentValue: attendee.rsvpStatus,
+                                               canEdit: canEditAttendee(attendee)
+                                             });
+                                           }}
+                                           onChange={(e) => {
+                                             console.log('DEBUG: Dropdown onChange fired! (Not Going section)', { 
+                                               attendeeId: attendeeIdValue, 
+                                               newValue: e.target.value,
+                                               currentValue: attendee.rsvpStatus 
+                                             });
+                                             handleUpdateAttendee(attendeeIdValue, { rsvpStatus: e.target.value as AttendeeStatus });
+                                           }}
+                                           className={`w-full px-1.5 py-0.5 text-[11px] border rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 ${
+                                             showFamilyWarning 
+                                               ? 'border-yellow-300 bg-yellow-50 focus:ring-yellow-500 focus:border-yellow-500' 
+                                               : 'border-red-300 bg-white'
+                                           }`}
+                                           title={showFamilyWarning ? 'Changing your status to "Not Going" will also update your family members.' : getDisabledTooltip(attendee)}
+                                         >
+                                           <option 
+                                             value="going" 
+                                             className="text-green-700"
+                                             disabled={goingOptionDisabled} title={goingOptionDisabled ? getCapacityBlockedMessage() : ''}
+                                           >
+                                             Going
+                                           </option>
+                                           <option value="not-going" className="text-red-700">Not Going</option>
+                                         </select>
+                                         {statusError && (
+                                           <p className="mt-1 text-[11px] text-red-600">{statusError}</p>
+                                         )}
+                                       </>
+                                     ) : (
+                                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium bg-red-100 text-red-800">
+                                         Not Going
+                                       </span>
+                                     )}
+                                   </div>
                                  
                                  {/* Actions */}
                                  <div className="col-span-2">
@@ -600,7 +1153,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          <button
                                            onClick={() => handleAddToFamily(attendee)}
                                            disabled={
-                                             addingToFamily.has(attendee.attendeeId) || 
+                                             addingToFamily.has(getAttendeeId(attendee)) || 
                                              isAttendeeLinkedToFamily(attendee) ||
                                              (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                            }
@@ -617,7 +1170,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                                : "Add to Family Profile"
                                            }
                                          >
-                                           {addingToFamily.has(attendee.attendeeId) ? (
+                                           {addingToFamily.has(getAttendeeId(attendee)) ? (
                                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                                            ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
                                              <CheckCircle className="w-3 h-3" />
@@ -628,7 +1181,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          
                                          {/* Delete Button - Disabled for primary members */}
                                          <button
-                                           onClick={() => handleDeleteAttendee(attendee.attendeeId)}
+                                           onClick={() => handleDeleteAttendee(getAttendeeId(attendee))}
                                            disabled={attendee.attendeeType === 'primary'}
                                            className={`px-1 py-0.5 rounded flex items-center justify-center transition-colors ${
                                              attendee.attendeeType === 'primary' 
@@ -645,339 +1198,8 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                  </div>
                                </div>
                              </div>
-                           ))}
-                         </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* Pending */}
-        {attendeesByStatus.pending.length > 0 && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg">
-            {/* Collapsible Header */}
-            <motion.button
-              onClick={() => toggleSection('pending')}
-              className="w-full p-3 flex items-center justify-between hover:bg-yellow-100 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-yellow-600" />
-                <h4 className="font-medium text-gray-900 text-[13px]">Pending ({attendeesByStatus.pending.length})</h4>
-              </div>
-              <motion.div
-                animate={{ rotate: collapsedSections.pending ? 0 : 180 }}
-                transition={{ duration: 0.2 }}
-              >
-                <ChevronDown className="w-5 h-5 text-gray-500" />
-              </motion.div>
-            </motion.button>
-            
-            {/* Collapsible Content */}
-            <AnimatePresence>
-              {!collapsedSections.pending && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: 'easeInOut' }}
-                  className="overflow-hidden"
-                >
-                  <div className="p-3 pt-0">
-                    {/* Excel-like Table Layout */}
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                             {/* Table Header */}
-                                               <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
-                                                     <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
-                             <div className="col-span-4">Name</div>
-                             <div className="col-span-3">Age</div>
-                             <div className="col-span-3">Status</div>
-                             <div className="col-span-2">Actions</div>
-                           </div>
-                         </div>
-                         
-                         {/* Table Rows */}
-                         <div className="divide-y divide-gray-100">
-                           {attendeesByStatus.pending.map((attendee, index) => (
-                             <div 
-                               key={attendee.attendeeId} 
-                               className={`px-3 py-2 hover:bg-yellow-50 transition-colors ${
-                                 index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                               }`}
-                             >
-                               <div className="grid grid-cols-12 gap-2 items-center">
-                                 {/* Name */}
-                                 <div className="col-span-4">
-                                   <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
-                                 </div>
-                                 
-                                 {/* Age */}
-                                 <div className="col-span-3">
-                                   <span className="text-[12px] text-gray-500">
-                                     {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
-                                   </span>
-                                 </div>
-                                 
-                                 {/* Status Dropdown */}
-                                 <div className="col-span-3">
-                                   {canEditAttendee(attendee) ? (
-                                     <select
-                                       value={attendee.rsvpStatus}
-                                       onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
-                                       disabled={isPrimaryMemberStatusLocked(attendee)}
-                                       className={`w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-yellow-500 focus:border-yellow-500 ${
-                                         isPrimaryMemberStatusLocked(attendee) 
-                                           ? 'bg-gray-100 cursor-not-allowed opacity-75' 
-                                           : 'bg-white'
-                                       }`}
-                                       title={isPrimaryMemberStatusLocked(attendee) ? 'Status locked because family members are attending' : ''}
-                                     >
-                                       <option value="going" className="text-green-700">Going</option>
-                                       <option value="not-going" className="text-red-700">Not Going</option>
-                                       <option value="pending" className="text-yellow-700">Pending</option>
-                                     </select>
-                                   ) : (
-                                     <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium ${
-                                       attendee.rsvpStatus === 'going' ? 'bg-green-100 text-green-800' :
-                                       attendee.rsvpStatus === 'not-going' ? 'bg-red-100 text-red-800' :
-                                       'bg-yellow-100 text-yellow-800'
-                                     }`}>
-                                       {attendee.rsvpStatus === 'going' ? 'Going' :
-                                        attendee.rsvpStatus === 'not-going' ? 'Not Going' :
-                                        'Pending'}
-                                     </span>
-                                   )}
-                                 </div>
-                                 
-                                 {/* Actions */}
-                                 <div className="col-span-2">
-                                   <div className="flex items-center justify-center gap-1">
-                                     {!attendee.userId ? (
-                                       <span className="text-xs text-gray-500 italic">Bulk Uploaded</span>
-                                     ) : canEditAttendee(attendee) && (
-                                       <>
-                                         {/* Add to Family Button */}
-                                         <button
-                                           onClick={() => handleAddToFamily(attendee)}
-                                           disabled={
-                                             addingToFamily.has(attendee.attendeeId) || 
-                                             isAttendeeLinkedToFamily(attendee) ||
-                                             (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                           }
-                                           className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
-                                             isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                               ? 'bg-green-100 text-green-600 cursor-not-allowed' 
-                                               : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
-                                           }`}
-                                           title={
-                                             (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                               ? "This is you - cannot add yourself to family profile"
-                                               : isAttendeeLinkedToFamily(attendee) 
-                                               ? "Already in Family Profile" 
-                                               : "Add to Family Profile"
-                                           }
-                                         >
-                                           {addingToFamily.has(attendee.attendeeId) ? (
-                                             <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                           ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
-                                             <CheckCircle className="w-3 h-3" />
-                                           ) : (
-                                             <Heart className="w-3 h-3" />
-                                           )}
-                                         </button>
-                                         
-                                         {/* Delete Button - Disabled for primary members */}
-                                         <button
-                                           onClick={() => handleDeleteAttendee(attendee.attendeeId)}
-                                           disabled={attendee.attendeeType === 'primary'}
-                                           className={`px-1 py-0.5 rounded flex items-center justify-center transition-colors ${
-                                             attendee.attendeeType === 'primary' 
-                                               ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                                               : 'bg-gray-600 text-white hover:bg-gray-700'
-                                           }`}
-                                           title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
-                                         >
-                                           <Trash2 className="w-3 h-3" />
-                                         </button>
-                                       </>
-                                     )}
-                                   </div>
-                                 </div>
-                               </div>
-                             </div>
-                           ))}
-                         </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* Waitlisted */}
-        {attendeesByStatus.waitlisted.length > 0 && (
-          <div className="bg-purple-50 border border-purple-200 rounded-lg">
-            {/* Collapsible Header */}
-            <motion.button
-              onClick={() => toggleSection('waitlisted')}
-              className="w-full p-3 flex items-center justify-between hover:bg-purple-100 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-purple-600" />
-                <h4 className="font-medium text-gray-900 text-[13px]">Waitlisted ({attendeesByStatus.waitlisted.length})</h4>
-              </div>
-              <motion.div
-                animate={{ rotate: collapsedSections.waitlisted ? 0 : 180 }}
-                transition={{ duration: 0.2 }}
-              >
-                <ChevronDown className="w-5 h-5 text-gray-500" />
-              </motion.div>
-            </motion.button>
-            
-            {/* Collapsible Content */}
-            <AnimatePresence>
-              {!collapsedSections.waitlisted && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: 'easeInOut' }}
-                  className="overflow-hidden"
-                >
-                  <div className="p-3 pt-0">
-                    {/* Excel-like Table Layout */}
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                      {/* Table Header */}
-                      <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
-                        <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
-                          <div className="col-span-4">Name</div>
-                          <div className="col-span-3">Age</div>
-                          <div className="col-span-3">Status</div>
-                          <div className="col-span-2">Actions</div>
-                        </div>
-                      </div>
-                      
-                      {/* Table Rows */}
-                      <div className="divide-y divide-gray-100">
-                        {attendeesByStatus.waitlisted.map((attendee, index) => (
-                          <div 
-                            key={attendee.attendeeId} 
-                            className={`px-3 py-2 hover:bg-purple-50 transition-colors ${
-                              index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                            }`}
-                          >
-                            <div className="grid grid-cols-12 gap-2 items-center">
-                              {/* Name */}
-                              <div className="col-span-4">
-                                <div className="flex flex-col">
-                                  <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
-                                  {getWaitlistPosition(attendee) && (
-                                    <span className="text-xs text-purple-600 font-medium">
-                                      Position #{getWaitlistPosition(attendee)}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              
-                              {/* Age */}
-                              <div className="col-span-3">
-                                <span className="text-[12px] text-gray-500">
-                                  {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
-                                </span>
-                              </div>
-                              
-                              {/* Status Dropdown */}
-                              <div className="col-span-3">
-                                {canEditAttendee(attendee) ? (
-                                  <select
-                                    value={attendee.rsvpStatus}
-                                    onChange={(e) => handleUpdateAttendee(attendee.attendeeId, { rsvpStatus: e.target.value as AttendeeStatus })}
-                                    disabled={isPrimaryMemberStatusLocked(attendee)}
-                                    className={`w-full px-1.5 py-0.5 text-[11px] border border-gray-300 rounded focus:ring-1 focus:ring-purple-500 focus:border-purple-500 ${
-                                      isPrimaryMemberStatusLocked(attendee) 
-                                        ? 'bg-gray-100 cursor-not-allowed opacity-75' 
-                                        : 'bg-white'
-                                    }`}
-                                    title={isPrimaryMemberStatusLocked(attendee) ? 'Status locked because family members are attending' : ''}
-                                  >
-                                    <option 
-                                      value="going" 
-                                      className="text-green-700"
-                                      disabled={isGoingOptionDisabled(attendee)}
-                                    >
-                                      {isGoingOptionDisabled(attendee) ? 'Going (Event Full)' : 'Going'}
-                                    </option>
-                                    <option value="not-going" className="text-red-700">Not Going</option>
-                                    <option value="pending" className="text-yellow-700">Pending</option>
-                                    <option value="waitlisted" className="text-purple-700">Waitlisted</option>
-                                  </select>
-                                ) : (
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium bg-purple-100 text-purple-800">
-                                    Waitlisted
-                                  </span>
-                                )}
-                              </div>
-                              
-                              {/* Actions */}
-                              <div className="col-span-2">
-                                <div className="flex items-center justify-center gap-1">
-                                  {!attendee.userId ? (
-                                    <span className="text-xs text-gray-500 italic">Bulk Uploaded</span>
-                                  ) : canEditAttendee(attendee) && (
-                                    <>
-                                      {/* Add to Family Button */}
-                                      <button
-                                        onClick={() => handleAddToFamily(attendee)}
-                                        disabled={
-                                          addingToFamily.has(attendee.attendeeId) || 
-                                          isAttendeeLinkedToFamily(attendee) ||
-                                          (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                        }
-                                        className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
-                                          isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                            ? 'bg-green-100 text-green-600 cursor-not-allowed' 
-                                            : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
-                                        }`}
-                                        title={
-                                          (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                            ? "This is you - cannot add yourself to family profile"
-                                            : isAttendeeLinkedToFamily(attendee) 
-                                            ? "Already in Family Profile" 
-                                            : "Add to Family Profile"
-                                        }
-                                      >
-                                        {addingToFamily.has(attendee.attendeeId) ? (
-                                          <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                        ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
-                                             <CheckCircle className="w-3 h-3" />
-                                           ) : (
-                                             <Heart className="w-3 h-3" />
-                                           )}
-                                         </button>
-                                         
-                                         {/* Delete Button - Disabled for primary members */}
-                                         <button
-                                           onClick={() => handleDeleteAttendee(attendee.attendeeId)}
-                                           disabled={attendee.attendeeType === 'primary'}
-                                           className={`px-1 py-0.5 rounded flex items-center justify-center transition-colors ${
-                                             attendee.attendeeType === 'primary' 
-                                               ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                                               : 'bg-gray-600 text-white hover:bg-gray-700'
-                                           }`}
-                                           title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
-                                         >
-                                           <Trash2 className="w-3 h-3" />
-                                         </button>
-                                       </>
-                                     )}
-                                   </div>
-                                 </div>
-                               </div>
-                             </div>
-                           ))}
+                           );
+                         })}
                          </div>
                     </div>
                   </div>
@@ -991,10 +1213,24 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
         {attendees.length === 0 && (
           <div className="text-center py-8 text-gray-500">
             <Users className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p>No attendees found</p>
-          </div>
+            <p className="mb-4">No attendees found</p>
+              </div>
         )}
-      </div>
-    </div>
+                           </div>
+                         </div>
   );
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import { Calendar, MapPin, Users, Share2, ThumbsUp, ThumbsDown, Clock, Edit } from 'lucide-react';
-import { format } from 'date-fns';
+import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { EventDoc } from '../../hooks/useEvents';
 import { RSVPModalNew as RSVPModal } from './RSVPModalNew';
 import { EventTeaserModal } from './EventTeaserModal';
@@ -17,6 +17,9 @@ import { useWaitlistPositions } from '../../hooks/useWaitlistPositions';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import toast from 'react-hot-toast';
+import { safeCall } from '../../utils/safeWrapper';
+import { ErrorBoundary, withErrorBoundary } from '../ErrorBoundary';
+import { EventImage } from './EventImage';
 
 interface EventCardProps {
   event: EventDoc;
@@ -71,16 +74,25 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   }, [event.id]); // Only depend on event.id
   
   // Create capacity state for this event using real-time count
-  const mockCountsWithRealTime = useMemo(() => ({
+  const liveGoingCount = typeof counts.totalGoing === 'number' ? counts.totalGoing : realTimeAttendingCount;
+
+  const capacityCounts = useMemo(() => ({
     ...counts,
-    totalGoing: realTimeAttendingCount,
-    goingCount: realTimeAttendingCount
-  }), [counts, realTimeAttendingCount]);
+    totalGoing: liveGoingCount,
+    goingCount: liveGoingCount
+  }), [counts, liveGoingCount]);
   
-  const capacityState = useCapacityState(mockCountsWithRealTime, event.maxAttendees, event.waitlistEnabled, event.waitlistLimit);
+  const capacityState = useCapacityState(capacityCounts, event.maxAttendees, event.waitlistEnabled, event.waitlistLimit);
   
   // Real-time waitlist positions
   const { myPosition: waitlistPosition } = useWaitlistPositions(event.id, currentUser?.id);
+  
+  // Debug logging for waitlist position
+  console.log('🔍 EventCardNew: User waitlist position for event', event.id, ':', {
+    userId: currentUser?.id,
+    waitlistPosition: waitlistPosition,
+    hasPosition: !!waitlistPosition
+  });
 
   // Smart display logic for venue information
   const getDisplayVenueInfo = (venueName: string, venueAddress: string, isMobile: boolean) => {
@@ -214,8 +226,44 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   // Check if event is past (no RSVP allowed for past events)
   const isEventPast = useMemo(() => {
     if (!event.startAt) return false;
-    const eventDate = event.startAt.toDate ? event.startAt.toDate() : new Date(event.startAt);
-    return eventDate < currentTime;
+    
+    try {
+      // Handle Firestore Timestamp with toDate method
+      if (event.startAt && typeof event.startAt.toDate === 'function') {
+        return event.startAt.toDate() < currentTime;
+      }
+      
+      // Handle Firestore Timestamp with seconds property
+      if (event.startAt && event.startAt.seconds && typeof event.startAt.seconds === 'number') {
+        return new Date(event.startAt.seconds * 1000 + (event.startAt.nanoseconds || 0) / 1000000) < currentTime;
+      }
+      
+      // Handle JavaScript Date
+      if (event.startAt instanceof Date) {
+        return event.startAt < currentTime;
+      }
+      
+      // Handle timestamp number (milliseconds)
+      if (typeof event.startAt === 'number') {
+        return new Date(event.startAt) < currentTime;
+      }
+      
+      // Handle timestamp string
+      if (typeof event.startAt === 'string') {
+        const date = new Date(event.startAt);
+        if (isNaN(date.getTime())) {
+          console.warn('Invalid date string:', event.startAt);
+          return false;
+        }
+        return date < currentTime;
+      }
+      
+      console.warn('Unknown date format:', event.startAt);
+      return false;
+    } catch (error) {
+      console.error('Error checking if event is past:', event.startAt, error);
+      return false;
+    }
   }, [event.startAt, currentTime]);
 
   // Handle view event details click
@@ -228,8 +276,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       currentUser: currentUser?.id
     });
     
-    if (onClick) {
-      onClick();
+    if (safeCall(onClick)) {
+      // onClick was called safely
     } else if (isEventPast) {
       setShowPastEventModal(true);
     } else if (currentUser) {
@@ -286,7 +334,10 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       if (existingAttendee) {
         // Update existing attendee status
         console.log('🔍 DEBUG: Updating existing primary attendee status to:', finalStatus);
-        await setAttendeeStatus(existingAttendee.attendeeId, finalStatus);
+        console.log('🔍 DEBUG: existingAttendee object:', existingAttendee);
+        console.log('🔍 DEBUG: existingAttendee.attendeeId:', existingAttendee.attendeeId);
+        console.log('🔍 DEBUG: existingAttendee.id:', existingAttendee.id);
+        await setAttendeeStatus(event.id, existingAttendee.attendeeId || existingAttendee.id, finalStatus);
          
         // If primary member is changing to "not-going", update all family members to "not-going" as well
         if (finalStatus === 'not-going') {
@@ -299,7 +350,10 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
           
           for (const familyMember of familyMembers) {
             console.log('🔍 DEBUG: Updating family member to not-going:', familyMember.name);
-            await setAttendeeStatus(familyMember.attendeeId, 'not-going');
+            console.log('🔍 DEBUG: familyMember object:', familyMember);
+            console.log('🔍 DEBUG: familyMember.attendeeId:', familyMember.attendeeId);
+            console.log('🔍 DEBUG: familyMember.id:', familyMember.id);
+            await setAttendeeStatus(event.id, familyMember.attendeeId || familyMember.id, 'not-going');
           }
           
           if (familyMembers.length > 0) {
@@ -309,16 +363,19 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       } else {
         // Create new primary attendee
         console.log('🔍 DEBUG: Creating new primary attendee with status:', finalStatus);
+        
+        // Ensure all values are properly defined and not null/undefined
         const attendeeData: CreateAttendeeData = {
           eventId: event.id,
           userId: currentUser.id,
           attendeeType: 'primary',
           relationship: 'self',
-          name: currentUser.displayName || 'Primary User',
+          name: (currentUser.displayName || currentUser.firstName || 'Primary User').trim(),
           ageGroup: 'adult',
           rsvpStatus: finalStatus
         };
         
+        console.log('🔍 DEBUG: Attendee data being created:', attendeeData);
         await addAttendee(attendeeData);
       }
       
@@ -391,24 +448,22 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
 
   // Format event date
   const formatEventDate = (date: any) => {
-    if (!date) return 'Date TBD';
-    const eventDate = date.toDate ? date.toDate() : new Date(date);
-    return format(eventDate, 'MMM dd, yyyy');
+    return safeFormat(date, 'MMM dd, yyyy', 'Date TBD');
   };
 
   // Format event time
   const formatEventTime = (date: any) => {
-    if (!date) return '';
-    const eventDate = date.toDate ? date.toDate() : new Date(date);
-    return format(eventDate, 'h:mm a');
+    return safeFormat(date, 'h:mm a', '');
   };
 
   // Calculate event duration in hours
   const getEventDuration = () => {
     if (!event.startAt || !event.endAt) return null;
     
-    const startDate = event.startAt.toDate ? event.startAt.toDate() : new Date(event.startAt);
-    const endDate = event.endAt.toDate ? event.endAt.toDate() : new Date(event.endAt);
+    const startDate = safeToDate(event.startAt);
+    const endDate = safeToDate(event.endAt);
+    
+    if (!startDate || !endDate) return null;
     
     const durationMs = endDate.getTime() - startDate.getTime();
     const durationHours = Math.round(durationMs / (1000 * 60 * 60) * 10) / 10; // Round to 1 decimal place
@@ -439,7 +494,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
          initial={{ opacity: 0, y: 20 }}
          animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
          transition={{ duration: 0.5 }}
-                                                                                         className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 h-[460px] sm:h-[480px] md:h-[500px] lg:h-[520px] xl:h-[540px] flex flex-col mb-4 scroll-mt-20 relative"
+                                                                                         className="bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 flex flex-col mb-4 scroll-mt-20 relative"
        >
                  {/* SOLD OUT Watermark */}
                  {isSoldOutForWatermark && (
@@ -459,20 +514,15 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                      </div>
                    </div>
                  )}
-                 {/* Event Image - Always show image section for consistent height */}
-         <div className="relative h-48 overflow-hidden">
-           {event.imageUrl ? (
-             <img
-               src={event.imageUrl}
-               alt={event.title}
-               className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-             />
-           ) : (
-             <div className="w-full h-full bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 flex items-center justify-center">
-               <Calendar className="w-8 h-8 text-[#F25129]/60" />
-             </div>
-           )}
-           
+                 {/* Event Image with Smart Error Handling */}
+         <EventImage 
+           src={event.imageUrl} 
+           alt={event.title} 
+           fit="contain" 
+           aspect="16/9"
+           className="transition-transform duration-300 hover:scale-105"
+           title={event.title}
+         >
            {/* Share Button - Top Right Corner */}
            <motion.button
              whileHover={{ scale: 1.05 }}
@@ -481,12 +531,12 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                e.stopPropagation();
                handleShare();
              }}
-             className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm text-gray-700 hover:text-[#F25129] hover:bg-white rounded-lg transition-all duration-200 shadow-lg"
+             className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm text-gray-700 hover:text-[#F25129] hover:bg-white rounded-lg transition-all duration-200 shadow-lg z-10"
              title="Share event"
            >
              <Share2 className="w-4 h-4" />
            </motion.button>
-         </div>
+         </EventImage>
 
         {/* Event Content - Flex to fill remaining space */}
         <div className="p-6 flex flex-col flex-1">
@@ -675,7 +725,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                   whileTap={{ scale: 0.95 }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onEdit();
+                    safeCall(onEdit);
                   }}
                   className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                   title="Edit event"
@@ -721,4 +771,15 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   );
 };
 
-export default EventCardNew;
+// Wrap with ErrorBoundary to catch any crashes
+const EventCardNewWithErrorBoundary = withErrorBoundary(
+  EventCardNew,
+  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+    <p className="text-yellow-800">Event card failed to load</p>
+  </div>
+);
+
+export default EventCardNewWithErrorBoundary;
+
+
+

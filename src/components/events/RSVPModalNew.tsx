@@ -36,6 +36,7 @@ import { AttendeeInputRowMemo } from './RSVPModalNew/components/AttendeeInputRow
 import { QRCodeTab } from './QRCodeTab';
 import { PaymentSection } from './PaymentSection';
 import { WhosGoingTab } from './RSVPModalNew/components/WhosGoingTab';
+import { AutoPromotionManager } from '../admin/AutoPromotionManager';
 
 interface RSVPModalProps {
   event: EventDoc;
@@ -46,6 +47,13 @@ interface RSVPModalProps {
 export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAttendeeUpdate }) => {
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
+  
+  // Debug logging for RSVP Modal opening
+  console.log('🚀 RSVPModalNew opened for event:', event.id, 'with config:', {
+    maxAttendees: event.maxAttendees,
+    waitlistEnabled: event.waitlistEnabled,
+    waitlistLimit: event.waitlistLimit
+  });
   
   // Mobile detection
   const [isMobile, setIsMobile] = useState(false);
@@ -75,6 +83,15 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   const isEventCreator = currentUser?.id === event.createdBy;
   const isAdmin = currentUser?.role === 'admin' || isEventCreator;
   
+  // Debug admin status
+  console.log('🔍 Admin Status Debug:', {
+    currentUserId: currentUser?.id,
+    userRole: currentUser?.role,
+    eventCreatedBy: event.createdBy,
+    isEventCreator,
+    isAdmin
+  });
+  
   const { attendees, counts, addAttendee, bulkAddAttendees, refreshAttendees, updateAttendee, error: attendeesError } = useAttendees(
     event.id,
     currentUser?.id || '',
@@ -84,7 +101,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
 
   const [isOpen, setIsOpen] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [isAddSectionCollapsed, setIsAddSectionCollapsed] = useState(false);
+  const [isAddSectionCollapsed, setIsAddSectionCollapsed] = useState(true);
   const [showFamilyMembers, setShowFamilyMembers] = useState(false);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'attendees' | 'qr' | 'whosGoing'>('attendees');
@@ -151,15 +168,27 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   const { positions: waitlistPositions, myPosition: waitlistPosition, waitlistCount } = useWaitlistPositions(event.id, currentUser?.id);
 
   // Create capacity state using real-time count and waitlist data
+  const liveGoingCount = typeof counts.totalGoing === 'number' ? counts.totalGoing : realTimeAttendingCount;
+
   const mockCountsWithRealTime = useMemo(() => ({
     ...counts,
-    totalGoing: realTimeAttendingCount,
-    goingCount: realTimeAttendingCount,
+    totalGoing: liveGoingCount,
+    goingCount: liveGoingCount,
     waitlistedCount: waitlistCount // Use real-time waitlist count
-  }), [counts, realTimeAttendingCount, waitlistCount]);
+  }), [counts, liveGoingCount, waitlistCount]);
 
   // Use our new capacity state hook with real-time data
   const capacityState = useCapacityState(mockCountsWithRealTime, event.maxAttendees, event.waitlistEnabled, event.waitlistLimit);
+  
+  // Debug waitlist logic for troubleshooting
+  console.log('🔍 Debug waitlist calculation:', {
+    waitlistCount: mockCountsWithRealTime.waitlistedCount,
+    waitlistLimit: event.waitlistLimit,
+    remaining: event.waitlistLimit ? event.waitlistLimit - mockCountsWithRealTime.waitlistedCount : 'unlimited',
+    eventMaxAttendees: event.maxAttendees,
+    waitlistEnabled: event.waitlistEnabled,
+    countsState: 'Events is full: ' + (mockCountsWithRealTime.totalGoing >= (event.maxAttendees || 0))
+  });
 
   // Calculate family size info
   useEffect(() => {
@@ -456,6 +485,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                 onClose={onClose}
                 closeBtnRef={closeBtnRef}
                 isCompact={isMobile}
+                capacityState={capacityState}
               />
               
               {/* Event Details (Mobile only) */}
@@ -538,6 +568,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                       event={event}
                       attendees={attendees}
                       isAdmin={isAdmin}
+                      waitlistPositions={waitlistPositions}
                     />
                   </div>
                 ) : isBlockedFromRSVP ? (
@@ -593,7 +624,6 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                           </span>
                           <span className="flex items-center gap-1">
                             <div className="w-2 h-2 bg-yellow-500 rounded-full" />
-                            <span>{counts.pendingCount} Pending</span>
                           </span>
                           <span className="flex items-center gap-1">
                             <div className="w-2 h-2 bg-purple-500 rounded-full" />
@@ -903,6 +933,15 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                         </div>
                       </div>
                     )}
+
+                    {/* Admin Tools */}
+                    {isAdmin && (
+                      <AutoPromotionManager
+                        eventId={event.id}
+                        eventTitle={event.title}
+                        isAdmin={isAdmin}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -929,3 +968,5 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
     document.body
   );
 };
+
+
