@@ -136,7 +136,13 @@ export const useAttendees = (eventId: string, userId: string, isAdmin: boolean =
       ));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update attendee';
-      setError(errorMessage);
+      const lower = errorMessage.toLowerCase();
+      const capacityConflict = lower.includes('over capacity') || lower.includes('cannot change status to "going"') || lower.includes('event is full');
+
+      if (!capacityConflict) {
+        setError(errorMessage);
+      }
+
       throw new Error(errorMessage);
     }
   }, [eventId]);
@@ -170,7 +176,13 @@ export const useAttendees = (eventId: string, userId: string, isAdmin: boolean =
       ));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to update attendee status';
-      setError(errorMessage);
+      const lower = errorMessage.toLowerCase();
+      const capacityConflict = lower.includes('over capacity') || lower.includes('cannot change status to "going"') || lower.includes('event is full');
+
+      if (!capacityConflict) {
+        setError(errorMessage);
+      }
+
       throw new Error(errorMessage);
     }
   }, [eventId]);

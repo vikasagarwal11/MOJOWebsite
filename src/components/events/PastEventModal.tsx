@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Calendar, MapPin, Users, Share2, Clock, Link } from 'lucide-react';
 import { format } from 'date-fns';
+import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { EventDoc } from '../../hooks/useEvents';
 
 interface PastEventModalProps {
@@ -63,53 +64,32 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
   const getEventDuration = () => {
     if (!memoizedEvent.startAt || !memoizedEvent.endAt) return '';
     
-    try {
-      const start = memoizedEvent.startAt.toDate ? memoizedEvent.startAt.toDate() : new Date(memoizedEvent.startAt);
-      const end = memoizedEvent.endAt.toDate ? memoizedEvent.endAt.toDate() : new Date(memoizedEvent.endAt);
-      
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) return '';
-      
-      const diffMs = end.getTime() - start.getTime();
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      
-      if (diffDays > 0) {
-        return diffHours > 0 ? `(${diffDays}d ${diffHours}h)` : `(${diffDays} days)`;
-      } else if (diffHours > 0) {
-        return `(${diffHours} hours)`;
-      } else {
-        return '(1 hour)';
-      }
-    } catch (error) {
-      console.error('Error calculating event duration:', error);
-      return '';
+    const start = safeToDate(memoizedEvent.startAt);
+    const end = safeToDate(memoizedEvent.endAt);
+    
+    if (!start || !end) return '';
+    
+    const diffMs = end.getTime() - start.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    
+    if (diffDays > 0) {
+      return diffHours > 0 ? `(${diffDays}d ${diffHours}h)` : `(${diffDays} days)`;
+    } else if (diffHours > 0) {
+      return `(${diffHours} hours)`;
+    } else {
+      return '(1 hour)';
     }
   };
 
   // Format date safely
   const formatEventDate = (date: any) => {
-    try {
-      if (!date) return 'Date not available';
-      const eventDate = date.toDate ? date.toDate() : new Date(date);
-      if (isNaN(eventDate.getTime())) return 'Invalid date';
-      return format(eventDate, 'EEEE, MMMM d, yyyy');
-    } catch (error) {
-      console.error('Error formatting date:', error);
-      return 'Date not available';
-    }
+    return safeFormat(date, 'EEEE, MMMM d, yyyy', 'Date not available');
   };
 
   // Format end date safely
   const formatEndDate = (date: any) => {
-    try {
-      if (!date) return 'End date not available';
-      const eventDate = date.toDate ? date.toDate() : new Date(date);
-      if (isNaN(eventDate.getTime())) return 'Invalid end date';
-      return format(eventDate, 'MMM d, yyyy h:mm a');
-    } catch (error) {
-      console.error('Error formatting end date:', error);
-      return 'End date not available';
-    }
+    return safeFormat(date, 'MMM d, yyyy h:mm a', 'End date not available');
   };
 
   // Share event
@@ -189,6 +169,12 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
                     src={memoizedEvent.imageUrl}
                     alt={memoizedEvent.title}
                     className="w-full h-full object-cover"
+                    onError={(e) => {
+                      console.warn(`🚨 PastEventModal: Failed to load image: ${memoizedEvent.imageUrl}`);
+                      // Hide image if it fails to load
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                    }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
                 </div>

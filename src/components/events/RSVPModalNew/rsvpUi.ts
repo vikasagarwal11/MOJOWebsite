@@ -27,7 +27,7 @@ export const RELATIONSHIP_OPTIONS = [
 export const RSVP_STATUS_OPTIONS = [
   { value: 'going', label: 'Going' },
   { value: 'not_going', label: 'Not Going' },
-  { value: 'pending', label: 'Pending' }
+  { value: 'waitlisted', label: 'Waitlisted' }
 ] as const;
 
 // Capacity thresholds
@@ -58,14 +58,14 @@ export const getCapacityBadgeClasses = (state: 'ok' | 'near' | 'full' | 'waitlis
   }
 };
 
-export const getStatusBadgeClasses = (status: 'going' | 'not_going' | 'pending') => {
+export const getStatusBadgeClasses = (status: 'going' | 'not_going' | 'waitlisted') => {
   switch (status) {
     case 'going':
       return 'bg-green-100 text-green-800';
     case 'not_going':
       return 'bg-red-100 text-red-800';
-    case 'pending':
-      return 'bg-yellow-100 text-yellow-800';
+    case 'waitlisted':
+      return 'bg-purple-100 text-purple-800';
     default:
       return 'bg-gray-100 text-gray-800';
   }
@@ -89,3 +89,7 @@ export const COLORS = {
   WARNING: '#F59E0B',
   ERROR: '#EF4444'
 } as const;
+
+
+
+

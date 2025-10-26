@@ -69,7 +69,7 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
   currentUser,
 }) => {
   const [dateFilter, setDateFilter] = React.useState<'all' | 'upcoming' | 'past'>('all');
-  const [rsvpFilter, setRsvpFilter] = React.useState<'all' | 'going' | 'not-going' | 'pending'>('all');
+  const [rsvpFilter, setRsvpFilter] = React.useState<'all' | 'going' | 'not-going'>('all');
 
   // Filter events based on current filters
   const filteredEvents = rsvpedEvents.filter(event => {
@@ -93,7 +93,6 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
     // In the future, this could be enhanced to show actual RSVP status from database
     if (rsvpFilter === 'going') return true;
     if (rsvpFilter === 'not-going') return false; // No "not-going" events shown in this view
-    if (rsvpFilter === 'pending') return false;  // No "pending" events shown in this view
     
     return true;
   });
@@ -229,13 +228,12 @@ export const ProfileEventsTab: React.FC<ProfileEventsTabProps> = ({
             <div className="flex items-center gap-2">
               <select
                 value={rsvpFilter}
-                onChange={(e) => setRsvpFilter(e.target.value as 'all' | 'going' | 'not-going' | 'pending')}
+                onChange={(e) => setRsvpFilter(e.target.value as 'all' | 'going' | 'not-going')}
                 className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-sm"
               >
                 <option value="all">All Statuses</option>
                 <option value="going">Going</option>
                 <option value="not-going">Not Going</option>
-                <option value="pending">Pending</option>
               </select>
               <span className="text-xs text-gray-500">(Currently shows only "Going" events)</span>
             </div>

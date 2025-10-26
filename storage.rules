@@ -81,6 +81,30 @@ service firebase.storage {
       allow delete: if isSignedIn() && isAdmin(); // Only admins can delete misc files
     }
     
+    // =========================
+    // Comment attachments (members only): comments/{...}
+    // =========================
+    match /comments/{fileName=**} {
+      allow read: if true;
+      allow write: if isSignedIn()
+                   && request.resource.size < 15 * 1024 * 1024 // < 15MB (optimized for comment attachments)
+                   && (request.resource.contentType.matches('image/.*')
+                       || request.resource.contentType.matches('video/.*'));
+      allow delete: if isSignedIn() && isAdmin(); // Only admins can delete
+    }
+    
+    // =========================
+    // Media comment attachments: media-comments/{...}
+    // =========================
+    match /media-comments/{fileName=**} {
+      allow read: if true;
+      allow write: if isSignedIn()
+                   && request.resource.size < 15 * 1024 * 1024 // < 15MB (optimized for comment attachments)
+                   && (request.resource.contentType.matches('image/.*')
+                       || request.resource.contentType.matches('video/.*'));
+      allow delete: if isSignedIn() && isAdmin(); // Only admins can delete
+    }
+    
     // Fallback: deny anything not matched above
     match /{path=**} {
       allow read, write: if false;

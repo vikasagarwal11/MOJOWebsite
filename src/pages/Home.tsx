@@ -142,20 +142,22 @@ const Home: React.FC = () => {
               <p className="mt-6 text-lg sm:text-xl text-gray-700 max-w-2xl readable">
                 More than a fitness group — we're a lifestyle and a circle of strength for moms balancing health, family, careers, and fun.
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Link
-                  to="/register"
-                  className="inline-flex items-center rounded-full px-5 py-3 text-sm font-semibold bg-[#F25129] text-white shadow hover:shadow-md transition-all duration-300"
-                >
-                  Join MOJO
-                </Link>
-                <Link
-                  to="/about"
-                  className="inline-flex items-center rounded-full px-5 py-3 text-sm font-semibold border border-gray-300 text-gray-800 hover:bg-gray-50 transition-all duration-300"
-                >
-                  Learn More
-                </Link>
-              </div>
+              {!isAuthed && (
+                <div className="mt-8 flex flex-wrap gap-3">
+                  <Link
+                    to="/register"
+                    className="inline-flex items-center rounded-full px-5 py-3 text-sm font-semibold bg-[#F25129] text-white shadow hover:shadow-md transition-all duration-300"
+                  >
+                    Join MOJO
+                  </Link>
+                  <Link
+                    to="/about"
+                    className="inline-flex items-center rounded-full px-5 py-3 text-sm font-semibold border border-gray-300 text-gray-800 hover:bg-gray-50 transition-all duration-300"
+                  >
+                    Learn More
+                  </Link>
+                </div>
+              )}
 
             </div>
 
@@ -198,8 +200,7 @@ const Home: React.FC = () => {
       {/* Features Section */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4">
         <div className="text-center mb-8">
-          <p className="text-center subtle-subtitle text-[#F25129]/80 mb-2">Our Activities</p>
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
             What We Do
           </h2>
           <p className="text-xl text-gray-600 readable">

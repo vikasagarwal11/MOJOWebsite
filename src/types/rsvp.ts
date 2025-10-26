@@ -1,6 +1,6 @@
 // Legacy RSVP types - kept for backward compatibility
 // Note: New attendee system uses AttendeeStatus from types/attendee.ts
-export type RSVPStatus = 'going' | 'not-going' | 'pending';
+export type RSVPStatus = 'going' | 'not-going';
 export type PaymentStatus = 'unpaid' | 'paid' | 'refunded';
 
 export interface RSVPDoc {
@@ -30,3 +30,4 @@ export interface EventCapacity {
   hasWaitlist: boolean;
   waitlistCount: number;
 }
+

@@ -98,7 +98,13 @@ const AdminPostDeletionModal: React.FC<AdminPostDeletionModalProps> = ({
               <div>
                 <p className="font-medium text-sm text-gray-900">{post.authorName}</p>
                 <p className="text-xs text-gray-500">
-                  {post.createdAt ? new Date(post.createdAt.seconds * 1000).toLocaleDateString() : 'Unknown date'}
+                  {post.createdAt 
+                    ? post.createdAt instanceof Date 
+                      ? post.createdAt.toLocaleDateString() 
+                      : post.createdAt?.seconds 
+                        ? new Date(post.createdAt.seconds * 1000).toLocaleDateString() 
+                        : 'Unknown date'
+                    : 'Unknown date'}
                 </p>
               </div>
             </div>

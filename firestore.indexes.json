@@ -35,6 +35,66 @@
       "density": "SPARSE_ALL"
     },
     {
+      "collectionGroup": "attendees",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "rsvpStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "attendees",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "rsvpStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "waitlistPosition",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "attendees",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "rsvpStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "originalWaitlistJoinedAt",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "attendees",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "rsvpStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "waitlistPriority",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
       "collectionGroup": "events",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
@@ -150,6 +210,36 @@
         {
           "fieldPath": "invitedUserIds",
           "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "visibility",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "startAt",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "visibility",
+          "order": "ASCENDING"
         },
         {
           "fieldPath": "startAt",
@@ -445,21 +535,6 @@
         {
           "fieldPath": "createdAt",
           "order": "DESCENDING"
-        }
-      ],
-      "density": "SPARSE_ALL"
-    },
-    {
-      "collectionGroup": "attendees",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "rsvpStatus",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "ASCENDING"
         }
       ],
       "density": "SPARSE_ALL"

@@ -9,6 +9,11 @@ export interface User {
   role: 'admin' | 'member';
   createdAt: Date;
   updatedAt: Date;
+  // VIP Tier System
+  membershipTier?: 'free' | 'basic' | 'premium' | 'vip';
+  membershipExpiresAt?: Date;
+  eventHistory?: number; // Number of events attended
+  joinDate?: Date;
 }
 
 export interface Event {

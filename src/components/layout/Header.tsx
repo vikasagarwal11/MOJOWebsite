@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Dumbbell, LogOut } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import NotificationCenter from '../notifications/NotificationCenter';
+import PopupAlertHandler from '../notifications/PopupAlertHandler';
 
 function initialsFromName(name?: string) {
   if (!name) return 'MM';
@@ -51,9 +53,10 @@ const Header: React.FC = () => {
   const navigation = [
     { name: 'Home', href: '/' },
     { name: 'Events', href: '/events' },
+    { name: 'Events (Read-Only)', href: '/events-readonly' },
     { name: 'Media', href: '/media' },
     { name: 'Posts', href: '/posts' },
-    { name: 'Sponsors', href: '/sponsors' },
+    { name: 'About Us', href: '/about' },
     { name: 'Founder', href: '/founder' },
     // { name: 'Press', href: '/press' }, // Hidden for now
   ];
@@ -107,8 +110,18 @@ const Header: React.FC = () => {
             </div>
           </nav>
 
-          {/* User area (avatar-only; bounded; cache-busted) */}
+          {/* User area (notifications + avatar; bounded; cache-busted) */}
           <div className="hidden md:flex items-center gap-3 shrink-0" ref={menuRef}>
+            {/* Notification Center */}
+            {currentUser && (
+              <NotificationCenter 
+                userId={currentUser.id} 
+                onNavigateToEvent={(eventId) => {
+                  // Navigate to event when notification clicked
+                  window.location.href = `/events/${eventId}`;
+                }}
+              />
+            )}
             {currentUser ? (
               <div className="relative">
                 <button

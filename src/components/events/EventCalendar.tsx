@@ -3,7 +3,7 @@ import { Calendar as BigCalendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format as dfFormat, parse as dfParse, startOfWeek as dfStartOfWeek, getDay as dfGetDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import { EventDoc } from '../../hooks/useEvents';
-import { tsToDate } from '../../hooks/useEventsUtils';
+import { safeToDate } from '../../utils/dateUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAttendees } from '../../hooks/useAttendees';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -49,10 +49,10 @@ const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
   }, [currentUser, firstEventId, firstEventAttendees]);
   
   const calendarEvents = useMemo(() => events.map((e) => {
-    const start = tsToDate(e.startAt);
+    const start = safeToDate(e.startAt) || new Date();
     let end: Date;
     if (e.endAt) {
-      end = tsToDate(e.endAt);
+      end = safeToDate(e.endAt) || new Date(start.getTime() + 60 * 60 * 1000);
       if (end <= start) end = new Date(start.getTime() + 60 * 60 * 1000);
     } else if (e.duration) {
       end = new Date(start.getTime() + e.duration * 60 * 1000);

@@ -16,7 +16,7 @@ const Footer: React.FC = () => {
           {/* Essential Navigation */}
           <nav className="flex flex-wrap gap-6 text-sm text-gray-600 justify-center">
             <Link to="/events" className="hover:text-[#F25129] transition-colors">Events</Link>
-            <Link to="/about" className="hover:text-[#F25129] transition-colors">About Us</Link>
+            <Link to="/sponsors" className="hover:text-[#F25129] transition-colors">Sponsors</Link>
             <Link to="/community-guidelines" className="hover:text-[#F25129] transition-colors">Guidelines</Link>
             <Link to="/contact" className="hover:text-[#F25129] transition-colors">Contact</Link>
             <Link to="/register" className="hover:text-[#F25129] transition-colors">Join MOJO</Link>

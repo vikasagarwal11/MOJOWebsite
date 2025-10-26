@@ -9,13 +9,22 @@ interface HeaderProps {
   onClose: () => void;
   closeBtnRef: React.RefObject<HTMLButtonElement>;
   isCompact?: boolean;
+  capacityState?: {
+    state: 'ok' | 'near' | 'full' | 'waitlist';
+    remaining: number;
+    isAtCapacity: boolean;
+    isNearlyFull: boolean;
+    warningMessage: string;
+    slotsRemainingText: string;
+  };
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
   event, 
   onClose, 
   closeBtnRef,
-  isCompact = false 
+  isCompact = false,
+  capacityState
 }) => {
   const { dateLabel, timeWithDuration } = useEventDates(event);
 
@@ -70,7 +79,7 @@ export const Header: React.FC<HeaderProps> = ({
               {event.title}
             </h2>
             
-            {/* Meta row - Single column with two rows for better mobile layout */}
+            {/* Meta row - Single column with rows for better mobile layout */}
             <div className="space-y-1 mt-2 text-xs opacity-90">
               {/* First row: Date and Time */}
               <div className="flex flex-wrap gap-3">
@@ -82,6 +91,23 @@ export const Header: React.FC<HeaderProps> = ({
                   <span>🕐</span>
                   <span className="line-clamp-1">{timeWithDuration}</span>
                 </div>
+                {/* Capacity Status */}
+                {capacityState && event.maxAttendees && (
+                  <div className="flex items-center gap-1">
+                    <span>👥</span>
+                    <span className={`font-medium ${
+                      capacityState.state === 'full' ? 'text-red-200' :
+                      capacityState.state === 'near' ? 'text-yellow-200' :
+                      capacityState.state === 'waitlist' ? 'text-purple-200' :
+                      'text-green-200'
+                    }`}>
+                      {capacityState.isAtCapacity ? 
+                        `Full (${event.maxAttendees})` : 
+                        `${event.maxAttendees - capacityState.remaining}/${event.maxAttendees}`
+                      }
+                    </span>
+                  </div>
+                )}
               </div>
               
               {/* Second row: Location - Smart display logic */}
@@ -143,6 +169,23 @@ export const Header: React.FC<HeaderProps> = ({
               <span>🕐</span>
               <span>{timeWithDuration}</span>
             </div>
+            {/* Capacity Status */}
+            {capacityState && event.maxAttendees && (
+              <div className="flex items-center gap-2">
+                <span>👥</span>
+                <span className={`font-medium ${
+                  capacityState.state === 'full' ? 'text-red-200' :
+                  capacityState.state === 'near' ? 'text-yellow-200' :
+                  capacityState.state === 'waitlist' ? 'text-purple-200' :
+                  'text-green-200'
+                }`}>
+                  {capacityState.isAtCapacity ? 
+                    `Full (${event.maxAttendees})` : 
+                    `${event.maxAttendees - capacityState.remaining}/${event.maxAttendees}`
+                  }
+                </span>
+              </div>
+            )}
             <div className="flex items-start gap-2">
               <span className="mt-0.5">📍</span>
               <div className="flex flex-col">

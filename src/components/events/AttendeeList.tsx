@@ -127,7 +127,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     return "This event is already full. Please contact the organizer to open additional spots.";
   };
 
-  // Check if an attendee can be edited (only real users can edit their own attendees)
+  // Check if an attendee can be edited (admins/event owners can edit everyone, otherwise users edit themselves)
   const canEditAttendee = (attendee: Attendee): boolean => {
     // Bulk-uploaded attendees cannot be edited
     if (!attendee.userId) {
@@ -135,7 +135,13 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
       return false;
     }
     
-    // Only the attendee's owner can edit
+    // Admins or event owners (isAdmin prop) can edit all attendees
+    if (isAdmin) {
+      console.log('DEBUG: canEditAttendee = true (admin override)', { attendeeId: getAttendeeId(attendee), attendee });
+      return true;
+    }
+    
+    // Only the attendee's owner can edit otherwise
     const canEdit = attendee.userId === currentUser?.id;
     console.log('DEBUG: canEditAttendee check', { 
       attendeeId: getAttendeeId(attendee), 
@@ -186,8 +192,8 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
       console.log('DEBUG: handleUpdateAttendee called with:', { attendeeId, updateData });
 
       // Enhanced validation
-      if (!attendeeId) {
-        console.error('Cannot update attendee: attendeeId is missing');
+      if (!attendeeId || typeof attendeeId !== 'string') {
+        console.error('Cannot update attendee: attendeeId is invalid', attendeeId);
         toast.error('Unable to update attendee. Please try again.');
         return;
       }

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { format } from 'date-fns';
+import { safeFormat, safeToDate, safeDifferenceInHours } from '../../../../utils/dateUtils';
 import { EventDoc } from '../../../../hooks/useEvents';
 
 /**
@@ -9,29 +9,72 @@ import { EventDoc } from '../../../../hooks/useEvents';
 export const useEventDates = (event: EventDoc) => {
   return useMemo(() => {
     // Helper to safely convert Firestore Timestamp to Date
-    const toJsDate = (d: any) => (d?.toDate ? d.toDate() : new Date(d));
+    const toJsDate = (d: any) => {
+      if (!d) return null;
+      
+      try {
+        // Handle Firestore Timestamp with toDate method
+        if (d.toDate && typeof d.toDate === 'function') {
+          return d.toDate();
+        }
+        
+        // Handle Firestore Timestamp with seconds property
+        if (d.seconds && typeof d.seconds === 'number') {
+          return new Date(d.seconds * 1000 + (d.nanoseconds || 0) / 1000000);
+        }
+        
+        // Handle JavaScript Date
+        if (d instanceof Date) {
+          return d;
+        }
+        
+        // Handle timestamp number (milliseconds)
+        if (typeof d === 'number') {
+          return new Date(d);
+        }
+        
+        // Handle timestamp string
+        if (typeof d === 'string') {
+          const date = new Date(d);
+          if (isNaN(date.getTime())) {
+            console.warn('Invalid date string:', d);
+            return null;
+          }
+          return date;
+        }
+        
+        console.warn('Unknown date format:', d);
+        return null;
+      } catch (error) {
+        console.error('Error converting date:', d, error);
+        return null;
+      }
+    };
     
     // Format event date (e.g., "Sep 13, 2025")
-    const formatEventDate = (d: any) => (d ? format(toJsDate(d), 'MMM dd, yyyy') : 'TBD');
+    const formatEventDate = (d: any) => {
+      return safeFormat(d, 'MMM dd, yyyy', 'TBD');
+    };
     
     // Format event time (e.g., "6:00 PM")
-    const formatEventTime = (d: any) => (d ? format(toJsDate(d), 'h:mm a') : 'TBD');
+    const formatEventTime = (d: any) => {
+      return safeFormat(d, 'h:mm a', 'TBD');
+    };
     
     // Calculate event duration in hours
     const getEventDuration = () => {
       if (!event.startAt || !event.endAt) return null;
       
-      const startDate = toJsDate(event.startAt);
-      const endDate = toJsDate(event.endAt);
-      
-      const durationMs = endDate.getTime() - startDate.getTime();
-      const durationHours = Math.round(durationMs / (1000 * 60 * 60) * 10) / 10; // Round to 1 decimal place
-      
-      return durationHours;
+      const hours = safeDifferenceInHours(event.startAt, event.endAt);
+      return hours > 0 ? hours : 1;
     };
     
     // Check if event is in the past
-    const isEventPast = !!event.startAt && toJsDate(event.startAt) < new Date();
+    const isEventPast = (() => {
+      if (!event.startAt) return false;
+      const startDate = safeToDate(event.startAt);
+      return startDate ? startDate < new Date() : false;
+    })();
     
     // Get formatted date and time strings
     const dateLabel = formatEventDate(event.startAt);
@@ -48,8 +91,8 @@ export const useEventDates = (event: EventDoc) => {
     
     return {
       // Raw data
-      startDate: event.startAt ? toJsDate(event.startAt) : null,
-      endDate: event.endAt ? toJsDate(event.endAt) : null,
+      startDate: safeToDate(event.startAt),
+      endDate: safeToDate(event.endAt),
       durationHours,
       isEventPast,
       
@@ -63,7 +106,7 @@ export const useEventDates = (event: EventDoc) => {
       formatEventDate,
       formatEventTime,
       getEventDuration,
-      toJsDate
+      toJsDate: safeToDate
     };
   }, [event.startAt, event.endAt]);
 };

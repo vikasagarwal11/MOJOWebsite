@@ -117,7 +117,7 @@ export class RSVPService {
       return {
         eventTitle: rsvpData.eventTitle,
         attendees: rsvpData.attendees.map(attendee => ({
-          id: attendee.id,
+          id: attendee.attendeeId || attendee.id,
           name: attendee.name,
           role: attendee.attendeeType === 'primary' ? 'Primary Member' : 
                 attendee.relationship === 'spouse' ? 'Spouse' :

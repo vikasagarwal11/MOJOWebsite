@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Heart, MessageCircle, Tag, Play, Share2, Download, MoreHorizontal, EyeOff, Eye, Trash2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../config/firebase';
 import { collection, addDoc, doc, deleteDoc, serverTimestamp, updateDoc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
@@ -379,32 +379,14 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
   
   // Real-time comment count is now handled by usePagedComments hook
   
-  // Safe date parsing with fallback
+  // Safe date parsing with fallback - use safeToDate utility
   const createdAt = useMemo(() => {
     if (!localMedia.createdAt) return new Date();
     
     try {
-      // Handle Firestore Timestamp objects
-      if (localMedia.createdAt && typeof localMedia.createdAt === 'object' && 'seconds' in localMedia.createdAt) {
-        // This is a Firestore Timestamp
-        const timestamp = localMedia.createdAt as any;
-        return new Date(timestamp.seconds * 1000 + timestamp.nanoseconds / 1000000);
-      }
-      
-      if (localMedia.createdAt instanceof Date) {
-        return localMedia.createdAt;
-      }
-      
-      // Handle string dates
-      const date = new Date(localMedia.createdAt);
-      
-      // Check if date is valid
-      if (isNaN(date.getTime())) {
-        console.warn('Invalid date value:', localMedia.createdAt);
-        return new Date();
-      }
-      
-      return date;
+      // Use the safeToDate utility for consistent date handling
+      const date = safeToDate(localMedia.createdAt);
+      return date || new Date();
     } catch (error) {
       console.warn('Date parsing error:', error);
       return new Date();
@@ -551,7 +533,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
 
         <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
           <span>By {localMedia.uploaderName || 'Member'}</span>
-          <span>{format(createdAt, 'MMM d, yyyy')}</span>
+          <span>{safeFormat(createdAt, 'MMM d, yyyy', '')}</span>
         </div>
 
         <div className="flex items-center justify-between">

@@ -1,6 +1,59 @@
-# PowerShell script for deploying to development environment
-# Usage: .\deploy-dev.ps1 [component]
-# Components: all, hosting, firestore, functions
+# =============================================================================
+# MOJO Website - Development Deployment Script
+# =============================================================================
+#
+# This script handles deployment to the development environment with intelligent
+# extension management to avoid conflicts and speed up regular deployments.
+#
+# =============================================================================
+# USAGE EXAMPLES
+# =============================================================================
+#
+# 1. REGULAR DEVELOPMENT (No Extension Changes)
+#    .\deploy-dev.ps1 no-extensions
+#    - Deploys: hosting, firestore, functions
+#    - Skips: extensions (avoids conflicts and saves time)
+#    - Use for: Daily development work, bug fixes, feature updates
+#
+# 2. EXTENSION CONFIGURATION CHANGES
+#    .\deploy-dev.ps1 extensions
+#    - Deploys: extensions only
+#    - Skips: hosting, firestore, functions
+#    - Use for: When modifying storage-resize-images or stripe configurations
+#
+# 3. MAJOR RELEASES (Everything)
+#    .\deploy-dev.ps1 all
+#    - Deploys: hosting, firestore, functions, extensions
+#    - Use for: Major releases, initial setup, or when everything changes
+#
+# 4. INDIVIDUAL COMPONENTS
+#    .\deploy-dev.ps1 hosting    # Frontend only
+#    .\deploy-dev.ps1 functions  # Cloud Functions only
+#    .\deploy-dev.ps1 firestore  # Database rules only
+#
+# =============================================================================
+# ENVIRONMENT REQUIREMENTS
+# =============================================================================
+#
+# - .env.development file must exist with correct STORAGE_BUCKET format:
+#   STORAGE_BUCKET=mojomediafiles (or momfitnessmojo.firebasestorage.app)
+#
+# - Firebase CLI must be authenticated and configured
+# - Project must be set to dev: firebase use dev
+#
+# =============================================================================
+# AVAILABLE PARAMETERS
+# =============================================================================
+#
+# [component] - What to deploy (default: "all")
+# -SkipChecks - Skip pre-deployment checks (linting, tests)
+#
+# Examples:
+# .\deploy-dev.ps1 no-extensions -SkipChecks
+# .\deploy-dev.ps1 hosting
+# .\deploy-dev.ps1 extensions --force
+#
+# =============================================================================
 
 param(
     [string]$Component = "all",
@@ -24,7 +77,7 @@ if (Test-Path ".env.development") {
         Write-Host "[OK] Using STORAGE_BUCKET from .env.development: $storageBucket" -ForegroundColor Green
     } else {
         Write-Host "[WARNING] STORAGE_BUCKET not found in .env.development, using default" -ForegroundColor Yellow
-        $env:STORAGE_BUCKET = "mojomediafiles"
+        $env:STORAGE_BUCKET = "momfitnessmojo.firebasestorage.app"
     }
     
     if ($viteStorageBucket) {
@@ -34,7 +87,7 @@ if (Test-Path ".env.development") {
     }
 } else {
     Write-Host "[WARNING] .env.development file not found, using defaults" -ForegroundColor Yellow
-    $env:STORAGE_BUCKET = "mojomediafiles"
+    $env:STORAGE_BUCKET = "momfitnessmojo.firebasestorage.app"
 }
 
 # Verify environment variables are loaded
@@ -112,12 +165,20 @@ switch ($Component.ToLower()) {
         Write-Host "Deploying Cloud Functions..." -ForegroundColor Cyan
         firebase deploy --only functions --project=momfitnessmojo --config=firebase.dev.json
     }
+    "extensions" {
+        Write-Host "Deploying Extensions only..." -ForegroundColor Cyan
+        firebase deploy --only extensions --project=momfitnessmojo --config=firebase.dev.json --force
+    }
+    "no-extensions" {
+        Write-Host "Deploying everything except extensions..." -ForegroundColor Cyan
+        firebase deploy --only "hosting,firestore,functions" --project=momfitnessmojo --config=firebase.dev.json
+    }
     "all" {
         Write-Host "Deploying everything..." -ForegroundColor Cyan
-        firebase deploy --project=momfitnessmojo --config=firebase.dev.json
+        firebase deploy --project=momfitnessmojo --config=firebase.dev.json --force
     }
     default {
-        Write-Host "ERROR: Invalid component. Use: all, hosting, firestore, functions" -ForegroundColor Red
+        Write-Host "ERROR: Invalid component. Use: all, hosting, firestore, functions, extensions, no-extensions" -ForegroundColor Red
         exit 1
     }
 }

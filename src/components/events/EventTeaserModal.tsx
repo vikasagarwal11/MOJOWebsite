@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { X, Calendar, MapPin, Clock, Users, Star, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
+import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { EventDoc } from '../../hooks/useEvents';
 
 interface EventTeaserModalProps {
@@ -69,17 +70,26 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
   }, [open, onClose]);
 
   // Format event date and calculate duration
-  const eventDate = event.startAt ? new Date(event.startAt.seconds * 1000) : new Date();
-  const eventEndDate = event.endAt ? new Date(event.endAt.seconds * 1000) : null;
+  const formatEventDate = (date: any) => {
+    return safeToDate(date) || new Date();
+  };
+
+  const eventDate = event.startAt ? formatEventDate(event.startAt) : new Date();
+  const eventEndDate = event.endAt ? formatEventDate(event.endAt) : null;
   
-  const formattedDate = format(eventDate, 'EEEE, MMMM d, yyyy');
-  const formattedTime = format(eventDate, 'h:mm a');
+  const formattedDate = safeFormat(eventDate, 'EEEE, MMMM d, yyyy');
+  const formattedTime = safeFormat(eventDate, 'h:mm a');
   
   // Calculate and format duration
   const formatDuration = () => {
     if (!eventEndDate) return null;
     
-    const diffMs = eventEndDate.getTime() - eventDate.getTime();
+    const startDate = safeToDate(event.startAt);
+    const endDate = safeToDate(event.endAt);
+    
+    if (!startDate || !endDate) return null;
+    
+    const diffMs = endDate.getTime() - startDate.getTime();
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffHours / 24);
     const remainingHours = diffHours % 24;
@@ -161,7 +171,7 @@ export const EventTeaserModal: React.FC<EventTeaserModalProps> = ({ open, event,
                     <span>{formattedTime}</span>
                     {eventEndDate && (
                       <span className="text-white/70">
-                        - {format(eventEndDate, 'h:mm a')}
+                        - {safeFormat(eventEndDate, 'h:mm a')}
                       </span>
                     )}
                     {durationText && <span className="text-white/70">{durationText}</span>}

@@ -1,7 +1,7 @@
 // src/components/posts/PostCard.tsx
-import React, { useEffect, useState, useRef } from 'react';
-import { Heart, MessageCircle, User, Trash2, MoreVertical } from 'lucide-react';
-import { format } from 'date-fns';
+import React, { useEffect, useState } from 'react';
+import { Heart, MessageCircle, User, Trash2 } from 'lucide-react';
+import { safeFormat } from '../../utils/dateUtils';
 import { Post } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../config/firebase';
@@ -29,28 +29,9 @@ interface PostCardProps {
 const PostCard: React.FC<PostCardProps> = ({ post, onPostDeleted }) => {
   const { currentUser } = useAuth();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showAdminMenu, setShowAdminMenu] = useState(false);
-  const adminMenuRef = useRef<HTMLDivElement>(null);
 
   // Check if current user is admin
   const isAdmin = currentUser?.role === 'admin';
-
-  // Close admin menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (adminMenuRef.current && !adminMenuRef.current.contains(event.target as Node)) {
-        setShowAdminMenu(false);
-      }
-    };
-
-    if (showAdminMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showAdminMenu]);
 
   // counts fall back to arrays if you still have them on the doc
   const [isLiked, setIsLiked] = useState(false);
@@ -112,7 +93,9 @@ const PostCard: React.FC<PostCardProps> = ({ post, onPostDeleted }) => {
 
   const createdAt =
     (post as any).createdAt?.toDate?.()
-      ? (post as any).createdAt.toDate()
+      ? (post as any).createdAt instanceof Date 
+        ? (post as any).createdAt 
+        : (post as any).createdAt?.toDate?.() || new Date()
       : (post as any).createdAt instanceof Date
       ? (post as any).createdAt
       : undefined;
@@ -137,36 +120,20 @@ const PostCard: React.FC<PostCardProps> = ({ post, onPostDeleted }) => {
             <div>
               <div className="font-semibold text-gray-900">{post.authorName}</div>
               <div className="text-sm text-gray-500">
-                {createdAt ? format(createdAt, 'MMMM d, yyyy • h:mm a') : null}
+                {createdAt ? safeFormat(createdAt, 'MMMM d, yyyy • h:mm a', '') : null}
               </div>
             </div>
           </div>
 
-          {/* Admin Menu */}
+          {/* Admin Delete Button - Direct trash can icon */}
           {isAdmin && (
-            <div className="relative" ref={adminMenuRef}>
-              <button
-                onClick={() => setShowAdminMenu(!showAdminMenu)}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <MoreVertical className="w-5 h-5 text-gray-500" />
-              </button>
-
-              {showAdminMenu && (
-                <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[160px]">
-                  <button
-                    onClick={() => {
-                      setShowAdminMenu(false);
-                      setShowDeleteModal(true);
-                    }}
-                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span>Delete Post</span>
-                  </button>
-                </div>
-              )}
-            </div>
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-full hover:bg-red-50"
+              title="Delete Post (Admin)"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
           )}
         </div>
 
@@ -204,6 +171,17 @@ const PostCard: React.FC<PostCardProps> = ({ post, onPostDeleted }) => {
               <span className="text-sm font-medium">{commentsCount}</span>
             </div>
           </div>
+
+          {/* Delete Button - Only for author (admins use the header button) */}
+          {currentUser?.id === post.authorId && !isAdmin && (
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="p-2 text-gray-400 hover:text-red-500 transition-colors rounded-full hover:bg-red-50"
+              title="Delete Post"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Threaded Comments */}

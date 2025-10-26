@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { collection, onSnapshot, orderBy, query, where, Timestamp, Query, FirestoreError } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { toMillis } from './useEventsUtils';
+import { normalizeEvent } from '../utils/normalizeEvent';
 
 export type EventDoc = {
   id: string;
@@ -23,8 +24,10 @@ export type EventDoc = {
   isTeaser?: boolean;
   maxAttendees?: number;
   attendingCount?: number;
+  waitlistCount?: number; // Number of people on waitlist
   waitlistEnabled?: boolean;
   waitlistLimit?: number;
+  status?: 'scheduled' | 'canceled' | 'postponed' | 'draft'; // Event status
   // QR Code Attendance Tracking
   qrCode?: string; // Generated QR code data
   qrCodeGeneratedAt?: any; // Timestamp when QR was generated
@@ -33,6 +36,8 @@ export type EventDoc = {
   lastAttendanceUpdate?: any; // Last time attendance was updated
   // Payment Configuration
   pricing?: import('../types/payment').EventPricing;
+  // Read-only mode
+  isReadOnly?: boolean;
 };
 
 type UseEventsOptions = { skewMs?: number; includeGuestTeasers?: boolean; };
@@ -112,7 +117,7 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
     // upcoming listeners
     for (const qy of upcomingQs) {
       const unsub = onSnapshot(qy, (snap) => {
-        snap.docs.forEach((d) => upcomingMap.set(d.id, { id: d.id, ...(d.data() as any) }));
+        snap.docs.forEach((d) => upcomingMap.set(d.id, normalizeEvent({ id: d.id, ...(d.data() as any) })));
         loadedUpcoming += 1;
         if (loadedUpcoming >= upcomingQs.length) {
           const arr = Array.from(upcomingMap.values()).sort((a,b)=> toMillis(a.startAt)-toMillis(b.startAt));
@@ -126,7 +131,7 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
     // past listeners
     for (const qy of pastQs) {
       const unsub = onSnapshot(qy, (snap) => {
-        snap.docs.forEach((d) => pastMap.set(d.id, { id: d.id, ...(d.data() as any) }));
+        snap.docs.forEach((d) => pastMap.set(d.id, normalizeEvent({ id: d.id, ...(d.data() as any) })));
         loadedPast += 1;
         if (loadedPast >= pastQs.length) {
           const arr = Array.from(pastMap.values()).sort((a,b)=> toMillis(b.startAt)-toMillis(a.startAt));
@@ -142,7 +147,7 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
     if (!currentUser && includeGuestTeasers) {
       teasersUnsub = onSnapshot(
         query(teasersRef, where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
-        (snap) => setUpcomingTeasers(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any), isTeaser: true }))),
+        (snap) => setUpcomingTeasers(snap.docs.map((d) => normalizeEvent({ id: d.id, ...(d.data() as any), isTeaser: true }))),
         onErr
       );
     } else {

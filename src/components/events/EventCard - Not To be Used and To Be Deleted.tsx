@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import { Calendar, MapPin, Users, Share2, Heart, MessageCircle, Eye, CheckCircle, XCircle, ThumbsUp, ThumbsDown, Clock, Link, AlertTriangle } from 'lucide-react';
-import { format } from 'date-fns';
+import { safeFormat } from '../../utils/dateUtils';
 import { EventDoc } from '../../hooks/useEvents';
 import { RSVPModalNew as RSVPModal } from './RSVPModalNew';
 import { EventTeaserModal } from './EventTeaserModal';
@@ -196,7 +196,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const [imageError, setImageError] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
-  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | 'pending' | null>(null);
+  const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | 'waitlisted' | null>(null);
   
   // State to track if attendee count needs attention
   const [attendeeCountNeedsAttention, setAttendeeCountNeedsAttention] = useState(false);
@@ -205,7 +205,6 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const mockCounts = useMemo(() => ({
     goingCount: event.attendingCount || 0,
     notGoingCount: 0,
-    pendingCount: 0,
     waitlistedCount: 0,
     totalGoing: event.attendingCount || 0
   }), [event.attendingCount]);
@@ -300,8 +299,44 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   // Check if event is past (no RSVP allowed for past events)
   const isEventPast = useMemo(() => {
     if (!event.startAt) return false;
-    const eventDate = event.startAt.toDate ? event.startAt.toDate() : new Date(event.startAt);
-    return eventDate < currentTime;
+    
+    try {
+      // Handle Firestore Timestamp with toDate method
+      if (event.startAt.toDate && typeof event.startAt.toDate === 'function') {
+        return event.startAt.toDate() < currentTime;
+      }
+      
+      // Handle Firestore Timestamp with seconds property
+      if (event.startAt.seconds && typeof event.startAt.seconds === 'number') {
+        return new Date(event.startAt.seconds * 1000 + (event.startAt.nanoseconds || 0) / 1000000) < currentTime;
+      }
+      
+      // Handle JavaScript Date
+      if (event.startAt instanceof Date) {
+        return event.startAt < currentTime;
+      }
+      
+      // Handle timestamp number (milliseconds)
+      if (typeof event.startAt === 'number') {
+        return new Date(event.startAt) < currentTime;
+      }
+      
+      // Handle timestamp string
+      if (typeof event.startAt === 'string') {
+        const date = new Date(event.startAt);
+        if (isNaN(date.getTime())) {
+          console.warn('Invalid date string:', event.startAt);
+          return false;
+        }
+        return date < currentTime;
+      }
+      
+      console.warn('Unknown date format:', event.startAt);
+      return false;
+    } catch (error) {
+      console.error('Error checking if event is past:', event.startAt, error);
+      return false;
+    }
   }, [event.startAt, currentTime]);
 
   // Handle card click
@@ -648,18 +683,64 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const getEventDuration = () => {
     if (!event.startAt || !event.endAt) return '';
     
-    const start = new Date(event.startAt.seconds * 1000);
-    const end = new Date(event.endAt.seconds * 1000);
-    const diffMs = end.getTime() - start.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    
-    if (diffDays > 0) {
-      return diffHours > 0 ? `(${diffDays}d ${diffHours}h)` : `(${diffDays} days)`;
-    } else if (diffHours > 0) {
-      return `(${diffHours} hours)`;
-    } else {
-      return '(1 hour)';
+    try {
+      // Helper to safely convert Firestore Timestamp to Date
+      const toJsDate = (d: any) => {
+        if (!d) return null;
+        
+        // Handle Firestore Timestamp with toDate method
+        if (d.toDate && typeof d.toDate === 'function') {
+          return d.toDate();
+        }
+        
+        // Handle Firestore Timestamp with seconds property
+        if (d.seconds && typeof d.seconds === 'number') {
+          return new Date(d.seconds * 1000 + (d.nanoseconds || 0) / 1000000);
+        }
+        
+        // Handle JavaScript Date
+        if (d instanceof Date) {
+          return d;
+        }
+        
+        // Handle timestamp number (milliseconds)
+        if (typeof d === 'number') {
+          return new Date(d);
+        }
+        
+        // Handle timestamp string
+        if (typeof d === 'string') {
+          const date = new Date(d);
+          if (isNaN(date.getTime())) {
+            console.warn('Invalid date string:', d);
+            return null;
+          }
+          return date;
+        }
+        
+        console.warn('Unknown date format:', d);
+        return null;
+      };
+      
+      const start = toJsDate(event.startAt);
+      const end = toJsDate(event.endAt);
+      
+      if (!start || !end) return '';
+      
+      const diffMs = end.getTime() - start.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      
+      if (diffDays > 0) {
+        return diffHours > 0 ? `(${diffDays}d ${diffHours}h)` : `(${diffDays} days)`;
+      } else if (diffHours > 0) {
+        return `(${diffHours} hours)`;
+      } else {
+        return '(1 hour)';
+      }
+    } catch (error) {
+      console.error('Error calculating event duration:', error);
+      return '';
     }
   };
 
@@ -801,7 +882,47 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <Calendar className="w-4 h-4 text-purple-500" />
               <span>
-                {event.startAt ? format(new Date(event.startAt.seconds * 1000), 'EEEE, MMMM d, yyyy') : 'Date TBD'}
+                {(() => {
+                  if (!event.startAt) return 'Date TBD';
+                  
+                  try {
+                    // Handle Firestore Timestamp with toDate method
+                    if (event.startAt.toDate && typeof event.startAt.toDate === 'function') {
+                      return safeFormat(event.startAt, 'EEEE, MMMM d, yyyy', 'Date TBD');
+                    }
+                    
+                    // Handle Firestore Timestamp with seconds property
+                    if (event.startAt.seconds && typeof event.startAt.seconds === 'number') {
+                      return safeFormat(event.startAt, 'EEEE, MMMM d, yyyy', 'Date TBD');
+                    }
+                    
+                    // Handle JavaScript Date
+                    if (event.startAt instanceof Date) {
+                      return safeFormat(event.startAt, 'EEEE, MMMM d, yyyy', 'Date TBD');
+                    }
+                    
+                    // Handle timestamp number (milliseconds)
+                    if (typeof event.startAt === 'number') {
+                      return safeFormat(event.startAt, 'EEEE, MMMM d, yyyy', 'Date TBD');
+                    }
+                    
+                    // Handle timestamp string
+                    if (typeof event.startAt === 'string') {
+                      const date = new Date(event.startAt);
+                      if (isNaN(date.getTime())) {
+                        console.warn('Invalid date string:', event.startAt);
+                        return 'Date TBD';
+                      }
+                      return safeFormat(event.startAt, 'EEEE, MMMM d, yyyy', 'Date TBD');
+                    }
+                    
+                    console.warn('Unknown date format:', event.startAt);
+                    return 'Date TBD';
+                  } catch (error) {
+                    console.error('Error formatting date:', event.startAt, error);
+                    return 'Date TBD';
+                  }
+                })()}
                 {getEventDuration() && <span className="text-gray-500 ml-1">{getEventDuration()}</span>}
               </span>
             </div>
@@ -850,7 +971,47 @@ const EventCard: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                 </div>
                 {event.endAt && (
                   <p className="text-xs text-gray-500 mt-1">
-                    Ended: {format(new Date(event.endAt.seconds * 1000), 'MMM dd, yyyy h:mm a')}
+                    Ended: {(() => {
+                      if (!event.endAt) return 'Date TBD';
+                      
+                      try {
+                        // Handle Firestore Timestamp with toDate method
+                        if (event.endAt.toDate && typeof event.endAt.toDate === 'function') {
+                          return safeFormat(event.endAt, 'MMM dd, yyyy h:mm a', 'Date TBD');
+                        }
+                        
+                        // Handle Firestore Timestamp with seconds property
+                        if (event.endAt.seconds && typeof event.endAt.seconds === 'number') {
+                          return safeFormat(event.endAt, 'MMM dd, yyyy h:mm a', 'Date TBD');
+                        }
+                        
+                        // Handle JavaScript Date
+                        if (event.endAt instanceof Date) {
+                          return safeFormat(event.endAt, 'MMM dd, yyyy h:mm a', 'Date TBD');
+                        }
+                        
+                        // Handle timestamp number (milliseconds)
+                        if (typeof event.endAt === 'number') {
+                          return safeFormat(event.endAt, 'MMM dd, yyyy h:mm a', 'Date TBD');
+                        }
+                        
+                        // Handle timestamp string
+                        if (typeof event.endAt === 'string') {
+                          const date = new Date(event.endAt);
+                          if (isNaN(date.getTime())) {
+                            console.warn('Invalid date string:', event.endAt);
+                            return 'Date TBD';
+                          }
+                          return safeFormat(event.endAt, 'MMM dd, yyyy h:mm a', 'Date TBD');
+                        }
+                        
+                        console.warn('Unknown date format:', event.endAt);
+                        return 'Date TBD';
+                      } catch (error) {
+                        console.error('Error formatting date:', event.endAt, error);
+                        return 'Date TBD';
+                      }
+                    })()}
                   </p>
                 )}
               </div>

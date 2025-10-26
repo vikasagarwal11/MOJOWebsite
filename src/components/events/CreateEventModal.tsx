@@ -10,6 +10,7 @@ import { addDoc, collection, doc, updateDoc, serverTimestamp, query, where, limi
 import { db } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import { safeFormat, safeISODate } from '../../utils/dateUtils';
 import { PaymentService } from '../../services/paymentService';
 import { EventPricing } from '../../types/payment';
 
@@ -42,6 +43,7 @@ const eventSchema = z.object({
   maxAttendees: z.string().optional(),
   waitlistEnabled: z.boolean().optional(),
   waitlistLimit: z.string().optional(),
+  waitlistCount: z.string().optional(),
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
   attendanceEnabled: z.boolean().optional(),
   // Payment fields
@@ -53,6 +55,7 @@ const eventSchema = z.object({
   currency: z.string().optional(),
   refundAllowed: z.boolean().optional(),
   refundDeadline: z.string().optional(),
+  isReadOnly: z.boolean().optional(),
 }).refine((data) => {
   // Custom validation for timed events
   if (!data.isAllDay) {
@@ -100,6 +103,10 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   
   // Waitlist state
   const [waitlistEnabled, setWaitlistEnabled] = useState(false);
+  const [waitlistCount, setWaitlistCount] = useState('0');
+  
+  // Read-only state
+  const [isReadOnly, setIsReadOnly] = useState(false);
   
   // Address autocomplete state
   const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
@@ -153,15 +160,16 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   defaultValues: isEditing ? {
     title: eventToEdit.title,
     description: eventToEdit.description,
-    date: format(tsToDate(eventToEdit.startAt), 'yyyy-MM-dd'),
-    time: format(tsToDate(eventToEdit.startAt), 'HH:mm'),
-    endTime: eventToEdit.endAt ? format(tsToDate(eventToEdit.endAt), 'HH:mm') : undefined,
-    endDate: eventToEdit.endAt ? format(tsToDate(eventToEdit.endAt), 'yyyy-MM-dd') : undefined,
+    date: safeFormat(tsToDate(eventToEdit.startAt), 'yyyy-MM-dd'),
+    time: safeFormat(tsToDate(eventToEdit.startAt), 'HH:mm'),
+    endTime: eventToEdit.endAt ? safeFormat(tsToDate(eventToEdit.endAt), 'HH:mm') : undefined,
+    endDate: eventToEdit.endAt ? safeFormat(tsToDate(eventToEdit.endAt), 'yyyy-MM-dd') : undefined,
     isAllDay: false, // Default to false for existing events
     location: eventToEdit.location,
     maxAttendees: eventToEdit.maxAttendees,
     waitlistEnabled: eventToEdit.waitlistEnabled || false,
     waitlistLimit: eventToEdit.waitlistLimit?.toString() || '',
+    waitlistCount: eventToEdit.waitlistCount?.toString() || '0',
     imageUrl: eventToEdit.imageUrl || '',
     attendanceEnabled: eventToEdit.attendanceEnabled || false,
     // Payment fields
@@ -236,7 +244,7 @@ useEffect(() => {
       }
       
       setValue('endTime', endTimeString);
-      setValue('endDate', endDate.toISOString().split('T')[0]);
+      setValue('endDate', safeISODate(endDate));
     }
   }
 }, [watchedDuration, watchedDate, watchedTime, watchedIsAllDay, setValue, isEditing]);
@@ -252,7 +260,11 @@ useEffect(() => {
       setValue('venueAddress', eventToEdit.venueAddress || '');
       setValue('maxAttendees', eventToEdit.maxAttendees?.toString() || '');
       setValue('waitlistLimit', eventToEdit.waitlistLimit?.toString() || '');
+      setValue('waitlistCount', eventToEdit.waitlistCount?.toString() || '0');
       setValue('attendanceEnabled', eventToEdit.attendanceEnabled || false);
+      
+      // Set read-only state
+      setIsReadOnly(eventToEdit.isReadOnly || false);
       
       // Set dates
       if (eventToEdit.startAt) {
@@ -323,6 +335,7 @@ useEffect(() => {
       
       // Update waitlist state
       setWaitlistEnabled(eventToEdit.waitlistEnabled || false);
+      setWaitlistCount(eventToEdit.waitlistCount?.toString() || '0');
     }
   }, [eventToEdit, setValue]);
 
@@ -784,6 +797,7 @@ useEffect(() => {
         maxAttendees: data.maxAttendees ? Number(data.maxAttendees) : undefined,
         waitlistEnabled: waitlistEnabled,
         waitlistLimit: data.waitlistLimit ? Number(data.waitlistLimit) : undefined,
+        waitlistCount: data.waitlistCount ? Number(data.waitlistCount) : undefined,
         attendanceEnabled: data.attendanceEnabled || false,
         tags: tags.length > 0 ? tags : undefined,
         createdBy: currentUser.id,
@@ -791,6 +805,7 @@ useEffect(() => {
         invitedUserIds: eventVisibility === 'private' ? invitedUserIds : undefined,
         attendingCount: eventToEdit?.attendingCount ?? 0,
         pricing: pricing,
+        isReadOnly: isReadOnly,
         createdAt: eventToEdit?.createdAt ?? serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -1023,7 +1038,7 @@ useEffect(() => {
                         }
                         
                         setValue('endTime', endTimeString);
-                        setValue('endDate', endDate.toISOString().split('T')[0]);
+                        setValue('endDate', safeISODate(endDate));
                       }
                     }
                   }}
@@ -1238,7 +1253,46 @@ useEffect(() => {
                   />
                 </div>
               )}
+
+              {/* Waitlist Count - Current People Waiting */}
+              {waitlistEnabled && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Current Waitlist Count</label>
+                  <input
+                    {...register('waitlistCount')}
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    disabled={isLoading}
+                    className="w-full px-3 py-2 text-sm rounded-md border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                    placeholder="0"
+                    value={waitlistCount}
+                    onChange={(e) => setWaitlistCount(e.target.value)}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Number of people currently on the waitlist</p>
+                </div>
+              )}
             </div>
+          </div>
+
+          {/* Read-Only Event Setting */}
+          <div>
+            <label className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <input
+                type="checkbox"
+                checked={isReadOnly}
+                onChange={(e) => setIsReadOnly(e.target.checked)}
+                disabled={isLoading}
+                className="rounded border-gray-300 text-[#F25129] focus:ring-[#F25129]"
+              />
+              <div>
+                <span className="text-sm font-medium text-blue-900">Read-Only Event</span>
+                <p className="text-xs text-blue-700 mt-1">
+                  This event will be displayed without RSVP functionality. Users can view event details but cannot register to attend.
+                </p>
+              </div>
+            </label>
           </div>
             
             <div>

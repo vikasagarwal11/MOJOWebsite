@@ -6,6 +6,8 @@ import { User } from '../../../../types';
 import { listAllAttendees } from '../../../../services/attendeeService';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../../config/firebase';
+import { safeStringConversion } from '../../../../utils/dataSanitizer';
+import { safeISODate } from '../../../../utils/dateUtils';
 import { EllipsisScroller } from '../../../common/EllipsisScroller';
 
 interface WhosGoingTabProps {
@@ -13,25 +15,28 @@ interface WhosGoingTabProps {
   attendees: Attendee[];
   isAdmin: boolean;
   currentUser: User | null;
+  waitlistPositions?: Map<string, number>;
 }
 
 interface GroupedAttendee {
   userId: string;
   name: string;
-  status: 'going' | 'not-going' | 'pending' | 'waitlisted';
+  status: 'going' | 'not-going' | 'waitlisted';
   familyCount: number;
   displayName: string;
   email?: string;
   phone?: string;
   rsvpDate?: string;
+  waitlistPosition?: number;
 }
 
-type StatusFilter = 'all' | 'going' | 'not-going' | 'pending' | 'waitlisted';
+type StatusFilter = 'all' | 'going' | 'not-going' | 'waitlisted';
 
 export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
   event,
   attendees,
-  isAdmin
+  isAdmin,
+  waitlistPositions = new Map()
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('going');
@@ -79,7 +84,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
         
         // Fetch contact information for admins
         if (isAdmin) {
-          const uniqueUserIds = [...new Set(allEventAttendees.map(a => a.userId))];
+          const uniqueUserIds = [...new Set(Array.isArray(allEventAttendees) ? allEventAttendees.map(a => a.userId) : [])];
           await fetchUserContacts(uniqueUserIds);
         }
       } catch (error) {
@@ -96,6 +101,23 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
 
   // Group attendees by primary user and count family members
   const groupedAttendees = useMemo(() => {
+    console.log('🔍 WhosGoingTab - groupedAttendees useMemo called with allAttendees:', {
+      allAttendeesType: typeof allAttendees,
+      allAttendeesIsArray: Array.isArray(allAttendees),
+      allAttendeesLength: Array.isArray(allAttendees) ? allAttendees.length : 'N/A',
+      allAttendeesConstructor: allAttendees?.constructor?.name,
+      allAttendeesSample: Array.isArray(allAttendees) ? allAttendees.slice(0, 2) : allAttendees
+    });
+    
+    if (!Array.isArray(allAttendees)) {
+      console.warn('🚨 WhosGoingTab - allAttendees is not an array in groupedAttendees:', {
+        allAttendees,
+        type: typeof allAttendees,
+        constructor: allAttendees?.constructor?.name,
+        stack: new Error().stack
+      });
+      return [];
+    }
     const grouped: { [userId: string]: GroupedAttendee } = {};
 
     allAttendees.forEach(attendee => {
@@ -114,6 +136,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
           displayName: attendee.name,
           email: userContacts[attendee.userId]?.email || 'Not Available',
           phone: userContacts[attendee.userId]?.phone || 'Not Available',
+          waitlistPosition: waitlistPositions.get(attendee.userId) || undefined,
           rsvpDate: (() => {
             if (!attendee.createdAt) return 'Not Available';
             
@@ -156,7 +179,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
     });
 
     return Object.values(grouped);
-  }, [allAttendees, userContacts]);
+  }, [allAttendees, userContacts, waitlistPositions]);
 
   // Filter attendees based on search and status
   const filteredAttendees = useMemo(() => {
@@ -167,17 +190,23 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
       filtered = filtered.filter(attendee => attendee.status === statusFilter);
     }
 
-    // Apply search filter
+    // Apply search filter with role-based privacy
     if (searchTerm.trim()) {
       const searchLower = searchTerm.toLowerCase();
-      filtered = filtered.filter(attendee => 
-        attendee.name.toLowerCase().includes(searchLower) ||
-        attendee.email?.toLowerCase().includes(searchLower)
-      );
+      filtered = filtered.filter(attendee => {
+        // Always search by name
+        const nameMatch = attendee.name.toLowerCase().includes(searchLower);
+        
+        // Only search by email if user is admin AND email is available
+        const emailMatch = isAdmin && attendee.email ? 
+          attendee.email.toLowerCase().includes(searchLower) : false;
+        
+        return nameMatch || emailMatch;
+      });
     }
 
     return filtered;
-  }, [groupedAttendees, searchTerm, statusFilter]);
+  }, [groupedAttendees, searchTerm, statusFilter, isAdmin]);
 
   // Pagination logic
   const totalPages = Math.ceil(filteredAttendees.length / recordsPerPage);
@@ -201,7 +230,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
 
   // CSV escaping function to prevent injection attacks
   const csvEscape = (v: any) => {
-    const s = (v ?? '').toString();
+    const s = safeStringConversion(v);
     const needsQuote = /[",\n]/.test(s) || /^[=+\-@]/.test(s); // avoid CSV formula injection
     const safe = s.replace(/"/g, '""');
     return needsQuote ? `"${safe}"` : safe;
@@ -214,7 +243,6 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
     const totalAttendees = groupedAttendees.length;
     const goingCount = groupedAttendees.filter(attendee => attendee.status === 'going').length;
     const notGoingCount = groupedAttendees.filter(attendee => attendee.status === 'not-going').length;
-    const pendingCount = groupedAttendees.filter(attendee => attendee.status === 'pending').length;
     const waitlistedCount = groupedAttendees.filter(attendee => attendee.status === 'waitlisted').length;
     
     // Calculate total people (including family members)
@@ -225,11 +253,6 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
     const totalPeopleNotGoing = groupedAttendees
       .filter(attendee => attendee.status === 'not-going')
       .reduce((sum, _) => sum + 1, 0); // Only primary members for not-going
-    
-    const totalPeoplePending = groupedAttendees
-      .filter(attendee => attendee.status === 'pending')
-      .reduce((sum, attendee) => sum + attendee.familyCount + 1, 0);
-    
     const totalPeopleWaitlisted = groupedAttendees
       .filter(attendee => attendee.status === 'waitlisted')
       .reduce((sum, attendee) => sum + attendee.familyCount + 1, 0);
@@ -261,11 +284,11 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
         if (!event.startAt || !event.endAt) return 'TBD';
         try {
           const startTime = event.startAt.seconds ? new Date(event.startAt.seconds * 1000).toLocaleTimeString() : 
-                           event.startAt.toDate ? event.startAt.toDate().toLocaleTimeString() :
+                           event.startAt.toDate && typeof event.startAt.toDate === 'function' ? event.startAt.toDate().toLocaleTimeString() :
                            event.startAt instanceof Date ? event.startAt.toLocaleTimeString() : 'TBD';
           
           const endTime = event.endAt.seconds ? new Date(event.endAt.seconds * 1000).toLocaleTimeString() : 
-                         event.endAt.toDate ? event.endAt.toDate().toLocaleTimeString() :
+                         event.endAt.toDate && typeof event.endAt.toDate === 'function' ? event.endAt.toDate().toLocaleTimeString() :
                          event.endAt instanceof Date ? event.endAt.toLocaleTimeString() : 'TBD';
           
           return `${startTime} - ${endTime}`;
@@ -281,15 +304,13 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
       ['Total RSVPs', totalAttendees],
       ['Going (RSVPs)', goingCount],
       ['Not Going (RSVPs)', notGoingCount],
-      ['Pending (RSVPs)', pendingCount],
       ['Waitlisted (RSVPs)', waitlistedCount],
       [''],
       ['TOTAL PEOPLE COUNT'],
       ['Total People Going', totalPeopleGoing],
       ['Total People Not Going', totalPeopleNotGoing],
-      ['Total People Pending', totalPeoplePending],
       ['Total People Waitlisted', totalPeopleWaitlisted],
-      ['Grand Total People', totalPeopleGoing + totalPeopleNotGoing + totalPeoplePending + totalPeopleWaitlisted],
+      ['Grand Total People', totalPeopleGoing + totalPeopleNotGoing + totalPeopleWaitlisted],
       [''],
       ['CAPACITY ANALYSIS'],
       ['Event Capacity', event.maxAttendees || 'Unlimited'],
@@ -299,7 +320,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
       ['DETAILED ATTENDEE LIST'],
       ['Name', 'Status', 'Additional Family', 'Total People', 'Email', 'Phone', 'RSVP Date', 'User ID'],
       // Attendee data
-      ...filteredAttendees.map((attendee) => [
+      ...(Array.isArray(filteredAttendees) ? filteredAttendees.map((attendee) => [
         attendee.name,
         attendee.status,
         attendee.familyCount, // Only additional family members
@@ -308,14 +329,14 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
         attendee.phone,
         attendee.rsvpDate,
         attendee.userId
-      ])
+      ]) : [])
     ].map(row => row.map(csvEscape).join(',')).join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${event.title.replace(/[^a-zA-Z0-9]/g, '_')}_attendee_report_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `${event.title.replace(/[^a-zA-Z0-9]/g, '_')}_attendee_report_${safeISODate(new Date())}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -338,7 +359,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Who's Going</h3>
           <p className="text-sm text-gray-600">
-            {statusCounts['going'] || 0} Going, {statusCounts['not-going'] || 0} Not Going, {statusCounts['pending'] || 0} Pending
+            {statusCounts['going'] || 0} Going, {statusCounts['not-going'] || 0} Not Going 
             {statusCounts['waitlisted'] ? `, ${statusCounts['waitlisted']} Waitlisted` : ''}
           </p>
         </div>
@@ -359,7 +380,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
           <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400" />
           <input
             type="text"
-            placeholder="Search by name or email..."
+            placeholder={isAdmin ? "Search by name or email..." : "Search by name..."}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-[#F25129] focus:border-transparent"
@@ -375,7 +396,6 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
             <option value="all">All Status</option>
             <option value="going">Going</option>
             <option value="not-going">Not Going</option>
-            <option value="pending">Pending</option>
             <option value="waitlisted">Waitlisted</option>
           </select>
         </div>
@@ -423,7 +443,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
                     </thead>
 
                     <tbody className="divide-y divide-gray-100">
-                  {paginatedAttendees.map((attendee, index) => (
+                  {Array.isArray(paginatedAttendees) ? paginatedAttendees.map((attendee, index) => (
                     <tr key={attendee.userId} className={`hover:bg-gray-50 transition-colors ${index % 2 ? "bg-gray-50" : "bg-white"}`}>
                       {/* NAME */}
                       <td className="px-3 py-2">
@@ -440,17 +460,24 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
 
                       {/* STATUS */}
                       <td className="px-3 py-2">
-                        <span
-                          className={[
-                            "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap",
-                            attendee.status === "going" ? "bg-green-100 text-green-800" :
-                            attendee.status === "not-going" ? "bg-red-100 text-red-800" :
-                            attendee.status === "pending" ? "bg-yellow-100 text-yellow-800" :
-                            "bg-gray-100 text-gray-800"
-                          ].join(" ")}
-                        >
-                          <span className="capitalize">{attendee.status}</span>
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span
+                            className={[
+                              "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap",
+                              attendee.status === "going" ? "bg-green-100 text-green-800" :
+                              attendee.status === "not-going" ? "bg-red-100 text-red-800" :
+                              
+                              "bg-gray-100 text-gray-800"
+                            ].join(" ")}
+                          >
+                            <span className="capitalize">{attendee.status}</span>
+                          </span>
+                          {attendee.status === "waitlisted" && attendee.waitlistPosition && (
+                            <span className="text-xs text-purple-600 font-medium">
+                              Position #{attendee.waitlistPosition}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
 
@@ -472,7 +499,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
                         </td>
                       )}
                     </tr>
-                    ))}
+                    )) : null}
                     </tbody>
                   </table>
                 </div>
@@ -481,7 +508,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
 
             {/* Mobile: Card Layout */}
             <div className="md:hidden divide-y divide-gray-100">
-              {paginatedAttendees.map((attendee) => (
+              {Array.isArray(paginatedAttendees) ? paginatedAttendees.map((attendee) => (
                 <div key={attendee.userId} className="px-3 py-2">
                   <div className="min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-1">
@@ -494,7 +521,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
                           "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium shrink-0",
                           attendee.status === "going" ? "bg-green-100 text-green-800" :
                           attendee.status === "not-going" ? "bg-red-100 text-red-800" :
-                          attendee.status === "pending" ? "bg-yellow-100 text-yellow-800" :
+                          
                           "bg-gray-100 text-gray-800"
                         ].join(" ")}
                       >
@@ -514,7 +541,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
                     )}
                   </div>
                 </div>
-              ))}
+              )) : null}
             </div>
           </>
         )}
@@ -557,3 +584,10 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
     </div>
   );
 };
+
+
+
+
+
+
+

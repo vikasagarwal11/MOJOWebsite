@@ -101,11 +101,14 @@ service cloud.firestore {
         (!('location' in newData) || isNonEmptyString(newData.location)) &&
         (!('maxAttendees' in newData) || (newData.maxAttendees is number && newData.maxAttendees > 0)) &&
         (!('attendingCount' in newData) || (newData.attendingCount is number && newData.attendingCount >= 0)) &&
+        (!('waitlistCount' in newData) || (newData.waitlistCount is number && newData.waitlistCount >= 0)) &&
         (!('invitedUserIds' in newData) || (newData.invitedUserIds is list && newData.invitedUserIds.size() <= 100)) &&
         (!('titleLower' in newData) || isNonEmptyString(newData.titleLower)) &&
         (!('allDay' in newData) || newData.allDay is bool) &&
         (!('imageUrl' in newData) || (newData.imageUrl is string || newData.imageUrl == null)) &&
-        (!('visibility' in newData) || newData.visibility in ['public', 'members', 'private']);
+        (!('visibility' in newData) || newData.visibility in ['public', 'members', 'private']) &&
+        (!('status' in newData) || newData.status in ['scheduled', 'canceled', 'postponed', 'draft']) &&
+        (!('isReadOnly' in newData) || newData.isReadOnly is bool);
     }
     
     // Check if user is event creator
@@ -120,7 +123,7 @@ service cloud.firestore {
       return data is map &&
         ('eventId' in data) && isNonEmptyString(data.eventId) &&
         ('userId' in data) && isNonEmptyString(data.userId) &&
-        ('status' in data) && data.status in ['going', 'not-going', 'pending', 'waitlisted'] &&
+        ('status' in data) && data.status in ['going', 'not-going', 'waitlisted'] &&
         (!('adults' in data) || (data.adults is number && data.adults >= 0)) &&
         // childCounts can be:
         //  (A) list of maps: [{ageGroup:'0-2', count:1}, ...] (max 4), OR
@@ -161,7 +164,7 @@ service cloud.firestore {
         ('relationship' in data) && data.relationship in ['self', 'spouse', 'child', 'guest'] &&
         ('name' in data) && isNonEmptyString(data.name) && data.name.size() >= 2 &&
         ('ageGroup' in data) && data.ageGroup in ['0-2', '3-5', '6-10', '11+', 'adult'] &&
-        ('rsvpStatus' in data) && data.rsvpStatus in ['going', 'not-going', 'pending', 'waitlisted'] &&
+        ('rsvpStatus' in data) && data.rsvpStatus in ['going', 'not-going', 'waitlisted'] &&
         (!('familyMemberId' in data) || (data.familyMemberId is string || data.familyMemberId == null));
     }
     
@@ -171,7 +174,7 @@ service cloud.firestore {
         ('userId' in data) && (data.userId is string || data.userId == null) &&
         ('attendeeType' in data) && data.attendeeType in ['real', 'ghost', 'offline_paid', 'vip', 'sponsor', 'volunteer', 'early_bird', 'group_booking', 'family_member'] &&
         ('name' in data) && isNonEmptyString(data.name) && data.name.size() >= 2 &&
-        ('rsvpStatus' in data) && data.rsvpStatus in ['going', 'not-going', 'pending', 'waitlisted'] &&
+        ('rsvpStatus' in data) && data.rsvpStatus in ['going', 'not-going', 'waitlisted'] &&
         ('createdAt' in data) && data.createdAt is timestamp &&
         ('updatedAt' in data) && data.updatedAt is timestamp &&
         ('isDeleted' in data) && data.isDeleted is bool;
@@ -191,7 +194,9 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn() || 
         // Allow public read for basic user info (same as shown in events)
-        (resource != null && resource.data.keys().hasOnly(['displayName', 'photoURL', 'displayNameLower', 'firstName', 'lastName']));
+        (resource != null && resource.data.keys().hasOnly(['displayName', 'photoURL', 'displayNameLower', 'firstName', 'lastName'])) ||
+        // Allow unauthenticated read for phone number validation during login
+        (resource != null && 'phoneNumber' in resource.data);
       allow create: if isSignedIn() && 
         request.auth.uid == userId && 
         (!('role' in request.resource.data) || (request.resource.data.role == 'member' && !isBlockedPhone())) && 
@@ -345,7 +350,8 @@ service cloud.firestore {
         // Users can create attendees for events they have access to
         allow create: if isSignedIn() && 
           validAttendeeData(request.resource.data) &&
-          checkEventCapacity(eventId, request.resource.data.rsvpStatus == 'going') &&
+          // Skip capacity check for family members (they can exceed capacity)
+          (request.resource.data.attendeeType == 'family_member' || checkEventCapacity(eventId, request.resource.data.rsvpStatus == 'going')) &&
           (
             // Event creator can add attendees (including bulk uploads)
             get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
@@ -366,9 +372,9 @@ service cloud.firestore {
               (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'private' && 
                request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds)
             )) ||
-            // Fallback: Allow any authenticated user to add their own family members
-            // This ensures family member addition works even if event visibility is not set properly
-            (userDoc() != null && request.resource.data.attendeeType == 'family_member')
+            // Enhanced fallback: Allow authenticated users to add family members to ANY event
+            // This ensures family member addition works even if event visibility/permissions are misconfigured
+            (isSignedIn() && request.resource.data.attendeeType == 'family_member' && request.resource.data.userId == request.auth.uid)
           );
         
         // TEMPORARY RULE REMOVED - Security vulnerability fixed
@@ -380,8 +386,11 @@ service cloud.firestore {
           isAdmin()
         ) && validAttendeeData(request.resource.data) &&
         // Check capacity when changing status to 'going' (but allow promotion from waitlisted)
-        (request.resource.data.rsvpStatus != 'going' || 
-         resource.data.rsvpStatus == 'going' || 
+        // Allow family members to exceed capacity if primary member is already going
+        (request.resource.data.attendeeType == 'family_member' ||
+         resource.data.attendeeType == 'family_member' ||
+         request.resource.data.rsvpStatus != 'going' ||
+         resource.data.rsvpStatus == 'going' ||
          resource.data.rsvpStatus == 'waitlisted' ||
          checkEventCapacity(eventId, true));
         
@@ -573,6 +582,33 @@ service cloud.firestore {
       
       // Only admins can read, update, or delete contact messages
       allow read, update, delete: if isAdmin();
+    }
+    
+    // --- POPUP ALERTS ---
+    match /popup_alerts/{alertId} {
+      // Allow authenticated users to read popup alerts
+      allow read: if isSignedIn();
+      
+      // Only admins can create, update, or delete popup alerts
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // --- PUSH NOTIFICATION QUEUE ---
+    match /push_notification_queue/{messageId} {
+      // Allow authenticated users to read their own queued messages
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // Only admins can create, update, or delete queued messages
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // --- SMS QUEUE ---
+    match /sms_queue/{messageId} {
+      // Allow authenticated users to read their own queued SMS
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      // Only admins can create, update, or delete queued SMS
+      allow create, update, delete: if isAdmin();
     }
     
     // --- PAYMENT TRANSACTIONS ---

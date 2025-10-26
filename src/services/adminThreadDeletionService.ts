@@ -30,13 +30,13 @@ export class AdminThreadDeletionService {
    * Delete a comment thread and all its nested replies
    * @param commentId - The ID of the comment to delete
    * @param collectionPath - The collection path (e.g., 'posts/{postId}/comments')
-   * @param adminId - The ID of the admin performing the deletion
+   * @param userId - The ID of the user performing the deletion (admin or author)
    * @returns Promise<ThreadDeletionResult>
    */
   static async deleteCommentThread(
     commentId: string, 
     collectionPath: string, 
-    adminId: string
+    userId: string
   ): Promise<ThreadDeletionResult> {
     const result: ThreadDeletionResult = {
       success: false,
@@ -50,7 +50,7 @@ export class AdminThreadDeletionService {
     };
 
     try {
-      console.log(`🗑️ [AdminThreadDeletion] Starting deletion of thread ${commentId} by admin ${adminId}`);
+      console.log(`🗑️ [AdminThreadDeletion] Starting deletion of thread ${commentId} by user ${userId}`);
 
       // 1. Get comment data first
       const commentRef = doc(db, collectionPath, commentId);
@@ -62,7 +62,17 @@ export class AdminThreadDeletionService {
       }
 
       const commentData = commentDoc.data();
-      console.log(`🗑️ [AdminThreadDeletion] Comment data retrieved:`, commentData);
+
+      // 2. Verify user has permission to delete this comment
+      const isAdmin = await this.checkAdminPermissions(userId);
+      const isAuthor = commentData.authorId === userId;
+      
+      if (!isAdmin && !isAuthor) {
+        result.errors.push('User does not have permission to delete this comment');
+        return result;
+      }
+
+      console.log(`🗑️ [AdminThreadDeletion] Comment data retrieved for ${isAdmin ? 'admin' : 'author'} deletion:`, commentData);
 
       // 2. Find all replies to this comment (recursive)
       const allCommentsToDelete = await this.findAllReplies(commentId, collectionPath);
@@ -71,6 +81,9 @@ export class AdminThreadDeletionService {
       // 3. Delete all comments and their associated data
       for (const commentToDelete of allCommentsToDelete) {
         try {
+        // For admin users, delete all associated data (reactions, likes)
+        // For comment authors, only delete their own comment (let admin handle nested cleanup if needed)
+        if (isAdmin) {
           // Delete comment reactions
           const reactionsResult = await this.deleteCommentReactions(collectionPath, commentToDelete.id);
           result.deletedCounts.reactions += reactionsResult.reactions;
@@ -80,25 +93,26 @@ export class AdminThreadDeletionService {
           const likesResult = await this.deleteCommentLikes(collectionPath, commentToDelete.id);
           result.deletedCounts.likes += likesResult.likes;
           result.errors.push(...likesResult.errors);
-
-          // Delete associated media files
-          const mediaResult = await this.deleteCommentMediaFiles(commentToDelete.data);
-          result.deletedCounts.mediaFiles += mediaResult.deletedFiles;
-          result.errors.push(...mediaResult.errors);
-
-          // Delete the comment document
-          await deleteDoc(doc(db, collectionPath, commentToDelete.id));
-          result.deletedCounts.comments++;
-          console.log(`✅ [AdminThreadDeletion] Comment ${commentToDelete.id} deleted`);
-
-        } catch (error) {
-          console.error(`❌ [AdminThreadDeletion] Error deleting comment ${commentToDelete.id}:`, error);
-          result.errors.push(`Failed to delete comment ${commentToDelete.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
+
+        // Always delete associated media files (both admin and author should clean up their media)
+        const mediaResult = await this.deleteCommentMediaFiles(commentToDelete.data);
+        result.deletedCounts.mediaFiles += mediaResult.deletedFiles;
+        result.errors.push(...mediaResult.errors);
+
+        // Delete the comment document
+        await deleteDoc(doc(db, collectionPath, commentToDelete.id));
+        result.deletedCounts.comments++;
+        console.log(`✅ [AdminThreadDeletion] Comment ${commentToDelete.id} deleted by ${isAdmin ? 'admin' : 'author'}`);
+
+      } catch (error) {
+        console.error(`❌ [AdminThreadDeletion] Error deleting comment ${commentToDelete.id}:`, error);
+        result.errors.push(`Failed to delete comment ${commentToDelete.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
+    }
 
       // 4. Log the deletion action
-      await this.logThreadDeletionAction(commentId, collectionPath, adminId, result.deletedCounts);
+      await this.logThreadDeletionAction( commentId, collectionPath, userId, result.deletedCounts);
 
       result.success = true;
       console.log(`✅ [AdminThreadDeletion] Thread deletion completed successfully:`, result.deletedCounts);
@@ -326,7 +340,7 @@ export class AdminThreadDeletionService {
   private static async logThreadDeletionAction(
     commentId: string, 
     collectionPath: string, 
-    adminId: string, 
+    userId: string, 
     deletedCounts: ThreadDeletionResult['deletedCounts']
   ): Promise<void> {
     try {
@@ -334,7 +348,7 @@ export class AdminThreadDeletionService {
         action: 'thread_deletion',
         commentId,
         collectionPath,
-        adminId,
+        userId,
         deletedCounts,
         timestamp: new Date(),
         type: 'admin_action'
@@ -377,18 +391,12 @@ export function useAdminThreadDeletion() {
   const deleteCommentThread = async (
     commentId: string, 
     collectionPath: string, 
-    adminId: string
+    userId: string
   ): Promise<ThreadDeletionResult> => {
     setIsDeleting(true);
     
     try {
-      // Check admin permissions
-      const hasPermission = await AdminThreadDeletionService.checkAdminPermissions(adminId);
-      if (!hasPermission) {
-        throw new Error('User does not have admin permissions');
-      }
-
-      const result = await AdminThreadDeletionService.deleteCommentThread(commentId, collectionPath, adminId);
+      const result = await AdminThreadDeletionService.deleteCommentThread(commentId, collectionPath, userId);
       
       if (result.success) {
         toast.success(`Thread deleted successfully! Removed ${result.deletedCounts.comments} comments, ${result.deletedCounts.reactions} reactions, ${result.deletedCounts.likes} likes, and ${result.deletedCounts.mediaFiles} media files.`);
