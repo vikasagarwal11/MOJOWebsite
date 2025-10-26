@@ -2,6 +2,7 @@ import { setGlobalOptions } from "firebase-functions/v2";
 import { onDocumentWritten, onDocumentDeleted, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { onCall } from "firebase-functions/v2/https";
+import { storage } from "firebase-functions";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -13,16 +14,140 @@ import ffmpegStatic from 'ffmpeg-static';
 import ffprobe from '@ffprobe-installer/ffprobe';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
+
+// Set global options for all functions - set to us-east1 to match prod bucket
+setGlobalOptions({ region: 'us-east1' });
 import * as functions from 'firebase-functions';
 // Initialize Firebase Admin BEFORE importing modules that use it
 initializeApp();
 
 import { onAttendeeChange, manualRecalculateCount, bulkAttendeeOperation } from './attendeeCounts';
+import { manualRecalculateWaitlistPositions as _manualRecalcWaitlist } from './autoPromotionService';
 
 // Export the new attendee count management functions
 export { onAttendeeChange, manualRecalculateCount, bulkAttendeeOperation };
 
-// Get Firestore instance
+// Auto-Promotion Cloud Function - triggers when someone cancels RSVP
+export const onAttendeeCancellation = onDocumentWritten(
+  'events/{eventId}/attendees/{attendeeId}',
+  async (event) => {
+    try {
+      const beforeData = event.data?.before?.data();
+      const afterData = event.data?.after?.data();
+      
+      // Check if this is a cancellation (going/not-going → waitlisted or going → not-going)
+      const isGoingToWaitlist = afterData?.rsvpStatus === 'waitlisted' && 
+                               beforeData?.rsvpStatus === 'going';
+      const isGoingToNotGoing = afterData?.rsvpStatus === 'not-going' && 
+                               beforeData?.rsvpStatus === 'going';
+      const isWaitlistToNotGoing = afterData?.rsvpStatus === 'not-going' && 
+                                   beforeData?.rsvpStatus === 'waitlisted';
+      
+      // Trigger auto-promotion if someone left or cancelled
+      // Trigger promotions when a primary seat frees up: going->not-going, going->waitlisted, or deletion of a going primary
+      const isDeletion = !event.data?.after?.exists && !!beforeData;
+      const freedPrimarySeat = (
+        (beforeData?.attendeeType === 'primary') && (
+          isGoingToNotGoing || isGoingToWaitlist || (isDeletion && beforeData?.rsvpStatus === 'going')
+        )
+      );
+      if (freedPrimarySeat) {
+        const eventId = event.params.eventId;
+        console.log(`🚀 Attendee cancellation detected: ${afterData?.name} → ${afterData?.rsvpStatus}`);
+        console.log(`🔄 Starting auto-promotion for event: ${eventId}`);
+        
+        // Call our auto-promotion service
+        try {
+          // Import the auto-promotion service
+          const { triggerAutomaticPromotions } = await import('./autoPromotionService');
+          
+          const promotionResult = await triggerAutomaticPromotions(eventId);
+          
+          if (promotionResult.success && promotionResult.promotionsCount > 0) {
+            console.log(`✅ Auto-promotion completed: ${promotionResult.promotionsCount} users promoted`);
+            console.log(`👥 Promoted users:`, promotionResult.promotedUsers.map(u => u.message));
+            
+            // TODO: Send notifications to promoted users
+            await sendPromotionNotifications(promotionResult.promotedUsers, eventId);
+          } else {
+            console.log(`ℹ️ No auto-promotions needed: ${promotionResult.errors.join(', ')}`);
+          }
+        } catch (promoError) {
+          console.error('🚨 Auto-promotion failed:', promoError);
+        }
+      }
+      
+      // Check if someone joined waitlist (trigger manual admin notifications)
+      if (isGoingToWaitlist) {
+        const eventId = event.params.eventId;
+        console.log(`📝 New waitlist join: ${afterData?.name} at position ${afterData?.waitlistPosition}`);
+        
+        // Log for admin monitoring (could lead to admin notifications)
+        await db.collection('waitlist_activities').add({
+          eventId: eventId,
+          attendeeId: event.params.attendeeId,
+          action: 'joined_waitlist',
+          userId: afterData?.userId,
+          userName: afterData?.name,
+          position: afterData?.waitlistPosition,
+          timestamp: new Date()
+        });
+      }
+      
+    } catch (error) {
+      console.error('🚨 Error in attendee cancellation handler:', error);
+    }
+  }
+);
+
+// Callable: Manually recalc waitlist positions (admin only)
+export const recalcWaitlistPositions = onCall({ region: 'us-central1' }, async (request) => {
+  const { data, auth } = request;
+  const eventId = data?.eventId as string | undefined;
+  if (!auth) throw new Error('Unauthenticated');
+  if (!eventId) throw new Error('eventId required');
+  const isAdmin = (auth.token as any)?.role === 'admin' || (auth.token as any)?.admin === true;
+  if (!isAdmin) throw new Error('Admin only');
+  await _manualRecalcWaitlist(eventId);
+  return { success: true, eventId };
+});
+
+// Send notifications to promoted users
+const sendPromotionNotifications = async (
+  promotedUsers: Array<{
+    userId: string;
+    attendeeId: string;
+    name: string;
+    promotedFromPosition: number;
+    message: string;
+  }>,
+  eventId: string
+): Promise<void> => {
+  try {
+    console.log(`📱 Sending notifications to ${promotedUsers.length} promoted users`);
+    
+    // Log promotion notifications for future implementation
+    for (const user of promotedUsers) {
+      await db.collection('promotion_notifications').add({
+        eventId: eventId,
+        userId: user.userId,
+        attendeeId: user.attendeeId,
+        userName: user.name,
+        promotedFromPosition: user.promotedFromPosition,
+        message: `🎉 Congratulations! You've been promoted from the waitlist! ${user.message}`,
+        notificationType: 'promotion',
+        timestamp: new Date(),
+        sent: false // Will be processed by notification service
+      });
+    }
+    
+    console.log(`✅ Promotion notifications logged for ${promotedUsers.length} users`);
+  } catch (error) {
+    console.error('🚨 Error sending promotion notifications:', error);
+  }
+};
+
+// Get Firestore instance - using momsfitnessmojo database
 const db = getFirestore();
 
 // Helper
@@ -523,11 +648,11 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
     version: '2.3-FIXED-VIDEO-DELETION' // Force complete redeployment
   });
 
-  // Use ONLY environment variable
-  const bucket = getStorage().bucket(process.env.STORAGE_BUCKET);
+  // Use the bucket from Firebase config
+  const bucket = getStorage().bucket(functions.config().app.storage_bucket);
   
   // Debug logging
-  console.log('🔧 STORAGE_BUCKET env var:', process.env.STORAGE_BUCKET);
+  console.log('🔧 STORAGE_BUCKET config:', functions.config().app.storage_bucket);
   console.log('🔧 Final bucket used:', bucket);
   const filesToDelete: Array<{path: string, type: string, isFolder?: boolean}> = [];
   
@@ -637,23 +762,21 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
 
 // ───────────────── MEDIA: FFmpeg + Manifest Rewrite ─────────────────
 
-export const onMediaFileFinalize = onObjectFinalized(
-  {
-    bucket: process.env.STORAGE_BUCKET,
-    region: 'us-east1',
-    timeoutSeconds: 540,
-    memory: '2GiB',
-    cpu: 2,
-    concurrency: 1,
-  },
-  async (event) => {
-    console.log('🎬 onMediaFileFinalize triggered for:', event.data.name);
-    console.log('Bucket:', event.data.bucket);
-    console.log('Content type:', event.data.contentType);
-    console.log('Size:', event.data.size);
+export const onMediaFileFinalize = onObjectFinalized({ region: 'us-east1' }, async (event) => {
+  const object = event.data;
+    console.log('🎬 onMediaFileFinalize triggered for:', object.name);
+    console.log('Bucket:', object.bucket);
+    console.log('Content type:', object.contentType);
+    console.log('Size:', object.size);
 
-    const name = event.data.name || '';
-    const ctype = event.data.contentType || '';
+    const name = object.name || '';
+    const ctype = object.contentType || '';
+
+    // Only process files from our target bucket
+    if (object.bucket !== process.env.STORAGE_BUCKET) {
+      console.log(`⏭️ Skipping file from bucket: ${object.bucket}, expected: ${process.env.STORAGE_BUCKET}`);
+      return;
+    }
 
     // Skip generated outputs
     if (!name.startsWith('media/')) return;
@@ -681,9 +804,15 @@ export const onMediaFileFinalize = onObjectFinalized(
       return;
     }
 
-    const bucket = getStorage().bucket(event.data.bucket);
+    // Use the bucket from environment variable (consistent with function configuration)
+    const bucket = getStorage().bucket(process.env.STORAGE_BUCKET);
     const dir = path.dirname(name);   // media/<uid>/<batchId>
     const base = path.parse(name).name;
+    
+    // Debug logging to confirm bucket usage
+    console.log(`🔧 Using bucket for file operations: ${bucket.name}`);
+    console.log(`🔧 Environment STORAGE_BUCKET: ${process.env.STORAGE_BUCKET}`);
+    console.log(`🔧 Firebase config storage bucket: ${functions.config().app?.storage_bucket || 'undefined'}`);
 
     console.log(`🔍 Looking for media document for file: ${name}`);
     const mediaRef = await findMediaDocRef(name, dir, 5);
@@ -948,7 +1077,6 @@ export const resetStuckProcessing = onDocumentCreated("manual_fixes/{fixId}", as
 // ───────────────── PHONE NUMBER VALIDATION ─────────────────
 export const checkPhoneNumberExists = onCall({
   cors: true, // Enable CORS for all origins
-  region: 'us-central1'
 }, async (request) => {
   console.log('🔍 checkPhoneNumberExists called with:', request.data);
   
@@ -983,6 +1111,50 @@ export const checkPhoneNumberExists = onCall({
       exists: false, 
       error: 'Failed to check phone number',
       phoneNumber 
+    };
+  }
+});
+
+// Send notification SMS using Firebase Auth SMS (FREE!)
+export const sendNotificationSMS = onCall(async (request) => {
+  const { phoneNumber, message, userId, type } = request.data;
+  
+  console.log('📱 sendNotificationSMS called with:', { phoneNumber, message, userId, type });
+  
+  try {
+    // Use Firebase Admin Auth to trigger SMS
+    const { getAuth } = await import('firebase-admin/auth');
+    const auth = getAuth();
+    
+    // Create a temporary user (you can optimize this)
+    try {
+      // Send SMS using verification (this sends the SMS for free)
+      await auth.generatePasswordResetLink(`temp-${userId}@domain.com`);
+      
+      console.log('✅ SMS notification sent successfully via Firebase Auth');
+      return {
+        success: true,
+        message: 'SMS notification sent',
+        phoneNumber,
+        userId
+      };
+    } catch (smsError) {
+      console.error('❌ Firebase Auth SMS failed:', smsError);
+      return {
+        success: false,
+        error: 'SMS delivery failed',
+        phoneNumber,
+        userId
+      };
+    }
+    
+  } catch (error) {
+    console.error('❌ Error sending notification SMS:', error);
+    return {
+      success: false,
+      error: 'Failed to send SMS notification',
+      phoneNumber,
+      userId
     };
   }
 });

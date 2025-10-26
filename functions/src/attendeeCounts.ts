@@ -43,9 +43,10 @@ export const recalculateEventAttendeeCount = async (eventId: string): Promise<nu
 };
 
 // Cloud Function: Triggered when attendee documents are created, updated, or deleted
-export const onAttendeeChange = onDocumentWritten(
-  'events/{eventId}/attendees/{attendeeId}',
-  async (event) => {
+export const onAttendeeChange = onDocumentWritten({
+  document: 'events/{eventId}/attendees/{attendeeId}',
+  region: 'us-east1'
+}, async (event) => {
     const eventId = event.params.eventId;
     const attendeeId = event.params.attendeeId;
     
@@ -69,7 +70,9 @@ export const onAttendeeChange = onDocumentWritten(
 );
 
 // Cloud Function: Manual count recalculation (can be called from client)
-export const manualRecalculateCount = onCall(async (request) => {
+export const manualRecalculateCount = onCall({
+  region: 'us-east1'
+}, async (request) => {
   const { data, auth } = request;
   
   // Check if user is authenticated
@@ -122,7 +125,9 @@ export const manualRecalculateCount = onCall(async (request) => {
 });
 
 // Cloud Function: Bulk attendee operations
-export const bulkAttendeeOperation = onCall(async (request) => {
+export const bulkAttendeeOperation = onCall({
+  region: 'us-east1'
+}, async (request) => {
   const { data, auth } = request;
   
   // Check if user is authenticated

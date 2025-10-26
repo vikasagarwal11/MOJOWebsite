@@ -1,8 +1,8 @@
 [
   {
     "origin": ["*"],
-    "method": ["GET"],
-    "responseHeader": ["Content-Type", "Range", "Accept-Ranges"],
+    "method": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "responseHeader": ["Content-Type", "Range", "Accept-Ranges", "Authorization"],
     "maxAgeSeconds": 3600
   }
 ]

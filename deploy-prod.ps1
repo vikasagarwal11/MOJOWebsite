@@ -1,6 +1,59 @@
-# PowerShell script for deploying to production environment
-# Usage: .\deploy-prod.ps1 [component]
-# Components: all, hosting, firestore, functions
+# =============================================================================
+# MOJO Website - Production Deployment Script
+# =============================================================================
+#
+# This script handles deployment to the production environment with intelligent
+# extension management to avoid conflicts and speed up regular deployments.
+#
+# =============================================================================
+# USAGE EXAMPLES
+# =============================================================================
+#
+# 1. REGULAR PRODUCTION UPDATES (No Extension Changes)
+#    .\deploy-prod.ps1 no-extensions
+#    - Deploys: hosting, firestore, functions
+#    - Skips: extensions (avoids conflicts and saves time)
+#    - Use for: Bug fixes, feature updates, content changes
+#
+# 2. EXTENSION CONFIGURATION CHANGES
+#    .\deploy-prod.ps1 extensions
+#    - Deploys: extensions only
+#    - Skips: hosting, firestore, functions
+#    - Use for: When modifying storage-resize-images or stripe configurations
+#
+# 3. MAJOR RELEASES (Everything)
+#    .\deploy-prod.ps1 all
+#    - Deploys: hosting, firestore, functions, extensions
+#    - Use for: Major releases, initial setup, or when everything changes
+#
+# 4. INDIVIDUAL COMPONENTS
+#    .\deploy-prod.ps1 hosting    # Frontend only
+#    .\deploy-prod.ps1 functions  # Cloud Functions only
+#    .\deploy-prod.ps1 firestore  # Database rules only
+#
+# =============================================================================
+# ENVIRONMENT REQUIREMENTS
+# =============================================================================
+#
+# - .env.production file must exist with correct STORAGE_BUCKET format:
+#   STORAGE_BUCKET=momsfitnessmojo-65d00.firebasestorage.app
+#
+# - Firebase CLI must be authenticated and configured
+# - Project must be set to prod: firebase use prod
+#
+# =============================================================================
+# AVAILABLE PARAMETERS
+# =============================================================================
+#
+# [component] - What to deploy (default: "all")
+# -SkipChecks - Skip pre-deployment checks (linting, tests)
+#
+# Examples:
+# .\deploy-prod.ps1 no-extensions -SkipChecks
+# .\deploy-prod.ps1 hosting
+# .\deploy-prod.ps1 extensions --force
+#
+# =============================================================================
 
 param(
     [string]$Component = "all",
@@ -24,7 +77,7 @@ if (Test-Path ".env.production") {
         Write-Host "[OK] Using STORAGE_BUCKET from .env.production: $storageBucket" -ForegroundColor Green
     } else {
         Write-Host "[WARNING] STORAGE_BUCKET not found in .env.production, using default" -ForegroundColor Yellow
-        $env:STORAGE_BUCKET = "mojomediafiles-prod.firebasestorage.app"
+        $env:STORAGE_BUCKET = "momsfitnessmojo-65d00.firebasestorage.app"
     }
     
     if ($viteStorageBucket) {
@@ -34,7 +87,7 @@ if (Test-Path ".env.production") {
     }
 } else {
     Write-Host "[WARNING] .env.production file not found, using defaults" -ForegroundColor Yellow
-    $env:STORAGE_BUCKET = "mojomediafiles-prod.firebasestorage.app"
+    $env:STORAGE_BUCKET = "momsfitnessmojo-65d00.firebasestorage.app"
 }
 
 # Verify environment variables are loaded
@@ -91,7 +144,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # Set Cloud Functions environment variable for STORAGE_BUCKET
 Write-Host "Setting Cloud Functions environment variable STORAGE_BUCKET to: $env:STORAGE_BUCKET" -ForegroundColor Yellow
-firebase functions:config:set app.storage_bucket="$env:STORAGE_BUCKET" --project=momfitnessmojo-prod
+firebase functions:config:set app.storage_bucket="$env:STORAGE_BUCKET" --project=momsfitnessmojo-65d00
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to set Cloud Functions environment variable!" -ForegroundColor Red
@@ -103,22 +156,30 @@ Write-Host "[OK] Cloud Functions environment variable set." -ForegroundColor Gre
 switch ($Component.ToLower()) {
     "hosting" {
         Write-Host "Deploying hosting only..." -ForegroundColor Cyan
-        firebase deploy --only hosting --project=momfitnessmojo-prod --config=firebase.prod.json
+        firebase deploy --only hosting --project=momsfitnessmojo-65d00 --config=firebase.prod.json
     }
     "firestore" {
         Write-Host "Deploying Firestore rules and indexes..." -ForegroundColor Cyan
-        firebase deploy --only firestore --project=momfitnessmojo-prod --config=firebase.prod.json
+        firebase deploy --only firestore --project=momsfitnessmojo-65d00 --config=firebase.prod.json
     }
     "functions" {
         Write-Host "Deploying Cloud Functions..." -ForegroundColor Cyan
-        firebase deploy --only functions --project=momfitnessmojo-prod --config=firebase.prod.json
+        firebase deploy --only functions --project=momsfitnessmojo-65d00 --config=firebase.prod.json
+    }
+    "extensions" {
+        Write-Host "Deploying Extensions only..." -ForegroundColor Cyan
+        firebase deploy --only extensions --project=momsfitnessmojo-65d00 --config=firebase.prod.json --force
+    }
+    "no-extensions" {
+        Write-Host "Deploying everything except extensions..." -ForegroundColor Cyan
+        firebase deploy --only "hosting,firestore,functions" --project=momsfitnessmojo-65d00 --config=firebase.prod.json
     }
     "all" {
         Write-Host "Deploying everything..." -ForegroundColor Cyan
-        firebase deploy --project=momfitnessmojo-prod --config=firebase.prod.json
+        firebase deploy --project=momsfitnessmojo-65d00 --config=firebase.prod.json --force
     }
     default {
-        Write-Host "ERROR: Invalid component. Use: all, hosting, firestore, functions" -ForegroundColor Red
+        Write-Host "ERROR: Invalid component. Use: all, hosting, firestore, functions, extensions, no-extensions" -ForegroundColor Red
         exit 1
     }
 }

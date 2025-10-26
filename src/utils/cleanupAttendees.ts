@@ -41,8 +41,8 @@ export const cleanupDuplicateAttendees = async (eventId: string, targetCount: nu
     
     // Delete the attendees
     for (const attendee of attendeesToDelete) {
-      await deleteDoc(doc(db, 'events', eventId, 'attendees', attendee.id));
-      console.log(`🗑️ Deleted attendee: ${attendee.name} (${attendee.id})`);
+      await deleteDoc(doc(db, 'events', eventId, 'attendees', attendee.attendeeId || attendee.id));
+      console.log(`🗑️ Deleted attendee: ${attendee.name} (${attendee.attendeeId || attendee.id})`);
     }
     
     // Update the event's attendingCount

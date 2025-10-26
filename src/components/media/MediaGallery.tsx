@@ -38,7 +38,7 @@ const MediaGallery: React.FC = () => {
   const { data: events } = useRealtimeCollection('events', []);
 
   const eventsForFilter = useMemo(() => {
-    const toMs = (v:any)=> v instanceof Date?+v : (typeof v?.toDate==='function'? +v.toDate():0);
+    const toMs = (v:any)=> v instanceof Date ? +v : (typeof v?.toDate === 'function' ? +v.toDate() : 0);
     return [...events].sort((a:any,b:any)=> (toMs(b.startAt||b.date)-toMs(a.startAt||b.date)));
   }, [events]);
 

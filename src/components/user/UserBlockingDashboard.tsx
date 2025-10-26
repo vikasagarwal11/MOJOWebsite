@@ -191,7 +191,9 @@ export const UserBlockingDashboard: React.FC = () => {
                 <p className="text-2xl font-bold text-gray-900">
                   {blockReports.filter(r => 
                     r.createdAt?.toDate?.() && 
-                    r.createdAt.toDate().toDateString() === new Date().toDateString()
+                    r.createdAt instanceof Date 
+                      ? r.createdAt.toDateString() === new Date().toDateString()
+                      : r.createdAt?.toDate?.()?.toDateString() === new Date().toDateString()
                   ).length}
                 </p>
               </div>
@@ -289,9 +291,9 @@ export const UserBlockingDashboard: React.FC = () => {
                         <p className="text-gray-700 mb-2">{block.description}</p>
                         
                         <div className="flex items-center gap-4 text-sm text-gray-500">
-                          <span>Created: {format(block.createdAt?.toDate() || new Date(), 'MMM d, yyyy')}</span>
+                          <span>Created: {format(block.createdAt instanceof Date ? block.createdAt : block.createdAt?.toDate?.() || new Date(), 'MMM d, yyyy')}</span>
                           {block.expiresAt && (
-                            <span>Expires: {format(block.expiresAt.toDate(), 'MMM d, yyyy')}</span>
+                            <span>Expires: {format(block.expiresAt instanceof Date ? block.expiresAt : block.expiresAt?.toDate?.() || new Date(), 'MMM d, yyyy')}</span>
                           )}
                           {block.appealStatus && (
                             <span>Appeal: {getStatusBadge(block.appealStatus)}</span>
@@ -361,7 +363,7 @@ export const UserBlockingDashboard: React.FC = () => {
                         <p className="text-gray-700 mb-2">{report.description}</p>
                         
                         <div className="flex items-center gap-4 text-sm text-gray-500">
-                          <span>Reported: {format(report.createdAt?.toDate() || new Date(), 'MMM d, yyyy')}</span>
+                          <span>Reported: {format(report.createdAt instanceof Date ? report.createdAt : report.createdAt?.toDate?.() || new Date(), 'MMM d, yyyy')}</span>
                           <span>Status: {report.status}</span>
                         </div>
                       </div>
@@ -440,9 +442,9 @@ export const UserBlockingDashboard: React.FC = () => {
                         )}
                         
                         <div className="flex items-center gap-4 text-sm text-gray-500">
-                          <span>Blocked: {format(block.createdAt?.toDate() || new Date(), 'MMM d, yyyy')}</span>
+                          <span>Blocked: {format(block.createdAt instanceof Date ? block.createdAt : block.createdAt?.toDate?.() || new Date(), 'MMM d, yyyy')}</span>
                           {block.appealSubmittedAt && (
-                            <span>Appeal Submitted: {format(block.appealSubmittedAt.toDate(), 'MMM d, yyyy')}</span>
+                            <span>Appeal Submitted: {format(block.appealSubmittedAt instanceof Date ? block.appealSubmittedAt : block.appealSubmittedAt?.toDate?.() || new Date(), 'MMM d, yyyy')}</span>
                           )}
                         </div>
                       </div>

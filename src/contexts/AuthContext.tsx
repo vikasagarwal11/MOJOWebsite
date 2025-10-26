@@ -28,10 +28,11 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import app from '../config/firebase';
 import { auth, db, USING_EMULATORS } from '../config/firebase';
 import { User } from '../types';
 import toast from 'react-hot-toast';
-import { getRecaptchaV2Config } from '../utils/recaptcha';
+import { getRecaptchaConfig } from '../utils/recaptcha';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -442,23 +443,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('🔍 AuthContext: checkIfUserExists called with:', phoneNumber);
     
     try {
-      // Use Cloud Function to check if phone number is registered
-      const functions = getFunctions();
+      // First try Cloud Function
+      const functions = getFunctions(app, (import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-central1');
       const checkPhoneNumber = httpsCallable(functions, 'checkPhoneNumberExists');
       
       console.log('🔍 AuthContext: Calling Cloud Function to check phone number...');
       const result = await checkPhoneNumber({ phoneNumber });
       
       const exists = (result.data as any)?.exists || false;
-      console.log('🔍 AuthContext: Phone number check result:', { phoneNumber, exists });
+      console.log('🔍 AuthContext: Cloud Function result:', { phoneNumber, exists });
       
-      return exists;
+      if (exists) {
+        return true;
+      }
+      
+      // Fallback: Check Firestore directly
+      console.log('🔍 AuthContext: Cloud Function says not found, checking Firestore directly...');
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('phoneNumber', '==', phoneNumber)
+      );
+      const usersSnapshot = await getDocs(usersQuery);
+      
+      const firestoreExists = !usersSnapshot.empty;
+      console.log('🔍 AuthContext: Firestore direct check result:', { phoneNumber, firestoreExists, count: usersSnapshot.size });
+      
+      return firestoreExists;
+      
     } catch (error) {
-      console.error('🚨 AuthContext: Error checking phone number via Cloud Function:', error);
-      console.log('🔍 AuthContext: Falling back to allowing verification (assume new user)');
-      // If there's an error with Cloud Function, allow verification to proceed
-      // This ensures the system doesn't break if Cloud Function is down
-      return false; // Assume new user for registration, existing user for login
+      console.error('🚨 AuthContext: Error checking phone number:', error);
+      
+      // Final fallback: Check Firestore directly
+      try {
+        console.log('🔍 AuthContext: Trying Firestore fallback...');
+        const usersQuery = query(
+          collection(db, 'users'),
+          where('phoneNumber', '==', phoneNumber)
+        );
+        const usersSnapshot = await getDocs(usersQuery);
+        
+        const fallbackExists = !usersSnapshot.empty;
+        console.log('🔍 AuthContext: Firestore fallback result:', { phoneNumber, fallbackExists, count: usersSnapshot.size });
+        
+        return fallbackExists;
+      } catch (fallbackError) {
+        console.error('🚨 AuthContext: Firestore fallback also failed:', fallbackError);
+        // If all else fails, assume new user for registration
+        return false;
+      }
     }
   };
 
@@ -466,7 +498,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('🔍 AuthContext: checkSMSDeliveryStatus called with:', { phoneNumber, verificationId });
     
     try {
-      const functions = getFunctions();
+      const functions = getFunctions(app, (import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-central1');
       const checkSMSStatus = httpsCallable(functions, 'checkSMSDeliveryStatus');
       
       console.log('🔍 AuthContext: Calling Cloud Function to check SMS delivery status...');

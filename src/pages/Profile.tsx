@@ -14,6 +14,9 @@ import CreateEventModal from '../components/events/CreateEventModal';
 import { useUserBlocking } from '../hooks/useUserBlocking';
 import { UserBlockModal } from '../components/user/UserBlockModal';
 import { FamilyMemberList } from '../components/family/FamilyMemberList';
+import { normalizeEvent } from '../utils/normalizeEvent';
+import { sanitizeFirebaseData } from '../utils/dataSanitizer';
+import { safeISODate } from '../utils/dateUtils';
 
 type Address = {
   street?: string;
@@ -121,7 +124,8 @@ const Profile: React.FC = () => {
       try {
         const snap = await getDoc(doc(db, 'users', currentUser.id));
         if (snap.exists()) {
-          const d = snap.data() as any;
+          const rawData = snap.data() as any;
+          const d = sanitizeFirebaseData(rawData);
           setFirstName(d.firstName || '');
           setLastName(d.lastName || '');
           setDisplayName(d.displayName || currentUser.displayName || '');
@@ -173,7 +177,12 @@ const Profile: React.FC = () => {
           hasData: snap.docs.length > 0
         });
         if (!controller.signal.aborted) {
-          setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+          const sanitizedNotifications = snap.docs.map(d => {
+            const rawData = d.data();
+            const sanitizedData = sanitizeFirebaseData(rawData);
+            return { id: d.id, ...sanitizedData };
+          });
+          setNotifications(sanitizedNotifications);
           setLoadingNotifications(false);
         }
       }, (e) => {
@@ -200,6 +209,7 @@ const Profile: React.FC = () => {
     if (!currentUser || !listenersReady) return; // Wait for listeners to be ready
     
     // Add a small delay to prevent race conditions
+    const controller = new AbortController();
     const timer = setTimeout(() => {
       setLoadingEvents(true);
       
@@ -213,6 +223,7 @@ const Profile: React.FC = () => {
           // This works with current security rules and doesn't require special permissions
           await loadRSVPedEventsFallback();
         } catch (error) {
+          if (controller.signal.aborted) return; // Don't process if aborted
           console.error('🚨 Profile: Error in alternative approach:', error);
           setLoadingEvents(false);
           toast.error('Failed to load RSVPed events');
@@ -251,15 +262,33 @@ const Profile: React.FC = () => {
                  console.log('🔍 Profile: Found event IDs in user attendee collection:', eventIds);
                  
                  if (eventIds.length > 0) {
-                   // Fetch these specific events
-                   const eventsQuery = query(
-                     collection(db, 'events'),
-                     where('__name__', 'in', eventIds),
-                     orderBy('startAt', 'desc')
-                   );
+                   // Fetch these specific events - chunk into groups of 10 to avoid Firestore limit
+                   const events = [];
+                   const chunkSize = 10;
                    
-                   const eventsSnap = await getDocs(eventsQuery);
-                   const events = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                   for (let i = 0; i < eventIds.length; i += chunkSize) {
+                     const chunk = eventIds.slice(i, i + chunkSize);
+                     const eventsQuery = query(
+                       collection(db, 'events'),
+                       where('__name__', 'in', chunk)
+                       // Remove orderBy to avoid index requirements - we'll sort client-side
+                     );
+                     
+                     const eventsSnap = await getDocs(eventsQuery);
+                     const chunkEvents = eventsSnap.docs.map(d => {
+                       const rawData = d.data();
+                       const sanitizedData = sanitizeFirebaseData(rawData);
+                       return normalizeEvent({ id: d.id, ...sanitizedData });
+                     });
+                     events.push(...chunkEvents);
+                   }
+                   
+                   // Sort client-side by startAt
+                   events.sort((a, b) => {
+                     const aTime = a.startAt instanceof Date ? a.startAt.getTime() : new Date().getTime();
+                     const bTime = b.startAt instanceof Date ? b.startAt.getTime() : new Date().getTime();
+                     return bTime - aTime; // Descending order
+                   });
                    
                    console.log('🔍 Profile: Successfully fetched events from user attendee collection:', {
                      eventCount: events.length,
@@ -297,7 +326,11 @@ const Profile: React.FC = () => {
                  limit(50)
                );
                const publicEventsSnap = await getDocs(publicEventsQuery);
-               events = publicEventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+               events = publicEventsSnap.docs.map(d => {
+                 const rawData = d.data();
+                 const sanitizedData = sanitizeFirebaseData(rawData);
+                 return normalizeEvent({ id: d.id, ...sanitizedData });
+               });
                console.log('🔍 Profile: Found events with public events query:', events.length);
              } catch (publicEventsError) {
                console.log('⚠️ Profile: Public events query failed:', publicEventsError);
@@ -311,7 +344,11 @@ const Profile: React.FC = () => {
                    limit(50)
                  );
                  const legacyPublicSnap = await getDocs(legacyPublicQuery);
-                 events = legacyPublicSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                 events = legacyPublicSnap.docs.map(d => {
+                   const rawData = d.data();
+                   const sanitizedData = sanitizeFirebaseData(rawData);
+                   return normalizeEvent({ id: d.id, ...sanitizedData });
+                 });
                  console.log('🔍 Profile: Found events with legacy public query:', events.length);
                } catch (legacyPublicError) {
                  console.log('⚠️ Profile: Legacy public query failed:', legacyPublicError);
@@ -325,7 +362,11 @@ const Profile: React.FC = () => {
                      limit(20)
                    );
                    const userEventsSnap = await getDocs(userEventsQuery);
-                   events = userEventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                   events = userEventsSnap.docs.map(d => {
+                     const rawData = d.data();
+                     const sanitizedData = sanitizeFirebaseData(rawData);
+                     return normalizeEvent({ id: d.id, ...sanitizedData });
+                   });
                    console.log('🔍 Profile: Found events with user events query:', events.length);
                  } catch (userEventsError) {
                    console.log('⚠️ Profile: User events query failed:', userEventsError);
@@ -339,7 +380,11 @@ const Profile: React.FC = () => {
                        limit(20)
                      );
                      const invitedEventsSnap = await getDocs(invitedEventsQuery);
-                     events = invitedEventsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                     events = invitedEventsSnap.docs.map(d => {
+                       const rawData = d.data();
+                       const sanitizedData = sanitizeFirebaseData(rawData);
+                       return normalizeEvent({ id: d.id, ...sanitizedData });
+                     });
                      console.log('🔍 Profile: Found events with invited events query:', events.length);
                    } catch (invitedEventsError) {
                      console.log('⚠️ Profile: Invited events query failed:', invitedEventsError);
@@ -403,7 +448,10 @@ const Profile: React.FC = () => {
       loadRSVPedEvents();
     }, 300); // 300ms delay (slightly more than notifications)
 
-    return () => clearTimeout(timer);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
   }, [currentUser, listenersReady, eventsPage]); // Add listenersReady dependency
 
   // Load user-created and all events (for admins)
@@ -425,7 +473,11 @@ const Profile: React.FC = () => {
           docCount: snap.docs.length,
           hasData: snap.docs.length > 0
         });
-        const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const events = snap.docs.map(d => {
+          const rawData = d.data();
+          const sanitizedData = sanitizeFirebaseData(rawData);
+          return normalizeEvent({ id: d.id, ...sanitizedData });
+        });
         setUserEvents(events);
         fetchUserNames(events.map(e => ({ id: e.createdBy })));
       }, (e) => {
@@ -454,7 +506,11 @@ const Profile: React.FC = () => {
             error: snap.metadata.fromCache ? 'from cache' : 'from server'
           });
           try {
-            const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const events = snap.docs.map(d => {
+              const rawData = d.data();
+              const sanitizedData = sanitizeFirebaseData(rawData);
+              return normalizeEvent({ id: d.id, ...sanitizedData });
+            });
             console.log('🔍 Profile: Setting allEvents to:', events.length, 'events');
             setAllEvents(events);
             const batchSize = 10;
@@ -475,7 +531,7 @@ const Profile: React.FC = () => {
                     eventId: event.id, 
                     userId: d.data().userId,
                     status: d.data().rsvpStatus, // Map rsvpStatus to status for compatibility
-                    ...d.data() 
+                    ...sanitizeFirebaseData(d.data()) 
                   }));
                 })
               );
@@ -755,7 +811,7 @@ const Profile: React.FC = () => {
             eventId: event.id, 
             userId: d.data().userId,
             status: d.data().rsvpStatus, // Map rsvpStatus to status for compatibility
-            ...d.data() 
+            ...sanitizeFirebaseData(d.data()) 
           }));
         }
       }
@@ -769,7 +825,7 @@ const Profile: React.FC = () => {
   };
 
   // Update RSVP
-  const updateRsvp = async (eventId: string, attendeeId: string, status: 'going' | 'not-going' | 'pending' | 'waitlisted' | null) => {
+  const updateRsvp = async (eventId: string, attendeeId: string, status: 'going' | 'not-going' | 'waitlisted' | null) => {
     try {
       console.log('DEBUG: updateRsvp called with:', { eventId, attendeeId, status });
       
@@ -865,10 +921,14 @@ const Profile: React.FC = () => {
       const q = query(usersRef, where('blockedFromRsvp', '==', true));
       const snapshot = await getDocs(q);
       
-      const blocked = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })).filter(user => user.blockedFromRsvp === true);
+      const blocked = snapshot.docs.map(doc => {
+        const rawData = doc.data();
+        const sanitizedData = sanitizeFirebaseData(rawData);
+        return {
+          id: doc.id,
+          ...sanitizedData
+        };
+      }).filter(user => user.blockedFromRsvp === true);
       
       setBlockedUsers(blocked);
     } catch (e: any) {
@@ -894,10 +954,11 @@ const Profile: React.FC = () => {
           try {
             const userDoc = await getDoc(doc(db, 'users', attendee.userId));
             if (userDoc.exists()) {
-              const userData = userDoc.data();
+              const rawData = userDoc.data();
+              const userData = sanitizeFirebaseData(rawData);
               return {
                 // Attendee-specific data
-                attendeeId: attendee.id,
+                attendeeId: attendee.attendeeId || attendee.id,
                 attendeeName: attendee.name || attendee.attendeeName || '',
                 attendeeType: attendee.attendeeType || 'primary',
                 ageGroup: attendee.ageGroup || '',
@@ -911,9 +972,9 @@ const Profile: React.FC = () => {
                 email: userData.email || '',
                 phone: userData.phoneNumber || userData.phone || '',
                 address: userData.address ? `${userData.address.street || ''} ${userData.address.city || ''} ${userData.address.state || ''} ${userData.address.postalCode || ''}`.trim() : '',
-                // Dates
-                rsvpDate: attendee.createdAt?.toDate?.() ? new Date(attendee.createdAt.toDate()).toLocaleDateString('en-US') : 'Unknown',
-                updatedDate: attendee.updatedAt?.toDate?.() ? new Date(attendee.updatedAt.toDate()).toLocaleDateString('en-US') : 'Unknown'
+                // Dates - use sanitized data
+                rsvpDate: attendee.createdAt instanceof Date ? attendee.createdAt.toLocaleDateString('en-US') : 'Unknown',
+                updatedDate: attendee.updatedAt instanceof Date ? attendee.updatedAt.toLocaleDateString('en-US') : 'Unknown'
               };
             }
             return {
@@ -932,9 +993,9 @@ const Profile: React.FC = () => {
               email: '',
               phone: '',
               address: '',
-              // Dates
-              rsvpDate: attendee.createdAt?.toDate?.() ? new Date(attendee.createdAt.toDate()).toLocaleDateString('en-US') : 'Unknown',
-              updatedDate: attendee.updatedAt?.toDate?.() ? new Date(attendee.updatedAt.toDate()).toLocaleDateString('en-US') : 'Unknown'
+              // Dates - use sanitized data
+              rsvpDate: attendee.createdAt instanceof Date ? attendee.createdAt.toLocaleDateString('en-US') : 'Unknown',
+              updatedDate: attendee.updatedAt instanceof Date ? attendee.updatedAt.toLocaleDateString('en-US') : 'Unknown'
             };
           } catch {
             return {
@@ -953,9 +1014,9 @@ const Profile: React.FC = () => {
               email: '',
               phone: '',
               address: '',
-              // Dates
-              rsvpDate: attendee.createdAt?.toDate?.() ? new Date(attendee.createdAt.toDate()).toLocaleDateString('en-US') : 'Unknown',
-              updatedDate: attendee.updatedAt?.toDate?.() ? new Date(attendee.updatedAt.toDate()).toLocaleDateString('en-US') : 'Unknown'
+              // Dates - use sanitized data
+              rsvpDate: attendee.createdAt instanceof Date ? attendee.createdAt.toLocaleDateString('en-US') : 'Unknown',
+              updatedDate: attendee.updatedAt instanceof Date ? attendee.updatedAt.toLocaleDateString('en-US') : 'Unknown'
             };
           }
         })
@@ -1002,7 +1063,7 @@ const Profile: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${event.title.replace(/[^a-z0-9]/gi, '_')}_rsvps_${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `${event.title.replace(/[^a-z0-9]/gi, '_')}_rsvps_${safeISODate(new Date())}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success(`Exported ${attendeeDetails.length} attendees with full details including age groups`);
@@ -1024,12 +1085,20 @@ const Profile: React.FC = () => {
     try {
       const userDocs = await Promise.all(
         userIdsToFetch.map(userId =>
-          getDoc(doc(db, 'users', userId)).then(snap => ({
-            userId,
-            displayName: snap.exists()
-              ? snap.data().displayName || [snap.data().firstName, snap.data().lastName].filter(Boolean).join(' ') || 'Unknown User'
-              : 'Unknown User',
-          }))
+          getDoc(doc(db, 'users', userId)).then(snap => {
+            if (snap.exists()) {
+              const rawData = snap.data();
+              const sanitizedData = sanitizeFirebaseData(rawData);
+              return {
+                userId,
+                displayName: sanitizedData.displayName || [sanitizedData.firstName, sanitizedData.lastName].filter(Boolean).join(' ') || 'Unknown User'
+              };
+            }
+            return {
+              userId,
+              displayName: 'Unknown User'
+            };
+          })
         )
       );
       userDocs.forEach(({ userId, displayName }) => {
@@ -1056,6 +1125,34 @@ const Profile: React.FC = () => {
     }
   };
 
+  // Adjust waitlist count
+  const adjustWaitlistCount = async (eventId: string, increment: boolean) => {
+    try {
+      const eventRef = doc(db, 'events', eventId);
+      const eventSnap = await getDoc(eventRef);
+      const currentCount = eventSnap.data()?.waitlistCount || 0;
+      await updateDoc(eventRef, { waitlistCount: Math.max(0, currentCount + (increment ? 1 : -1)) });
+      toast.success('Waitlist count updated');
+    } catch (e: any) {
+      console.error('Failed to update waitlist count:', e);
+      toast.error(e?.message || 'Failed to update waitlist count');
+    }
+  };
+
+  // Toggle read-only status
+  const toggleReadOnlyStatus = async (eventId: string) => {
+    try {
+      const eventRef = doc(db, 'events', eventId);
+      const eventSnap = await getDoc(eventRef);
+      const currentStatus = eventSnap.data()?.isReadOnly || false;
+      await updateDoc(eventRef, { isReadOnly: !currentStatus });
+      toast.success(`Event ${!currentStatus ? 'set to read-only' : 'set to interactive'}`);
+    } catch (e: any) {
+      console.error('Failed to toggle read-only status:', e);
+      toast.error(e?.message || 'Failed to toggle read-only status');
+    }
+  };
+
   // Share event
   const shareEvent = async (event: Event) => {
     const shareData = { title: event.title, url: `${window.location.origin}/events/${event.id}` };
@@ -1075,9 +1172,9 @@ const Profile: React.FC = () => {
   // Analyze last-minute changes
   const analyzeLastMinuteChanges = (rsvp: any, eventStart: any) => {
     const history = rsvp.statusHistory || [];
-    const eventStartTime = eventStart?.toDate?.() ? new Date(eventStart.toDate()).getTime() : Date.now();
+    const eventStartTime = eventStart instanceof Date ? eventStart.getTime() : Date.now();
     return history.filter((h: any) => {
-      const changeTime = h.changedAt?.toDate?.() ? new Date(h.changedAt.toDate()).getTime() : 0;
+      const changeTime = h.changedAt instanceof Date ? h.changedAt.getTime() : 0;
       return h.status === 'not-going' && (eventStartTime - changeTime) <= 24 * 60 * 60 * 1000;
     }).length;
   };
@@ -1215,17 +1312,19 @@ const Profile: React.FC = () => {
             exportRsvps={exportRsvps}
             exportingRsvps={exportingRsvps}
             adjustAttendingCount={adjustAttendingCount}
+            adjustWaitlistCount={adjustWaitlistCount}
             blockUserFromRsvp={blockUserFromRsvp}
             analyzeLastMinuteChanges={analyzeLastMinuteChanges}
             rsvpFilter={rsvpFilter}
             setRsvpFilter={setRsvpFilter}
             eventsPage={eventsPage}
             setEventsPage={setEventsPage}
-              PAGE_SIZE={PAGE_SIZE}
-              loadingAdminEvents={loadingAdminEvents}
-              currentUser={currentUser}
-            />
-          )}
+            PAGE_SIZE={PAGE_SIZE}
+            loadingAdminEvents={loadingAdminEvents}
+            currentUser={currentUser}
+            toggleReadOnlyStatus={toggleReadOnlyStatus}
+          />
+        )}
         {activeTab === 'admin' && currentUser?.role === 'admin' && (
           <ProfileAdminTab
             allEvents={allEvents}
@@ -1295,3 +1394,4 @@ const Profile: React.FC = () => {
 };
 
 export default Profile;
+

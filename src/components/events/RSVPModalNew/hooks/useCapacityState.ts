@@ -2,8 +2,7 @@ import { useMemo } from 'react';
 
 interface CapacityCounts {
   goingCount: number;
-  notGoingCount: number;
-  pendingCount: number;
+  notGoingCount: number;
   waitlistedCount: number;
   totalGoing: number;
 }
@@ -91,3 +90,4 @@ export const useCapacityState = (counts: CapacityCounts, maxAttendees?: number, 
     };
   }, [counts.totalGoing, counts.waitlistedCount, maxAttendees, waitlistEnabled, waitlistLimit]);
 };
+

@@ -4,28 +4,17 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { auth } from '../config/firebase';
 import EventCardNew from '../components/events/EventCardNew';
-
-interface Event {
-  id: string;
-  title: string;
-  description: string;
-  startAt: any;
-  endAt?: any;
-  location: string;
-  createdBy: string;
-  attendingCount: number;
-  maxAttendees?: number;
-  imageUrl?: string;
-}
+import { EventDoc } from '../hooks/useEvents';
 
 type ProfileRSVPAdminTabProps = {
   rsvpsByEvent: { [eventId: string]: any[] };
-  allEvents: Event[];
+  allEvents: EventDoc[];
   userNames: { [userId: string]: string };
-  updateRsvp: (eventId: string, attendeeId: string, status: 'going' | 'not-going' | 'pending' | 'waitlisted' | null) => Promise<void>;
-  exportRsvps: (event: Event) => Promise<void>;
+  updateRsvp: (eventId: string, attendeeId: string, status: 'going' | 'not-going' | 'waitlisted' | null) => Promise<void>;
+  exportRsvps: (event: EventDoc) => Promise<void>;
   exportingRsvps: string | null;
   adjustAttendingCount: (eventId: string, increment: boolean) => Promise<void>;
+  adjustWaitlistCount: (eventId: string, increment: boolean) => Promise<void>;
   blockUserFromRsvp: (userId: string) => Promise<void>;
   analyzeLastMinuteChanges: (rsvp: any, eventStart: any) => number;
   rsvpFilter: 'all' | 'going' | 'not-going';
@@ -35,6 +24,7 @@ type ProfileRSVPAdminTabProps = {
   PAGE_SIZE: number;
   loadingAdminEvents: boolean;
   currentUser: any;
+  toggleReadOnlyStatus: (eventId: string) => Promise<void>;
 };
 
 export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
@@ -45,6 +35,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   exportRsvps,
   exportingRsvps,
   adjustAttendingCount,
+  adjustWaitlistCount,
   blockUserFromRsvp,
   analyzeLastMinuteChanges,
   // rsvpFilter, // Unused - using per-event filters instead
@@ -54,10 +45,11 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   PAGE_SIZE,
   loadingAdminEvents,
   // currentUser, // Unused in this component
+  toggleReadOnlyStatus,
 }) => {
   // NEW: Event filtering state
   const [eventFilter, setEventFilter] = React.useState('');
-  const [filteredEvents, setFilteredEvents] = React.useState<Event[]>(allEvents);
+  const [filteredEvents, setFilteredEvents] = React.useState<EventDoc[]>(allEvents);
   
   // NEW: User details state for email/phone show/hide
   const [userDetails, setUserDetails] = useState<{[userId: string]: {email?: string; phone?: string}}>({});
@@ -68,7 +60,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   // const [showAuditTrail, setShowAuditTrail] = useState(false);
   
   // NEW: Per-event RSVP filter state (instead of global)
-  const [eventRsvpFilters, setEventRsvpFilters] = useState<{[eventId: string]: 'all' | 'going' | 'not-going' | 'pending' | 'waitlisted'}>({});
+  const [eventRsvpFilters, setEventRsvpFilters] = useState<{[eventId: string]: 'all' | 'going' | 'not-going' | 'waitlisted'}>({});
   
   // NEW: Date and Activity filter state
   const [dateFilter, setDateFilter] = useState<'all' | 'upcoming' | 'this-week' | 'past'>('all');
@@ -160,7 +152,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   };
   
   // Function to update per-event RSVP filter
-  const updateEventRsvpFilter = (eventId: string, filter: 'all' | 'going' | 'not-going' | 'pending' | 'waitlisted') => {
+  const updateEventRsvpFilter = (eventId: string, filter: 'all' | 'going' | 'not-going' | 'waitlisted') => {
     setEventRsvpFilters(prev => ({
       ...prev,
       [eventId]: filter
@@ -186,7 +178,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
       total: attendees.length,
       going: attendees.filter(a => a.status === 'going').length,
       notGoing: attendees.filter(a => a.status === 'not-going').length,
-      pending: attendees.filter(a => a.status === 'pending').length,
+      waitlisted: attendees.filter(a => a.status === 'waitlisted').length,
       byAgeGroup: {
         adults: 0,
         children0to2: 0,
@@ -896,6 +888,83 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* WAITLIST COUNT MANAGEMENT */}
+              {event.waitlistEnabled && (
+                <div className="mb-4 p-3 bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg border border-yellow-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-yellow-700">
+                        Update waitlist (<strong className="text-yellow-800 font-bold text-base">{Math.max(0, event.waitlistCount || 0)} waiting</strong>)
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => adjustWaitlistCount(event.id, true)}
+                        className="p-1.5 bg-yellow-600 text-white rounded-full hover:bg-yellow-700 transition-colors"
+                        title="Increase waitlist count"
+                        aria-label={`Increase waitlist count for ${event.title}`}
+                      >
+                        <span className="text-sm">➕</span>
+                      </button>
+                      <button
+                        onClick={() => adjustWaitlistCount(event.id, false)}
+                        disabled={Math.max(0, event.waitlistCount || 0) <= 0}
+                        className={`p-1.5 rounded-full transition-colors ${
+                          Math.max(0, event.waitlistCount || 0) <= 0
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-red-600 text-white hover:bg-red-700'
+                        }`}
+                        title={Math.max(0, event.waitlistCount || 0) <= 0 ? 'Cannot decrease below 0' : 'Decrease waitlist count'}
+                        aria-label={`Decrease waitlist count for ${event.title}`}
+                      >
+                        <span className="text-sm">➖</span>
+                      </button>
+                    </div>
+                  </div>
+                  {/* Show warning for negative values */}
+                  {(event.waitlistCount || 0) < 0 && (
+                    <div className="mt-2 text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
+                      ⚠️ Invalid data detected - waitlist count cannot be negative
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Read-Only Status Toggle */}
+              <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-blue-900">
+                      📖 Read-Only Status: <strong className={event.isReadOnly ? 'text-blue-700' : 'text-gray-600'}>
+                        {event.isReadOnly ? 'Read-Only Mode' : 'Interactive Mode'}
+                      </strong>
+                    </span>
+                    {event.isReadOnly && (
+                      <span className="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                        No RSVP functionality
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => toggleReadOnlyStatus(event.id)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      event.isReadOnly
+                        ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    }`}
+                    title={event.isReadOnly ? 'Set to Interactive Mode' : 'Set to Read-Only Mode'}
+                  >
+                    {event.isReadOnly ? 'Make Interactive' : 'Make Read-Only'}
+                  </button>
+                </div>
+                <p className="text-xs text-blue-700 mt-1">
+                  {event.isReadOnly 
+                    ? 'This event is displayed without RSVP functionality on the read-only events page.'
+                    : 'This event has full RSVP functionality and appears on the interactive events page.'
+                  }
+                </p>
+              </div>
               
               {/* RSVP DATA SECTION - Only show when there are actual RSVPs */}
               {rsvpsByEvent[event.id]?.length ? (
@@ -964,14 +1033,13 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                             <span className="text-sm font-medium text-gray-700">👥 Primary Users & Their Attendees</span>
                             <select
                               value={currentFilter}
-                              onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'not-going' | 'pending' | 'waitlisted')}
+                              onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'not-going' | 'waitlisted')}
                               className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-xs"
                               aria-label={`Filter RSVPs for ${event.title}`}
                             >
                               <option value="all">All</option>
                               <option value="going">Going</option>
                               <option value="not-going">Not Going</option>
-                              <option value="pending">Pending</option>
                               <option value="waitlisted">Waitlisted</option>
                             </select>
                           </div>
@@ -982,12 +1050,12 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               { value: 'all', label: 'All', count: attendees.length, color: 'bg-gray-100 text-gray-700' },
                               { value: 'going', label: 'Going', count: attendees.filter(r => r.status === 'going').length, color: 'bg-green-100 text-green-700' },
                               { value: 'not-going', label: 'Not Going', count: attendees.filter(r => r.status === 'not-going').length, color: 'bg-red-100 text-red-700' },
-                              { value: 'pending', label: 'Pending', count: attendees.filter(r => r.status === 'pending').length, color: 'bg-yellow-100 text-yellow-700' },
+                              
                               { value: 'waitlisted', label: 'Waitlisted', count: attendees.filter(r => r.status === 'waitlisted').length, color: 'bg-purple-100 text-purple-700' }
                             ].map(filter => (
                               <button
                                 key={filter.value}
-                                onClick={() => updateEventRsvpFilter(event.id, filter.value as 'all' | 'going' | 'not-going' | 'pending' | 'waitlisted')}
+                                onClick={() => updateEventRsvpFilter(event.id, filter.value as 'all' | 'going' | 'not-going' | 'waitlisted')}
                                 className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                                   currentFilter === filter.value
                                     ? filter.color + ' ring-2 ring-offset-1 ring-gray-400'
@@ -1057,8 +1125,8 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               <div className="text-xs text-gray-500 mt-1 flex items-center gap-3">
                                 <span>
                                   📅 RSVP:{' '}
-                                  {rsvp.createdAt?.toDate?.()
-                                    ? new Date(rsvp.createdAt.toDate()).toLocaleDateString('en-US', {
+                                  {rsvp.createdAt
+                                    ? new Date(rsvp.createdAt.toDate ? rsvp.createdAt.toDate() : rsvp.createdAt).toLocaleDateString('en-US', {
                                         month: 'short',
                                         day: 'numeric',
                                         hour: '2-digit',
@@ -1069,7 +1137,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                 {rsvp.updatedAt && (
                                   <span>
                                     🔄 Updated:{' '}
-                                    {new Date(rsvp.updatedAt.toDate()).toLocaleDateString('en-US', {
+                                    {new Date(rsvp.updatedAt.toDate ? rsvp.updatedAt.toDate() : rsvp.updatedAt).toLocaleDateString('en-US', {
                                       month: 'short',
                                       day: 'numeric',
                                       hour: '2-digit',
@@ -1124,7 +1192,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               <select
                                 value={rsvp.status}
                                 onChange={(e) => {
-                                  const newStatus = e.target.value as 'going' | 'not-going' | 'pending' | 'waitlisted' | '';
+                                  const newStatus = e.target.value as 'going' | 'not-going' | 'waitlisted' | '';
                                   updateRsvp(event.id, rsvp.id, newStatus || null);
                                 }}
                                 className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-xs"
@@ -1132,7 +1200,6 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               >
                                 <option value="going">✅ Going</option>
                                 <option value="not-going">❌ Not Going</option>
-                                <option value="pending">⏳ Pending</option>
                                 <option value="waitlisted">🟣 Waitlisted</option>
                                 <option value="">🗑️ Remove</option>
                               </select>
@@ -1191,3 +1258,5 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   </div>
   );
 };
+
+

@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => ({
+  build: { 
+    sourcemap: true // Enable source maps for debugging
+  },
   plugins: [
     react(),
     // Temporarily disabled PWA to fix caching issues

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { onSnapshot, collection, query, where, orderBy, Timestamp, FirestoreError } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { EventDoc } from './useEvents';
+import { normalizeEvent } from '../utils/normalizeEvent';
+import { sanitizeFirebaseData } from '../utils/dataSanitizer';
 import toast from 'react-hot-toast';
 
 interface UseRealTimeEventsOptions {
@@ -92,7 +94,9 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
     const newEvents = new Map<string, EventDoc>();
     
     snapshot.docs.forEach((doc: any) => {
-      const eventData = { id: doc.id, ...doc.data() } as EventDoc;
+      const rawData = doc.data();
+      const sanitizedData = sanitizeFirebaseData(rawData);
+      const eventData = normalizeEvent({ id: doc.id, ...sanitizedData });
       newEvents.set(doc.id, eventData);
     });
 
@@ -126,7 +130,8 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
           
           // Queue notification for new events
           if (!previousEvent) {
-            const eventStart = new Date(event.startAt.seconds * 1000);
+            // Use normalized startAt (already converted to Date by normalizeEvent)
+            const eventStart = event.startAt instanceof Date ? event.startAt : new Date();
             const hoursUntil = (eventStart.getTime() - Date.now()) / (3600 * 1000);
             
             if (hoursUntil <= 24 && hoursUntil > 0) {
@@ -148,8 +153,9 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
       previousEventsRef.current = new Map(mergedEvents);
       
       const sorted = Array.from(mergedEvents.values()).sort((a, b) => {
-        const aTime = a.startAt.seconds;
-        const bTime = b.startAt.seconds;
+        // Use normalized startAt (already converted to Date by normalizeEvent)
+        const aTime = a.startAt instanceof Date ? a.startAt.getTime() : new Date().getTime();
+        const bTime = b.startAt instanceof Date ? b.startAt.getTime() : new Date().getTime();
         return aTime - bTime;
       });
       

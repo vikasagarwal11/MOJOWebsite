@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Filter, Calendar, TrendingUp } from 'lucide-react';
+import { useParams } from 'react-router-dom';
 // COMMENTED OUT: Unused imports for layout testing
 // import { Share2, Plus, Tag } from 'lucide-react';
 import EventCalendar from '../components/events/EventCalendar';
@@ -21,6 +22,7 @@ import { useDebounce } from 'use-debounce';
 
 const Events: React.FC = () => {
   const { currentUser } = useAuth();
+  const { eventId } = useParams<{ eventId?: string }>();
   const { upcomingEvents, pastEvents, loading, error } = useEvents({ includeGuestTeasers: true });
   
   // Real-time updates
@@ -71,6 +73,18 @@ const Events: React.FC = () => {
   const [selectedPastEvent, setSelectedPastEvent] = useState<EventDoc | null>(null);
   const [showPastEventModal, setShowPastEventModal] = useState(false);
 
+  // Auto-open modal if eventId is in URL
+  useEffect(() => {
+    if (eventId) {
+      const allEvents = [...upcomingEvents, ...pastEvents];
+      const targetEvent = allEvents.find(event => event.id === eventId);
+      if (targetEvent) {
+        setSelectedEvent(targetEvent);
+        setShowRSVPModal(true);
+      }
+    }
+  }, [eventId, upcomingEvents, pastEvents]);
+
   // Debounce search input - only search after user stops typing for 300ms
   const [debouncedSearch] = useDebounce(searchInput, 300);
 
@@ -90,11 +104,17 @@ const Events: React.FC = () => {
       pastEventsCount: pastEvents.length,
       realTimeEventsCount: realTimeEvents.length,
       baseListCount: baseList.length,
-      pastEvents: pastEvents.map(e => ({ id: e.id, title: e.title, startAt: e.startAt }))
+      pastEvents: Array.isArray(pastEvents) ? pastEvents.map(e => ({ id: e.id, title: e.title, startAt: e.startAt })) : []
     });
   }, [activeTab, upcomingEvents, pastEvents, realTimeEvents, baseList]);
 
-  const allTags = useMemo(() => [...new Set(baseList.flatMap(e => e.tags || []))], [baseList]);
+  const allTags = useMemo(() => {
+    if (!Array.isArray(baseList)) {
+      console.warn('baseList is not an array:', baseList);
+      return [];
+    }
+    return [...new Set(baseList.flatMap(e => Array.isArray(e?.tags) ? e.tags : []))];
+  }, [baseList]);
   
   // Filter tags based on search input
   const filteredTags = useMemo(() => {
@@ -108,6 +128,23 @@ const Events: React.FC = () => {
 
   // Advanced filtering and sorting
   const filtered = useMemo(() => {
+    console.log('🔍 Events.tsx - filtered useMemo called with baseList:', {
+      baseListType: typeof baseList,
+      baseListIsArray: Array.isArray(baseList),
+      baseListLength: Array.isArray(baseList) ? baseList.length : 'N/A',
+      baseListConstructor: baseList?.constructor?.name,
+      baseListSample: Array.isArray(baseList) ? baseList.slice(0, 2) : baseList
+    });
+    
+    if (!Array.isArray(baseList)) {
+      console.warn('🚨 Events.tsx - baseList is not an array in filtered useMemo:', {
+        baseList,
+        type: typeof baseList,
+        constructor: baseList?.constructor?.name,
+        stack: new Error().stack
+      });
+      return [];
+    }
     let list = baseList.filter(e => {
       // Basic search filter
       const q = debouncedSearch.trim().toLowerCase();
@@ -136,16 +173,50 @@ const Events: React.FC = () => {
 
       // Date range filter
       if (dateRangeFilter.enabled && (dateRangeFilter.startDate || dateRangeFilter.endDate)) {
-        const eventDate = new Date(e.startAt.seconds * 1000);
+        let eventDate: Date;
         
-        if (dateRangeFilter.startDate) {
-          const startDate = new Date(dateRangeFilter.startDate);
-          if (eventDate < startDate) return false;
-        }
-        
-        if (dateRangeFilter.endDate) {
-          const endDate = new Date(dateRangeFilter.endDate);
-          if (eventDate > endDate) return false;
+        try {
+          // Handle Firestore Timestamp with toDate method
+          if (e.startAt?.toDate && typeof e.startAt.toDate === 'function') {
+            eventDate = e.startAt.toDate();
+          }
+          // Handle Firestore Timestamp with seconds property
+          else if (e.startAt?.seconds && typeof e.startAt.seconds === 'number') {
+            eventDate = new Date(e.startAt.seconds * 1000 + (e.startAt.nanoseconds || 0) / 1000000);
+          }
+          // Handle JavaScript Date
+          else if (e.startAt instanceof Date) {
+            eventDate = e.startAt;
+          }
+          // Handle timestamp number (milliseconds)
+          else if (typeof e.startAt === 'number') {
+            eventDate = new Date(e.startAt);
+          }
+          // Handle timestamp string
+          else if (typeof e.startAt === 'string') {
+            eventDate = new Date(e.startAt);
+            if (isNaN(eventDate.getTime())) {
+              console.warn('Invalid date string:', e.startAt);
+              return false;
+            }
+          }
+          else {
+            console.warn('Unknown date format:', e.startAt);
+            return false;
+          }
+          
+          if (dateRangeFilter.startDate) {
+            const startDate = new Date(dateRangeFilter.startDate);
+            if (eventDate < startDate) return false;
+          }
+          
+          if (dateRangeFilter.endDate) {
+            const endDate = new Date(dateRangeFilter.endDate);
+            if (eventDate > endDate) return false;
+          }
+        } catch (error) {
+          console.error('Error filtering by date range:', e.startAt, error);
+          return false;
         }
       }
 
@@ -161,7 +232,7 @@ const Events: React.FC = () => {
     });
 
     // Remove duplicates and sort
-    const map = new Map(list.map(e => [e.id, e]));
+    const map = new Map(Array.isArray(list) ? list.map(e => [e.id, e]) : []);
     list = Array.from(map.values());
 
     // Sorting
@@ -179,7 +250,15 @@ const Events: React.FC = () => {
           return (b.maxAttendees || 0) - (a.maxAttendees || 0);
         case 'date':
         default:
-          return a.startAt.seconds - b.startAt.seconds;
+          // Safe comparison of timestamps
+          try {
+            const aTime = a.startAt?.seconds || 0;
+            const bTime = b.startAt?.seconds || 0;
+            return aTime - bTime;
+          } catch (error) {
+            console.error('Error comparing event dates:', error);
+            return 0;
+          }
       }
     });
 
@@ -203,8 +282,44 @@ const Events: React.FC = () => {
     // Check if event is past
     const isEventPast = () => {
       if (!e.startAt) return false;
-      const eventDate = e.startAt.toDate ? e.startAt.toDate() : new Date(e.startAt);
-      return eventDate < new Date();
+      
+      try {
+        // Handle Firestore Timestamp with toDate method
+        if (e.startAt.toDate && typeof e.startAt.toDate === 'function') {
+          return e.startAt.toDate() < new Date();
+        }
+        
+        // Handle Firestore Timestamp with seconds property
+        if (e.startAt.seconds && typeof e.startAt.seconds === 'number') {
+          return new Date(e.startAt.seconds * 1000 + (e.startAt.nanoseconds || 0) / 1000000) < new Date();
+        }
+        
+        // Handle JavaScript Date
+        if (e.startAt instanceof Date) {
+          return e.startAt < new Date();
+        }
+        
+        // Handle timestamp number (milliseconds)
+        if (typeof e.startAt === 'number') {
+          return new Date(e.startAt) < new Date();
+        }
+        
+        // Handle timestamp string
+        if (typeof e.startAt === 'string') {
+          const date = new Date(e.startAt);
+          if (isNaN(date.getTime())) {
+            console.warn('Invalid date string:', e.startAt);
+            return false;
+          }
+          return date < new Date();
+        }
+        
+        console.warn('Unknown date format:', e.startAt);
+        return false;
+      } catch (error) {
+        console.error('Error checking if event is past:', e.startAt, error);
+        return false;
+      }
     };
 
     const eventIsPast = isEventPast();
@@ -530,7 +645,7 @@ const Events: React.FC = () => {
                     </div>
                   )}
                   {/* Tag suggestions dropdown */}
-                  {tagSearch && filteredTags.length > 0 && (
+                  {tagSearch && Array.isArray(filteredTags) && filteredTags.length > 0 && (
                     <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
                       {filteredTags.map(tag => (
                         <button

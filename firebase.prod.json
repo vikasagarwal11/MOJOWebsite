@@ -8,7 +8,8 @@
   },
   "functions": {
     "source": "functions",
-    "runtime": "nodejs22"
+    "runtime": "nodejs22",
+    "region": "us-central1"
   },
   "hosting": {
     "public": "dist",
@@ -65,7 +66,6 @@
     "trailingSlash": false
   },
   "extensions": {
-    "storage-resize-images": "firebase/storage-resize-images@0.2.10",
-    "firestore-stripe-payments": "invertase/firestore-stripe-payments@0.3.12"
+    "storage-resize-images": "firebase/storage-resize-images@0.2.10"
   }
 }

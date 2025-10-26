@@ -18,7 +18,7 @@ interface Event {
 interface RSVP {
   id: string;
   eventId: string;
-  status: 'going' | 'not-going' | 'pending';
+  status: 'going' | 'not-going';
   updatedAt: any;
   statusHistory?: Array<{
     status: string;
@@ -37,7 +37,7 @@ export const ProfileRSVPPersonalTab: React.FC<ProfileRSVPPersonalTabProps> = ({
   loadingEvents,
   currentUser,
 }) => {
-  const [rsvpFilter, setRsvpFilter] = useState<'all' | 'going' | 'not-going' | 'pending'>('all');
+  const [rsvpFilter, setRsvpFilter] = useState<'all' | 'going' | 'not-going'>('all');
   const [dateFilter, setDateFilter] = useState<'all' | 'upcoming' | 'past'>('all');
 
   // Filter events based on current filters
@@ -49,7 +49,6 @@ export const ProfileRSVPPersonalTab: React.FC<ProfileRSVPPersonalTabProps> = ({
     // In the future, this could be enhanced to show actual RSVP status from database
     if (rsvpFilter === 'going') return true;
     if (rsvpFilter === 'not-going') return false; // No "not-going" events shown in this view
-    if (rsvpFilter === 'pending') return false;  // No "pending" events shown in this view
     
     return true;
   }).filter(event => {
@@ -93,13 +92,12 @@ export const ProfileRSVPPersonalTab: React.FC<ProfileRSVPPersonalTabProps> = ({
           <div className="flex items-center gap-2">
             <select
               value={rsvpFilter}
-              onChange={(e) => setRsvpFilter(e.target.value as 'all' | 'going' | 'not-going' | 'pending')}
+              onChange={(e) => setRsvpFilter(e.target.value as 'all' | 'going' | 'not-going')}
               className="px-3 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-sm"
             >
               <option value="all">All Statuses</option>
               <option value="going">Going</option>
               <option value="not-going">Not Going</option>
-              <option value="pending">Pending</option>
             </select>
             <span className="text-xs text-gray-500">(Currently shows only "Going" events)</span>
           </div>
@@ -159,3 +157,4 @@ export const ProfileRSVPPersonalTab: React.FC<ProfileRSVPPersonalTabProps> = ({
     </div>
   );
 };
+

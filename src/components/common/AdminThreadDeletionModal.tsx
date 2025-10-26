@@ -21,6 +21,8 @@ const AdminThreadDeletionModal: React.FC<AdminThreadDeletionModalProps> = ({
 }) => {
   const { currentUser } = useAuth();
   const { deleteCommentThread, isDeleting } = useAdminThreadDeletion();
+  const isAdmin = currentUser?.role === 'admin';
+  const isAuthor = currentUser?.id === comment.authorId;
   const [confirmText, setConfirmText] = useState('');
 
   const expectedConfirmText = 'DELETE THREAD';
@@ -60,7 +62,7 @@ const AdminThreadDeletionModal: React.FC<AdminThreadDeletionModalProps> = ({
               <Trash2 className="h-6 w-6 text-red-600" />
             </div>
             <h2 className="text-xl font-semibold text-gray-900">
-              Delete Thread
+              {isAdmin ? "Delete Thread (Admin)" : "Delete Comment"}
             </h2>
           </div>
           <button
@@ -79,12 +81,12 @@ const AdminThreadDeletionModal: React.FC<AdminThreadDeletionModalProps> = ({
             <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-red-800">
               <p className="font-medium mb-1">This action cannot be undone!</p>
-              <p>Deleting this thread will permanently remove:</p>
+              <p>Deleting this {isAdmin ? 'thread' : 'comment'} will permanently remove:</p>
               <ul className="mt-2 list-disc list-inside space-y-1">
-                <li>This comment and all its replies</li>
-                <li>All reactions and likes in the thread</li>
+                <li>This comment{isAdmin ? ' and all its replies' : ''}</li>
+                {isAdmin && <li>All reactions and likes in the thread</li>}
                 <li>Associated media files</li>
-                <li>Nested conversation threads</li>
+                {isAdmin && <li>Nested conversation threads</li>}
               </ul>
             </div>
           </div>
@@ -98,7 +100,13 @@ const AdminThreadDeletionModal: React.FC<AdminThreadDeletionModalProps> = ({
               <div>
                 <p className="font-medium text-sm text-gray-900">{comment.authorName || 'Anonymous'}</p>
                 <p className="text-xs text-gray-500">
-                  {comment.createdAt ? new Date(comment.createdAt.seconds * 1000).toLocaleDateString() : 'Unknown date'}
+                  {comment.createdAt 
+                    ? comment.createdAt instanceof Date 
+                      ? comment.createdAt.toLocaleDateString() 
+                      : comment.createdAt?.seconds 
+                        ? new Date(comment.createdAt.seconds * 1000).toLocaleDateString() 
+                        : 'Unknown date'
+                    : 'Unknown date'}
                 </p>
               </div>
               <div className="ml-auto">
@@ -173,7 +181,7 @@ const AdminThreadDeletionModal: React.FC<AdminThreadDeletionModalProps> = ({
                 <span>Deleting...</span>
               </div>
             ) : (
-              'Delete Thread'
+              isAdmin ? 'Delete Thread' : 'Delete Comment'
             )}
           </button>
         </div>

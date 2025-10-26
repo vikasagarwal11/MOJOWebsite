@@ -58,7 +58,7 @@ This is a React/TypeScript fitness community website built with Vite, Firebase, 
 - The project uses .env as the development environment file (not .env.local)
 - Current Firebase project: momfitnessmojo (development)
 - Storage bucket: mojomediafiles
-- Functions region: us-east1
+- Functions region: us-central1
 - Environment: development
 - Use momsfitnessmojo@gmail.com for email communications
 

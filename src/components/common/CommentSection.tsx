@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Heart, MessageCircle, Reply, ChevronDown, ChevronRight, Image, X, Smile, MoreVertical, Trash2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { safeFormat } from '../../utils/dateUtils';
 import { collection, addDoc, serverTimestamp, doc, setDoc, deleteDoc, onSnapshot, query } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../config/firebase';
@@ -146,7 +146,9 @@ const CommentItem: React.FC<CommentItemProps> = ({
   }, [showReactions]);
 
   const createdAt = comment.createdAt?.toDate?.() 
-    ? comment.createdAt.toDate() 
+    ? comment.createdAt instanceof Date 
+      ? comment.createdAt 
+      : comment.createdAt?.toDate?.() || new Date() 
     : comment.createdAt instanceof Date 
     ? comment.createdAt 
     : undefined;
@@ -199,37 +201,27 @@ const CommentItem: React.FC<CommentItemProps> = ({
             )}
             {createdAt && (
               <span className="text-xs text-gray-400">
-                {format(createdAt, 'MMM d, yyyy • h:mm a')}
+                {safeFormat(createdAt, 'MMM d, yyyy • h:mm a', '')}
               </span>
             )}
           </div>
 
-          {/* Admin Menu */}
-          {isAdmin && (
-            <div className="relative" ref={adminMenuRef}>
-              <button
-                onClick={() => setShowAdminMenu(!showAdminMenu)}
-                className="p-1 hover:bg-gray-200 rounded-full transition-colors"
-              >
-                <MoreVertical className="w-4 h-4 text-gray-500" />
-              </button>
+          {/* Debug logging */}
+          {(() => {
+            console.log('🔍 Comment Delete Debug:', {
+              commentId: comment.id,
+              commentAuthorId: comment.authorId,
+              commentAuthorName: comment.authorName,
+              currentUserId: currentUser?.id,
+              currentUserName: currentUser?.displayName,
+              currentUserRole: currentUser?.role,
+              isEqual: currentUser?.id === comment.authorId,
+              isAdmin: isAdmin,
+              shouldShowDelete: (currentUser?.id === comment.authorId || isAdmin)
+            });
+            return null;
+          })()}
 
-              {showAdminMenu && (
-                <div className="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 min-w-[140px]">
-                  <button
-                    onClick={() => {
-                      setShowAdminMenu(false);
-                      setShowDeleteModal(true);
-                    }}
-                    className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    <span>Delete Thread</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
           
           {/* Comment Actions */}
           <div className="flex items-center space-x-2">
@@ -290,6 +282,25 @@ const CommentItem: React.FC<CommentItemProps> = ({
               >
                 <Reply className="w-3 h-3" />
                 <span>Reply</span>
+              </button>
+            )}
+
+            {/* Delete Button - Icon only */}
+            {(currentUser?.id === comment.authorId || isAdmin) && (
+              <button
+                onClick={() => {
+                  console.log('🗑️ Delete button clicked!', {
+                    currentUserId: currentUser?.id,
+                    commentAuthorId: comment.authorId,
+                    isEqual: currentUser?.id === comment.authorId,
+                    isAdmin: isAdmin
+                  });
+                  setShowDeleteModal(true);
+                }}
+                className="flex items-center text-gray-500 hover:text-red-500 transition-colors"
+                title={isAdmin ? "Delete thread (Admin)" : "Delete comment"}
+              >
+                <Trash2 className="w-3 h-3" />
               </button>
             )}
           </div>

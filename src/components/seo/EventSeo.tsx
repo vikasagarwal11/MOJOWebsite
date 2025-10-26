@@ -12,9 +12,9 @@ function toISO(d: any): string | undefined {
   if (!d) return undefined;
   try {
     // Firestore Timestamp
-    if (typeof d?.seconds === 'number') return new Date(d.seconds * 1000).toISOString();
+    if (d && typeof d?.seconds === 'number') return new Date(d.seconds * 1000).toISOString();
     // Firestore Timestamp.toDate()
-    if (typeof d?.toDate === 'function') return d.toDate().toISOString();
+    if (d && typeof d?.toDate === 'function') return d.toDate().toISOString();
     // JS Date or string/number
     const date = d instanceof Date ? d : new Date(d);
     return isNaN(+date) ? undefined : date.toISOString();

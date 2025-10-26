@@ -1,13 +1,29 @@
 {
   "projects": {
-    "default": "momfitnessmojo",
-    "dev": "momfitnessmojo"
+    "default": "momsfitnessmojostage",
+    "dev": "momfitnessmojo",
+    "staging": "momsfitnessmojostage",
+    "prod": "momsfitnessmojo-65d00"
   },
   "targets": {
     "momfitnessmojo": {
       "hosting": {
         "momsfitnessmojo": [
           "momsfitnessmojo"
+        ]
+      }
+    },
+    "momsfitnessmojostage": {
+      "hosting": {
+        "momsfitnessmojostage": [
+          "momsfitnessmojostage"
+        ]
+      }
+    },
+    "momsfitnessmojo-65d00": {
+      "hosting": {
+        "momsfitnessmojo-65d00": [
+          "momsfitnessmojo-65d00"
         ]
       }
     }
@@ -17,6 +33,16 @@
       "extensionInstances": {
         "firestore-stripe-payments": "9997182b4e96eed525a51cf7c3a5929052cc0a182669c9ee3af608d6d9eeee07",
         "storage-resize-images": "2e51feaee13bd604f3422362c7daae2538addc08a835d0dc8ad7d6133fad59c6"
+      }
+    },
+    "momsfitnessmojostage": {
+      "extensionInstances": {
+        "storage-resize-images": "b3e4e398b2841f5ea4432b9cb7b16cba3bf81ef62fbc944089b7d36b2da2e3fb"
+      }
+    },
+    "momsfitnessmojo-65d00": {
+      "extensionInstances": {
+        "storage-resize-images": "a0a17c8bd34242c651c9625a8314fce734b4838b68ea2a3ed85406ef6d4acbd0"
       }
     }
   }

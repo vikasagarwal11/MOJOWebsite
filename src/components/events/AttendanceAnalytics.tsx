@@ -72,7 +72,9 @@ export const AttendanceAnalytics: React.FC<AttendanceAnalyticsProps> = ({
       ...attendanceRecords.map(record => [
         record.userName,
         record.userEmail,
-        record.scannedAt.toDate().toLocaleString(),
+        record.scannedAt instanceof Date 
+          ? record.scannedAt.toLocaleString()
+          : record.scannedAt?.toDate?.()?.toLocaleString() || 'Unknown time',
         record.deviceInfo || 'Unknown'
       ])
     ].map(row => row.join(',')).join('\n');
@@ -176,7 +178,9 @@ export const AttendanceAnalytics: React.FC<AttendanceAnalyticsProps> = ({
             </div>
             <div className="text-sm font-bold text-orange-900">
               {analytics.peakScanTime 
-                ? analytics.peakScanTime.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                ? analytics.peakScanTime instanceof Date 
+                  ? analytics.peakScanTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : analytics.peakScanTime?.toDate?.()?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'Unknown'
                 : 'N/A'
               }
             </div>
@@ -246,7 +250,9 @@ export const AttendanceAnalytics: React.FC<AttendanceAnalyticsProps> = ({
                   <div className="flex-1">
                     <div className="font-medium text-gray-900">{record.userName}</div>
                     <div className="text-sm text-gray-500">
-                      {record.scannedAt.toDate().toLocaleString()}
+                      {record.scannedAt instanceof Date 
+                        ? record.scannedAt.toLocaleString()
+                        : record.scannedAt?.toDate?.()?.toLocaleString() || 'Unknown time'}
                     </div>
                   </div>
                   {record.isDuplicate && (

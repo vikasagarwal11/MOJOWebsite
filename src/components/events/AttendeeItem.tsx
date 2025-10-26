@@ -65,7 +65,7 @@ const getStatusColors = (status: AttendeeStatus) => {
       return 'bg-green-100 text-green-700 border-green-200';
     case 'not-going':
       return 'bg-red-100 text-red-700 border-red-200';
-    case 'pending':
+    case 'waitlisted':
       return 'bg-yellow-100 text-yellow-700 border-yellow-200';
     default:
       return 'bg-gray-100 text-gray-700 border-gray-200';
@@ -217,7 +217,7 @@ export const AttendeeItem: React.FC<AttendeeItemProps> = ({
                   </span>
                   <span className={`px-2 py-1 text-xs rounded-full border ${getStatusColors(attendee.rsvpStatus)}`}>
                     {attendee.rsvpStatus === 'going' ? 'Going' : 
-                     attendee.rsvpStatus === 'not-going' ? "Can't Go" : 'Pending'}
+                     attendee.rsvpStatus === 'not-going' ? "Can't Go" : 'Waitlisted'}
                   </span>
                 </div>
               </div>
@@ -286,3 +286,5 @@ export const AttendeeItem: React.FC<AttendeeItemProps> = ({
     </motion.div>
   );
 };
+
+
