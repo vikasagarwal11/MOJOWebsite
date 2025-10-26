@@ -215,7 +215,8 @@ const Register: React.FC = () => {
     }
   };
 
-  const handleCheckSMSStatus = async () => {
+  // COMMENTED OUT FOR PRODUCTION - SMS Status Check Function
+  /* const handleCheckSMSStatus = async () => {
     if (!confirmationResult || !phoneNumber) {
       console.log('🔍 Register: No confirmation result or phone number available');
       return;
@@ -241,7 +242,7 @@ const Register: React.FC = () => {
     } catch (error) {
       console.error('🔍 Register: Error checking SMS status:', error);
     }
-  };
+  }; */
 
   const handleResendCode = async () => {
     if (resendAttempts >= maxResendAttempts) {
@@ -433,17 +434,17 @@ const Register: React.FC = () => {
                   </button>
                 </div>
                 
-                {/* SMS Status Check Button */}
-                <button
+                {/* SMS Status Check Button - COMMENTED OUT FOR PRODUCTION */}
+                {/* <button
                   type="button"
                   onClick={handleCheckSMSStatus}
                   className="w-full py-2 px-4 rounded-lg border border-blue-300 text-blue-700 font-medium hover:bg-blue-50 transition-colors text-sm"
                 >
                   🔍 Check SMS Delivery Status
-                </button>
+                </button> */}
                 
-                {/* Test Different Phone Numbers */}
-                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                {/* SMS Troubleshooting Tips - COMMENTED OUT FOR PRODUCTION */}
+                {/* <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                   <p className="text-sm text-yellow-800 font-medium mb-2">🚨 SMS Not Received? Try These:</p>
                   <div className="space-y-2 text-xs text-yellow-700">
                     <p>• <a href="https://console.firebase.google.com/project/momfitnessmojo/authentication/usage" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">Check Firebase Console → Authentication → Usage (SMS quota)</a></p>
@@ -453,7 +454,7 @@ const Register: React.FC = () => {
                     <p>• Wait 2-3 minutes for delivery</p>
                     <p>• Try from a different device/network</p>
                   </div>
-                </div>
+                </div> */}
               </div>
             </form>
           )}

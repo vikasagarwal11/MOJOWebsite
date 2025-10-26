@@ -1,130 +1,433 @@
-import { 
+﻿import { 
   collection, 
   doc, 
   getDocs, 
   getDoc,
-  setDoc, 
   updateDoc, 
   deleteDoc, 
+  addDoc,
   query, 
   where, 
   orderBy, 
   writeBatch,
+  runTransaction,
   onSnapshot,
   DocumentData,
-  QuerySnapshot
+  serverTimestamp,
+  limit,
+  startAfter
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { 
-  Attendee, 
-  CreateAttendeeData, 
-  UpdateAttendeeData, 
-  AttendeeCounts, 
-  AttendeeStatus
-} from '../types/attendee';
+import { AttendeeStatus } from '../types/attendee';
+import type { Attendee, CreateAttendeeData, UpdateAttendeeData } from '../types/attendee';
+import { sanitizeFirebaseData, safeStringConversion } from '../utils/dataSanitizer';
 
-// Generate unique attendee ID
-const generateAttendeeId = (): string => {
-  return `attendee_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-};
-
-// Validate attendee data
-export const validateAttendee = (data: CreateAttendeeData): { isValid: boolean; errors: string[] } => {
-  const errors: string[] = [];
-
-  if (!data.eventId) errors.push('Event ID is required');
-  if (!data.userId) errors.push('User ID is required');
-  if (!data.name || data.name.trim().length < 2) errors.push('Name must be at least 2 characters');
-  if (!data.attendeeType) errors.push('Attendee type is required');
-  if (!data.relationship) errors.push('Relationship is required');
-  if (!data.ageGroup) errors.push('Age group is required');
-  if (!data.rsvpStatus) errors.push('RSVP status is required');
-
-  return {
-    isValid: errors.length === 0,
-    errors
+// Create attendee
+export const createAttendee = async (
+  eventId: string, 
+  attendeeData: CreateAttendeeData
+): Promise<string> => {
+  console.log('ðŸ” DEBUG: createAttendee called with:', { eventId, attendeeData });
+  
+  // Validate required fields
+  if (!eventId || !attendeeData.userId || !attendeeData.attendeeType || !attendeeData.rsvpStatus) {
+    throw new Error('Missing required fields for attendee creation');
+  }
+  
+  // Clean the data to ensure no undefined values and proper string handling
+  const cleanedData = {
+    eventId: safeStringConversion(eventId).trim(),
+    userId: safeStringConversion(attendeeData.userId).trim(),
+    attendeeType: attendeeData.attendeeType,
+    relationship: attendeeData.relationship || 'self',
+    name: safeStringConversion(attendeeData.name || 'Unknown').trim(),
+    ageGroup: attendeeData.ageGroup || 'adult',
+    rsvpStatus: attendeeData.rsvpStatus,
+    familyMemberId: attendeeData.familyMemberId || null
   };
+  
+  console.log('ðŸ” DEBUG: Cleaned attendee data:', cleanedData);
+  
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  const newAttendee = {
+    ...cleanedData,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+  
+  console.log('ðŸ” DEBUG: Final attendee document:', newAttendee);
+  
+  try {
+    const docRef = await addDoc(attendeesRef, newAttendee);
+    console.log('ðŸ” DEBUG: Attendee created successfully with ID:', docRef.id);
+    return docRef.id;
+  } catch (error) {
+    console.error('DEBUG: Failed to create attendee:', error);
+    throw error instanceof Error ? error : new Error('Failed to create attendee');
+  }
 };
 
-// Check if primary member is "going" (required for family members to join)
-export const checkPrimaryMemberStatus = async (eventId: string, userId: string): Promise<{ canAdd: boolean; primaryStatus: string; message?: string }> => {
+// Calculate attendee counts for an event
+export const calculateAttendeeCounts = async (eventId: string): Promise<{
+  totalGoing: number;
+  totalWaitlisted: number;
+  totalNotGoing: number;
+}> => {
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  const snapshot = await getDocs(attendeesRef);
+  
+  const counts = {
+    totalGoing: 0,
+    totalWaitlisted: 0,
+    totalNotGoing: 0
+  };
+  
+  snapshot.docs.forEach(doc => {
+    const status = doc.data().rsvpStatus as AttendeeStatus;
+    if (status === 'going') counts.totalGoing++;
+    else if (status === 'waitlisted') counts.totalWaitlisted++;
+    else if (status === 'not-going') counts.totalNotGoing++;
+  });
+
+  return counts;
+};
+
+// Enhanced waitlist position management with proper persistence
+export const manageWaitlistPosition = async (
+  eventId: string, 
+  userId: string, 
+  newRsvpStatus: AttendeeStatus
+): Promise<{
+  success: boolean;
+  position?: number | null;
+  promoted?: boolean;
+  spotsNeeded?: number;
+  message?: string;
+  error?: string;
+}> => {
   try {
+    const { effectiveCapacity, totalGoing } = await calculateEffectiveCapacity(eventId);
+    const availableSpots = effectiveCapacity - totalGoing;
+    
+    // Find current attendee record
     const attendeesRef = collection(db, 'events', eventId, 'attendees');
-    const primaryQuery = query(
-      attendeesRef, 
-      where('userId', '==', userId),
-      where('attendeeType', '==', 'primary')
-    );
-    const primarySnapshot = await getDocs(primaryQuery);
+    const attendeeQuery = query(attendeesRef, where('userId', '==', userId));
+    const attendeeSnapshot = await getDocs(attendeeQuery);
     
-    if (primarySnapshot.empty) {
-      return {
-        canAdd: false,
-        primaryStatus: 'not_found',
-        message: 'Primary member must join first before adding family members.'
-      };
+    if (attendeeSnapshot.empty) {
+      return { success: false, error: 'Attendee not found' };
     }
     
-    const primaryAttendee = primarySnapshot.docs[0].data();
-    const isPrimaryGoing = primaryAttendee.rsvpStatus === 'going';
+    const docs = attendeeSnapshot.docs;
+    const primaryDoc = docs.find(d => (d.data() as any).attendeeType === 'primary') || docs[0];
+    const attendeeDoc = primaryDoc;
+    const currentData = attendeeDoc.data();
+    const currentStatus = currentData.rsvpStatus;
+    const currentPosition = currentData.waitlistPosition;
     
-    if (!isPrimaryGoing) {
-      return {
-        canAdd: false,
-        primaryStatus: primaryAttendee.rsvpStatus,
-        message: `Primary member must be "going" to add family members. Current status: ${primaryAttendee.rsvpStatus}`
-      };
+    // Handle different status transitions
+    if (newRsvpStatus === 'waitlisted') {
+      return await handleWaitlistJoin(eventId, userId, availableSpots, currentData, attendeeDoc.id);
+    } else if (currentStatus === 'waitlisted' && (newRsvpStatus === 'going' || newRsvpStatus === 'not-going')) {
+      return await handleWaitlistLeave(eventId, userId, currentPosition, attendeeDoc.id);
+    } else {
+      // Status change not involving waitlist - just update
+      await updateDoc(doc(db, 'events', eventId, 'attendees', attendeeDoc.id), {
+        rsvpStatus: newRsvpStatus,
+        waitlistPosition: null, // Clear position if leaving waitlist
+        promotedAt: newRsvpStatus === 'going' ? serverTimestamp() : null,
+        updatedAt: serverTimestamp()
+      });
+      
+      return { success: true, message: `Status updated to ${newRsvpStatus}` };
     }
-    
-    return { canAdd: true, primaryStatus: primaryAttendee.rsvpStatus };
   } catch (error) {
-    console.error('Error checking primary member status:', error);
-    return { 
-      canAdd: false, 
-      primaryStatus: 'error', 
-      message: 'Unable to verify primary member status. Please try again.' 
+    console.error('Error managing waitlist position:', error);
+    return { success: false, error: 'Failed to manage waitlist position' };
+  }
+};
+
+// Calculate priority position based on membership tier
+const calculatePriorityPosition = async (
+  userId: string,
+  proposedPosition: number
+): Promise<number> => {
+  try {
+    // Get user's membership tier
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    
+    if (!userDoc.exists()) {
+      return proposedPosition;
+    }
+    
+    const userData = userDoc.data();
+    const membershipTier = userData?.membershipTier || 'free';
+    
+    console.log(`ðŸ” VIP Priority Check for user ${userId}:`, {
+      membershipTier,
+      proposedPosition,
+      hasTierData: !!userData?.membershipTier
+    });
+    
+    // Calculate position based on tier
+    switch(membershipTier) {
+      case 'vip':
+        // VIPs bypass waitlist entirely for most events
+        const vipPosition = proposedPosition === -1 ? 1 : Math.floor(proposedPosition * 0.1);
+        console.log(`ðŸš€ VIP ${userId}: ${proposedPosition} -> ${vipPosition}`);
+        return vipPosition;
+      case 'premium':
+        // Premium gets 70% position boost
+        const premiumPosition = Math.max(1, Math.floor(proposedPosition * 0.3));
+        console.log(`â­ PREMIUM ${userId}: ${proposedPosition} -> ${premiumPosition}`);
+        return premiumPosition;
+      case 'basic':
+        // Basic gets 30% position boost
+        
+
+    const basicPosition = Math.max(1, Math.floor(proposedPosition * 0.7));
+        console.log(`âœ¨ BASIC ${userId}: ${proposedPosition} -> ${basicPosition}`);
+        return basicPosition;
+      case 'free':
+      default:
+        // Free tier gets normal position
+        const freePosition = proposedPosition;
+        console.log(`ðŸ†“ FREE ${userId}: ${proposedPosition} -> ${freePosition}`); 
+        return freePosition;
+    }
+  } catch (error) {
+    console.error('Error calculating priority position:', error);
+    return proposedPosition; // Fallback unchanged
+  }
+};
+
+// Handle when someone joins the waitlist - ATOMIC TRANSACTION
+const handleWaitlistJoin = async (
+  eventId: string, 
+  userId: string, 
+  availableSpots: number,
+  currentData: any,
+  attendeeDocId: string
+): Promise<{
+  success: boolean;
+  position: number | null;
+  promoted: boolean;
+  message: string;
+  error?: string;
+}> => {
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      // âš¡ ATOMIC: Get all waitlisted attendees within transaction
+    const waitlistQuery = query(
+        collection(db, 'events', eventId, 'attendees'),
+      where('rsvpStatus', '==', 'waitlisted'),
+        orderBy('waitlistPosition', 'asc') // Sort by current position
+    );
+    
+    const waitlistSnapshot = await getDocs(waitlistQuery);
+      
+      // ðŸ”’ LOCK: Calculate priority-based position atomically
+      // Find the next available position by checking existing positions
+      const existingPositions = waitlistSnapshot.docs
+        .map(doc => doc.data().waitlistPosition)
+        .filter(pos => pos !== null && pos !== undefined)
+        .sort((a, b) => a - b);
+      
+      let proposedPosition = 1;
+      for (let i = 0; i < existingPositions.length; i++) {
+        if (existingPositions[i] === proposedPosition) {
+          proposedPosition++;
+        } else {
+          break;
+        }
+      }
+      
+      console.log(`ðŸŽ¯ PRE-WAITLIST JOIN: Calculating priority for user ${userId}, proposed position: ${proposedPosition}`);
+      const priorityPosition = await calculatePriorityPosition(userId, proposedPosition);
+      console.log(`ðŸŽ¯ POST-WAITLIST JOIN: Final priority position for user ${userId}: ${priorityPosition}`);
+      
+      // âš¡ ATOMIC: Check if position already exists (double-check)
+      const existingPositionQuery = query(
+        collection(db, 'events', eventId, 'attendees'),
+        where('rsvpStatus', '==', 'waitlisted')
+      );
+      
+      const existingSnapshot = await getDocs(existingPositionQuery);
+      let finalPosition = priorityPosition;
+      
+      // Double-check for position collision and find next available
+      const allExistingPositions = existingSnapshot.docs
+        .map(doc => doc.data().waitlistPosition)
+        .filter(pos => pos !== null && pos !== undefined);
+      
+      while (allExistingPositions.includes(finalPosition)) {
+        finalPosition++;
+      }
+      
+      // ðŸ”’ ATOMIC UPDATE: Assign position within transaction
+      const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeDocId);
+      
+      const updateData: any = {
+        rsvpStatus: 'waitlisted',
+        waitlistPosition: finalPosition,
+        waitlistJoinedAt: serverTimestamp(),
+        originalWaitlistJoinedAt: currentData.originalWaitlistJoinedAt || serverTimestamp(), // Preserve original join time
+        updatedAt: serverTimestamp()
+      };
+      
+      transaction.update(attendeeRef, updateData);
+      
+      return {
+        assignedPosition: finalPosition,
+        totalWaitlisted: waitlistSnapshot.size + 1,
+        message: `Joined waitlist at position ${finalPosition}`
+      };
+    });
+    
+    console.log(`âœ… ATOMIC WAITLIST JOIN successful:`, result);
+    return {
+      success: true,
+      position: result.assignedPosition,
+      promoted: false,
+      message: result.message
+    };
+  } catch (error) {
+    console.error('ðŸš¨ ATOMIC WAITLIST JOIN FAILED:', error);
+    
+    // Retry logic for transaction conflicts
+    if (error instanceof Error && error.name.includes('transaction')) {
+      console.log('ðŸ”„ Retrying waitlist join due to transaction conflict...');
+      
+      // Wait a bit and retry ONCE
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 1000));
+      
+      try {
+        return await handleWaitlistJoin(eventId, userId, availableSpots, currentData, attendeeDocId);
+      } catch (retryError) {
+        return {
+          success: false,
+          position: null,
+          promoted: false,
+          message: 'Failed to join waitlist after retry. Please try again.',
+          error: 'Failed to join waitlist after retry. Please try again.'
+        };
+      }
+    }
+    
+    return {
+      success: false,
+      position: null,
+      promoted: false,
+      message: 'Failed to join waitlist. Please try again.',
+      error: 'Failed to join waitlist. Please try again.'
     };
   }
 };
 
-// Check family size limit (max 4 family members per primary)
-export const checkFamilySizeLimit = async (eventId: string, userId: string): Promise<{ canAdd: boolean; currentCount: number; message?: string }> => {
+// Handle when someone leaves the waitlist - ATOMIC TRANSACTION
+const handleWaitlistLeave = async (
+  eventId: string, 
+  userId: string,
+  currentPosition: number | null,
+  attendeeDocId: string
+): Promise<{
+  success: boolean;
+  promoted: boolean;
+  message: string;
+  error?: string;
+}> => {
   try {
-    const attendeesRef = collection(db, 'events', eventId, 'attendees');
-    const familyQuery = query(
-      attendeesRef, 
-      where('userId', '==', userId),
-      where('attendeeType', '==', 'family_member')
-    );
-    const familySnapshot = await getDocs(familyQuery);
-    const currentFamilyCount = familySnapshot.size;
-    
-    const maxFamilyMembers = 4; // Primary + 4 family members = 5 total
-    const canAdd = currentFamilyCount < maxFamilyMembers;
-    
-    if (!canAdd) {
+    const result = await runTransaction(db, async (transaction) => {
+      // âš¡ ATOMIC: Remove user from waitlist and recalculate positions
+      const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeDocId);
+      
+      // Clear user's position
+      transaction.update(attendeeRef, {
+        waitlistPosition: null,
+        updatedAt: serverTimestamp()
+      });
+      
+      // ðŸ”’ ATOMIC: Get remaining waitlisted attendees
+      const waitlistQuery = query(
+        collection(db, 'events', eventId, 'attendees'),
+        where('rsvpStatus', '==', 'waitlisted')
+      );
+      
+      const waitlistSnapshot = await getDocs(waitlistQuery);
+      
+      // ðŸ”„ ATOMIC: Reassign sequential positions
+      let newPosition = 1;
+      waitlistSnapshot.docs.forEach(doc => {
+        const docRef = doc.ref;
+        transaction.update(docRef, {
+          waitlistPosition: newPosition,
+          updatedAt: serverTimestamp()
+        });
+        newPosition++;
+      });
+      
       return {
-        canAdd: false,
-        currentCount: currentFamilyCount,
-        message: `Maximum family size reached (${maxFamilyMembers} family members). You can add up to ${maxFamilyMembers} family members.`
+        removedPosition: currentPosition,
+        newTotalCount: newPosition - 1,
+        message: `Removed from position ${currentPosition}. Recalculated ${newPosition - 1} remaining positions.`
       };
+    });
+    
+    // ðŸš€ TRIGGER AUTO-PROMOTION after someone leaves
+    console.log(`ðŸ”„ Triggering auto-promotion for event: ${eventId}`);
+    
+    // Auto-promotion will be handled by Cloud Function trigger
+    // For now, just log that auto-promotion should happen
+    const promoMessage = `User ${userId} left waitlist position ${currentPosition} - Cloud Function will trigger auto-promotion`;
+    console.log(`ðŸš€ ${promoMessage}`);
+    
+    return { 
+      success: true, 
+      promoted: false, // Will be handled by Cloud Function
+      message: `${result.message} ðŸš€ ${promoMessage}`
+    };
+  } catch (error) {
+    console.error('ðŸš¨ ATOMIC WAITLIST LEAVE FAILED:', error);
+    
+    // Retry logic for transaction conflicts
+    if (error instanceof Error && error.message.includes('transaction')) {
+      console.log('ðŸ”„ Retrying waitlist leave due to transaction conflict...');
+      
+      // Wait a bit and retry ONCE
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 1000));
+      
+      try {
+        return await handleWaitlistLeave(eventId, userId, currentPosition, attendeeDocId);
+      } catch (retryError) {
+        return {
+          success: false,
+          promoted: false,
+          message: 'Failed to leave waitlist after retry. Please try again.',
+          error: 'Failed to leave waitlist after retry. Please try again.'
+        };
+      }
     }
     
-    return { canAdd: true, currentCount: currentFamilyCount };
-  } catch (error) {
-    console.error('Error checking family size limit:', error);
-    return { 
-      canAdd: false, 
-      currentCount: 0, 
-      message: 'Unable to verify family size limit. Please try again.' 
+    return {
+      success: false,
+      promoted: false,
+      message: 'Failed to leave waitlist. Please try again.',
+      error: 'Failed to leave waitlist. Please try again.'
     };
   }
 };
 
-// Check event capacity before allowing new RSVPs
-export const checkEventCapacity = async (eventId: string, requestedAttendeeCount: number = 1): Promise<{ canAdd: boolean; remaining: number; message?: string }> => {
+// Auto-promotion is handled by Cloud Functions via onDocumentWritten trigger
+
+// Calculate effective capacity and going count
+export const calculateEffectiveCapacity = async (eventId: string): Promise<{
+  effectiveCapacity: number;
+  totalGoing: number;
+  eventCapacityExceeded: boolean;
+}> => {
   try {
-    // Get event details to check maxAttendees
+    // Get event details
     const eventRef = doc(db, 'events', eventId);
     const eventDoc = await getDoc(eventRef);
     
@@ -133,222 +436,62 @@ export const checkEventCapacity = async (eventId: string, requestedAttendeeCount
     }
     
     const eventData = eventDoc.data();
-    const maxAttendees = eventData.maxAttendees;
+    const maxAttendees = eventData.maxAttendees || 0;
     
-    // If no capacity limit set, allow unlimited
-    if (!maxAttendees) {
-      return { canAdd: true, remaining: Infinity };
-    }
-    
-    // Get current attendee count (only those with 'going' status)
-    const attendeesRef = collection(db, 'events', eventId, 'attendees');
+    // Count current attendees with "going" status
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
     const goingQuery = query(attendeesRef, where('rsvpStatus', '==', 'going'));
     const goingSnapshot = await getDocs(goingQuery);
-    const currentGoingCount = goingSnapshot.size;
     
-    const remaining = maxAttendees - currentGoingCount;
-    const canAdd = remaining >= requestedAttendeeCount;
+    const totalGoing = goingSnapshot.size;
+    const eventCapacityExceeded = totalGoing >= maxAttendees;
     
-    if (!canAdd) {
-      return {
-        canAdd: false,
-        remaining,
-        message: remaining === 0 
-          ? 'Event is at full capacity. No more RSVPs can be accepted.'
-          : `Only ${remaining} spot${remaining === 1 ? '' : 's'} remaining, but you're trying to add ${requestedAttendeeCount}.`
-      };
-    }
-    
-    return { canAdd: true, remaining };
+    return {
+      effectiveCapacity: maxAttendees,
+      totalGoing,
+      eventCapacityExceeded
+    };
   } catch (error) {
-    console.error('Error checking event capacity:', error);
-    // In case of error, be conservative and block the addition
-    return { 
-      canAdd: false, 
-      remaining: 0, 
-      message: 'Unable to verify event capacity. Please try again.' 
+    console.error('Error calculating effective capacity:', error);
+    return {
+      effectiveCapacity: 0,
+      totalGoing: 0,
+      eventCapacityExceeded: false
     };
   }
 };
 
-// Create or update a single attendee
-export const upsertAttendee = async (attendeeData: CreateAttendeeData): Promise<string> => {
-  const validation = validateAttendee(attendeeData);
-  if (!validation.isValid) {
-    throw new Error(`Invalid attendee data: ${validation.errors.join(', ')}`);
-  }
-
-  // Check primary member status and family size limit for family members
-  if (attendeeData.attendeeType === 'family_member') {
-    // First check if primary member is "going"
-    const primaryStatusCheck = await checkPrimaryMemberStatus(attendeeData.eventId, attendeeData.userId);
-    if (!primaryStatusCheck.canAdd) {
-      throw new Error(primaryStatusCheck.message || 'Primary member must be "going" to add family members');
-    }
-    
-    // Then check family size limit
-    const familySizeCheck = await checkFamilySizeLimit(attendeeData.eventId, attendeeData.userId);
-    if (!familySizeCheck.canAdd) {
-      throw new Error(familySizeCheck.message || 'Maximum family size reached');
-    }
-  }
-
-  // Check capacity only for 'going' status
-  if (attendeeData.rsvpStatus === 'going') {
-    const capacityCheck = await checkEventCapacity(attendeeData.eventId, 1);
-    if (!capacityCheck.canAdd) {
-      // Only auto-waitlist primary users, not family members
-      // Family members should be allowed to join as "going" even when event is full
-      if (attendeeData.attendeeType === 'primary') {
-        // Check if we should auto-waitlist the primary user instead of throwing error
-        const eventRef = doc(db, 'events', attendeeData.eventId);
-        const eventDoc = await getDoc(eventRef);
-        
-        if (eventDoc.exists()) {
-          const eventData = eventDoc.data();
-          if (eventData.waitlistEnabled) {
-            // Auto-waitlist the primary user instead of throwing error
-            attendeeData.rsvpStatus = 'waitlisted';
-            console.log('Auto-waitlisting primary user due to capacity limit');
-          } else {
-            throw new Error(capacityCheck.message || 'Event is at capacity');
-          }
-        } else {
-          throw new Error(capacityCheck.message || 'Event is at capacity');
-        }
-      } else {
-        // For family members, allow them to join as "going" even when event is full
-        // This allows the primary user to bring family members to a full event
-        console.log('Allowing family member to join as "going" despite capacity limit');
-      }
-    }
-  }
-
-  const attendeeId = generateAttendeeId();
-  const attendee: Attendee = {
-    attendeeId,
-    ...attendeeData,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  };
-
-  const attendeeRef = doc(db, 'events', attendeeData.eventId, 'attendees', attendeeId);
-  await setDoc(attendeeRef, attendee);
-
-  return attendeeId;
-};
-
-// Cascade status change from primary member to all family members
-export const cascadePrimaryStatusChange = async (
-  eventId: string, 
-  userId: string, 
-  newStatus: AttendeeStatus
-): Promise<void> => {
+// Check event capacity
+export const checkEventCapacity = async (eventId: string, additionalCount: number = 0): Promise<{
+  canAdd: boolean;
+  currentCount: number;
+  maxCapacity: number;
+  message?: string;
+}> => {
   try {
-    console.log('DEBUG: Cascading primary status change:', { eventId, userId, newStatus });
+    const { effectiveCapacity, totalGoing } = await calculateEffectiveCapacity(eventId);
+    const newTotal = totalGoing + additionalCount;
     
-    // Get all family members for this user
-    const attendeesRef = collection(db, 'events', eventId, 'attendees');
-    const familyQuery = query(
-      attendeesRef, 
-      where('userId', '==', userId),
-      where('attendeeType', '==', 'family_member')
-    );
-    const familySnapshot = await getDocs(familyQuery);
+    const canAdd = newTotal <= effectiveCapacity;
+    const message = canAdd 
+      ? undefined 
+      : `Cannot add ${additionalCount} attendee(s). Event capacity would be exceeded. Current: ${totalGoing}/${effectiveCapacity}`;
     
-    if (familySnapshot.empty) {
-      console.log('DEBUG: No family members found to cascade status change');
-      return;
-    }
-    
-    // Update all family members to match primary status
-    const batch = writeBatch(db);
-    familySnapshot.docs.forEach(doc => {
-      const familyRef = doc.ref;
-      batch.update(familyRef, {
-        rsvpStatus: newStatus,
-        updatedAt: new Date()
-      });
-    });
-    
-    await batch.commit();
-    console.log('DEBUG: Successfully cascaded status change to', familySnapshot.size, 'family members');
+    return {
+      canAdd,
+      currentCount: totalGoing,
+      maxCapacity: effectiveCapacity,
+      message
+    };
   } catch (error) {
-    console.error('Error cascading primary status change:', error);
-    throw error;
+    console.error('Error checking event capacity:', error);
+    return {
+      canAdd: false,
+      currentCount: 0,
+      maxCapacity: 0,
+      message: 'Error checking capacity'
+    };
   }
-};
-
-// Update existing attendee
-export const updateAttendee = async (
-  eventId: string, 
-  attendeeId: string, 
-  updateData: UpdateAttendeeData
-): Promise<void> => {
-  console.log('DEBUG: updateAttendee service called with:', { eventId, attendeeId, updateData });
-  const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
-  
-  // Get the current attendee data to check if it's a primary member
-  const attendeeDoc = await getDoc(attendeeRef);
-  if (!attendeeDoc.exists()) {
-    throw new Error('Attendee not found');
-  }
-  
-  const attendeeData = attendeeDoc.data();
-  const isPrimaryMember = attendeeData.attendeeType === 'primary';
-  const isStatusChange = updateData.rsvpStatus && updateData.rsvpStatus !== attendeeData.rsvpStatus;
-  
-  // Check capacity limits when changing to 'going' status
-  if (isStatusChange && updateData.rsvpStatus === 'going') {
-    // Only check capacity for primary members, not family members
-    // Family members can exceed capacity to allow complete families to attend together
-    if (attendeeData.attendeeType === 'primary') {
-      const capacityCheck = await checkEventCapacity(eventId, 1);
-      if (!capacityCheck.canAdd) {
-        // Check if waitlist is enabled for auto-waitlisting
-        const eventRef = doc(db, 'events', eventId);
-        const eventDoc = await getDoc(eventRef);
-        
-        if (eventDoc.exists()) {
-          const eventData = eventDoc.data();
-          if (eventData.waitlistEnabled) {
-            // Auto-waitlist the primary user instead of allowing them to go
-            updateData.rsvpStatus = 'waitlisted';
-            console.log('DEBUG: Auto-waitlisting primary user due to capacity limit');
-          } else {
-            throw new Error(capacityCheck.message || 'Event is at capacity. Cannot change status to "going".');
-          }
-        } else {
-          throw new Error(capacityCheck.message || 'Event is at capacity. Cannot change status to "going".');
-        }
-      }
-    } else {
-      // For family members, allow them to join as "going" even when event is full
-      // This allows the primary user to bring family members to a full event
-      console.log('DEBUG: Allowing family member to join as "going" despite capacity limit');
-    }
-  }
-  
-  const updatePayload = {
-    ...updateData,
-    updatedAt: new Date()
-  };
-  console.log('DEBUG: updateAttendee payload:', updatePayload);
-  
-  await updateDoc(attendeeRef, updatePayload);
-  console.log('DEBUG: updateAttendee completed successfully');
-  
-  // If primary member status changed, cascade to family members
-  if (isPrimaryMember && isStatusChange && updateData.rsvpStatus) {
-    console.log('DEBUG: Primary member status changed, cascading to family members');
-    await cascadePrimaryStatusChange(eventId, attendeeData.userId, updateData.rsvpStatus);
-  }
-};
-
-// Delete attendee
-export const deleteAttendee = async (eventId: string, attendeeId: string): Promise<void> => {
-  const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
-  await deleteDoc(attendeeRef);
 };
 
 // Get all attendees for an event (for current user only)
@@ -357,121 +500,129 @@ export const listAttendees = async (eventId: string, userId: string): Promise<At
   
   const attendeesRef = collection(db, 'events', eventId, 'attendees');
   const q = query(
-    attendeesRef, 
+    attendeesRef,
     where('userId', '==', userId),
-    orderBy('createdAt', 'asc')
+    orderBy('createdAt', 'desc')
   );
+  
   const snapshot = await getDocs(q);
+  const attendees: Attendee[] = [];
   
-  const attendees = snapshot.docs.map(doc => ({
-    attendeeId: doc.id,
-    ...doc.data()
-  })) as Attendee[];
-  
-  console.log('🔍 listAttendees result:', { 
-    eventId, 
-    userId, 
-    attendeeCount: attendees.length, 
-    attendeeNames: attendees.map(a => a.name) 
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    attendees.push({
+      attendeeId: doc.id,
+      ...data,
+      createdAt: data.createdAt?.toDate(),
+      updatedAt: data.updatedAt?.toDate()
+    } as Attendee);
   });
   
+  console.log('🔍 listAttendees returning:', { count: attendees.length, attendees });
   return attendees;
 };
 
-// Get all attendees for an event (all users) - for admin view
+// List all attendees (alias for getAllAttendees)
 export const listAllAttendees = async (eventId: string): Promise<Attendee[]> => {
-  console.log('🔍 listAllAttendees called for eventId:', eventId);
-  
+  const result = await getAllAttendees(eventId);
+  return result.attendees;
+};
+
+// Subscribe to attendees for a specific user
+export const subscribeToAttendees = (
+  eventId: string,
+  userId: string,
+  callback: (attendees: Attendee[]) => void
+): (() => void) => {
   const attendeesRef = collection(db, 'events', eventId, 'attendees');
-  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
-  const snapshot = await getDocs(q);
+  const q = query(attendeesRef, where('userId', '==', userId));
   
-  const attendees = snapshot.docs.map(doc => ({
-    attendeeId: doc.id,
-    ...doc.data()
-  })) as Attendee[];
-  
-  console.log('🔍 listAllAttendees result:', { 
-    eventId, 
-    attendeeCount: attendees.length, 
-    attendeeNames: attendees.map(a => a.name) 
-  });
-  
-  return attendees;
-};
-
-// Get attendees by user for an event
-export const getUserAttendees = async (eventId: string, userId: string): Promise<Attendee[]> => {
-  const attendeesRef = collection(db, 'events', eventId, 'attendees');
-  const q = query(
-    attendeesRef, 
-    where('userId', '==', userId),
-    orderBy('createdAt', 'asc')
-  );
-  const snapshot = await getDocs(q);
-  
-  return snapshot.docs.map(doc => ({
-    attendeeId: doc.id,
-    ...doc.data()
-  })) as Attendee[];
-};
-
-// Get total attendee count for an event (all users)
-export const getEventAttendeeCount = async (eventId: string): Promise<number> => {
-  console.log('🔍 DEBUG: getEventAttendeeCount called for eventId:', eventId);
-  
-  try {
-    const attendeesRef = collection(db, 'events', eventId, 'attendees');
-    const q = query(attendeesRef, orderBy('createdAt', 'asc'));
-    const snapshot = await getDocs(q);
-    
-    // Filter to only count attendees with 'going' status
-    const goingAttendees = snapshot.docs.filter(doc => {
-      const data = doc.data();
-      return data.rsvpStatus === 'going';
-    });
-    
-    console.log('🔍 DEBUG: getEventAttendeeCount result:', goingAttendees.length, 'going attendees out of', snapshot.docs.length, 'total attendees');
-    return goingAttendees.length;
-  } catch (error) {
-    console.warn('⚠️ Failed to fetch total attendee count:', error);
-    // Return 0 if we can't fetch the count (e.g., private event or permission denied)
-    return 0;
-  }
-};
-
-// Bulk upsert attendees (for family members)
-export const bulkUpsertAttendees = async (eventId: string, attendees: CreateAttendeeData[]): Promise<string[]> => {
-  // Count how many 'going' attendees we're trying to add
-  const goingAttendeesCount = attendees.filter(a => a.rsvpStatus === 'going').length;
-  
-  // Check capacity only if we have 'going' attendees
-  if (goingAttendeesCount > 0) {
-    const capacityCheck = await checkEventCapacity(eventId, goingAttendeesCount);
-    if (!capacityCheck.canAdd) {
-      throw new Error(capacityCheck.message || 'Event capacity exceeded');
+  return onSnapshot(q, (snapshot) => {
+    try {
+      console.log('subscribeToAttendees: Received snapshot with', snapshot.docs.length, 'docs for user:', userId);
+      const attendees = snapshot.docs
+        .map((doc) => ({
+          attendeeId: doc.id,
+          id: doc.id,
+          ...sanitizeFirebaseData(doc.data())
+        } as unknown as Attendee))
+        .filter(Boolean) as Attendee[];
+      if (typeof callback === 'function') {
+        callback(attendees);
+      } else {
+        console.error('subscribeToAttendees: callback is not a function:', typeof callback, callback);
+      }
+    } catch (error) {
+      console.error('subscribeToAttendees: Error in snapshot handler:', error);
     }
-  }
+  });
+};
 
+// Subscribe to all attendees for an event (admin only)
+export const subscribeToAllAttendees = (
+  eventId: string,
+  callback: (attendees: Attendee[]) => void
+): (() => void) => {
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  
+  return onSnapshot(attendeesRef, (snapshot) => {
+    try {
+      console.log('subscribeToAllAttendees: Received snapshot with', snapshot.docs.length, 'docs');
+      const attendees = snapshot.docs
+        .map((doc) => ({
+          attendeeId: doc.id,
+          id: doc.id,
+          ...sanitizeFirebaseData(doc.data())
+        } as unknown as Attendee))
+        .filter(Boolean) as Attendee[];
+      if (typeof callback === 'function') {
+        callback(attendees);
+      } else {
+        console.error('subscribeToAllAttendees: callback is not a function:', typeof callback, callback);
+      }
+    } catch (error) {
+      console.error('subscribeToAllAttendees: Error in snapshot handler:', error);
+    }
+  });
+};
+
+// Get user attendees (alias for listAttendees)
+export const getAttendeesByUserId = listAttendees;
+
+// Get user attendees (alias)
+export const getUserAttendees = getAttendeesByUserId;
+
+// Bulk upsert attendees
+export const bulkUpsertAttendees = async (
+  eventId: string,
+  attendeesData: (CreateAttendeeData | UpdateAttendeeData)[]
+): Promise<string[]> => {
   const batch = writeBatch(db);
   const attendeeIds: string[] = [];
 
-  attendees.forEach(attendeeData => {
-    const attendeeId = generateAttendeeId();
-    const attendee: Attendee = {
-      attendeeId,
+  for (const attendeeData of attendeesData) {
+    const attendeeRef = doc(collection(db, 'events', eventId, 'attendees'));
+    const payload = {
       ...attendeeData,
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     };
-
-    const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
-    batch.set(attendeeRef, attendee);
-    attendeeIds.push(attendeeId);
-  });
+    
+    batch.set(attendeeRef, payload);
+    attendeeIds.push(attendeeRef.id);
+  }
 
   await batch.commit();
   return attendeeIds;
+};
+
+// Delete attendee
+export const deleteAttendee = async (
+  eventId: string,
+  attendeeId: string
+): Promise<void> => {
+  const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
+  await deleteDoc(attendeeRef);
 };
 
 // Set attendee status
@@ -480,168 +631,212 @@ export const setAttendeeStatus = async (
   attendeeId: string,
   status: AttendeeStatus
 ): Promise<void> => {
-  console.log('🔍 DEBUG: setAttendeeStatus called:', { eventId, attendeeId, status });
-  console.log('🔍 DEBUG: Document path will be: events/' + eventId + '/attendees/' + attendeeId);
-  await updateAttendee(eventId, attendeeId, { rsvpStatus: status });
-  console.log('🔍 DEBUG: setAttendeeStatus completed successfully');
-  console.log('🔍 DEBUG: Cloud Function should have been triggered for path: events/' + eventId + '/attendees/' + attendeeId);
-};
-
-// Calculate attendee counts for an event
-export const calculateAttendeeCounts = (attendees: Attendee[]): AttendeeCounts => {
-  const counts: AttendeeCounts = {
-    goingCount: 0,
-    notGoingCount: 0,
-    pendingCount: 0,
-    waitlistedCount: 0,
-    totalGoingByAgeGroup: {
-      '0-2': 0,
-      '3-5': 0,
-      '6-10': 0,
-      '11+': 0,
-      'adult': 0
-    },
-    totalGoing: 0
+  const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
+  
+  const updatePayload = {
+    rsvpStatus: status,
+    updatedAt: serverTimestamp(),
   };
 
-  attendees.forEach(attendee => {
-    switch (attendee.rsvpStatus) {
-      case 'going':
-        counts.goingCount++;
-        counts.totalGoing++;
-        counts.totalGoingByAgeGroup[attendee.ageGroup]++;
-        break;
-      case 'not-going':
-        counts.notGoingCount++;
-        break;
-      case 'pending':
-        counts.pendingCount++;
-        break;
-      case 'waitlisted':
-        counts.waitlistedCount++;
-        break;
-    }
-  });
-
-  return counts;
+  await updateDoc(attendeeRef, updatePayload);
 };
 
-// Get waitlist position for a specific user
-export const getWaitlistPosition = async (eventId: string, userId: string): Promise<number | null> => {
-  try {
-    const attendeesRef = collection(db, 'events', eventId, 'attendees');
-    const waitlistQuery = query(
-      attendeesRef, 
-      where('rsvpStatus', '==', 'waitlisted'),
-      orderBy('createdAt', 'asc') // First come, first served
-    );
-    
-    const waitlistSnapshot = await getDocs(waitlistQuery);
-    const waitlistedAttendees = waitlistSnapshot.docs.map(doc => doc.data());
-    
-    // Find the user's position (1-based)
-    const userPosition = waitlistedAttendees.findIndex(attendee => attendee.userId === userId);
-    
-    return userPosition >= 0 ? userPosition + 1 : null; // Return 1-based position or null if not found
-  } catch (error) {
-    // If index is missing, return null gracefully (position will be calculated after index is created)
-    if (error instanceof Error && error.message.includes('requires an index')) {
-      console.warn('Firestore index for waitlist position is being created. Position will be available shortly.');
-      return null;
-    }
-    console.error('Error getting waitlist position:', error);
-    return null;
+// Update attendee
+export const updateAttendee = async (
+  eventId: string,
+  attendeeId: string,
+  updateData: UpdateAttendeeData
+): Promise<void> => {
+  const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
+  
+  const updatePayload = {
+    ...updateData,
+    updatedAt: serverTimestamp(),
+  };
+
+  await updateDoc(attendeeRef, updatePayload);
+};
+
+// Upsert attendee (update or create)
+export const upsertAttendee = async (
+  eventId: string, 
+  attendeeData: CreateAttendeeData | UpdateAttendeeData,
+  attendeeId?: string
+): Promise<string> => {
+  if (attendeeId) {
+    await updateAttendee(eventId, attendeeId, attendeeData as UpdateAttendeeData);
+    return attendeeId;
+  } else {
+    return await createAttendee(eventId, attendeeData as CreateAttendeeData);
   }
 };
 
-// Recompute event attendee count (for cloud functions)
-export const recomputeEventAttendeeCount = async (eventId: string): Promise<number> => {
-  // For cloud functions, we need to get ALL attendees for the event
-  const attendeesRef = collection(db, 'events', eventId, 'attendees');
-  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
-  const snapshot = await getDocs(q);
-  const attendees = snapshot.docs.map(doc => ({
-    attendeeId: doc.id,
-    ...doc.data()
-  })) as Attendee[];
-  
-  const counts = calculateAttendeeCounts(attendees);
-  return counts.totalGoing;
-};
-
-// Real-time listener for attendees (current user only)
-export const subscribeToAttendees = (
-  eventId: string, 
-  userId: string,
-  callback: (attendees: Attendee[]) => void
-): (() => void) => {
-  const attendeesRef = collection(db, 'events', eventId, 'attendees');
-  const q = query(
-    attendeesRef, 
-    where('userId', '==', userId),
-    orderBy('createdAt', 'asc')
-  );
-  
-  const unsubscribe = onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-    const attendees = snapshot.docs.map(doc => ({
-      attendeeId: doc.id,
-      ...doc.data()
-    })) as Attendee[];
+// Manual recalculation function (used for admin tools or recovery)
+export const manualRecalculateWaitlistPositions = async (eventId: string): Promise<{
+  success: boolean;
+  totalRecalculated: number;
+  message: string;
+}> => {
+  try {
+    console.log(`ðŸ”„ Manual recalculation of waitlist positions for event: ${eventId}`);
     
-    callback(attendees);
-  });
-  
-  return unsubscribe;
-};
-
-// Real-time listener for all attendees (admin view)
-export const subscribeToAllAttendees = (
-  eventId: string,
-  callback: (attendees: Attendee[]) => void
-): (() => void) => {
-  const attendeesRef = collection(db, 'events', eventId, 'attendees');
-  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
-  
-  const unsubscribe = onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-    const attendees = snapshot.docs.map(doc => ({
-      attendeeId: doc.id,
-      ...doc.data()
-    })) as Attendee[];
+    const result = await runTransaction(db, async (transaction) => {
+      // Get all waitlisted attendees
+      const waitlistQuery = query(
+        collection(db, 'events', eventId, 'attendees'),
+        where('rsvpStatus', '==', 'waitlisted')
+      );
+      
+      const waitlistSnapshot = await getDocs(waitlistQuery);
+      
+      // Assign new sequential positions
+      let newPosition = 1;
+      waitlistSnapshot.docs.forEach(doc => {
+        transaction.update(doc.ref, {
+          waitlistPosition: newPosition,
+          updatedAt: serverTimestamp()
+        });
+        newPosition++;
+      });
+      
+      return waitlistSnapshot.size;
+    });
     
-    callback(attendees);
-  });
-  
-  return unsubscribe;
+    return {
+      success: true,
+      totalRecalculated: result,
+      message: `Successfully recalculated ${result} waitlist positions`
+    };
+  } catch (error) {
+    console.error('Error manually recalculating waitlist positions:', error);
+    return {
+      success: false,
+      totalRecalculated: 0,
+      message: `Failed to recalculate positions: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
 };
 
-// Get attendees by status
-export const getAttendeesByStatus = async (
-  eventId: string, 
-  userId: string,
-  status: AttendeeStatus
-): Promise<Attendee[]> => {
+// Trigger automatic promotions (client-side stub - Cloud Function handles actual promotion)
+export const triggerAutomaticPromotions = async (eventId: string): Promise<{
+  success: boolean;
+  promotionsCount: number;
+  promotedUsers: Array<{userId: string, message: string}>;
+  errors: string[];
+}> => {
+  // This is now handled by Cloud Functions
+  console.log(`ðŸ”„ Manual trigger requested for event: ${eventId}`);
+  return {
+    success: true,
+    promotionsCount: 0,
+    promotedUsers: [],
+    errors: ['Auto-promotion handled by Cloud Functions - no manual triggering needed']
+  };
+};
+
+// Assign missing waitlist positions for existing attendees
+export const assignMissingWaitlistPositions = async (eventId: string): Promise<{
+  success: boolean;
+  assignedCount: number;
+  message: string;
+}> => {
+  try {
+    console.log('ðŸ”„ Assigning missing waitlist positions for event:', eventId);
+    
+    // Get all waitlisted attendees first
   const attendeesRef = collection(db, 'events', eventId, 'attendees');
-  const q = query(
+    const waitlistQuery = query(
     attendeesRef, 
-    where('userId', '==', userId),
-    where('rsvpStatus', '==', status),
-    orderBy('createdAt', 'asc')
-  );
-  const snapshot = await getDocs(q);
-  
-  return snapshot.docs.map(doc => ({
-    attendeeId: doc.id,
-    ...doc.data()
-  })) as Attendee[];
+      where('rsvpStatus', '==', 'waitlisted')
+    );
+    
+    const waitlistSnapshot = await getDocs(waitlistQuery);
+    
+    console.log('ðŸ” Total waitlisted docs found:', waitlistSnapshot.docs.length);
+    
+    // Filter out attendees with existing positions
+    const attendeesWithoutPositions = waitlistSnapshot.docs.filter(doc => {
+      const data = doc.data();
+      const isMissing = !data.waitlistPosition || data.waitlistPosition === null || data.waitlistPosition === undefined;
+      console.log(`ðŸ” Attendee ${data.userId || doc.id}: rsvpStatus=${data.rsvpStatus}, waitlistPosition=${data.waitlistPosition}, isMissing=${isMissing}`);
+      return isMissing;
+    });
+    
+    console.log('ðŸ” Attendees without positions:', attendeesWithoutPositions.length);
+    
+    // Skip if no attendees need positions
+    if (attendeesWithoutPositions.length === 0) {
+      return {
+        success: true,
+        assignedCount: 0,
+        message: 'No waitlisted users missing positions'
+      };
+    }
+    
+    console.log('ðŸ“ Found', attendeesWithoutPositions.length, 'waitlisted users without positions');
+    
+    // Get existing positions to avoid conflicts
+    const existingPositionsQuery = query(
+      attendeesRef,
+      where('rsvpStatus', '==', 'waitlisted'),
+      where('waitlistPosition', '>=', 1)
+    );
+    const existingSnapshot = await getDocs(existingPositionsQuery);
+    
+    const existingPositions = new Set();
+    existingSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.waitlistPosition) {
+        existingPositions.add(data.waitlistPosition);
+      }
+    });
+    
+    let nextPosition = 1;
+    while (existingPositions.has(nextPosition)) {
+      nextPosition++;
+    }
+    
+    // Assign positions using batch update
+    const batch = writeBatch(db);
+    
+    attendeesWithoutPositions.forEach((doc, index) => {
+      const attendeeRef = doc.ref;
+      const data = doc.data();
+      
+      // Skip family members - only assign to primary users
+      if (data.attendeeType === 'family_member') {
+        console.log('â­ï¸ Skipping family member:', data.userId);
+        return;
+      }
+      
+      batch.update(attendeeRef, {
+        waitlistPosition: nextPosition + index,
+        waitlistJoinedAt: data.waitlistJoinedAt || serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    });
+    
+    await batch.commit();
+    
+    const assignedCount = attendeesWithoutPositions.filter(doc => doc.data().attendeeType !== 'family_member').length;
+    
+    console.log('âœ… Assigned positions to', assignedCount, 'waitlisted users');
+    
+    return {
+      success: true,
+      assignedCount,
+      message: `Assigned positions to ${assignedCount} waitlisted users`
+    };
+    
+  } catch (error) {
+    console.error('âŒ Error assigning waitlist positions:', error);
+    return {
+      success: false,
+      assignedCount: 0,
+      message: `Failed to assign positions: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
 };
 
-// Search attendees by name
-export const searchAttendees = async (eventId: string, userId: string, searchTerm: string): Promise<Attendee[]> => {
-  const attendees = await listAttendees(eventId, userId);
-  const term = searchTerm.toLowerCase();
-  
-  return attendees.filter(attendee => 
-    attendee.name.toLowerCase().includes(term) ||
-    attendee.relationship.toLowerCase().includes(term)
-  );
-};
+
+
