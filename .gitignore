@@ -19,6 +19,10 @@ build/
 .env.production.local
 .env.test.local
 
+# Extension environment files (contain secrets)
+extensions/*.env
+extensions/*.prod.env
+
 # IDE
 .vscode/
 .idea/
