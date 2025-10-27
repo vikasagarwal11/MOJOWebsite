@@ -1,10 +1,10 @@
 // Service Worker for Moms Fitness Mojo
 // Enhanced PWA service worker with advanced caching strategies
 
-const CACHE_NAME = 'moms-fitness-mojo-v2';
-const STATIC_CACHE = 'moms-fitness-mojo-static-v2';
-const DYNAMIC_CACHE = 'moms-fitness-mojo-dynamic-v2';
-const IMAGE_CACHE = 'moms-fitness-mojo-images-v2';
+const CACHE_NAME = 'moms-fitness-mojo-v4';
+const STATIC_CACHE = 'moms-fitness-mojo-static-v4';
+const DYNAMIC_CACHE = 'moms-fitness-mojo-dynamic-v4';
+const IMAGE_CACHE = 'moms-fitness-mojo-images-v4';
 
 // Static assets to cache immediately
 const urlsToCache = [
@@ -61,7 +61,7 @@ self.addEventListener('activate', (event) => {
       caches.keys().then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-            if (!cacheName.includes('moms-fitness-mojo-v2')) {
+            if (!cacheName.includes('moms-fitness-mojo-v4')) {
               console.log('Service Worker: Deleting old cache', cacheName);
               return caches.delete(cacheName);
             }
@@ -81,6 +81,19 @@ self.addEventListener('fetch', (event) => {
   }
 
   const url = new URL(event.request.url);
+  
+  // 🔥 CRITICAL: Bypass service worker for HLS streaming content
+  // HLS uses HTTP 206 (Partial Content) which can't be cached
+  const isHLS = url.pathname.includes('/hls/') || 
+                url.pathname.endsWith('.m3u8') || 
+                url.pathname.endsWith('.ts');
+  
+  if (isHLS) {
+    // Let HLS requests pass through to network without caching
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  
   const isImage = url.pathname.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i);
   const isAPI = url.pathname.startsWith('/api/') || url.hostname.includes('firebase');
   const isStatic = url.pathname.match(/\.(js|css|html|json)$/i);
@@ -133,8 +146,17 @@ async function cacheFirstStrategy(request, cacheName) {
   }
   
   const networkResponse = await fetch(request);
-  if (networkResponse.ok) {
-    cache.put(request, networkResponse.clone());
+  // Only cache successful responses that are not partial (206) and not HLS segments
+  const url = new URL(request.url);
+  const isHLSSegment = url.pathname.endsWith('.ts') || url.pathname.endsWith('.m3u8') || url.pathname.includes('/hls/');
+  
+  if (networkResponse.ok && networkResponse.status !== 206 && !isHLSSegment) {
+    try {
+      cache.put(request, networkResponse.clone());
+    } catch (cacheError) {
+      // Ignore cache errors (e.g., partial responses)
+      console.log('Service Worker: Cache put failed (expected for some content)', cacheError);
+    }
   }
   
   return networkResponse;
@@ -146,8 +168,17 @@ async function networkFirstStrategy(request, cacheName) {
   
   try {
     const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
-      cache.put(request, networkResponse.clone());
+    // Only cache successful responses that are not partial (206) and not HLS segments
+    const url = new URL(request.url);
+    const isHLSSegment = url.pathname.endsWith('.ts') || url.pathname.endsWith('.m3u8') || url.pathname.includes('/hls/');
+    
+    if (networkResponse.ok && networkResponse.status !== 206 && !isHLSSegment) {
+      try {
+        cache.put(request, networkResponse.clone());
+      } catch (cacheError) {
+        // Ignore cache errors (e.g., partial responses)
+        console.log('Service Worker: Cache put failed (expected for some content)', cacheError);
+      }
     }
     return networkResponse;
   } catch (error) {

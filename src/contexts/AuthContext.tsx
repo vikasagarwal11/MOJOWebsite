@@ -444,7 +444,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     try {
       // First try Cloud Function
-      const functions = getFunctions(app, (import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-central1');
+      const functions = getFunctions(app, (import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-east1');
       const checkPhoneNumber = httpsCallable(functions, 'checkPhoneNumberExists');
       
       console.log('🔍 AuthContext: Calling Cloud Function to check phone number...');

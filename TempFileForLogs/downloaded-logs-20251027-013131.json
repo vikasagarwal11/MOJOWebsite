@@ -1,0 +1,775 @@
+[
+  {
+    "textPayload": "Starting new instance. Reason: DEPLOYMENT_ROLLOUT - Instance started due to traffic shifting between revisions due to deployment, traffic split adjustment, or deployment health check.",
+    "insertId": "68ff029b00064736993b4328",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momsfitnessmojo-65d00",
+        "revision_name": "recalcwaitlistpositions-00005-jug",
+        "location": "us-central1",
+        "configuration_name": "recalcwaitlistpositions",
+        "service_name": "recalcwaitlistpositions"
+      }
+    },
+    "timestamp": "2025-10-27T05:26:51.411446Z",
+    "severity": "INFO",
+    "labels": {
+      "firebase-functions-hash": "f49c91274c90b2f95f7e6cd367ce24246adfe590",
+      "instanceId": "00147782962996360383fcfb9ad597eb26ccf0b947e2ff921de0f31ab277463a5204880a347c7218534c148ded831b84e75f62307d6095df867f6888e4ad8251b664590dcaacf701181d52fd7629fb",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "scaling_reason": "DEPLOYMENT_ROLLOUT",
+      "deployment-callable": "true",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "recalcwaitlistpositions"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2025-10-27T05:26:51.417032103Z"
+  },
+  {
+    "textPayload": "Default STARTUP TCP probe succeeded after 1 attempt for container \"worker\" on port 8080.",
+    "insertId": "68ff029d0007890e0a6f0c56",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "recalcwaitlistpositions",
+        "configuration_name": "recalcwaitlistpositions",
+        "project_id": "momsfitnessmojo-65d00",
+        "location": "us-central1",
+        "revision_name": "recalcwaitlistpositions-00005-jug"
+      }
+    },
+    "timestamp": "2025-10-27T05:26:53.493838Z",
+    "severity": "INFO",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "00147782962996360383fcfb9ad597eb26ccf0b947e2ff921de0f31ab277463a5204880a347c7218534c148ded831b84e75f62307d6095df867f6888e4ad8251b664590dcaacf701181d52fd7629fb",
+      "firebase-functions-hash": "f49c91274c90b2f95f7e6cd367ce24246adfe590",
+      "goog-drz-cloudfunctions-location": "us-central1",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20251018_22_20_0_RC00",
+      "deployment-callable": "true",
+      "goog-drz-cloudfunctions-id": "recalcwaitlistpositions"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fvarlog%2Fsystem",
+    "receiveTimestamp": "2025-10-27T05:26:53.747069012Z"
+  },
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "status": {
+        "message": "Ready condition status changed to True for Revision recalcwaitlistpositions-00005-jug with message: Deploying revision succeeded in 1m0.8s."
+      },
+      "serviceName": "run.googleapis.com",
+      "methodName": "/InternalServices.ReplaceInternalService",
+      "resourceName": "namespaces/momsfitnessmojo-65d00/revisions/recalcwaitlistpositions-00005-jug",
+      "response": {
+        "metadata": {
+          "name": "recalcwaitlistpositions-00005-jug",
+          "namespace": "313384637691",
+          "selfLink": "/apis/serving.knative.dev/v1/namespaces/313384637691/revisions/recalcwaitlistpositions-00005-jug",
+          "uid": "a1f9f965-171e-4b59-bafd-77fd1869b57f",
+          "resourceVersion": "AAZCHSWorvs",
+          "generation": 1,
+          "creationTimestamp": "2025-10-27T05:25:52.757488Z",
+          "labels": {
+            "goog-drz-cloudfunctions-location": "us-central1",
+            "firebase-functions-hash": "f49c91274c90b2f95f7e6cd367ce24246adfe590",
+            "goog-drz-cloudfunctions-id": "recalcwaitlistpositions",
+            "deployment-callable": "true",
+            "serving.knative.dev/configuration": "recalcwaitlistpositions",
+            "serving.knative.dev/configurationGeneration": "5",
+            "serving.knative.dev/service": "recalcwaitlistpositions",
+            "serving.knative.dev/serviceUid": "7d38b2f9-a51f-4a2d-9830-53424aec675f",
+            "goog-managed-by": "cloudfunctions",
+            "goog-cloudfunctions-runtime": "nodejs22",
+            "cloud.googleapis.com/location": "us-central1",
+            "serving.knative.dev/route": "recalcwaitlistpositions",
+            "run.googleapis.com/startupProbeType": "Default"
+          },
+          "annotations": {
+            "run.googleapis.com/client-name": "cli-firebase",
+            "cloudfunctions.googleapis.com/trigger-type": "HTTP_TRIGGER",
+            "autoscaling.knative.dev/maxScale": "20",
+            "serving.knative.dev/creator": "service-313384637691@gcf-admin-robot.iam.gserviceaccount.com",
+            "run.googleapis.com/build-source-location": "{\"worker\":\"gs://gcf-v2-sources-313384637691-us-central1/recalcWaitlistPositions/function-source.zip#1761542685327667\"}",
+            "run.googleapis.com/build-id": "{\"worker\":\"5a74cfb2-ac4b-43ab-8233-f3d343c35460\"}",
+            "run.googleapis.com/build-function-target": "{\"worker\":\"recalcWaitlistPositions\"}",
+            "run.googleapis.com/operation-id": "a3754eae-02da-4a3f-b62c-90da1f2f0f54",
+            "run.googleapis.com/startup-cpu-boost": "true",
+            "run.googleapis.com/base-images": "{\"worker\":\"us-central1-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22\"}"
+          },
+          "ownerReferences": [
+            {
+              "kind": "Configuration",
+              "name": "recalcwaitlistpositions",
+              "uid": "a8cfa9d0-76bf-484e-b914-58c3f1a2a6ec",
+              "apiVersion": "serving.knative.dev/v1",
+              "controller": true,
+              "blockOwnerDeletion": true
+            }
+          ]
+        },
+        "apiVersion": "serving.knative.dev/v1",
+        "kind": "Revision",
+        "spec": {
+          "containerConcurrency": 80,
+          "timeoutSeconds": 60,
+          "serviceAccountName": "313384637691-compute@developer.gserviceaccount.com",
+          "containers": [
+            {
+              "name": "worker",
+              "image": "us-central1-docker.pkg.dev/momsfitnessmojo-65d00/gcf-artifacts/momsfitnessmojo--65d00__us--central1__recalc_waitlist_positions@sha256:fe9c5fbf15039e1f0ac3454fa20460624e7224b2c37d13ff7c1699d814f72ee1",
+              "ports": [
+                {
+                  "name": "http1",
+                  "containerPort": 8080
+                }
+              ],
+              "env": [
+                {
+                  "name": "FIREBASE_CONFIG",
+                  "value": "{\"projectId\":\"momsfitnessmojo-65d00\",\"storageBucket\":\"momsfitnessmojo-65d00.firebasestorage.app\"}"
+                },
+                {
+                  "name": "GCLOUD_PROJECT",
+                  "value": "momsfitnessmojo-65d00"
+                },
+                {
+                  "name": "EVENTARC_CLOUD_EVENT_SOURCE",
+                  "value": "projects/momsfitnessmojo-65d00/locations/us-central1/services/recalcWaitlistPositions"
+                },
+                {
+                  "name": "FUNCTION_TARGET",
+                  "value": "recalcWaitlistPositions"
+                },
+                {
+                  "name": "LOG_EXECUTION_ID",
+                  "value": "true"
+                }
+              ],
+              "resources": {
+                "limits": {
+                  "cpu": "1",
+                  "memory": "256Mi"
+                }
+              },
+              "startupProbe": {
+                "timeoutSeconds": 240,
+                "periodSeconds": 240,
+                "failureThreshold": 1,
+                "tcpSocket": {
+                  "port": 8080
+                }
+              }
+            }
+          ],
+          "runtimeClassName": "run.googleapis.com/linux-base-image-update"
+        },
+        "status": {
+          "observedGeneration": 1,
+          "conditions": [
+            {
+              "type": "Ready",
+              "status": "True",
+              "message": "Deploying revision succeeded in 1m0.8s.",
+              "lastTransitionTime": "2025-10-27T05:26:53.560571Z"
+            },
+            {
+              "type": "ContainerHealthy",
+              "status": "True",
+              "message": "Containers became healthy in 1.96s.",
+              "lastTransitionTime": "2025-10-27T05:26:53.499947Z"
+            },
+            {
+              "type": "ContainerReady",
+              "status": "True",
+              "message": "Container image import completed in 7.19s.",
+              "lastTransitionTime": "2025-10-27T05:26:00.648638Z"
+            },
+            {
+              "type": "ResourcesAvailable",
+              "status": "True",
+              "message": "Provisioning imported containers completed in 50.62s. Checking container health. This will wait for up to 4m for the configured startup probe, including an initial delay of 0s.",
+              "lastTransitionTime": "2025-10-27T05:26:51.269972Z"
+            }
+          ],
+          "logUrl": "https://console.cloud.google.com/logs/viewer?project=momsfitnessmojo-65d00&resource=cloud_run_revision/service_name/recalcwaitlistpositions/revision_name/recalcwaitlistpositions-00005-jug&advancedFilter=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22recalcwaitlistpositions%22%0Aresource.labels.revision_name%3D%22recalcwaitlistpositions-00005-jug%22",
+          "imageDigest": "us-central1-docker.pkg.dev/momsfitnessmojo-65d00/gcf-artifacts/momsfitnessmojo--65d00__us--central1__recalc_waitlist_positions@sha256:fe9c5fbf15039e1f0ac3454fa20460624e7224b2c37d13ff7c1699d814f72ee1",
+          "containerStatuses": [
+            {
+              "name": "worker",
+              "imageDigest": "us-central1-docker.pkg.dev/momsfitnessmojo-65d00/gcf-artifacts/momsfitnessmojo--65d00__us--central1__recalc_waitlist_positions@sha256:fe9c5fbf15039e1f0ac3454fa20460624e7224b2c37d13ff7c1699d814f72ee1"
+            }
+          ]
+        },
+        "@type": "type.googleapis.com/google.cloud.run.v1.Revision"
+      }
+    },
+    "insertId": "-yoi8hde1cc7w",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "us-central1",
+        "service_name": "recalcwaitlistpositions",
+        "configuration_name": "recalcwaitlistpositions",
+        "revision_name": "recalcwaitlistpositions-00005-jug",
+        "project_id": "momsfitnessmojo-65d00"
+      }
+    },
+    "timestamp": "2025-10-27T05:26:53.571511Z",
+    "severity": "INFO",
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudaudit.googleapis.com%2Fsystem_event",
+    "receiveTimestamp": "2025-10-27T05:26:53.844784288Z"
+  },
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "status": {
+        "message": "Ready condition status changed to True for Service recalcwaitlistpositions."
+      },
+      "serviceName": "run.googleapis.com",
+      "methodName": "/InternalServices.ReplaceInternalService",
+      "resourceName": "namespaces/momsfitnessmojo-65d00/services/recalcwaitlistpositions",
+      "response": {
+        "metadata": {
+          "name": "recalcwaitlistpositions",
+          "namespace": "313384637691",
+          "selfLink": "/apis/serving.knative.dev/v1/namespaces/313384637691/services/recalcwaitlistpositions",
+          "uid": "7d38b2f9-a51f-4a2d-9830-53424aec675f",
+          "resourceVersion": "AAZCHSW9IQQ",
+          "generation": 5,
+          "creationTimestamp": "2025-10-13T01:21:42.503603Z",
+          "labels": {
+            "goog-drz-cloudfunctions-location": "us-central1",
+            "firebase-functions-hash": "f49c91274c90b2f95f7e6cd367ce24246adfe590",
+            "goog-managed-by": "cloudfunctions",
+            "goog-cloudfunctions-runtime": "nodejs22",
+            "cloud.googleapis.com/location": "us-central1",
+            "goog-drz-cloudfunctions-id": "recalcwaitlistpositions",
+            "deployment-callable": "true"
+          },
+          "annotations": {
+            "serving.knative.dev/creator": "service-313384637691@gcf-admin-robot.iam.gserviceaccount.com",
+            "serving.knative.dev/lastModifier": "service-313384637691@gcf-admin-robot.iam.gserviceaccount.com",
+            "run.googleapis.com/custom-audiences": "[\"https://us-central1-momsfitnessmojo-65d00.cloudfunctions.net/recalcWaitlistPositions\"]",
+            "run.googleapis.com/client-name": "cli-firebase",
+            "cloudfunctions.googleapis.com/function-id": "recalcWaitlistPositions",
+            "run.googleapis.com/build-source-location": "gs://gcf-v2-sources-313384637691-us-central1/recalcWaitlistPositions/function-source.zip#1761542685327667",
+            "run.googleapis.com/build-environment-variables": "{\"GOOGLE_NODE_RUN_SCRIPTS\":\"\"}",
+            "run.googleapis.com/build-function-target": "recalcWaitlistPositions",
+            "run.googleapis.com/build-service-account": "projects/momsfitnessmojo-65d00/serviceAccounts/313384637691-compute@developer.gserviceaccount.com",
+            "run.googleapis.com/build-enable-automatic-updates": "true",
+            "run.googleapis.com/build-base-image": "us-central1-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22",
+            "run.googleapis.com/build-image-uri": "us-central1-docker.pkg.dev/momsfitnessmojo-65d00/gcf-artifacts/momsfitnessmojo--65d00__us--central1__recalc_waitlist_positions:version_1",
+            "run.googleapis.com/build-name": "projects/313384637691/locations/us-central1/builds/5a74cfb2-ac4b-43ab-8233-f3d343c35460",
+            "run.googleapis.com/operation-id": "a3754eae-02da-4a3f-b62c-90da1f2f0f54",
+            "run.googleapis.com/ingress": "all",
+            "run.googleapis.com/ingress-status": "all",
+            "run.googleapis.com/urls": "[\"https://recalcwaitlistpositions-313384637691.us-central1.run.app\",\"https://us-central1-momsfitnessmojo-65d00.cloudfunctions.net/recalcWaitlistPositions\",\"https://recalcwaitlistpositions-4andlrev6q-uc.a.run.app\"]"
+          }
+        },
+        "apiVersion": "serving.knative.dev/v1",
+        "kind": "Service",
+        "spec": {
+          "template": {
+            "metadata": {
+              "name": "recalcwaitlistpositions-00005-jug",
+              "labels": {
+                "goog-drz-cloudfunctions-location": "us-central1",
+                "firebase-functions-hash": "f49c91274c90b2f95f7e6cd367ce24246adfe590",
+                "goog-drz-cloudfunctions-id": "recalcwaitlistpositions",
+                "deployment-callable": "true",
+                "run.googleapis.com/startupProbeType": "Default"
+              },
+              "annotations": {
+                "run.googleapis.com/client-name": "cli-firebase",
+                "cloudfunctions.googleapis.com/trigger-type": "HTTP_TRIGGER",
+                "autoscaling.knative.dev/maxScale": "20",
+                "run.googleapis.com/base-images": "{\"worker\":\"us-central1-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22\"}",
+                "run.googleapis.com/startup-cpu-boost": "true"
+              }
+            },
+            "spec": {
+              "containerConcurrency": 80,
+              "timeoutSeconds": 60,
+              "serviceAccountName": "313384637691-compute@developer.gserviceaccount.com",
+              "containers": [
+                {
+                  "name": "worker",
+                  "image": "us-central1-docker.pkg.dev/momsfitnessmojo-65d00/gcf-artifacts/momsfitnessmojo--65d00__us--central1__recalc_waitlist_positions:version_1",
+                  "ports": [
+                    {
+                      "name": "http1",
+                      "containerPort": 8080
+                    }
+                  ],
+                  "env": [
+                    {
+                      "name": "FIREBASE_CONFIG",
+                      "value": "{\"projectId\":\"momsfitnessmojo-65d00\",\"storageBucket\":\"momsfitnessmojo-65d00.firebasestorage.app\"}"
+                    },
+                    {
+                      "name": "GCLOUD_PROJECT",
+                      "value": "momsfitnessmojo-65d00"
+                    },
+                    {
+                      "name": "EVENTARC_CLOUD_EVENT_SOURCE",
+                      "value": "projects/momsfitnessmojo-65d00/locations/us-central1/services/recalcWaitlistPositions"
+                    },
+                    {
+                      "name": "FUNCTION_TARGET",
+                      "value": "recalcWaitlistPositions"
+                    },
+                    {
+                      "name": "LOG_EXECUTION_ID",
+                      "value": "true"
+                    }
+                  ],
+                  "resources": {
+                    "limits": {
+                      "cpu": "1",
+                      "memory": "256Mi"
+                    }
+                  },
+                  "startupProbe": {
+                    "timeoutSeconds": 240,
+                    "periodSeconds": 240,
+                    "failureThreshold": 1,
+                    "tcpSocket": {
+                      "port": 8080
+                    }
+                  }
+                }
+              ],
+              "runtimeClassName": "run.googleapis.com/linux-base-image-update"
+            }
+          },
+          "traffic": [
+            {
+              "percent": 100,
+              "latestRevision": true
+            }
+          ]
+        },
+        "status": {
+          "observedGeneration": 5,
+          "conditions": [
+            {
+              "type": "Ready",
+              "status": "True",
+              "lastTransitionTime": "2025-10-27T05:26:54.900484Z"
+            },
+            {
+              "type": "ConfigurationsReady",
+              "status": "True",
+              "lastTransitionTime": "2025-10-27T05:26:00.768047Z"
+            },
+            {
+              "type": "RoutesReady",
+              "status": "True",
+              "lastTransitionTime": "2025-10-27T05:26:54.854742Z"
+            }
+          ],
+          "latestReadyRevisionName": "recalcwaitlistpositions-00005-jug",
+          "latestCreatedRevisionName": "recalcwaitlistpositions-00005-jug",
+          "traffic": [
+            {
+              "revisionName": "recalcwaitlistpositions-00005-jug",
+              "percent": 100,
+              "latestRevision": true
+            }
+          ],
+          "url": "https://recalcwaitlistpositions-4andlrev6q-uc.a.run.app",
+          "address": {
+            "url": "https://recalcwaitlistpositions-4andlrev6q-uc.a.run.app"
+          }
+        },
+        "@type": "type.googleapis.com/google.cloud.run.v1.Service"
+      }
+    },
+    "insertId": "lok2vvdggeu",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "us-central1",
+        "service_name": "recalcwaitlistpositions",
+        "configuration_name": "",
+        "project_id": "momsfitnessmojo-65d00",
+        "revision_name": ""
+      }
+    },
+    "timestamp": "2025-10-27T05:26:54.915834Z",
+    "severity": "INFO",
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudaudit.googleapis.com%2Fsystem_event",
+    "receiveTimestamp": "2025-10-27T05:26:55.938280486Z"
+  },
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "status": {},
+      "authenticationInfo": {
+        "principalEmail": "VikasAgarwal11@gmail.com",
+        "principalSubject": "user:VikasAgarwal11@gmail.com",
+        "oauthInfo": {
+          "oauthClientId": "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com"
+        }
+      },
+      "requestMetadata": {
+        "requestAttributes": {},
+        "destinationAttributes": {}
+      },
+      "serviceName": "cloudfunctions.googleapis.com",
+      "methodName": "google.cloud.functions.v2.FunctionService.UpdateFunction",
+      "resourceName": "projects/momsfitnessmojo-65d00/locations/us-central1/functions/recalcWaitlistPositions",
+      "response": {
+        "state": "ACTIVE",
+        "createTime": "2025-10-13T01:19:57.548555627Z",
+        "labels": {
+          "firebase-functions-hash": "f49c91274c90b2f95f7e6cd367ce24246adfe590",
+          "deployment-tool": "cli-firebase",
+          "deployment-callable": "true"
+        },
+        "satisfiesPzi": true,
+        "@type": "type.googleapis.com/google.cloud.functions.v2.Function",
+        "buildConfig": {
+          "dockerRegistry": "ARTIFACT_REGISTRY",
+          "entryPoint": "recalcWaitlistPositions",
+          "automaticUpdatePolicy": {},
+          "runtime": "nodejs22",
+          "source": {},
+          "serviceAccount": "projects/momsfitnessmojo-65d00/serviceAccounts/313384637691-compute@developer.gserviceaccount.com",
+          "dockerRepository": "projects/momsfitnessmojo-65d00/locations/us-central1/repositories/gcf-artifacts"
+        },
+        "url": "https://us-central1-momsfitnessmojo-65d00.cloudfunctions.net/recalcWaitlistPositions",
+        "environment": "GEN_2",
+        "serviceConfig": {
+          "maxInstanceCount": 20,
+          "maxInstanceRequestConcurrency": 80,
+          "uri": "https://recalcwaitlistpositions-4andlrev6q-uc.a.run.app",
+          "availableMemory": "256Mi",
+          "allTrafficOnLatestRevision": true,
+          "ingressSettings": "ALLOW_ALL",
+          "revision": "recalcwaitlistpositions-00005-jug",
+          "timeoutSeconds": 60,
+          "availableCpu": "1",
+          "serviceAccountEmail": "313384637691-compute@developer.gserviceaccount.com"
+        },
+        "name": "projects/momsfitnessmojo-65d00/locations/us-central1/functions/recalcWaitlistPositions",
+        "updateTime": "2025-10-27T05:24:45.376507840Z"
+      },
+      "resourceLocation": {
+        "currentLocations": [
+          "us-central1"
+        ]
+      }
+    },
+    "insertId": "yqwhiwd1433",
+    "resource": {
+      "type": "cloud_function",
+      "labels": {
+        "function_name": "recalcWaitlistPositions",
+        "project_id": "momsfitnessmojo-65d00",
+        "region": "us-central1"
+      }
+    },
+    "timestamp": "2025-10-27T05:26:55.178559923Z",
+    "severity": "NOTICE",
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudaudit.googleapis.com%2Factivity",
+    "operation": {
+      "id": "projects/momsfitnessmojo-65d00/locations/us-central1/operations/operation-1761542684221-6421d1df32048-f749ca67-dc44701c",
+      "producer": "cloudfunctions.googleapis.com",
+      "last": true
+    },
+    "receiveTimestamp": "2025-10-27T05:26:55.287185398Z"
+  },
+  {
+    "insertId": "68ff0341000e415c903d98df",
+    "httpRequest": {
+      "requestMethod": "POST",
+      "requestUrl": "https://onmediafilefinalize-4andlrev6q-ue.a.run.app/?__GCP_CloudEventsMode=GCS_NOTIFICATION",
+      "requestSize": "3988",
+      "status": 200,
+      "responseSize": "82",
+      "userAgent": "APIs-Google; (+https://developers.google.com/webmasters/APIs-Google.html)",
+      "remoteIp": "74.125.210.38",
+      "serverIp": "34.143.75.2",
+      "latency": "0.043833660s",
+      "protocol": "HTTP/1.1"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momsfitnessmojo-65d00",
+        "service_name": "onmediafilefinalize",
+        "location": "us-east1",
+        "configuration_name": "onmediafilefinalize",
+        "revision_name": "onmediafilefinalize-00006-kuc"
+      }
+    },
+    "timestamp": "2025-10-27T05:29:37.878121Z",
+    "severity": "INFO",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "goog-drz-cloudfunctions-id": "onmediafilefinalize",
+      "run.googleapis.com/cloud_event_source": "//storage.googleapis.com/projects/_/buckets/momsfitnessmojo-65d00.firebasestorage.app",
+      "instanceId": "0014778296f643eea4117486a7bac6cdaf4d7535f699ae0df40c7a23b5c22aa648ff74b734449e581489cdeaf13a4a5b2c1da6c72158c2b107deb261c2f3a4ce75754a724faeda0403cf26b87e44",
+      "goog-managed-by": "cloudfunctions",
+      "firebase-functions-hash": "f49c91274c90b2f95f7e6cd367ce24246adfe590",
+      "run.googleapis.com/cloud_event_id": "16855595778783611"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Frequests",
+    "trace": "projects/momsfitnessmojo-65d00/traces/bb5aee3012b49875eab1f566f0923e87",
+    "receiveTimestamp": "2025-10-27T05:29:37.937653247Z",
+    "spanId": "5a38b407da3b3b16",
+    "traceSampled": true
+  },
+  {
+    "textPayload": "Function execution started",
+    "insertId": "o7ehghfhszmo9",
+    "resource": {
+      "type": "cloud_function",
+      "labels": {
+        "function_name": "ext-storage-resize-images-generateResizedImage",
+        "project_id": "momsfitnessmojo-65d00",
+        "region": "us-east1"
+      }
+    },
+    "timestamp": "2025-10-27T05:29:37.897064628Z",
+    "severity": "DEBUG",
+    "labels": {
+      "runtime_version": "nodejs20_20251019_20_19_5_RC00",
+      "execution_id": "257975j9ffsx"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudfunctions.googleapis.com%2Fcloud-functions",
+    "trace": "projects/momsfitnessmojo-65d00/traces/94a9c5c576d5ab9bed6a896630084710",
+    "receiveTimestamp": "2025-10-27T05:29:37.900697184Z"
+  },
+  {
+    "insertId": "68ff0341000dd393a4e811dc",
+    "jsonPayload": {
+      "placeholderImagePath": null,
+      "backfillBatchSize": 3,
+      "contentFilterLevel": null,
+      "bucket": "momsfitnessmojo-65d00.firebasestorage.app",
+      "makePublic": true,
+      "location": "us-east1",
+      "animated": true,
+      "regenerateToken": true,
+      "deleteOriginalFile": 1,
+      "imageSizes": [
+        "400x400"
+      ],
+      "doBackfill": true,
+      "customFilterPrompt": null,
+      "imageTypes": [
+        "jpeg",
+        "webp",
+        "png",
+        "tiff",
+        "gif",
+        "avif",
+        "false"
+      ],
+      "message": "Started execution of extension with configuration",
+      "projectId": "momsfitnessmojo-65d00",
+      "sharpOptions": "{}",
+      "resizedImagesPath": "thumbnails"
+    },
+    "resource": {
+      "type": "cloud_function",
+      "labels": {
+        "project_id": "momsfitnessmojo-65d00",
+        "function_name": "ext-storage-resize-images-generateResizedImage",
+        "region": "us-east1"
+      }
+    },
+    "timestamp": "2025-10-27T05:29:37.906131Z",
+    "severity": "INFO",
+    "labels": {
+      "execution_id": "257975j9ffsx",
+      "instance_id": "00147782966df5cb921dca16658cec554dbe05e51d740e304f417fde8b768be245bf58fdcfb08abce565a4b8cad37754c6b11c051cf10f53ec9a97ce2f05dd2be960c5f653a6676dc88d1eee2f74fa",
+      "runtime_version": "nodejs20_20251019_20_19_5_RC00"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudfunctions.googleapis.com%2Fcloud-functions",
+    "trace": "projects/momsfitnessmojo-65d00/traces/94a9c5c576d5ab9bed6a896630084710",
+    "receiveTimestamp": "2025-10-27T05:29:38.233570097Z"
+  },
+  {
+    "textPayload": "File of type 'video/mp4' is not an image, no processing is required",
+    "insertId": "68ff0341000dd480a6560395",
+    "resource": {
+      "type": "cloud_function",
+      "labels": {
+        "function_name": "ext-storage-resize-images-generateResizedImage",
+        "region": "us-east1",
+        "project_id": "momsfitnessmojo-65d00"
+      }
+    },
+    "timestamp": "2025-10-27T05:29:37.906368Z",
+    "severity": "INFO",
+    "labels": {
+      "runtime_version": "nodejs20_20251019_20_19_5_RC00",
+      "execution_id": "257975j9ffsx",
+      "instance_id": "00147782966df5cb921dca16658cec554dbe05e51d740e304f417fde8b768be245bf58fdcfb08abce565a4b8cad37754c6b11c051cf10f53ec9a97ce2f05dd2be960c5f653a6676dc88d1eee2f74fa"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudfunctions.googleapis.com%2Fcloud-functions",
+    "trace": "projects/momsfitnessmojo-65d00/traces/94a9c5c576d5ab9bed6a896630084710",
+    "receiveTimestamp": "2025-10-27T05:29:38.233570097Z"
+  },
+  {
+    "textPayload": "🎬 onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2156af73-e597-4c95-8906-e06a21d26417/13689814-uhd_3840_2160_60fps.mp4\n",
+    "insertId": "68ff0341000e10e004d9e0b8",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momsfitnessmojo-65d00",
+        "location": "us-east1",
+        "service_name": "onmediafilefinalize",
+        "revision_name": "onmediafilefinalize-00006-kuc",
+        "configuration_name": "onmediafilefinalize"
+      }
+    },
+    "timestamp": "2025-10-27T05:29:37.921824Z",
+    "labels": {
+      "instanceId": "0014778296f643eea4117486a7bac6cdaf4d7535f699ae0df40c7a23b5c22aa648ff74b734449e581489cdeaf13a4a5b2c1da6c72158c2b107deb261c2f3a4ce75754a724faeda0403cf26b87e44",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20251018_22_20_0_RC00",
+      "execution_id": "8p7gqj61k2bi",
+      "goog-drz-cloudfunctions-id": "onmediafilefinalize",
+      "firebase-functions-hash": "f49c91274c90b2f95f7e6cd367ce24246adfe590",
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-10-27T05:29:37.929839498Z",
+    "spanId": "6501144007928396566"
+  },
+  {
+    "textPayload": "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+    "insertId": "68ff0341000e127ec79df456",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "onmediafilefinalize",
+        "service_name": "onmediafilefinalize",
+        "location": "us-east1",
+        "revision_name": "onmediafilefinalize-00006-kuc",
+        "project_id": "momsfitnessmojo-65d00"
+      }
+    },
+    "timestamp": "2025-10-27T05:29:37.922238Z",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "instanceId": "0014778296f643eea4117486a7bac6cdaf4d7535f699ae0df40c7a23b5c22aa648ff74b734449e581489cdeaf13a4a5b2c1da6c72158c2b107deb261c2f3a4ce75754a724faeda0403cf26b87e44",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20251018_22_20_0_RC00",
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "goog-drz-cloudfunctions-id": "onmediafilefinalize",
+      "firebase-functions-hash": "f49c91274c90b2f95f7e6cd367ce24246adfe590",
+      "execution_id": "8p7gqj61k2bi"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-10-27T05:29:38.258452263Z",
+    "spanId": "6501144007928396566"
+  },
+  {
+    "textPayload": "Content type: video/mp4\n",
+    "insertId": "68ff0341000e12ff3a36d517",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "us-east1",
+        "revision_name": "onmediafilefinalize-00006-kuc",
+        "configuration_name": "onmediafilefinalize",
+        "service_name": "onmediafilefinalize",
+        "project_id": "momsfitnessmojo-65d00"
+      }
+    },
+    "timestamp": "2025-10-27T05:29:37.922367Z",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "instanceId": "0014778296f643eea4117486a7bac6cdaf4d7535f699ae0df40c7a23b5c22aa648ff74b734449e581489cdeaf13a4a5b2c1da6c72158c2b107deb261c2f3a4ce75754a724faeda0403cf26b87e44",
+      "firebase-functions-hash": "f49c91274c90b2f95f7e6cd367ce24246adfe590",
+      "execution_id": "8p7gqj61k2bi",
+      "goog-drz-cloudfunctions-id": "onmediafilefinalize",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20251018_22_20_0_RC00",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-10-27T05:29:38.258452263Z",
+    "spanId": "6501144007928396566"
+  },
+  {
+    "textPayload": "Size: 59750616\n",
+    "insertId": "68ff0341000e137e95d3312f",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momsfitnessmojo-65d00",
+        "configuration_name": "onmediafilefinalize",
+        "revision_name": "onmediafilefinalize-00006-kuc",
+        "location": "us-east1",
+        "service_name": "onmediafilefinalize"
+      }
+    },
+    "timestamp": "2025-10-27T05:29:37.922494Z",
+    "labels": {
+      "goog-drz-cloudfunctions-id": "onmediafilefinalize",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20251018_22_20_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "execution_id": "8p7gqj61k2bi",
+      "firebase-functions-hash": "f49c91274c90b2f95f7e6cd367ce24246adfe590",
+      "instanceId": "0014778296f643eea4117486a7bac6cdaf4d7535f699ae0df40c7a23b5c22aa648ff74b734449e581489cdeaf13a4a5b2c1da6c72158c2b107deb261c2f3a4ce75754a724faeda0403cf26b87e44"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-10-27T05:29:38.258452263Z",
+    "spanId": "6501144007928396566"
+  },
+  {
+    "textPayload": "⏭️ Skipping file from bucket: momsfitnessmojo-65d00.firebasestorage.app, expected: undefined\n",
+    "insertId": "68ff0341000e14fd6918dcf0",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "us-east1",
+        "project_id": "momsfitnessmojo-65d00",
+        "revision_name": "onmediafilefinalize-00006-kuc",
+        "configuration_name": "onmediafilefinalize",
+        "service_name": "onmediafilefinalize"
+      }
+    },
+    "timestamp": "2025-10-27T05:29:37.922877Z",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "execution_id": "8p7gqj61k2bi",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20251018_22_20_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "onmediafilefinalize",
+      "firebase-functions-hash": "f49c91274c90b2f95f7e6cd367ce24246adfe590",
+      "instanceId": "0014778296f643eea4117486a7bac6cdaf4d7535f699ae0df40c7a23b5c22aa648ff74b734449e581489cdeaf13a4a5b2c1da6c72158c2b107deb261c2f3a4ce75754a724faeda0403cf26b87e44"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-10-27T05:29:38.258452263Z",
+    "spanId": "6501144007928396566"
+  },
+  {
+    "textPayload": "Function execution took 328 ms, finished with status: 'ok'",
+    "insertId": "ht4wbdfi5zo6b",
+    "resource": {
+      "type": "cloud_function",
+      "labels": {
+        "project_id": "momsfitnessmojo-65d00",
+        "function_name": "ext-storage-resize-images-generateResizedImage",
+        "region": "us-east1"
+      }
+    },
+    "timestamp": "2025-10-27T05:29:38.225480740Z",
+    "severity": "DEBUG",
+    "labels": {
+      "runtime_version": "nodejs20_20251019_20_19_5_RC00",
+      "execution_id": "257975j9ffsx"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudfunctions.googleapis.com%2Fcloud-functions",
+    "trace": "projects/momsfitnessmojo-65d00/traces/94a9c5c576d5ab9bed6a896630084710",
+    "receiveTimestamp": "2025-10-27T05:29:38.233570097Z"
+  }
+]

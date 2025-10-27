@@ -67,7 +67,7 @@ function AppContent() {
             Do NOT add per-page containers in Login/Register. */}
         <div
           id="recaptcha-container"
-          style={{ position: 'fixed', width: 0, height: 0, overflow: 'hidden' }}
+          style={{ position: 'fixed', width: '1px', height: '1px', top: '-9999px', left: '-9999px' }}
         />
 
         <Routes>

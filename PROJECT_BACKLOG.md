@@ -72,6 +72,94 @@ This backlog tracks all planned features, improvements, and technical tasks for 
   - *Dependencies*: Individual event pages
 
 ### 🛠️ Technical Infrastructure
+- [ ] **Remove Hardcoded Production Storage Bucket Values** - Make storage bucket environment-agnostic
+  - *Status*: Reviewing proposal
+  - *Impact*: High - Fixes cross-environment deployment issues
+  - *Effort*: 4 hours
+  - *Dependencies*: None
+  - *Description*: Currently using hardcoded production bucket 'momsfitnessmojo-65d00.firebasestorage.app' that breaks in non-prod environments
+
+#### 📋 **Storage Bucket Hardcoding Issue - Technical Analysis**
+
+**Current Problem:**
+- Hardcoded production bucket: `'momsfitnessmojo-65d00.firebasestorage.app'` in 3 locations (Lines 652, 781, 814)
+- Causes failures in non-prod environments (dev, staging)
+- Storage triggers skip files when bucket doesn't match hardcoded value
+
+**Cursor AI Proposed Fix:**
+
+**1. Use `object.bucket` from Storage Events (Lines 781, 814)**
+```typescript
+// ❌ CURRENT (Hardcoded - Only works in prod):
+const bucketName = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
+const bucket = getStorage().bucket(bucketName);
+
+// ✅ PROPOSED (Environment-aware - Works everywhere):
+const bucketName = process.env.STORAGE_BUCKET || object.bucket;
+const bucket = getStorage().bucket(bucketName);
+```
+**Rationale**: Storage events include `object.bucket` which automatically matches the source bucket.
+
+**2. Remove or Make Bucket Validation Agnostic (Lines 780-785)**
+```typescript
+// Option A: Remove check entirely (since trigger only fires for project bucket)
+// No bucket validation needed
+
+// Option B: Keep but make it environment-aware
+const expectedBucket = process.env.STORAGE_BUCKET ?? object.bucket;
+if (object.bucket !== expectedBucket) {
+  console.log(`⏭️ Unexpected bucket: ${object.bucket}, expected: ${expectedBucket}`);
+  return;
+}
+```
+
+**3. Handle Firestore-Triggered Cleanup (Line 652)**
+```typescript
+// ❌ CURRENT (Hardcoded):
+const bucketName = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
+
+// ✅ PROPOSED (Require env var for Firestore triggers):
+const bucketName = process.env.STORAGE_BUCKET;
+if (!bucketName) {
+  console.error('❌ STORAGE_BUCKET env var not set for deletion cleanup');
+  return;
+}
+```
+**Rationale**: No `object.bucket` available in Firestore triggers, so require explicit env var.
+
+**4. Additional Optimization: Initialize Bucket in Admin App**
+```typescript
+// In main initialization (line ~22):
+initializeApp({
+  storageBucket: process.env.STORAGE_BUCKET // Auto-detected by default
+});
+```
+This makes `getStorage().bucket()` default to the right bucket everywhere.
+
+**Recommendation Assessment:**
+
+✅ **Adopt Immediately:**
+- Use `object.bucket` as fallback (lines 781, 814) - Low risk, high value
+- Remove hardcoded production value - Single source of truth
+- Require STORAGE_BUCKET env var for Firestore cleanup (line 652) - Explicit is better than magic
+
+⚠️ **Consider Carefully:**
+- Keep bucket validation guard but make it environment-aware - Prevents accidental cross-bucket triggers if you ever add multiple buckets
+- Compare against `process.env.STORAGE_BUCKET ?? object.bucket` - Only blocks when explicit env differs
+
+✅ **Benefits:**
+- ✅ Single codebase across all environments (dev/staging/prod)
+- ✅ No hardcoded production values
+- ✅ Works automatically with correct bucket per environment
+- ✅ Prevents skipped files due to bucket mismatch
+- ✅ Better error messaging when env vars missing
+
+**Implementation Order:**
+1. Line 814: Change to `object.bucket` fallback (media processing)
+2. Line 781: Update bucket validation or remove check
+3. Line 652: Require env var for Firestore cleanup
+4. Optional: Initialize bucket in admin app config
+
 - [ ] **Set Up Event Routing** - Configure React Router for individual events
   - *Status*: Pending
   - *Impact*: Medium - Required for individual pages
@@ -154,15 +242,81 @@ const queueConfig = {
 #### 📋 **4K Video Processing - Industry Analysis & Implementation**
 
 **Industry Platform Strategies:**
-- **TikTok**: 2-5 second upload response + async processing + progressive quality delivery
-- **Facebook/Instagram**: Immediate response + background processing + multiple quality variants
-- **YouTube**: Smart encoding + dedicated video farms + adaptive bitrate streaming
+
+**1) YouTube**
+- Uploads are queued and start processing once upload completes
+- Ingest can take 20–120s depending on codec/resolution; transcoding runs in the background
+- 360p is available quickly; higher resolutions appear over time
+- That "available instantly" feeling comes from showing a 360p stream first
+
+**2) Instagram/Meta Reels**
+- 90% of processing runs after upload; a lightweight version appears quickly while background processing continues
+
+**3) TikTok**
+- Basic version is produced during upload; higher qualities follow later
+- 2-5 second upload response + async processing + progressive quality delivery
+
+**Facebook/Instagram** (Reels & Stories)
+- Immediate response + background processing + multiple quality variants
+
+**YouTube** (Full Platform)
+- Smart encoding + dedicated video farms + adaptive bitrate streaming
 
 **Target Performance for 60-second 4K Videos:**
 - ✅ **Upload Response**: 2-5 seconds (vs current 35-60 seconds)
 - ✅ **Concurrent Processing**: 8-10 simultaneous videos (vs current 1x bottleneck)
 - ✅ **Progressive Enhancement**: 720p → 1080p → 4K cascade (vs current all-or-nothing)
 - ✅ **Cost Optimization**: Right-sized resources per processing stage
+
+**The Key Difference:**
+
+Your app currently processes everything on one machine before serving:
+```
+Upload → Wait for full processing → Show video
+```
+
+Major platforms use progressive processing:
+```
+Upload → Show basic version immediately → Process HD in background
+```
+
+**Implementation Options:**
+
+**Option 1: Progressive HLS**
+- Generate a low-quality version first
+- HLS can encode a 360p playlist quickly, then higher qualities later
+
+**Option 2: Streaming upload**
+- Start encoding during upload
+- Depends on your infrastructure
+
+**Option 3: Browser transcoding (limited)**
+- Use WebCodecs for basic HLS in the browser
+- Works best for lightweight formats
+
+**Quick Win: Reduce Initial Quality Target**
+
+Lower the initial FFmpeg quality preset and start serving 480p/720p:
+
+```typescript
+// Current FFmpeg options:
+.addOptions([
+  '-profile:v', 'main',
+  '-vf', 'scale=w=min(iw\\,1280):h=-2',  // Scales to 1280p max
+  ...
+])
+
+// Could add quality optimization:
+.addOptions([
+  '-profile:v', 'baseline',  // Faster encoding
+  '-vf', 'scale=w=min(iw\\,720):h=-2',  // Start with 720p instead of 1280p
+  '-preset', 'ultrafast',  // Speed over size
+  '-crf', '28',  // Lower quality = faster
+  ...
+])
+```
+
+This can cut time roughly in half, at the cost of slightly larger files.
 
 **Technical Implementation:**
 
