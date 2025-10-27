@@ -59,6 +59,57 @@ This backlog tracks all planned features, improvements, and technical tasks for 
   - *Dependencies*: Production URL update
 
 ### 🎨 User Experience
+- [ ] **Client-Side Video Thumbnail Extraction** - Instant thumbnails for uploaded videos
+  - *Status*: Planned
+  - *Impact*: High - Eliminates blank cards during video processing
+  - *Effort*: 6 hours
+  - *Dependencies*: None
+  - *Description*: Extract video frame client-side using canvas API, store in IndexedDB, display instantly until server poster is ready. Eliminates 3-second blank card gap for better UX like TikTok/YouTube.
+
+#### 📋 **Client-Side Thumbnail - Technical Specification**
+
+**Problem:**
+- Currently, video uploads show blank cards for ~3 seconds while Cloud Function generates poster
+- Poor user experience compared to platforms like YouTube/TikTok
+- Users see no visual feedback during processing
+
+**Solution:**
+- Extract thumbnail frame from video file in browser before upload
+- Store in IndexedDB (client-side only, never sent to server)
+- Display immediately, replaced by server poster when ready
+- Auto-delete client thumbnail after server poster arrives
+
+**Implementation Files:**
+1. `src/utils/extractVideoThumbnail.ts` - Canvas-based frame extraction with Safari workarounds
+2. `src/utils/clientThumbnailStorage.ts` - IndexedDB wrapper for local storage
+3. `src/hooks/useUploader.ts` - Modified to extract thumbnail after document creation
+4. `src/components/media/MediaCard.tsx` - Updated to load client thumbnail from IndexedDB
+
+**Benefits:**
+- ✅ **Zero Blank Cards**: Instant visual feedback
+- ✅ **Privacy Safe**: Client-side only, never in Firestore
+- ✅ **No Document Size Issues**: Doesn't affect Firestore documents
+- ✅ **Progressive Enhancement**: Client thumbnail → Server poster seamless transition
+- ✅ **Safari Compatible**: Includes currentTime quirks workaround
+- ✅ **Graceful Degradation**: Falls back to blank if extraction fails
+
+**User Flow:**
+```
+Upload → Extract thumbnail → Store IndexedDB → Display instantly
+  ↓
+[3 seconds]
+  ↓  
+Server poster ready → Replace client thumbnail → Delete IndexedDB entry
+```
+
+**Codex Assessment Alignment:**
+- ✅ No Firestore persistence (avoids document size issues)
+- ✅ Safari currentTime retry logic included
+- ✅ Client-side only (privacy safe)
+- ✅ JPEG compression (70% quality for smaller size)
+- ✅ Error handling with null fallback
+- ✅ IndexedDB cleanup after server poster arrives
+
 - [ ] **Add View Details Buttons** - Link event cards to individual pages
   - *Status*: Pending
   - *Impact*: Medium - Better navigation

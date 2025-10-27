@@ -2,7 +2,6 @@ import { setGlobalOptions } from "firebase-functions/v2";
 import { onDocumentWritten, onDocumentDeleted, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { onCall } from "firebase-functions/v2/https";
-import { storage } from "firebase-functions";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -17,7 +16,6 @@ import { v4 as uuidv4 } from 'uuid';
 
 // Set global options for all functions - set to us-east1 to match prod bucket
 setGlobalOptions({ region: 'us-east1' });
-import * as functions from 'firebase-functions';
 // Initialize Firebase Admin BEFORE importing modules that use it
 initializeApp();
 
