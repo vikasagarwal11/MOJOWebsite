@@ -158,28 +158,47 @@ export default function MediaLightbox({
     (async () => {
       try {
         if (item.sources?.hls) {
+          console.log('🎬 [HLS] Attaching HLS to video:', item.sources.hls);
           const canNativeHls = !!v.canPlayType?.('application/vnd.apple.mpegURL');
           if (canNativeHls) {
-            v.src = item.sources.hls;
+            console.log('🎬 [HLS] Using native HLS support');
+            // Still need to get download URL even for native HLS
+            const hlsUrl = await getDownloadURL(ref(storage, item.sources.hls));
+            v.src = hlsUrl;
           } else {
+            console.log('🎬 [HLS] Using HLS.js');
             await attachHls(v, item.sources.hls);
           }
         } else {
+          console.log('🎬 [FALLBACK] No HLS source, using direct URL:', item.url);
           v.src = item.url;
         }
-        if (!cancelled) v.play().catch(() => {}).finally(() => setVideoLoading(false));
-      } catch {
+        if (!cancelled) {
+          console.log('▶️ Attempting to play video...');
+          await v.play().catch((err) => {
+            console.warn('⚠️ Play failed:', err.message);
+          });
+        }
+      } catch (error) {
+        console.error('❌ HLS attachment failed:', error);
         v.src = item.url;
-        if (!cancelled) v.play().catch(() => {}).finally(() => setVideoLoading(false));
+        if (!cancelled) {
+          await v.play().catch((err) => {
+            console.warn('⚠️ Fallback play failed:', err.message);
+          });
+        }
+      } finally {
+        if (!cancelled) setVideoLoading(false);
       }
     })();
 
     return () => {
+      console.log('🧹 Cleaning up HLS...');
       cancelled = true;
       setVideoLoading(false);
       try { detachHls(v); } catch {}
     };
-  }, [isVideo, item?.sources?.hls, item?.url]);
+  }, [isVideo, item?.sources?.hls, item?.url, item?.id]);
 
   // Auto-advance images
   useEffect(() => {

@@ -648,12 +648,13 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
     version: '2.3-FIXED-VIDEO-DELETION' // Force complete redeployment
   });
 
-  // Use the bucket from Firebase config
-  const bucket = getStorage().bucket(functions.config().app.storage_bucket);
+  // Use the bucket from environment variable or default
+  const bucketName = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
+  const bucket = getStorage().bucket(bucketName);
   
   // Debug logging
-  console.log('🔧 STORAGE_BUCKET config:', functions.config().app.storage_bucket);
-  console.log('🔧 Final bucket used:', bucket);
+  console.log('🔧 STORAGE_BUCKET env:', process.env.STORAGE_BUCKET || 'undefined');
+  console.log('🔧 Final bucket used:', bucketName);
   const filesToDelete: Array<{path: string, type: string, isFolder?: boolean}> = [];
   
   // 1. Original file
@@ -762,7 +763,13 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
 
 // ───────────────── MEDIA: FFmpeg + Manifest Rewrite ─────────────────
 
-export const onMediaFileFinalize = onObjectFinalized({ region: 'us-east1' }, async (event) => {
+export const onMediaFileFinalize = onObjectFinalized({ 
+  region: 'us-east1',
+  memory: '8GiB', // Maximum memory for fastest video processing
+  timeoutSeconds: 540, // Increase timeout for large videos
+  cpu: 2, // Use 2 vCPUs for parallel processing
+  maxInstances: 20 // Handle spike days with many concurrent uploads (default: 80)
+}, async (event) => {
   const object = event.data;
     console.log('🎬 onMediaFileFinalize triggered for:', object.name);
     console.log('Bucket:', object.bucket);
@@ -772,9 +779,10 @@ export const onMediaFileFinalize = onObjectFinalized({ region: 'us-east1' }, asy
     const name = object.name || '';
     const ctype = object.contentType || '';
 
-    // Only process files from our target bucket
-    if (object.bucket !== process.env.STORAGE_BUCKET) {
-      console.log(`⏭️ Skipping file from bucket: ${object.bucket}, expected: ${process.env.STORAGE_BUCKET}`);
+    // Only process files from our target bucket (use bucket from event if env var not set)
+    const expectedBucket = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
+    if (object.bucket !== expectedBucket) {
+      console.log(`⏭️ Skipping file from bucket: ${object.bucket}, expected: ${expectedBucket}`);
       return;
     }
 
@@ -804,15 +812,16 @@ export const onMediaFileFinalize = onObjectFinalized({ region: 'us-east1' }, asy
       return;
     }
 
-    // Use the bucket from environment variable (consistent with function configuration)
-    const bucket = getStorage().bucket(process.env.STORAGE_BUCKET);
+    // Use the bucket from environment variable or default
+    const bucketName = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
+    const bucket = getStorage().bucket(bucketName);
     const dir = path.dirname(name);   // media/<uid>/<batchId>
     const base = path.parse(name).name;
     
     // Debug logging to confirm bucket usage
     console.log(`🔧 Using bucket for file operations: ${bucket.name}`);
-    console.log(`🔧 Environment STORAGE_BUCKET: ${process.env.STORAGE_BUCKET}`);
-    console.log(`🔧 Firebase config storage bucket: ${functions.config().app?.storage_bucket || 'undefined'}`);
+    console.log(`🔧 Environment STORAGE_BUCKET: ${process.env.STORAGE_BUCKET || 'undefined (using default)'}`);
+    console.log(`🔧 Final bucket used: ${bucketName}`);
 
     console.log(`🔍 Looking for media document for file: ${name}`);
     const mediaRef = await findMediaDocRef(name, dir, 5);
@@ -919,6 +928,8 @@ export const onMediaFileFinalize = onObjectFinalized({ region: 'us-east1' }, asy
       await new Promise<void>((res, rej) =>
         ffmpeg(tmpOriginal)
           .addOptions([
+            '-preset', 'fast', // Faster encoding: ultrafast/superfast/veryfast/fast/medium/slow
+            '-crf', '23', // Constant Rate Factor (18-28 range, 23 = balanced quality/size)
             '-profile:v', 'main',
             '-vf', 'scale=w=min(iw\\,1280):h=-2',
             '-start_number', '0',
@@ -1076,7 +1087,14 @@ export const resetStuckProcessing = onDocumentCreated("manual_fixes/{fixId}", as
 
 // ───────────────── PHONE NUMBER VALIDATION ─────────────────
 export const checkPhoneNumberExists = onCall({
-  cors: true, // Enable CORS for all origins
+  cors: [
+    'https://momsfitnessmojo.com',
+    'https://www.momsfitnessmojo.com',
+    'https://momfitnessmojo.web.app',
+    'https://momfitnessmojo.firebaseapp.com',
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ],
 }, async (request) => {
   console.log('🔍 checkPhoneNumberExists called with:', request.data);
   

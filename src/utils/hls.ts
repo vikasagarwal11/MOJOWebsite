@@ -18,9 +18,17 @@ export async function attachHls(video: HTMLVideoElement, storagePath: string): P
     if (Hls.isSupported()) {
       console.log('🌐 HLS.js is supported, creating HLS instance...');
       const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 90
+        enableWorker: false, // Disable worker to avoid CORS issues
+        lowLatencyMode: false, // Disable low latency mode which can cause issues
+        backBufferLength: 90,
+        // Add CORS configuration
+        xhrSetup: (xhr, _url) => {
+          xhr.withCredentials = false; // Don't send credentials
+        },
+        // Add fragment loading error recovery
+        fragLoadingTimeOut: 20000,
+        manifestLoadingTimeOut: 10000,
+        levelLoadingTimeOut: 10000
       });
 
       (video as any)._hls = hls;
@@ -31,25 +39,64 @@ export async function attachHls(video: HTMLVideoElement, storagePath: string): P
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         console.log('✅ HLS manifest loaded successfully');
+        // Try to play the video after manifest is parsed
+        if (video.paused) {
+          console.log('▶️ Attempting to start playback...');
+          video.play().catch((err: any) => {
+            console.warn('⚠️ Autoplay prevented:', err.message);
+          });
+        }
       });
 
       hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => {
-        console.log('📊 HLS level loaded:', data);
+        console.log('📊 HLS level loaded:', { level: data.level, bitrate: data.details?.totalduration });
+      });
+
+      hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
+        console.log('🎬 HLS fragment loaded:', { frag: data.frag.relurl });
+        // Try to play after first fragment
+        if (video.paused && video.readyState >= 2) {
+          console.log('▶️ First fragment loaded, attempting playback...');
+          video.play().catch((err: any) => {
+            console.warn('⚠️ Playback failed:', err.message);
+          });
+        }
       });
 
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        console.error('❌ HLS error:', data);
+        console.error('❌ HLS error:', {
+          type: data.type,
+          details: data.details,
+          fatal: data.fatal,
+          error: data.error
+        });
         if (data.fatal) {
-          console.log('🔄 Fatal HLS error, falling back to direct URL');
-          video.src = url;
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.log('🔄 Network error, trying to recover...');
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.log('🔄 Media error, trying to recover...');
+              hls.recoverMediaError();
+              break;
+            default:
+              console.log('🔄 Fatal HLS error, falling back to direct URL');
+              hls.destroy();
+              video.src = url;
+              break;
+          }
         }
       });
 
       console.log('✅ HLS instance created and attached successfully');
-    } else {
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       console.log('🍎 HLS.js not supported, using native HLS support');
       video.src = url;
       console.log('✅ Native HLS source set:', url);
+    } else {
+      console.log('⚠️ HLS not supported, using fallback URL');
+      video.src = url;
     }
   } catch (error) {
     console.error('❌ Failed to attach HLS:', error);

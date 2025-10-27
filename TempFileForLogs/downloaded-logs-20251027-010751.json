@@ -1,0 +1,594 @@
+[
+  {
+    "textPayload": "Shutting down all Genkit servers...",
+    "insertId": "68fefd1400077093830310ad",
+    "resource": {
+      "type": "cloud_function",
+      "labels": {
+        "function_name": "ext-storage-resize-images-generateResizedImage",
+        "region": "us-east1",
+        "project_id": "momsfitnessmojo-65d00"
+      }
+    },
+    "timestamp": "2025-10-27T05:03:16.487571Z",
+    "labels": {
+      "runtime_version": "nodejs20_20251019_20_19_5_RC00",
+      "instance_id": "0014778296e1471b862d58d739532476b19246ce8d63844a17d781d24200e514b72bfde58e47907eee347a8c4d3733c1f0c2ec2c24cf0c5a96a0b56c2152cac7790c2ef0c354109f49a6fc4a073780",
+      "execution_id": "n6s77f4e0gf2"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudfunctions.googleapis.com%2Fcloud-functions",
+    "trace": "projects/momsfitnessmojo-65d00/traces/69f83f54ab44f2913be2e6abfc898024",
+    "receiveTimestamp": "2025-10-27T05:03:16.490434332Z"
+  },
+  {
+    "textPayload": "Shutting down all Genkit servers...",
+    "insertId": "68fefd14000770ea140f0b1b",
+    "resource": {
+      "type": "cloud_function",
+      "labels": {
+        "project_id": "momsfitnessmojo-65d00",
+        "region": "us-east1",
+        "function_name": "ext-storage-resize-images-generateResizedImage"
+      }
+    },
+    "timestamp": "2025-10-27T05:03:16.487658Z",
+    "labels": {
+      "runtime_version": "nodejs20_20251019_20_19_5_RC00",
+      "instance_id": "0014778296a3f12aa0c34bf2042c52ab2b724741ecfc3a96173fab1aaf5e299024cccc098eb0cd6251b4f624d4c0765332bfe810972bee93814fe3aaf15b78c9a5428da736f55ad8a2447b463e3e0c"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudfunctions.googleapis.com%2Fcloud-functions",
+    "receiveTimestamp": "2025-10-27T05:03:16.823400212Z"
+  },
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "authenticationInfo": {
+        "principalEmail": "VikasAgarwal11@gmail.com",
+        "principalSubject": "user:VikasAgarwal11@gmail.com",
+        "oauthInfo": {
+          "oauthClientId": "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com"
+        }
+      },
+      "requestMetadata": {
+        "callerIp": "2600:4040:a5cc:b900:c9f:dc27:bfa4:55e",
+        "callerSuppliedUserAgent": "FirebaseCLI/14.14.0,gzip(gfe),gzip(gfe)",
+        "requestAttributes": {
+          "time": "2025-10-27T05:04:52.296818849Z",
+          "auth": {}
+        },
+        "destinationAttributes": {}
+      },
+      "serviceName": "cloudfunctions.googleapis.com",
+      "methodName": "google.cloud.functions.v2.FunctionService.GenerateUploadUrl",
+      "authorizationInfo": [
+        {
+          "resource": "projects/momsfitnessmojo-65d00/locations/us-east1/functions",
+          "permission": "cloudfunctions.functions.generateUploadUrl",
+          "granted": true,
+          "resourceAttributes": {
+            "service": "cloudfunctions.googleapis.com",
+            "name": "projects/momsfitnessmojo-65d00/locations/us-east1"
+          },
+          "permissionType": "ADMIN_WRITE"
+        }
+      ],
+      "resourceName": "projects/momsfitnessmojo-65d00/locations/us-east1/functions",
+      "request": {
+        "@type": "type.googleapis.com/google.cloud.functions.v2.GenerateUploadUrlRequest",
+        "parent": "projects/momsfitnessmojo-65d00/locations/us-east1"
+      },
+      "response": {
+        "@type": "type.googleapis.com/google.cloud.functions.v2.GenerateUploadUrlResponse",
+        "upload_url": "https://storage.googleapis.com/gcf-v2-uploads-313384637691.us-east1.cloudfunctions.appspot.com/748de775-fc06-4c71-9a6f-b099c18de069.zip?GoogleAccessId=service-313384637691@gcf-admin-robot.iam.gserviceaccount.com&Expires=1761543292&Signature=XJfaZnJtRN22sF2q2IQkO5EVvAlvQNdhoKXZzAFjYJt5RW9CWf3zjIBFySXolz6WhA0ii3O0IobqEp7aXgX17apDpeL0iaWFGiTUwxD80%2Fozv74YZPA4p%2BPPy%2BDcCOvpUZmEMWQbUlcjvEK48ivFGCNEN518ub0nTlVy7U5npeLWkpKfYDmaHE3ld7xbHzXgPdmBUsPbvoX53QHxuznS1ejio7msIbUIj2dGvSZP88%2BqPnfzxfcuYe6sXZjVLlEZ4CdBo5zmO1Qi2Ug8ACxTv7WmrVcnISeukl%2BcdKque9LHP5mkZzGJp6GJKn2TXYhMqTbc5%2FCaCC47CT%2FBS6Wvyg%3D%3D"
+      },
+      "resourceLocation": {
+        "currentLocations": [
+          "us-east1"
+        ]
+      }
+    },
+    "insertId": "1b68b2zdjdy1",
+    "resource": {
+      "type": "audited_resource",
+      "labels": {
+        "method": "google.cloud.functions.v2.FunctionService.GenerateUploadUrl",
+        "project_id": "momsfitnessmojo-65d00",
+        "service": "cloudfunctions.googleapis.com"
+      }
+    },
+    "timestamp": "2025-10-27T05:04:52.360325570Z",
+    "severity": "NOTICE",
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudaudit.googleapis.com%2Factivity",
+    "receiveTimestamp": "2025-10-27T05:04:53.235363072Z"
+  },
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "authenticationInfo": {
+        "principalEmail": "VikasAgarwal11@gmail.com",
+        "principalSubject": "user:VikasAgarwal11@gmail.com",
+        "oauthInfo": {
+          "oauthClientId": "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com"
+        }
+      },
+      "requestMetadata": {
+        "callerIp": "2600:4040:a5cc:b900:c9f:dc27:bfa4:55e",
+        "callerSuppliedUserAgent": "FirebaseCLI/14.14.0,gzip(gfe),gzip(gfe)",
+        "requestAttributes": {
+          "time": "2025-10-27T05:05:17.487430325Z",
+          "auth": {}
+        },
+        "destinationAttributes": {}
+      },
+      "serviceName": "cloudfunctions.googleapis.com",
+      "methodName": "google.cloud.functions.v2.FunctionService.GenerateUploadUrl",
+      "authorizationInfo": [
+        {
+          "resource": "projects/momsfitnessmojo-65d00/locations/us-east1/functions",
+          "permission": "cloudfunctions.functions.generateUploadUrl",
+          "granted": true,
+          "resourceAttributes": {
+            "service": "cloudfunctions.googleapis.com",
+            "name": "projects/momsfitnessmojo-65d00/locations/us-east1"
+          },
+          "permissionType": "ADMIN_WRITE"
+        }
+      ],
+      "resourceName": "projects/momsfitnessmojo-65d00/locations/us-east1/functions",
+      "request": {
+        "@type": "type.googleapis.com/google.cloud.functions.v2.GenerateUploadUrlRequest",
+        "parent": "projects/momsfitnessmojo-65d00/locations/us-east1"
+      },
+      "response": {
+        "upload_url": "https://storage.googleapis.com/gcf-v2-uploads-313384637691.us-east1.cloudfunctions.appspot.com/6edef683-90bd-47d5-99f9-24e8b3c73907.zip?GoogleAccessId=service-313384637691@gcf-admin-robot.iam.gserviceaccount.com&Expires=1761543317&Signature=q27HyD%2BjtBswTe4sgSwWsSo61QB9NArVnXwtqz%2BIe8rcbKD58dSCbbtqXd9fzdPgqEszKK71ce1CSazCKOcJ1fwNEYiE2PyFq%2FLvwtXqceH35DHFOGznswfFY21hQw64%2Bz9H1FF6Ok%2F5vxmg54aSj7CZOLfM43oE8YXtU0thN2kIejHlhaTdgmSHSiwKIBludcD%2BOXladQp65yJOfDKPRVuORoJnnHkc%2FeezIyji0GJ%2Bf%2BQsGor396vgADY5kZ8jefFfFKacHi6w2SK6zrLAXTcgQKfgZc%2FhiVAPKvEB7yiZqpVxFHvBWuG%2Bvap7jOocOg9IXKKMqN0IO1njgAk1nw%3D%3D",
+        "@type": "type.googleapis.com/google.cloud.functions.v2.GenerateUploadUrlResponse"
+      },
+      "resourceLocation": {
+        "currentLocations": [
+          "us-east1"
+        ]
+      }
+    },
+    "insertId": "bnvalidiius",
+    "resource": {
+      "type": "audited_resource",
+      "labels": {
+        "method": "google.cloud.functions.v2.FunctionService.GenerateUploadUrl",
+        "project_id": "momsfitnessmojo-65d00",
+        "service": "cloudfunctions.googleapis.com"
+      }
+    },
+    "timestamp": "2025-10-27T05:05:17.549615005Z",
+    "severity": "NOTICE",
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudaudit.googleapis.com%2Factivity",
+    "receiveTimestamp": "2025-10-27T05:05:18.159098483Z"
+  },
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "authenticationInfo": {
+        "principalEmail": "VikasAgarwal11@gmail.com",
+        "principalSubject": "user:VikasAgarwal11@gmail.com",
+        "oauthInfo": {
+          "oauthClientId": "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com"
+        }
+      },
+      "requestMetadata": {
+        "callerIp": "2600:4040:a5cc:b900:c9f:dc27:bfa4:55e",
+        "callerSuppliedUserAgent": "FirebaseCLI/14.14.0,gzip(gfe),gzip(gfe)",
+        "requestAttributes": {
+          "time": "2025-10-27T05:05:18.278175622Z",
+          "auth": {}
+        },
+        "destinationAttributes": {}
+      },
+      "serviceName": "artifactregistry.googleapis.com",
+      "methodName": "google.devtools.artifactregistry.v1.ArtifactRegistry.UpdateRepository",
+      "authorizationInfo": [
+        {
+          "resource": "projects/momsfitnessmojo-65d00/locations/us-central1/repositories/gcf-artifacts",
+          "permission": "artifactregistry.repositories.update",
+          "granted": true,
+          "resourceAttributes": {},
+          "permissionType": "ADMIN_WRITE"
+        }
+      ],
+      "resourceName": "projects/momsfitnessmojo-65d00/locations/us-central1/repositories/gcf-artifacts",
+      "request": {
+        "@type": "type.googleapis.com/google.devtools.artifactregistry.v1.UpdateRepositoryRequest",
+        "repository": {
+          "labels": {
+            "goog-managed-by": "cloudfunctions"
+          },
+          "cleanupPolicyDryRun": false,
+          "name": "projects/momsfitnessmojo-65d00/locations/us-central1/repositories/gcf-artifacts",
+          "cleanupPolicies": {
+            "firebase-functions-cleanup": {
+              "action": "DELETE",
+              "condition": {
+                "tagState": "ANY",
+                "olderThan": "86400s"
+              },
+              "id": "firebase-functions-cleanup"
+            }
+          }
+        }
+      },
+      "response": {
+        "cleanupPolicies": {
+          "firebase-functions-cleanup": {
+            "action": "DELETE",
+            "condition": {
+              "olderThan": "86400s",
+              "tagState": "ANY"
+            },
+            "id": "firebase-functions-cleanup"
+          }
+        },
+        "labels": {
+          "goog-managed-by": "cloudfunctions"
+        },
+        "@type": "type.googleapis.com/google.devtools.artifactregistry.v1.Repository",
+        "name": "projects/momsfitnessmojo-65d00/locations/us-central1/repositories/gcf-artifacts",
+        "format": "DOCKER"
+      }
+    },
+    "insertId": "1kcnjakd1b3b",
+    "resource": {
+      "type": "audited_resource",
+      "labels": {
+        "method": "google.devtools.artifactregistry.v1.ArtifactRegistry.UpdateRepository",
+        "service": "artifactregistry.googleapis.com",
+        "project_id": "momsfitnessmojo-65d00"
+      }
+    },
+    "timestamp": "2025-10-27T05:05:18.267930674Z",
+    "severity": "NOTICE",
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudaudit.googleapis.com%2Factivity",
+    "receiveTimestamp": "2025-10-27T05:05:18.739435773Z"
+  },
+  {
+    "insertId": "68fefdb1000bcfecf0a1cbd8",
+    "httpRequest": {
+      "requestMethod": "POST",
+      "requestUrl": "https://onmediadeletedcleanup-4andlrev6q-ue.a.run.app/?__GCP_CloudEventsMode=CE_PUBSUB_BINDING",
+      "requestSize": "3547",
+      "status": 200,
+      "responseSize": "176",
+      "userAgent": "APIs-Google; (+https://developers.google.com/webmasters/APIs-Google.html)",
+      "remoteIp": "74.125.215.166",
+      "serverIp": "34.143.78.2",
+      "latency": "0.743289780s",
+      "protocol": "HTTP/1.1"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momsfitnessmojo-65d00",
+        "location": "us-east1",
+        "service_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00004-rag",
+        "configuration_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-10-27T05:05:53.008853Z",
+    "severity": "INFO",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "instanceId": "00147782961e3a329eab1d35f47be25d9ae089f3567ac2df816a292f0f19b8a8a6a23757e4efe17fd77485e7817dae7b13a1ba2c1796f836e19222cafbf1f1087b231e3c7efc8b36b0a15730fb8c8a",
+      "run.googleapis.com/cloud_event_id": "a4eb8b31-0aa3-4cc1-b605-24d8b57d9bbd",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "run.googleapis.com/cloud_event_source": "//firestore.googleapis.com/projects/momsfitnessmojo-65d00/databases/(default)",
+      "firebase-functions-hash": "a249f894596afa29e321626a1c1740e7b25f4732",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Frequests",
+    "trace": "projects/momsfitnessmojo-65d00/traces/35815a3ef56c48b236ae2dc5a829bd0e",
+    "receiveTimestamp": "2025-10-27T05:05:53.777962551Z",
+    "spanId": "0a4bf324fe3b0837",
+    "traceSampled": true
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] Starting storage cleanup for deleted media: w0R6MH1Oa6jBqd7jm5hO {\n  filePath: 'media/seD0CPP2EVOGbMsZaB3sndzkQSx2/b20fb282-17f8-445b-b968-a55923e463a4/12472803_1920_1080_24fps.mp4',\n  thumbnailPath: undefined,\n  rotatedImagePath: undefined,\n  type: 'video',\n  sources: undefined,\n  usingBucket: undefined,\n  version: '2.3-FIXED-VIDEO-DELETION'\n}\n",
+    "insertId": "68fefdb10000e065bcbf94d2",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "onmediadeletedcleanup-00004-rag",
+        "project_id": "momsfitnessmojo-65d00",
+        "location": "us-east1",
+        "configuration_name": "onmediadeletedcleanup",
+        "service_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-10-27T05:05:53.057445Z",
+    "labels": {
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "instanceId": "00147782961e3a329eab1d35f47be25d9ae089f3567ac2df816a292f0f19b8a8a6a23757e4efe17fd77485e7817dae7b13a1ba2c1796f836e19222cafbf1f1087b231e3c7efc8b36b0a15730fb8c8a",
+      "firebase-functions-hash": "a249f894596afa29e321626a1c1740e7b25f4732",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20251018_22_20_0_RC00",
+      "execution_id": "8ocxaqx71bon"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-10-27T05:05:53.063803591Z",
+    "spanId": "741953903842232375"
+  },
+  {
+    "textPayload": "Error: functions.config() is no longer available in Cloud Functions for Firebase v2. Please see the latest documentation for information on how to transition to using environment variables\n    at Object.config (/workspace/node_modules/firebase-functions/lib/v1/config.js:45:15)\n    at /workspace/lib/index.js:614:65\n    at /workspace/node_modules/firebase-functions/lib/common/onInit.js:33:16\n    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)\n    at /workspace/node_modules/firebase-functions/lib/v2/trace.js:18:37\n    at func (/workspace/node_modules/firebase-functions/lib/v2/providers/firestore.js:301:78)\n    at /layers/google.nodejs.functions-framework/functions-framework/node_modules/@google-cloud/functions-framework/build/src/function_wrappers.js:119:25\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n",
+    "insertId": "68fefdb1000b477ab93dac05",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "onmediadeletedcleanup-00004-rag",
+        "project_id": "momsfitnessmojo-65d00",
+        "configuration_name": "onmediadeletedcleanup",
+        "location": "us-east1",
+        "service_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-10-27T05:05:53.739194Z",
+    "labels": {
+      "instanceId": "00147782961e3a329eab1d35f47be25d9ae089f3567ac2df816a292f0f19b8a8a6a23757e4efe17fd77485e7817dae7b13a1ba2c1796f836e19222cafbf1f1087b231e3c7efc8b36b0a15730fb8c8a",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20251018_22_20_0_RC00",
+      "execution_id": "8ocxaqx71bon",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "goog-managed-by": "cloudfunctions",
+      "firebase-functions-hash": "a249f894596afa29e321626a1c1740e7b25f4732",
+      "goog-drz-cloudfunctions-location": "us-east1"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-10-27T05:05:53.743639470Z",
+    "spanId": "741953903842232375",
+    "errorGroups": [
+      {
+        "id": "CNfh0ea33bGBKw"
+      }
+    ]
+  },
+  {
+    "insertId": "68fefdb3000401f3107c0c33",
+    "httpRequest": {
+      "requestMethod": "POST",
+      "requestUrl": "https://onmediadeletedcleanup-4andlrev6q-ue.a.run.app/?__GCP_CloudEventsMode=CE_PUBSUB_BINDING",
+      "requestSize": "3591",
+      "status": 200,
+      "responseSize": "176",
+      "userAgent": "APIs-Google; (+https://developers.google.com/webmasters/APIs-Google.html)",
+      "remoteIp": "66.102.6.129",
+      "serverIp": "34.143.76.2",
+      "latency": "0.008465570s",
+      "protocol": "HTTP/1.1"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "onmediadeletedcleanup",
+        "service_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00004-rag",
+        "project_id": "momsfitnessmojo-65d00",
+        "location": "us-east1"
+      }
+    },
+    "timestamp": "2025-10-27T05:05:55.251999Z",
+    "severity": "INFO",
+    "labels": {
+      "instanceId": "00147782961e3a329eab1d35f47be25d9ae089f3567ac2df816a292f0f19b8a8a6a23757e4efe17fd77485e7817dae7b13a1ba2c1796f836e19222cafbf1f1087b231e3c7efc8b36b0a15730fb8c8a",
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "run.googleapis.com/cloud_event_source": "//firestore.googleapis.com/projects/momsfitnessmojo-65d00/databases/(default)",
+      "run.googleapis.com/cloud_event_id": "1ce6af61-8a25-4cd6-8e21-86e500e14ab8",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "firebase-functions-hash": "a249f894596afa29e321626a1c1740e7b25f4732"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Frequests",
+    "trace": "projects/momsfitnessmojo-65d00/traces/355f34d113f3196c251239ff31ec6bb7",
+    "receiveTimestamp": "2025-10-27T05:05:55.443434437Z",
+    "spanId": "9994f624ea60933d"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] Starting storage cleanup for deleted media: 710PVOIx4QkQwJzWkmUR {\n  filePath: 'media/seD0CPP2EVOGbMsZaB3sndzkQSx2/a1795801-3cca-4e23-b01e-0aa877d297c4/Aina Rai Photo 1.png',\n  thumbnailPath: undefined,\n  rotatedImagePath: undefined,\n  type: 'image',\n  sources: undefined,\n  usingBucket: undefined,\n  version: '2.3-FIXED-VIDEO-DELETION'\n}\n",
+    "insertId": "68fefdb30003fa03bbcc4dca",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "service_name": "onmediadeletedcleanup",
+        "project_id": "momsfitnessmojo-65d00",
+        "revision_name": "onmediadeletedcleanup-00004-rag",
+        "configuration_name": "onmediadeletedcleanup",
+        "location": "us-east1"
+      }
+    },
+    "timestamp": "2025-10-27T05:05:55.260611Z",
+    "labels": {
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "firebase-functions-hash": "a249f894596afa29e321626a1c1740e7b25f4732",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20251018_22_20_0_RC00",
+      "goog-managed-by": "cloudfunctions",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "execution_id": "8ocz0avv4gjn",
+      "instanceId": "00147782961e3a329eab1d35f47be25d9ae089f3567ac2df816a292f0f19b8a8a6a23757e4efe17fd77485e7817dae7b13a1ba2c1796f836e19222cafbf1f1087b231e3c7efc8b36b0a15730fb8c8a"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-10-27T05:05:55.394590065Z",
+    "spanId": "11066740822767604541"
+  },
+  {
+    "textPayload": "Error: functions.config() is no longer available in Cloud Functions for Firebase v2. Please see the latest documentation for information on how to transition to using environment variables\n    at Object.config (/workspace/node_modules/firebase-functions/lib/v1/config.js:45:15)\n    at /workspace/lib/index.js:614:65\n    at /workspace/node_modules/firebase-functions/lib/common/onInit.js:33:16\n    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)\n    at /workspace/node_modules/firebase-functions/lib/v2/trace.js:18:37\n    at func (/workspace/node_modules/firebase-functions/lib/v2/providers/firestore.js:301:78)\n    at /layers/google.nodejs.functions-framework/functions-framework/node_modules/@google-cloud/functions-framework/build/src/function_wrappers.js:119:25\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n",
+    "insertId": "68fefdb30003fbc11f0eb04c",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "onmediadeletedcleanup",
+        "project_id": "momsfitnessmojo-65d00",
+        "revision_name": "onmediadeletedcleanup-00004-rag",
+        "location": "us-east1",
+        "service_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-10-27T05:05:55.261057Z",
+    "labels": {
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20251018_22_20_0_RC00",
+      "instanceId": "00147782961e3a329eab1d35f47be25d9ae089f3567ac2df816a292f0f19b8a8a6a23757e4efe17fd77485e7817dae7b13a1ba2c1796f836e19222cafbf1f1087b231e3c7efc8b36b0a15730fb8c8a",
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "goog-managed-by": "cloudfunctions",
+      "execution_id": "8ocz0avv4gjn",
+      "firebase-functions-hash": "a249f894596afa29e321626a1c1740e7b25f4732"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-10-27T05:05:55.406734427Z",
+    "spanId": "11066740822767604541",
+    "errorGroups": [
+      {
+        "id": "CNfh0ea33bGBKw"
+      }
+    ]
+  },
+  {
+    "insertId": "6709420103799090140",
+    "jsonPayload": {
+      "errorEvent": {
+        "eventTime": "2025-10-27T05:05:55.261057Z",
+        "message": "Error: functions.config() is no longer available in Cloud Functions for Firebase v2. Please see the latest documentation for information on how to transition to using environment variables\n    at Object.config (/workspace/node_modules/firebase-functions/lib/v1/config.js:45:15)\n    at /workspace/lib/index.js:614:65\n    at /workspace/node_modules/firebase-functions/lib/common/onInit.js:33:16\n    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)\n    at /workspace/node_modules/firebase-functions/lib/v2/trace.js:18:37\n    at func (/workspace/node_modules/firebase-functions/lib/v2/providers/firestore.js:301:78)\n    at /layers/google.nodejs.functions-framework/functions-framework/node_modules/@google-cloud/functions-framework/build/src/function_wrappers.js:119:25\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n",
+        "serviceContext": {
+          "service": "onmediadeletedcleanup",
+          "resourceType": "cloud_run_revision",
+          "version": "onmediadeletedcleanup-00004-rag"
+        }
+      },
+      "@type": "type.googleapis.com/google.devtools.clouderrorreporting.v1beta1.Insight",
+      "exceptionInfo": {
+        "type": "Error",
+        "message": "functions.config() is no longer available in Cloud Functions for Firebase v2. Please see the latest documentation for information on how to transition to using environment variables"
+      },
+      "message": "Error detected in onmediadeletedcleanup version onmediadeletedcleanup-00004-rag",
+      "errorGroup": "projects/momsfitnessmojo-65d00/groups/CNfh0ea33bGBKw"
+    },
+    "resource": {
+      "type": "reported_errors",
+      "labels": {
+        "project_id": "momsfitnessmojo-65d00"
+      }
+    },
+    "timestamp": "2025-10-27T05:05:55.988396112Z",
+    "severity": "NOTICE",
+    "labels": {
+      "exceptionType": "Error",
+      "logMessage": "Error: functions.config() is no longer available in Cloud Functions for Firebase v2. Please see the latest documentation for information on how to transition to using environment variables\n    at Object.config (/workspace/node_modules/firebase-functions/lib/v1/config.js:45:15)\n    at /workspace/lib/index.js:614:65\n    at /workspace/node_modules/firebase-functions/lib/common/onInit.js:33:16\n    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)\n    at /workspace/node_modules/fi...",
+      "errorGroupId": "CNfh0ea33bGBKw",
+      "exceptionMessage": "functions.config() is no longer available in Cloud Functions for Firebase v2. Please see the latest documentation for information on how to transition to using environment variables",
+      "deploymentVersion": "onmediadeletedcleanup-00004-rag",
+      "causeFullFilePath": "/workspace/lib/index.js",
+      "cloudRegion": "global",
+      "notificationType": "New",
+      "activity_type_name": "CrashReportingErrorGroupNew",
+      "causeFullyQualifiedFunction": "",
+      "causeLineNumber": "614",
+      "clouderrorreporting.googleapis.com/notification_trigger_error_ingestion_time": "2025-10-27T05:05:55.406734427+00:00",
+      "deploymentAppId": "onmediadeletedcleanup"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/clouderrorreporting.googleapis.com%2Finsights",
+    "receiveTimestamp": "2025-10-27T05:05:55.988396112Z"
+  },
+  {
+    "insertId": "68fefdb600062720fcf60cc0",
+    "httpRequest": {
+      "requestMethod": "POST",
+      "requestUrl": "https://onmediadeletedcleanup-4andlrev6q-ue.a.run.app/?__GCP_CloudEventsMode=CE_PUBSUB_BINDING",
+      "requestSize": "3617",
+      "status": 200,
+      "responseSize": "176",
+      "userAgent": "APIs-Google; (+https://developers.google.com/webmasters/APIs-Google.html)",
+      "remoteIp": "64.233.172.166",
+      "serverIp": "34.143.76.2",
+      "latency": "0.006632657s",
+      "protocol": "HTTP/1.1"
+    },
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "configuration_name": "onmediadeletedcleanup",
+        "location": "us-east1",
+        "project_id": "momsfitnessmojo-65d00",
+        "service_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00004-rag"
+      }
+    },
+    "timestamp": "2025-10-27T05:05:58.394860Z",
+    "severity": "INFO",
+    "labels": {
+      "run.googleapis.com/cloud_event_source": "//firestore.googleapis.com/projects/momsfitnessmojo-65d00/databases/(default)",
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "instanceId": "00147782961e3a329eab1d35f47be25d9ae089f3567ac2df816a292f0f19b8a8a6a23757e4efe17fd77485e7817dae7b13a1ba2c1796f836e19222cafbf1f1087b231e3c7efc8b36b0a15730fb8c8a",
+      "firebase-functions-hash": "a249f894596afa29e321626a1c1740e7b25f4732",
+      "run.googleapis.com/cloud_event_id": "78342780-5297-4776-ac35-1d00f2b94eb4",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Frequests",
+    "trace": "projects/momsfitnessmojo-65d00/traces/c73005a715fb1b290f12a3a310005981",
+    "receiveTimestamp": "2025-10-27T05:05:58.439838507Z",
+    "spanId": "1fcb138f5883ba01"
+  },
+  {
+    "textPayload": "🗑️ [CLOUD] Starting storage cleanup for deleted media: empyv9FETk5S7sRMYrO3 {\n  filePath: 'media/seD0CPP2EVOGbMsZaB3sndzkQSx2/c905c6ca-6162-48da-a493-005d98a951f4/IMG_6202.jpg',\n  thumbnailPath: undefined,\n  rotatedImagePath: undefined,\n  type: 'image',\n  sources: undefined,\n  usingBucket: undefined,\n  version: '2.3-FIXED-VIDEO-DELETION'\n}\n",
+    "insertId": "68fefdb6000620c669ed798d",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "momsfitnessmojo-65d00",
+        "revision_name": "onmediadeletedcleanup-00004-rag",
+        "location": "us-east1",
+        "configuration_name": "onmediadeletedcleanup",
+        "service_name": "onmediadeletedcleanup"
+      }
+    },
+    "timestamp": "2025-10-27T05:05:58.401606Z",
+    "labels": {
+      "execution_id": "8od1fkypyzvk",
+      "instanceId": "00147782961e3a329eab1d35f47be25d9ae089f3567ac2df816a292f0f19b8a8a6a23757e4efe17fd77485e7817dae7b13a1ba2c1796f836e19222cafbf1f1087b231e3c7efc8b36b0a15730fb8c8a",
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "firebase-functions-hash": "a249f894596afa29e321626a1c1740e7b25f4732",
+      "goog-managed-by": "cloudfunctions",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20251018_22_20_0_RC00"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fstdout",
+    "receiveTimestamp": "2025-10-27T05:05:58.722374620Z",
+    "spanId": "2290946341834308097"
+  },
+  {
+    "textPayload": "Error: functions.config() is no longer available in Cloud Functions for Firebase v2. Please see the latest documentation for information on how to transition to using environment variables\n    at Object.config (/workspace/node_modules/firebase-functions/lib/v1/config.js:45:15)\n    at /workspace/lib/index.js:614:65\n    at /workspace/node_modules/firebase-functions/lib/common/onInit.js:33:16\n    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)\n    at /workspace/node_modules/firebase-functions/lib/v2/trace.js:18:37\n    at func (/workspace/node_modules/firebase-functions/lib/v2/providers/firestore.js:301:78)\n    at /layers/google.nodejs.functions-framework/functions-framework/node_modules/@google-cloud/functions-framework/build/src/function_wrappers.js:119:25\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n",
+    "insertId": "68fefdb60006224cc3372714",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "us-east1",
+        "configuration_name": "onmediadeletedcleanup",
+        "service_name": "onmediadeletedcleanup",
+        "revision_name": "onmediadeletedcleanup-00004-rag",
+        "project_id": "momsfitnessmojo-65d00"
+      }
+    },
+    "timestamp": "2025-10-27T05:05:58.401996Z",
+    "labels": {
+      "instanceId": "00147782961e3a329eab1d35f47be25d9ae089f3567ac2df816a292f0f19b8a8a6a23757e4efe17fd77485e7817dae7b13a1ba2c1796f836e19222cafbf1f1087b231e3c7efc8b36b0a15730fb8c8a",
+      "goog-drz-cloudfunctions-id": "onmediadeletedcleanup",
+      "goog-drz-cloudfunctions-location": "us-east1",
+      "execution_id": "8od1fkypyzvk",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22-full/runtimes/nodejs22:nodejs22_20251018_22_20_0_RC00",
+      "firebase-functions-hash": "a249f894596afa29e321626a1c1740e7b25f4732",
+      "goog-managed-by": "cloudfunctions"
+    },
+    "logName": "projects/momsfitnessmojo-65d00/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2025-10-27T05:05:58.738241823Z",
+    "spanId": "2290946341834308097",
+    "errorGroups": [
+      {
+        "id": "CNfh0ea33bGBKw"
+      }
+    ]
+  }
+]
