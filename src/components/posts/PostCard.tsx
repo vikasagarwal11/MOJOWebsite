@@ -20,6 +20,7 @@ import {
 import toast from 'react-hot-toast';
 import CommentSection from '../common/CommentSection';
 import AdminPostDeletionModal from './AdminPostDeletionModal';
+import { createPortal } from 'react-dom';
 
 interface PostCardProps {
   post: Post;
@@ -192,16 +193,19 @@ const PostCard: React.FC<PostCardProps> = ({ post, onPostDeleted }) => {
         />
       </div>
 
-      {/* Admin Post Deletion Modal */}
-      <AdminPostDeletionModal
-        post={post}
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        onPostDeleted={() => {
-          setShowDeleteModal(false);
-          onPostDeleted?.();
-        }}
-      />
+      {/* Admin Post Deletion Modal - Portal to avoid z-index issues */}
+      {createPortal(
+        <AdminPostDeletionModal
+          post={post}
+          isOpen={showDeleteModal}
+          onClose={() => setShowDeleteModal(false)}
+          onPostDeleted={() => {
+            setShowDeleteModal(false);
+            onPostDeleted?.();
+          }}
+        />,
+        document.body
+      )}
     </div>
   );
 };

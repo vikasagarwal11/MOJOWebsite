@@ -12,7 +12,8 @@ export const useStorage = () => {
   const uploadFile = async (
     file: File,
     path: string,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    metadata?: Record<string, string>
   ): Promise<string> => {
     if (!currentUser) {
       throw new Error('User must be authenticated to upload files');
@@ -21,9 +22,20 @@ export const useStorage = () => {
     setUploading(true);
     try {
       const storageRef = ref(storage, path);
+      const baseMetadata = {
+        contentType: file.type || undefined,
+        customMetadata: {
+          userId: currentUser.id,
+          userEmail: currentUser.email || '',
+          originalFileName: file.name,
+          uploadSource: path.split('/')[0] || 'unknown',
+          uploadTimestamp: new Date().toISOString(),
+          ...(metadata || {})
+        }
+      };
       
       // Use uploadBytesResumable for progress tracking
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      const uploadTask = uploadBytesResumable(storageRef, file, baseMetadata);
       
       // Set up progress tracking
       if (onProgress) {

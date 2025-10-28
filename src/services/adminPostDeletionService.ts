@@ -30,7 +30,7 @@ export class AdminPostDeletionService {
    * @param adminId - The ID of the admin performing the deletion
    * @returns Promise<PostDeletionResult>
    */
-  static async deletePost(postId: string, adminId: string): Promise<PostDeletionResult> {
+  static async deletePost(postId: string, actorId: string): Promise<PostDeletionResult> {
     const result: PostDeletionResult = {
       success: false,
       deletedCounts: {
@@ -43,7 +43,7 @@ export class AdminPostDeletionService {
     };
 
     try {
-      console.log(`🗑️ [AdminPostDeletion] Starting deletion of post ${postId} by admin ${adminId}`);
+      console.log(`🗑️ [AdminPostDeletion] Starting deletion of post ${postId} by user ${actorId}`);
 
       // 1. Get post data first to check for associated media
       const postRef = doc(db, 'posts', postId);
@@ -56,6 +56,12 @@ export class AdminPostDeletionService {
 
       const postData = postDoc.data();
       console.log(`🗑️ [AdminPostDeletion] Post data retrieved:`, postData);
+
+      const isAdminUser = await this.checkAdminPermissions(actorId);
+      const isAuthor = postData?.authorId === actorId;
+      if (!isAdminUser && !isAuthor) {
+        throw new Error('User is not authorized to delete this post');
+      }
 
       // 2. Delete all comments and their reactions
       const commentsResult = await this.deletePostComments(postId);
@@ -78,7 +84,7 @@ export class AdminPostDeletionService {
       console.log(`✅ [AdminPostDeletion] Post document deleted`);
 
       // 5. Log the deletion action
-      await this.logDeletionAction(postId, adminId, result.deletedCounts);
+      await this.logDeletionAction(postId, actorId, result.deletedCounts, isAdminUser ? 'admin' : 'author');
 
       result.success = true;
       console.log(`✅ [AdminPostDeletion] Post deletion completed successfully:`, result.deletedCounts);
@@ -328,14 +334,16 @@ export class AdminPostDeletionService {
    */
   private static async logDeletionAction(
     postId: string, 
-    adminId: string, 
-    deletedCounts: PostDeletionResult['deletedCounts']
+    actorId: string, 
+    deletedCounts: PostDeletionResult['deletedCounts'],
+    actorRole: 'admin' | 'author'
   ): Promise<void> {
     try {
       await addDoc(collection(db, 'adminLogs'), {
         action: 'post_deletion',
         postId,
-        adminId,
+        actorId,
+        actorRole,
         deletedCounts,
         timestamp: new Date(),
         type: 'admin_action'
@@ -375,17 +383,11 @@ export class AdminPostDeletionService {
 export function useAdminPostDeletion() {
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const deletePost = async (postId: string, adminId: string): Promise<PostDeletionResult> => {
+  const deletePost = async (postId: string, actorId: string): Promise<PostDeletionResult> => {
     setIsDeleting(true);
     
     try {
-      // Check admin permissions
-      const hasPermission = await AdminPostDeletionService.checkAdminPermissions(adminId);
-      if (!hasPermission) {
-        throw new Error('User does not have admin permissions');
-      }
-
-      const result = await AdminPostDeletionService.deletePost(postId, adminId);
+      const result = await AdminPostDeletionService.deletePost(postId, actorId);
       
       if (result.success) {
         toast.success(`Post deleted successfully! Removed ${result.deletedCounts.post} post, ${result.deletedCounts.comments} comments, ${result.deletedCounts.reactions} reactions, and ${result.deletedCounts.mediaFiles} media files.`);
