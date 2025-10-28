@@ -11,6 +11,7 @@ import { ReactionPicker } from './ReactionPicker';
 import { CommentMediaLightbox } from './CommentMediaLightbox';
 import AdminThreadDeletionModal from './AdminThreadDeletionModal';
 import toast from 'react-hot-toast';
+import { createPortal } from 'react-dom';
 
 function usePopoverPosition(anchorRef: React.RefObject<HTMLElement>, open: boolean) {
   const [pos, setPos] = React.useState<{top:number; left:number}>({ top: 0, left: 0 });
@@ -206,27 +207,12 @@ const CommentItem: React.FC<CommentItemProps> = ({
             )}
           </div>
 
-          {/* Debug logging */}
-          {(() => {
-            console.log('🔍 Comment Delete Debug:', {
-              commentId: comment.id,
-              commentAuthorId: comment.authorId,
-              commentAuthorName: comment.authorName,
-              currentUserId: currentUser?.id,
-              currentUserName: currentUser?.displayName,
-              currentUserRole: currentUser?.role,
-              isEqual: currentUser?.id === comment.authorId,
-              isAdmin: isAdmin,
-              shouldShowDelete: (currentUser?.id === comment.authorId || isAdmin)
-            });
-            return null;
-          })()}
 
           
           {/* Comment Actions */}
           <div className="flex items-center space-x-2">
             {/* Emoji Reactions */}
-            <div className="relative">
+            <div className="relative" data-reaction-container>
               <button
                 ref={triggerRef}
                 onClick={() => {
@@ -531,17 +517,20 @@ const CommentItem: React.FC<CommentItemProps> = ({
         )}
       </div>
 
-      {/* Admin Thread Deletion Modal */}
-      <AdminThreadDeletionModal
-        comment={comment}
-        collectionPath={collectionPath}
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        onThreadDeleted={() => {
-          setShowDeleteModal(false);
-          // The comment will be automatically removed from the UI due to real-time updates
-        }}
-      />
+      {/* Admin Thread Deletion Modal - Portal to avoid z-index issues */}
+      {createPortal(
+        <AdminThreadDeletionModal
+          comment={comment}
+          collectionPath={collectionPath}
+          isOpen={showDeleteModal}
+          onClose={() => setShowDeleteModal(false)}
+          onThreadDeleted={() => {
+            setShowDeleteModal(false);
+            // The comment will be automatically removed from the UI due to real-time updates
+          }}
+        />,
+        document.body
+      )}
     </div>
   );
 };
@@ -673,8 +662,22 @@ const CommentSection: React.FC<CommentSectionProps> = ({
       try {
         const fileName = `${Date.now()}_${file.name}`;
         console.log('📁 [CommentSection] Uploading file:', fileName);
-        const storageRef = ref(storage, `comments/${fileName}`);
-        const snapshot = await uploadBytes(storageRef, file);
+        if (!currentUser?.id) {
+          throw new Error('User must be signed in to upload attachments');
+        }
+        const storageRef = ref(storage, `comments/${currentUser.id}/${fileName}`);
+        
+        // Add custom metadata for ownership tracking
+        const metadata = {
+          customMetadata: {
+            userId: currentUser?.id || '',
+            userEmail: currentUser?.email || '',
+            uploadTimestamp: new Date().toISOString(),
+            originalFileName: file.name
+          }
+        };
+        
+        const snapshot = await uploadBytes(storageRef, file, metadata);
         const downloadURL = await getDownloadURL(snapshot.ref);
         console.log('📁 [CommentSection] File uploaded successfully:', fileName, 'URL:', downloadURL);
         return downloadURL;

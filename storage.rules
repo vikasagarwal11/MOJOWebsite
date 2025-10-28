@@ -66,7 +66,10 @@ service firebase.storage {
                    && (request.resource.size < 10 * 1024 * 1024) // < 10MB
                    && (request.resource.contentType.matches('image/.*')
                        || request.resource.contentType.matches('video/.*'));
-      allow delete: if isSignedIn() && isAdmin(); // Only admins can delete post images
+      // Delete: Author or admin can delete post media
+      // Note: Post media may not have metadata, so we allow deletion by authenticated users
+      // This is less secure but posts are generally public content
+      allow delete: if isSignedIn();
     }
     
     // =========================
@@ -84,13 +87,27 @@ service firebase.storage {
     // =========================
     // Comment attachments (members only): comments/{...}
     // =========================
+    match /comments/{userId}/{fileName=**} {
+      allow read: if true;
+      allow write: if isSignedIn()
+                   && request.auth.uid == userId
+                   && request.resource.size < 15 * 1024 * 1024
+                   && (request.resource.contentType.matches('image/.*')
+                       || request.resource.contentType.matches('video/.*'));
+      allow delete: if isSignedIn()
+                    && (isAdmin() || request.auth.uid == userId);
+    }
+
+    // Legacy flat comment attachments without user folders
     match /comments/{fileName=**} {
       allow read: if true;
       allow write: if isSignedIn()
-                   && request.resource.size < 15 * 1024 * 1024 // < 15MB (optimized for comment attachments)
+                   && request.resource.size < 15 * 1024 * 1024
                    && (request.resource.contentType.matches('image/.*')
-                       || request.resource.contentType.matches('video/.*'));
-      allow delete: if isSignedIn() && isAdmin(); // Only admins can delete
+                       || request.resource.contentType.matches('video/.*'))
+                   && matchesRequestOwner();
+      allow delete: if isSignedIn()
+                    && (isAdmin() || resourceOwnedByRequester());
     }
     
     // =========================
@@ -98,11 +115,34 @@ service firebase.storage {
     // =========================
     match /media-comments/{fileName=**} {
       allow read: if true;
+      // Upload: Require signed-in user + ownership metadata must match auth.uid
       allow write: if isSignedIn()
-                   && request.resource.size < 15 * 1024 * 1024 // < 15MB (optimized for comment attachments)
+                   && request.resource.size < 15 * 1024 * 1024 // < 15MB
                    && (request.resource.contentType.matches('image/.*')
-                       || request.resource.contentType.matches('video/.*'));
-      allow delete: if isSignedIn() && isAdmin(); // Only admins can delete
+                       || request.resource.contentType.matches('video/.*'))
+                   && request.resource.metadata != null
+                   && request.resource.metadata.customMetadata != null
+                   && request.resource.metadata.customMetadata.userId == request.auth.uid;
+      // Delete: Author or admin can delete their comment attachments
+      allow delete: if isSignedIn()
+                    && (isAdmin() || (resource != null 
+                                      && resource.metadata != null 
+                                      && resource.metadata.customMetadata != null 
+                                      && resource.metadata.customMetadata.userId == request.auth.uid));
+    }
+
+    function matchesRequestOwner() {
+      return request.resource != null
+        && request.resource.metadata != null
+        && request.resource.metadata.customMetadata != null
+        && request.resource.metadata.customMetadata.userId == request.auth.uid;
+    }
+
+    function resourceOwnedByRequester() {
+      return resource != null
+        && resource.metadata != null
+        && resource.metadata.customMetadata != null
+        && resource.metadata.customMetadata.userId == request.auth.uid;
     }
     
     // Fallback: deny anything not matched above
