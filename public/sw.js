@@ -1,10 +1,10 @@
 // Service Worker for Moms Fitness Mojo
 // Enhanced PWA service worker with advanced caching strategies
 
-const CACHE_NAME = 'moms-fitness-mojo-v5';
-const STATIC_CACHE = 'moms-fitness-mojo-static-v5';
-const DYNAMIC_CACHE = 'moms-fitness-mojo-dynamic-v5';
-const IMAGE_CACHE = 'moms-fitness-mojo-images-v5';
+const CACHE_NAME = 'moms-fitness-mojo-v6';
+const STATIC_CACHE = 'moms-fitness-mojo-static-v6';
+const DYNAMIC_CACHE = 'moms-fitness-mojo-dynamic-v6';
+const IMAGE_CACHE = 'moms-fitness-mojo-images-v6';
 
 // Static assets to cache immediately
 const urlsToCache = [

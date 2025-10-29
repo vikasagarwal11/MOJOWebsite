@@ -27,6 +27,8 @@ import AdminBulkAttendees from './pages/AdminBulkAttendees';
 import AdminCleanup from './pages/AdminCleanup';
 import EventsReadOnly from './pages/EventsReadOnly';
 import EventDetailsPage from './pages/EventDetailsPage';
+import AdminTestimonials from './pages/AdminTestimonials';
+import ShareYourStory from './pages/ShareYourStory';
 
 function AppContent() {
   const { currentUser } = useAuth();
@@ -75,6 +77,7 @@ function AppContent() {
           <Route path="/register" element={<Register />} />
           <Route path="/admin/bulk-attendees" element={<AdminBulkAttendees />} />
           <Route path="/admin/cleanup" element={<AdminCleanup />} />
+          <Route path="/admin/testimonials" element={<AdminTestimonials />} />
           <Route path="/" element={<Layout />}>
             <Route index element={<Home />} />
             <Route path="events" element={<Events />} />
@@ -93,6 +96,7 @@ function AppContent() {
             <Route path="reset" element={<Reset />} />
             <Route path="press" element={<Press />} />
             <Route path="community-guidelines" element={<CommunityGuidelines />} />
+            <Route path="share-your-story" element={<ShareYourStory />} />
           </Route>
         </Routes>
       </div>

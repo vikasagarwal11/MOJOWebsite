@@ -67,6 +67,11 @@ Located in `functions/` directory:
 - `firebase-admin` ^12.6.0 - Firebase Admin SDK
 - `firebase-functions` ^6.0.1 - Cloud Functions framework
 
+### **AI & Machine Learning**
+- `@google/generative-ai` ^0.21.0 - Google Gemini AI SDK (for testimonial generation)
+- `genkit` ^1.16.1 - Firebase Genkit AI framework (installed, not currently used)
+- `genkit-cli` ^1.16.1 - Genkit CLI tools
+
 ### **Development Dependencies**
 - `typescript` ^5.9.2 - TypeScript compiler
 - `eslint` ^9.14.0 - Code linting
@@ -94,10 +99,16 @@ npm run build
 
 ### **For Functions Deployment:**
 ```bash
+# Install dependencies locally (for building/testing)
 cd functions
 npm install
+npm run build
+
+# Deploy (Firebase automatically runs npm install on their servers)
 firebase deploy --only functions
 ```
+
+**Note:** Firebase automatically installs dependencies during deployment, but you need to install locally for building/testing.
 
 ## 📋 **Environment Variables Required**
 

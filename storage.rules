@@ -66,10 +66,9 @@ service firebase.storage {
                    && (request.resource.size < 50 * 1024 * 1024) // < 50MB
                    && (request.resource.contentType.matches('image/.*')
                        || request.resource.contentType.matches('video/.*'));
-      // Delete: Author or admin can delete post media
-      // Note: Post media may not have metadata, so we allow deletion by authenticated users
-      // This is less secure but posts are generally public content
-      allow delete: if isSignedIn();
+      // Delete: Author (based on metadata) or admins can remove post media
+      allow delete: if isSignedIn()
+                    && (isAdmin() || resourceOwnedByRequester());
     }
     
     // =========================
