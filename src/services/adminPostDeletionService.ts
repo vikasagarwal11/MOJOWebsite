@@ -121,12 +121,22 @@ export class AdminPostDeletionService {
       // Delete each comment and its reactions
       for (const commentDoc of commentsSnapshot.docs) {
         const commentId = commentDoc.id;
+        const commentData = commentDoc.data();
         
         try {
           // Delete comment reactions
           const reactionsResult = await this.deleteCommentReactions(postId, commentId);
           result.reactions += reactionsResult.reactions;
           result.errors.push(...reactionsResult.errors);
+
+          // Delete comment media files BEFORE deleting the comment document
+          if (commentData.mediaUrls && Array.isArray(commentData.mediaUrls)) {
+            const mediaResult = await this.deleteCommentMediaFiles(commentData, commentId);
+            result.errors.push(...mediaResult.errors);
+            if (mediaResult.deletedFiles > 0) {
+              console.log(`🗑️ [AdminPostDeletion] Deleted ${mediaResult.deletedFiles} media files for comment ${commentId}`);
+            }
+          }
 
           // Delete the comment document
           await deleteDoc(commentDoc.ref);
@@ -180,6 +190,85 @@ export class AdminPostDeletionService {
     } catch (error) {
       console.error(`❌ [AdminPostDeletion] Error deleting reactions for comment ${commentId}:`, error);
       result.errors.push(`Failed to delete reactions for comment ${commentId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Delete media files associated with a comment
+   */
+  private static async deleteCommentMediaFiles(commentData: any, commentId: string): Promise<{
+    deletedFiles: number;
+    errors: string[];
+  }> {
+    const result = {
+      deletedFiles: 0,
+      errors: [] as string[]
+    };
+
+    try {
+      if (commentData.mediaUrls && Array.isArray(commentData.mediaUrls)) {
+        for (const mediaUrl of commentData.mediaUrls) {
+          try {
+            const url = new URL(mediaUrl);
+            const pathMatch = url.pathname.match(/\/o\/(.+?)(?:\?|$)/);
+            
+            if (pathMatch) {
+              const filePath = decodeURIComponent(pathMatch[1]);
+              const fileRef = ref(storage, filePath);
+              
+              await deleteObject(fileRef);
+              result.deletedFiles++;
+              console.log(`✅ [AdminPostDeletion] Comment media file deleted: ${filePath}`);
+
+              // Delete thumbnails if this is an image
+              if (filePath.startsWith('comments/') && (filePath.includes('.jpg') || filePath.includes('.jpeg') || filePath.includes('.png') || filePath.includes('.webp'))) {
+                try {
+                  const pathParts = filePath.split('/');
+                  const fileName = pathParts.pop();
+                  const directory = pathParts.join('/');
+                  
+                  if (fileName) {
+                    const thumbnailsDir = `${directory}/thumbnails`;
+                    const thumbnailsListRef = ref(storage, thumbnailsDir);
+                    
+                    try {
+                      const thumbnailsList = await listAll(thumbnailsListRef);
+                      const matchingThumbnails = thumbnailsList.items.filter(item => {
+                        const itemName = item.name;
+                        return itemName.includes(fileName.replace(/\.[^/.]+$/, '')) && itemName.includes('_400x400');
+                      });
+                      
+                      console.log(`🔍 [AdminPostDeletion] Found ${matchingThumbnails.length} matching comment thumbnails for ${fileName}`);
+                      
+                      for (const thumbnailItem of matchingThumbnails) {
+                        try {
+                          await deleteObject(thumbnailItem);
+                          result.deletedFiles++;
+                          console.log(`✅ [AdminPostDeletion] Comment thumbnail deleted: ${thumbnailItem.fullPath}`);
+                        } catch (deleteError) {
+                          console.log(`ℹ️ [AdminPostDeletion] Failed to delete comment thumbnail ${thumbnailItem.fullPath}:`, deleteError);
+                        }
+                      }
+                    } catch (listError) {
+                      console.log(`ℹ️ [AdminPostDeletion] Could not list comment thumbnails directory ${thumbnailsDir}:`, listError);
+                    }
+                  }
+                } catch (thumbnailError) {
+                  console.log(`ℹ️ [AdminPostDeletion] Comment thumbnail deletion process failed:`, thumbnailError);
+                }
+              }
+            }
+          } catch (error) {
+            console.error('❌ [AdminPostDeletion] Error deleting comment media file:', error);
+            result.errors.push(`Failed to delete comment media file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ [AdminPostDeletion] Error deleting comment media files:', error);
+      result.errors.push(`Failed to delete comment media files: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
     return result;
