@@ -4,9 +4,9 @@ import { Heart, Users, Calendar, Target, Award, Globe } from 'lucide-react';
 
 const About: React.FC = () => {
   const stats = [
-    { icon: Users, label: 'Active Members', value: '500+' },
-    { icon: Calendar, label: 'Events Hosted', value: '100+' },
-    { icon: Heart, label: 'Lives Changed', value: '1000+' },
+    { icon: Users, label: 'Active Members', value: '180+' },
+    { icon: Calendar, label: 'Monthly Events', value: '2+' },
+    { icon: Heart, label: 'Events Hosted', value: '100+' },
     { icon: Globe, label: 'Communities', value: '5+' },
   ];
 

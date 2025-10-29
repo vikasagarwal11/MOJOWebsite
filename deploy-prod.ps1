@@ -162,6 +162,10 @@ switch ($Component.ToLower()) {
         Write-Host "Deploying Firestore rules and indexes..." -ForegroundColor Cyan
         firebase deploy --only firestore --project=momsfitnessmojo-65d00 --config=firebase.prod.json
     }
+    "storage" {
+        Write-Host "Deploying Storage rules..." -ForegroundColor Cyan
+        firebase deploy --only storage --project=momsfitnessmojo-65d00 --config=firebase.prod.json
+    }
     "functions" {
         Write-Host "Deploying Cloud Functions..." -ForegroundColor Cyan
         firebase deploy --only functions --project=momsfitnessmojo-65d00 --config=firebase.prod.json
@@ -172,7 +176,7 @@ switch ($Component.ToLower()) {
     }
     "no-extensions" {
         Write-Host "Deploying everything except extensions..." -ForegroundColor Cyan
-        firebase deploy --only "hosting,firestore,functions" --project=momsfitnessmojo-65d00 --config=firebase.prod.json
+        firebase deploy --only "hosting,firestore,functions,storage" --project=momsfitnessmojo-65d00 --config=firebase.prod.json
     }
     "all" {
         Write-Host "Deploying everything..." -ForegroundColor Cyan
