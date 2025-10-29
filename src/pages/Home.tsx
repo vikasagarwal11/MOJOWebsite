@@ -7,12 +7,14 @@ import {
   Users,
   Camera,
   Heart,
-  Star,
   UploadCloud,
   Image as ImageIcon,
+  MessageSquare,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import HeroCarousel from '../components/hero/HeroCarousel';
+import TestimonialCarousel from '../components/home/TestimonialCarousel';
+import { useTestimonials } from '../hooks/useTestimonials';
 // import { ResponsiveLogo } from '../components/common/ResponsiveLogo';
 
 const Home: React.FC = () => {
@@ -46,23 +48,17 @@ const Home: React.FC = () => {
     },
   ];
 
-  const testimonials = [
-    {
-      name: 'Sarah Johnson',
-      text: 'This community has been a game-changer for my fitness journey. The support and motivation from other moms is incredible!',
-      rating: 5,
-    },
-    {
-      name: 'Emily Chen',
-      text: 'I love how flexible the events are. As a working mom, I can finally fit fitness into my busy schedule.',
-      rating: 5,
-    },
-    {
-      name: 'Maria Rodriguez',
-      text: "The friendships I've made here go beyond fitness. We support each other in all aspects of motherhood.",
-      rating: 5,
-    },
-  ];
+  const {
+    testimonials: publishedTestimonials,
+    loading: loadingTestimonials,
+    error: testimonialsError,
+  } = useTestimonials({
+    statuses: ['published'],
+    orderByField: 'createdAt',
+    orderDirection: 'desc',
+    prioritizeFeatured: true,
+    limit: 12,
+  });
 
   return (
     <div>
@@ -294,51 +290,34 @@ const Home: React.FC = () => {
       )}
 
       {/* Testimonials */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4">
-        <div className="text-center mb-10">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-          What Moms Are Saying
-          </h2>
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4 space-y-10">
+        <div className="text-center mb-6">
+          <div className="flex items-center justify-center gap-4 mb-3 flex-wrap">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
+              What Moms Are Saying
+            </h2>
+            <Link
+              to="/share-your-story"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white rounded-full font-semibold hover:from-[#E0451F] hover:to-[#E55A2B] transition-all shadow-md hover:shadow-lg transform hover:scale-105"
+            >
+              <MessageSquare className="w-4 h-4" />
+              Share Your Story
+            </Link>
+          </div>
+          <p className="mx-auto max-w-2xl text-base text-gray-600">
+            Real words from the women shaping Moms Fitness Mojo. Scroll through our community stories or{' '}
+            <Link to="/share-your-story" className="text-[#F25129] font-semibold hover:underline">
+              share your own
+            </Link>
+            .
+          </p>
         </div>
 
-        <motion.div 
-          className="grid grid-cols-1 md:grid-cols-3 gap-6"
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true }}
-          variants={{
-            hidden: { opacity: 0 },
-            visible: {
-              opacity: 1,
-              transition: {
-                staggerChildren: 0.15
-              }
-            }
-          }}
-        >
-          {testimonials.map((t, i) => (
-            <motion.div
-              key={i}
-              variants={{
-                hidden: { opacity: 0, y: 20 },
-                visible: { opacity: 1, y: 0 }
-              }}
-              transition={{ duration: 0.5 }}
-            >
-              <div
-                className="bg-white/70 backdrop-blur-sm rounded-2xl p-6 border border-[#F25129]/20 shadow-lg hover:shadow-xl transition-transform hover:-translate-y-2 hover:rotate-[0.25deg]"
-              >
-                <div className="flex items-center mb-4">
-                  {[...Array(t.rating)].map((_, j) => (
-                    <Star key={j} className="w-5 h-5 text-[#FFC107] fill-current" />
-                  ))}
-                </div>
-                <blockquote className="text-gray-800 font-accent text-lg mb-4">"{t.text}"</blockquote>
-                <div className="text-[#F25129] font-semibold">{t.name}</div>
-              </div>
-            </motion.div>
-          ))}
-        </motion.div>
+        <TestimonialCarousel
+          testimonials={publishedTestimonials}
+          loading={loadingTestimonials}
+          error={testimonialsError}
+        />
       </section>
 
       {/* CTA / Member Quick Actions */}

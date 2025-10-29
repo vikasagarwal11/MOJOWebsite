@@ -102,5 +102,24 @@ export interface Promotion {
   imageUrl?: string;
 }
 
+export type TestimonialStatus = 'pending' | 'published' | 'rejected';
+
+export interface Testimonial {
+  id: string;
+  userId: string;
+  displayName: string;
+  quote: string;
+  rating: number;
+  status: TestimonialStatus;
+  featured?: boolean;
+  highlight?: string;
+  avatarUrl?: string;
+  createdAt: Date;
+  updatedAt?: Date;
+  reviewedBy?: string;
+  reviewedAt?: Date;
+  publishedAt?: Date;
+}
+
 // Re-export payment types
 export * from './payment';

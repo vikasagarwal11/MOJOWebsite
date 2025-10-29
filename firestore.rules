@@ -58,6 +58,14 @@ service cloud.firestore {
     function isUrlLike(v) {
       return v is string && v.size() <= 2048 && v.matches('https?://.*');
     }
+
+    function isValidRating(r) {
+      return r is number && r >= 1 && r <= 5;
+    }
+
+    function isAllowedTestimonialStatus(status) {
+      return status == 'pending' || status == 'published' || status == 'rejected';
+    }
     
     function validAddress(m) {
       return m is map && 
@@ -482,6 +490,77 @@ service cloud.firestore {
              (request.auth.uid == resource.data.userId || isAdmin());
          }
       }
+    }
+    
+    // --- TESTIMONIALS ---
+    match /testimonials/{testimonialId} {
+      allow read: if resource != null && (
+        resource.data.status == 'published' ||
+        (isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid))
+      );
+
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly([
+          'userId',
+          'displayName',
+          'quote',
+          'rating',
+          'status',
+          'featured',
+          'createdAt',
+          'updatedAt',
+          'highlight',
+          'avatarUrl'
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && isNonEmptyString(request.resource.data.displayName)
+        && isNonEmptyString(request.resource.data.quote)
+        && request.resource.data.quote.size() >= 20
+        && request.resource.data.quote.size() <= 800
+        && isValidRating(request.resource.data.rating)
+        && request.resource.data.status == 'pending'
+        && isAllowedTestimonialStatus(request.resource.data.status)
+        && ('createdAt' in request.resource.data) && request.resource.data.createdAt is timestamp
+        && (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp)
+        && (!('featured' in request.resource.data) || request.resource.data.featured == false)
+        && (!('avatarUrl' in request.resource.data) || isUrlLike(request.resource.data.avatarUrl))
+        && (!('highlight' in request.resource.data) || (request.resource.data.highlight is string && request.resource.data.highlight.size() <= 120));
+
+      allow update: if isSignedIn() && isAdmin()
+        && request.resource.data.keys().hasOnly([
+          'userId',
+          'displayName',
+          'quote',
+          'rating',
+          'status',
+          'featured',
+          'createdAt',
+          'updatedAt',
+          'highlight',
+          'avatarUrl',
+          'reviewedBy',
+          'reviewedAt',
+          'publishedAt'
+        ])
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && isNonEmptyString(request.resource.data.displayName)
+        && isNonEmptyString(request.resource.data.quote)
+        && request.resource.data.quote.size() >= 10
+        && request.resource.data.quote.size() <= 800
+        && isValidRating(request.resource.data.rating)
+        && isAllowedTestimonialStatus(request.resource.data.status)
+        && request.resource.data.updatedAt is timestamp
+        && (!('avatarUrl' in request.resource.data) || request.resource.data.avatarUrl == resource.data.avatarUrl || isUrlLike(request.resource.data.avatarUrl))
+        && (!('highlight' in request.resource.data) || (request.resource.data.highlight is string && request.resource.data.highlight.size() <= 120))
+        && (!('reviewedBy' in request.resource.data) || request.resource.data.reviewedBy == null || request.resource.data.reviewedBy is string)
+        && (!('reviewedAt' in request.resource.data) || request.resource.data.reviewedAt is timestamp)
+        && (!('publishedAt' in request.resource.data) || request.resource.data.publishedAt == null || request.resource.data.publishedAt is timestamp);
+
+      allow delete: if isSignedIn() && (
+        isAdmin() ||
+        (resource.data.userId == request.auth.uid && resource.data.status != 'published')
+      );
     }
     
     // --- MEDIA ---

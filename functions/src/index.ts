@@ -892,8 +892,7 @@ export const onMediaFileFinalize = onObjectFinalized({
         await new Promise<void>((res, rej) =>
           ffmpeg(tmpOriginal)
             .inputOptions(['-ss', String(seekTime)])
-            .frames(1)
-            .outputOptions(['-q:v 2'])
+            .outputOptions(['-frames:v 1', '-q:v 2'])
             .save(posterLocal).on('end', () => res()).on('error', rej)
         );
 
@@ -1233,3 +1232,186 @@ export const checkSMSDeliveryStatus = onCall(async (request) => {
   }
 });
 
+// Generate testimonial suggestions using AI (tries Gemini first, falls back to OpenAI)
+export const generateTestimonialSuggestions = onCall({
+  cors: [
+    'https://momsfitnessmojo.com',
+    'https://www.momsfitnessmojo.com',
+    'https://momfitnessmojo.web.app',
+    'https://momfitnessmojo.firebaseapp.com',
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ],
+}, async (request) => {
+  try {
+    const { prompt, userContext, highlight } = request.data;
+    
+    if (!prompt || typeof prompt !== 'string') {
+      return {
+        success: false,
+        error: 'Prompt is required'
+      };
+    }
+
+    // Build context-aware prompt
+    const buildPrompt = () => {
+      let userPrompt = `Generate 2-3 short, authentic testimonials (each 150-200 characters) based on the user's input.
+
+Guidelines:
+- Be authentic and heartfelt
+- Mention specific experiences, events, or moments when possible
+- Keep it concise (3-4 lines max)
+- Make it personal and relatable
+- Focus on community, fitness, and empowerment
+- Each testimonial should be unique`;
+
+      if (userContext) {
+        userPrompt += `\n\nUser context: ${userContext}`;
+      }
+
+      if (highlight) {
+        userPrompt += `\n\nUser wants to highlight: ${highlight}`;
+      }
+
+      userPrompt += `\n\nUser's input/experience: "${prompt}"`;
+      userPrompt += `\n\nGenerate 2-3 testimonials. Format each on a new line starting with "1.", "2.", "3.". Each should be 150-200 characters.`;
+      return userPrompt;
+    };
+
+    // Helper to parse testimonials from response text
+    const parseTestimonials = (text: string): string[] => {
+      const testimonials = text
+        .split(/\n+/)
+        .map((line: string) => line.replace(/^\d+\.\s*/, '').trim().replace(/^["']|["']$/g, ''))
+        .filter((line: string) => line.length >= 40 && line.length <= 250)
+        .slice(0, 3);
+
+      if (testimonials.length === 0) {
+        const fallback = text.trim().substring(0, 200);
+        testimonials.push(fallback);
+      }
+      return testimonials;
+    };
+
+    // Try Gemini first (with v1 API and correct model names)
+    let geminiApiKey = process.env.GEMINI_API_KEY;
+    if (!geminiApiKey) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const functions = require('firebase-functions');
+        const config = functions.config();
+        geminiApiKey = config?.gemini?.api_key;
+      } catch (error) {
+        // functions.config() not available in v2
+      }
+    }
+
+    if (geminiApiKey) {
+      try {
+        console.log('🤖 [Gemini] Attempting to generate suggestions...');
+        const { GoogleGenerativeAI } = await import('@google/generative-ai');
+        const genAI = new GoogleGenerativeAI(geminiApiKey);
+        
+        // Try different model names - gemini-2.5-flash is the current recommended model (per Firebase AI Logic docs)
+        const modelsToTry = [
+          'gemini-2.5-flash', // Current recommended model from Firebase AI Logic
+          'gemini-2.0-flash-exp', // Experimental version
+          'gemini-pro', // Legacy model name
+          'gemini-1.0-pro', // Versioned name
+        ];
+
+        let text = '';
+        let lastError: Error | null = null;
+
+        for (const modelName of modelsToTry) {
+          try {
+            console.log(`🤖 [Gemini] Trying model: ${modelName}`);
+            const model = genAI.getGenerativeModel({ model: modelName });
+            const systemPrompt = buildPrompt();
+            const result = await model.generateContent(systemPrompt);
+            const response = await result.response;
+            text = response.text();
+            console.log(`✅ [Gemini] Success with model: ${modelName}`);
+            break;
+          } catch (modelError: any) {
+            lastError = modelError;
+            console.log(`❌ [Gemini] Model ${modelName} failed:`, modelError?.message);
+            continue; // Try next model
+          }
+        }
+
+        if (text) {
+          const testimonials = parseTestimonials(text);
+          console.log('✅ [Gemini] Generated', testimonials.length, 'suggestions');
+          return {
+            success: true,
+            suggestions: testimonials
+          };
+        } else {
+          console.log('⚠️ [Gemini] All models failed, falling back to OpenAI');
+        }
+      } catch (geminiError: any) {
+        console.error('❌ [Gemini] Error:', geminiError?.message);
+        console.log('⚠️ [Gemini] Falling back to OpenAI');
+      }
+    }
+
+    // Fallback to OpenAI
+    let openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const functions = require('firebase-functions');
+        const config = functions.config();
+        openaiApiKey = config?.openai?.api_key;
+      } catch (error) {
+        // functions.config() not available in v2
+      }
+    }
+
+    if (!openaiApiKey) {
+      console.error('❌ Neither GEMINI_API_KEY nor OPENAI_API_KEY configured');
+      return {
+        success: false,
+        error: 'AI service not configured. Please add GEMINI_API_KEY or OPENAI_API_KEY to .env file.'
+      };
+    }
+
+    console.log('🤖 [OpenAI] Generating testimonial suggestions...');
+    const { default: OpenAI } = await import('openai');
+    const openai = new OpenAI({ apiKey: openaiApiKey });
+
+    const userPrompt = buildPrompt();
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are helping a member of Moms Fitness Mojo write a testimonial. Be authentic, concise, and heartfelt.'
+        },
+        {
+          role: 'user',
+          content: userPrompt
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 600
+    });
+
+    const text = completion.choices[0]?.message?.content || '';
+    const testimonials = parseTestimonials(text);
+    console.log('✅ [OpenAI] Generated', testimonials.length, 'suggestions');
+
+    return {
+      success: true,
+      suggestions: testimonials
+    };
+
+  } catch (error: any) {
+    console.error('❌ [AI Service] Error generating suggestions:', error);
+    return {
+      success: false,
+      error: error?.message || 'Failed to generate suggestions. Please try again or write your own testimonial.'
+    };
+  }
+});

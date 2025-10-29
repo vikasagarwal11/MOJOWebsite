@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2 } from 'lucide-react';
 import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
 import EventCardNew from '../components/events/EventCardNew';
 import ContactMessagesAdmin from '../components/admin/ContactMessagesAdmin';
+import { useTestimonials } from '../hooks/useTestimonials';
+import { adminUpdateTestimonial, deleteTestimonial } from '../services/testimonialsService';
+import type { Testimonial, TestimonialStatus } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Event {
   id: string;
@@ -68,13 +72,80 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
-  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'messages' | 'users' | 'media' | 'maintenance'>('events');
+  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials'>('events');
+  const { currentUser } = useAuth();
   
   // Media management state
   const [allMedia, setAllMedia] = useState<any[]>([]);
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [mediaPage, setMediaPage] = useState(0);
   const MEDIA_PAGE_SIZE = 10;
+
+  // Testimonials moderation state
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<TestimonialStatus | 'all'>('pending');
+  const { testimonials, loading: loadingTestimonials, error: testimonialsError } = useTestimonials({
+    statuses: ['pending', 'published', 'rejected'],
+    orderByField: 'updatedAt',
+    orderDirection: 'desc',
+    prioritizeFeatured: false,
+  });
+
+  const filteredTestimonials = useMemo(() => {
+    if (selectedStatusFilter === 'all') {
+      return testimonials;
+    }
+    return testimonials.filter((testimonial) => testimonial.status === selectedStatusFilter);
+  }, [selectedStatusFilter, testimonials]);
+
+  const statusLabels: Record<TestimonialStatus, { label: string; className: string }> = {
+    pending: { label: 'Pending Review', className: 'bg-amber-100 text-amber-700' },
+    published: { label: 'Published', className: 'bg-emerald-100 text-emerald-700' },
+    rejected: { label: 'Rejected', className: 'bg-gray-200 text-gray-600' },
+  };
+
+  const handleTestimonialStatusChange = async (testimonial: Testimonial, nextStatus: TestimonialStatus) => {
+    if (!currentUser) return;
+    const isPublishing = nextStatus === 'published';
+
+    try {
+      await adminUpdateTestimonial(testimonial.id, {
+        status: nextStatus,
+        reviewerId: currentUser.id,
+      });
+
+      toast.success(
+        isPublishing ? 'Testimonial published successfully.' : nextStatus === 'pending' ? 'Testimonial moved back to pending.' : 'Testimonial was rejected.'
+      );
+    } catch (err: any) {
+      console.error('[ProfileAdminTab] Failed to update testimonial status', err);
+      toast.error(err?.message ?? 'Unable to update testimonial.');
+    }
+  };
+
+  const handleToggleFeatured = async (testimonial: Testimonial) => {
+    try {
+      await adminUpdateTestimonial(testimonial.id, {
+        featured: !testimonial.featured,
+      });
+      toast.success(testimonial.featured ? 'Removed from featured.' : 'Marked as featured.');
+    } catch (err: any) {
+      console.error('[ProfileAdminTab] Failed to toggle featured', err);
+      toast.error(err?.message ?? 'Unable to update featured state.');
+    }
+  };
+
+  const handleDeleteTestimonial = async (testimonial: Testimonial) => {
+    const confirm = window.confirm('Delete this testimonial permanently? This action cannot be undone.');
+    if (!confirm) return;
+
+    try {
+      await deleteTestimonial(testimonial.id);
+      toast.success('Testimonial deleted.');
+    } catch (err: any) {
+      console.error('[ProfileAdminTab] Failed to delete testimonial', err);
+      toast.error(err?.message ?? 'Unable to delete testimonial.');
+    }
+  };
 
   // Search users by name or email
   const handleSearchUsers = async () => {
@@ -309,6 +380,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         >
           <Search className="w-4 h-4 inline mr-2" />
           System Tools
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('testimonials')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'testimonials'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Star className="w-4 h-4 inline mr-2" />
+          Testimonials
         </button>
       </div>
 
@@ -657,6 +739,157 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Testimonials Moderation Section */}
+      {activeAdminSection === 'testimonials' && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Testimonials Moderation</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Review and manage stories shared by the moms community. Publish to show on the homepage carousel.
+            </p>
+            
+            {/* Status Filters */}
+            <div className="flex flex-wrap gap-2">
+              {(['pending', 'published', 'rejected', 'all'] as const).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setSelectedStatusFilter(status === 'all' ? 'all' : status)}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    selectedStatusFilter === status
+                      ? 'bg-[#F25129] text-white shadow'
+                      : 'bg-gray-100 text-gray-600 ring-1 ring-gray-200 hover:bg-gray-200'
+                  }`}
+                >
+                  {status === 'all'
+                    ? 'All'
+                    : statusLabels[status].label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {loadingTestimonials && (
+            <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#F25129]/30 bg-white/80 p-6 text-[#F25129]">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Loading testimonials…
+            </div>
+          )}
+
+          {testimonialsError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-600">
+              Failed to load testimonials. Please refresh the page.
+            </div>
+          )}
+
+          {!loadingTestimonials && !testimonialsError && filteredTestimonials.length === 0 && (
+            <div className="rounded-xl border border-dashed border-[#F25129]/30 bg-white/80 p-6 text-center text-gray-600">
+              No testimonials found for this filter.
+            </div>
+          )}
+
+          {!loadingTestimonials && !testimonialsError && filteredTestimonials.length > 0 && (
+            <div className="space-y-4">
+              {filteredTestimonials.map((testimonial) => {
+                const statusMeta = statusLabels[testimonial.status];
+                return (
+                  <article
+                    key={testimonial.id}
+                    className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:shadow-md"
+                  >
+                    <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-3">
+                      <div>
+                        <div className="flex items-center gap-2 text-[#FFC107] mb-1">
+                          {Array.from({ length: Math.round(testimonial.rating || 0) }).map((_, index) => (
+                            <Star key={index} className="h-4 w-4 fill-current" />
+                          ))}
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900">{testimonial.displayName}</h3>
+                        {testimonial.highlight && (
+                          <p className="text-sm text-[#F25129] mt-1">{testimonial.highlight}</p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusMeta.className}`}>
+                          {statusMeta.label}
+                        </span>
+                        {testimonial.featured && (
+                          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                            Featured
+                          </span>
+                        )}
+                      </div>
+                    </header>
+
+                    <p className="text-gray-700 mb-4">"{testimonial.quote}"</p>
+
+                    <footer className="flex flex-col gap-3 border-t border-dashed border-gray-200 pt-4 md:flex-row md:items-center md:justify-between">
+                      <div className="text-xs text-gray-500">
+                        <span>Submitted: {testimonial.createdAt.toLocaleDateString()}</span>
+                        {testimonial.updatedAt && <span className="ml-3">Updated: {testimonial.updatedAt.toLocaleDateString()}</span>}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {testimonial.status !== 'published' && (
+                          <button
+                            type="button"
+                            onClick={() => handleTestimonialStatusChange(testimonial, 'published')}
+                            className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
+                          >
+                            <CheckCircle className="h-4 w-4" /> Publish
+                          </button>
+                        )}
+
+                        {testimonial.status === 'published' && (
+                          <button
+                            type="button"
+                            onClick={() => handleTestimonialStatusChange(testimonial, 'pending')}
+                            className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-200"
+                          >
+                            <Eye className="h-4 w-4" /> Unpublish
+                          </button>
+                        )}
+
+                        {testimonial.status !== 'rejected' && (
+                          <button
+                            type="button"
+                            onClick={() => handleTestimonialStatusChange(testimonial, 'rejected')}
+                            className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-200"
+                          >
+                            <XCircle className="h-4 w-4" /> Reject
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleFeatured(testimonial)}
+                          className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                            testimonial.featured
+                              ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                              : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50'
+                          }`}
+                        >
+                          <Star className="h-4 w-4" /> {testimonial.featured ? 'Unfeature' : 'Feature'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTestimonial(testimonial)}
+                          className="inline-flex items-center gap-2 rounded-full bg-red-100 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-200"
+                        >
+                          <Trash2 className="h-4 w-4" /> Delete
+                        </button>
+                      </div>
+                    </footer>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

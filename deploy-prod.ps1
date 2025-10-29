@@ -71,6 +71,7 @@ if (Test-Path ".env.production") {
     $envContent = Get-Content .env.production
     $storageBucket = ($envContent | Where-Object { $_ -match "^STORAGE_BUCKET=" } | ForEach-Object { $_.Split('=')[1] })
     $viteStorageBucket = ($envContent | Where-Object { $_ -match "^VITE_FIREBASE_STORAGE_BUCKET=" } | ForEach-Object { $_.Split('=')[1] })
+    $geminiApiKey = ($envContent | Where-Object { $_ -match "^GEMINI_API_KEY=" } | ForEach-Object { $_.Split('=')[1] })
     
     if ($storageBucket) {
         $env:STORAGE_BUCKET = $storageBucket
@@ -84,6 +85,12 @@ if (Test-Path ".env.production") {
         Write-Host "[OK] Using VITE_FIREBASE_STORAGE_BUCKET from .env.production: $viteStorageBucket" -ForegroundColor Green
     } else {
         Write-Host "[WARNING] VITE_FIREBASE_STORAGE_BUCKET not found in .env.production" -ForegroundColor Yellow
+    }
+    
+    if ($geminiApiKey) {
+        Write-Host "[OK] Found GEMINI_API_KEY in .env.production (will be loaded automatically)" -ForegroundColor Green
+    } else {
+        Write-Host "[WARNING] GEMINI_API_KEY not found in .env.production" -ForegroundColor Yellow
     }
 } else {
     Write-Host "[WARNING] .env.production file not found, using defaults" -ForegroundColor Yellow
@@ -142,15 +149,23 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Set Cloud Functions environment variable for STORAGE_BUCKET
-Write-Host "Setting Cloud Functions environment variable STORAGE_BUCKET to: $env:STORAGE_BUCKET" -ForegroundColor Yellow
-firebase functions:config:set app.storage_bucket="$env:STORAGE_BUCKET" --project=momsfitnessmojo-65d00
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: Failed to set Cloud Functions environment variable!" -ForegroundColor Red
-    exit 1
+# Copy .env.production to functions/.env for Firebase Functions v2 to use
+# Firebase Functions v2 automatically loads .env files from the functions directory
+Write-Host "Copying .env.production to functions/.env for Cloud Functions..." -ForegroundColor Yellow
+if (Test-Path ".env.production") {
+    Copy-Item ".env.production" "functions\.env" -Force
+    Write-Host "[OK] .env file copied to functions directory. Functions v2 will load it automatically." -ForegroundColor Green
+    Write-Host "[INFO] Note: functions.config() is deprecated. Using .env files instead." -ForegroundColor Cyan
+} else {
+    Write-Host "[WARNING] .env.production not found. Functions may not have environment variables!" -ForegroundColor Yellow
 }
-Write-Host "[OK] Cloud Functions environment variable set." -ForegroundColor Green
+
+# Legacy: Set Cloud Functions config for STORAGE_BUCKET (deprecated but still works until March 2026)
+# Note: This is deprecated. Prefer .env file above.
+Write-Host "Setting legacy functions.config for STORAGE_BUCKET (deprecated, will remove in future)..." -ForegroundColor Yellow
+firebase functions:config:set app.storage_bucket="$env:STORAGE_BUCKET" --project=momsfitnessmojo-65d00 2>&1 | Out-Null
+
+Write-Host "[OK] Legacy config set (deprecated API - .env file is preferred)." -ForegroundColor Green
 
 # Deploy based on component
 switch ($Component.ToLower()) {
