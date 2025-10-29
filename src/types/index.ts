@@ -121,5 +121,16 @@ export interface Testimonial {
   publishedAt?: Date;
 }
 
+export interface TestimonialAIPrompts {
+  id: string;
+  communityContext: string;
+  guidelines: string;
+  exampleActivities: string[];
+  exampleEvents: string[];
+  tone: string;
+  updatedAt: Date;
+  updatedBy?: string;
+}
+
 // Re-export payment types
 export * from './payment';

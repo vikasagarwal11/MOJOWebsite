@@ -562,6 +562,12 @@ service cloud.firestore {
         (resource.data.userId == request.auth.uid && resource.data.status != 'published')
       );
     }
+
+    // --- AI Prompts Configuration (Admin Only) ---
+    match /aiPrompts/{promptId} {
+      allow read: if isSignedIn(); // Any authenticated user can read (for AI function calls)
+      allow write: if isAdmin(); // Only admins can update prompts
+    }
     
     // --- MEDIA ---
     match /media/{mediaId} {
