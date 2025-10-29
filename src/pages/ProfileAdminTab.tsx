@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2 } from 'lucide-react';
-import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
@@ -8,7 +8,7 @@ import EventCardNew from '../components/events/EventCardNew';
 import ContactMessagesAdmin from '../components/admin/ContactMessagesAdmin';
 import { useTestimonials } from '../hooks/useTestimonials';
 import { adminUpdateTestimonial, deleteTestimonial } from '../services/testimonialsService';
-import type { Testimonial, TestimonialStatus } from '../types';
+import type { Testimonial, TestimonialStatus, TestimonialAIPrompts } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 interface Event {
@@ -83,12 +83,26 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
 
   // Testimonials moderation state
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<TestimonialStatus | 'all'>('pending');
+  const [testimonialTab, setTestimonialTab] = useState<'moderation' | 'ai-prompts'>('moderation');
   const { testimonials, loading: loadingTestimonials, error: testimonialsError } = useTestimonials({
     statuses: ['pending', 'published', 'rejected'],
     orderByField: 'updatedAt',
     orderDirection: 'desc',
     prioritizeFeatured: false,
   });
+
+  // AI Prompts management state
+  const [aiPrompts, setAiPrompts] = useState<TestimonialAIPrompts>({
+    id: 'testimonialGeneration',
+    communityContext: '',
+    guidelines: '',
+    exampleActivities: [],
+    exampleEvents: [],
+    tone: '',
+    updatedAt: new Date(),
+  });
+  const [loadingPrompts, setLoadingPrompts] = useState(false);
+  const [savingPrompts, setSavingPrompts] = useState(false);
 
   const filteredTestimonials = useMemo(() => {
     if (selectedStatusFilter === 'all') {
@@ -146,6 +160,82 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       toast.error(err?.message ?? 'Unable to delete testimonial.');
     }
   };
+
+  // Load AI prompts from Firestore
+  const loadAIPrompts = async () => {
+    if (!currentUser) return;
+    
+    setLoadingPrompts(true);
+    try {
+      const promptsRef = doc(db, 'aiPrompts', 'testimonialGeneration');
+      const promptsSnap = await getDoc(promptsRef);
+      
+      if (promptsSnap.exists()) {
+        const data = promptsSnap.data();
+        setAiPrompts({
+          id: 'testimonialGeneration',
+          communityContext: data.communityContext || '',
+          guidelines: data.guidelines || '',
+          exampleActivities: data.exampleActivities || [],
+          exampleEvents: data.exampleEvents || [],
+          tone: data.tone || '',
+          updatedAt: data.updatedAt?.toDate() || new Date(),
+          updatedBy: data.updatedBy || '',
+        });
+      } else {
+        // Initialize with defaults if document doesn't exist
+        const defaultPrompts: TestimonialAIPrompts = {
+          id: 'testimonialGeneration',
+          communityContext: 'Moms Fitness Mojo is a fitness and wellness community for moms in Short Hills, Millburn, and surrounding New Jersey areas. We offer workouts (yoga, pilates, HIIT, strength training), hikes, tennis, dance sessions, fitness challenges, social events (brunches, dinners, cocktail nights), and festival celebrations. The community values friendship, accountability, wellness, and helping moms rediscover themselves beyond their roles as mothers.',
+          guidelines: '- Be authentic and heartfelt\n- Mention specific experiences, events, or moments when possible\n- Keep it concise (3-4 lines max)\n- Make it personal and relatable\n- Focus on community, fitness, empowerment, and friendship\n- Each testimonial should be unique',
+          exampleActivities: ['Saturday morning walks', 'yoga sessions', 'hiking trails', 'tennis matches', 'dance classes', 'fitness challenges', 'brunch meetups', 'cocktail nights'],
+          exampleEvents: ['community hikes', 'fitness workshops', 'social brunches', 'dance sessions', 'wellness events'],
+          tone: 'warm, supportive, empowering, authentic',
+          updatedAt: new Date(),
+        };
+        setAiPrompts(defaultPrompts);
+      }
+    } catch (error: any) {
+      console.error('[ProfileAdminTab] Failed to load AI prompts', error);
+      toast.error('Failed to load AI prompts');
+    } finally {
+      setLoadingPrompts(false);
+    }
+  };
+
+  // Save AI prompts to Firestore
+  const saveAIPrompts = async () => {
+    if (!currentUser) return;
+
+    setSavingPrompts(true);
+    try {
+      const promptsRef = doc(db, 'aiPrompts', 'testimonialGeneration');
+      await setDoc(promptsRef, {
+        communityContext: aiPrompts.communityContext.trim(),
+        guidelines: aiPrompts.guidelines.trim(),
+        exampleActivities: aiPrompts.exampleActivities.filter(a => a.trim()),
+        exampleEvents: aiPrompts.exampleEvents.filter(e => e.trim()),
+        tone: aiPrompts.tone.trim(),
+        updatedAt: Timestamp.now(),
+        updatedBy: currentUser.id,
+      }, { merge: true });
+
+      setAiPrompts(prev => ({ ...prev, updatedAt: new Date() }));
+      toast.success('AI prompts saved successfully!');
+    } catch (error: any) {
+      console.error('[ProfileAdminTab] Failed to save AI prompts', error);
+      toast.error(error?.message ?? 'Failed to save AI prompts');
+    } finally {
+      setSavingPrompts(false);
+    }
+  };
+
+  // Load prompts when AI prompts tab is active
+  useEffect(() => {
+    if (activeAdminSection === 'testimonials' && testimonialTab === 'ai-prompts') {
+      loadAIPrompts();
+    }
+  }, [activeAdminSection, testimonialTab]);
 
   // Search users by name or email
   const handleSearchUsers = async () => {
@@ -746,13 +836,43 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       {activeAdminSection === 'testimonials' && (
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Testimonials Moderation</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Review and manage stories shared by the moms community. Publish to show on the homepage carousel.
-            </p>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Testimonials Management</h2>
             
-            {/* Status Filters */}
-            <div className="flex flex-wrap gap-2">
+            {/* Tab Switcher */}
+            <div className="flex gap-2 mb-6 border-b border-gray-200">
+              <button
+                type="button"
+                onClick={() => setTestimonialTab('moderation')}
+                className={`px-4 py-2 font-medium text-sm transition ${
+                  testimonialTab === 'moderation'
+                    ? 'border-b-2 border-[#F25129] text-[#F25129]'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Moderation
+              </button>
+              <button
+                type="button"
+                onClick={() => setTestimonialTab('ai-prompts')}
+                className={`px-4 py-2 font-medium text-sm transition ${
+                  testimonialTab === 'ai-prompts'
+                    ? 'border-b-2 border-[#F25129] text-[#F25129]'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                AI Prompts Configuration
+              </button>
+            </div>
+
+            {/* Moderation Tab */}
+            {testimonialTab === 'moderation' && (
+              <>
+                <p className="text-sm text-gray-600 mb-4">
+                  Review and manage stories shared by the moms community. Publish to show on the homepage carousel.
+                </p>
+                
+                {/* Status Filters */}
+                <div className="flex flex-wrap gap-2">
               {(['pending', 'published', 'rejected', 'all'] as const).map((status) => (
                 <button
                   key={status}
@@ -769,125 +889,255 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                     : statusLabels[status].label}
                 </button>
               ))}
-            </div>
+                </div>
+
+                {loadingTestimonials && (
+                  <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#F25129]/30 bg-white/80 p-6 text-[#F25129]">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Loading testimonials…
+                  </div>
+                )}
+
+                {testimonialsError && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-600">
+                    Failed to load testimonials. Please refresh the page.
+                  </div>
+                )}
+
+                {!loadingTestimonials && !testimonialsError && filteredTestimonials.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-[#F25129]/30 bg-white/80 p-6 text-center text-gray-600">
+                    No testimonials found for this filter.
+                  </div>
+                )}
+
+                {!loadingTestimonials && !testimonialsError && filteredTestimonials.length > 0 && (
+                  <div className="space-y-4">
+                    {filteredTestimonials.map((testimonial) => {
+                      const statusMeta = statusLabels[testimonial.status];
+                      return (
+                        <article
+                          key={testimonial.id}
+                          className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:shadow-md"
+                        >
+                          <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-3">
+                            <div>
+                              <div className="flex items-center gap-2 text-[#FFC107] mb-1">
+                                {Array.from({ length: Math.round(testimonial.rating || 0) }).map((_, index) => (
+                                  <Star key={index} className="h-4 w-4 fill-current" />
+                                ))}
+                              </div>
+                              <h3 className="text-lg font-semibold text-gray-900">{testimonial.displayName}</h3>
+                              {testimonial.highlight && (
+                                <p className="text-sm text-[#F25129] mt-1">{testimonial.highlight}</p>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusMeta.className}`}>
+                                {statusMeta.label}
+                              </span>
+                              {testimonial.featured && (
+                                <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                                  Featured
+                                </span>
+                              )}
+                            </div>
+                          </header>
+
+                          <p className="text-gray-700 mb-4">"{testimonial.quote}"</p>
+
+                          <footer className="flex flex-col gap-3 border-t border-dashed border-gray-200 pt-4 md:flex-row md:items-center md:justify-between">
+                            <div className="text-xs text-gray-500">
+                              <span>Submitted: {testimonial.createdAt.toLocaleDateString()}</span>
+                              {testimonial.updatedAt && <span className="ml-3">Updated: {testimonial.updatedAt.toLocaleDateString()}</span>}
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              {testimonial.status !== 'published' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTestimonialStatusChange(testimonial, 'published')}
+                                  className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
+                                >
+                                  <CheckCircle className="h-4 w-4" /> Publish
+                                </button>
+                              )}
+
+                              {testimonial.status === 'published' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTestimonialStatusChange(testimonial, 'pending')}
+                                  className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-200"
+                                >
+                                  <Eye className="h-4 w-4" /> Unpublish
+                                </button>
+                              )}
+
+                              {testimonial.status !== 'rejected' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTestimonialStatusChange(testimonial, 'rejected')}
+                                  className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-200"
+                                >
+                                  <XCircle className="h-4 w-4" /> Reject
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleToggleFeatured(testimonial)}
+                                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                  testimonial.featured
+                                    ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                    : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50'
+                                }`}
+                              >
+                                <Star className="h-4 w-4" /> {testimonial.featured ? 'Unfeature' : 'Feature'}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTestimonial(testimonial)}
+                                className="inline-flex items-center gap-2 rounded-full bg-red-100 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-200"
+                              >
+                                <Trash2 className="h-4 w-4" /> Delete
+                              </button>
+                            </div>
+                          </footer>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
-          {loadingTestimonials && (
-            <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#F25129]/30 bg-white/80 p-6 text-[#F25129]">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Loading testimonials…
-            </div>
-          )}
+          {/* AI Prompts Tab */}
+          {testimonialTab === 'ai-prompts' && (
+            <div className="space-y-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800">
+                  <strong>How this works:</strong> Configure the AI prompts that help users write testimonials. These prompts provide context about the community and guide the AI to generate authentic, relevant suggestions. Changes take effect immediately for new testimonial generations.
+                </p>
+              </div>
 
-          {testimonialsError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-600">
-              Failed to load testimonials. Please refresh the page.
-            </div>
-          )}
+              {loadingPrompts ? (
+                <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#F25129]/30 bg-white/80 p-6 text-[#F25129]">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Loading prompts...
+                </div>
+              ) : (
+                <form onSubmit={(e) => { e.preventDefault(); saveAIPrompts(); }} className="space-y-6">
+                  {/* Community Context */}
+                  <div>
+                    <label htmlFor="communityContext" className="block text-sm font-medium text-gray-700 mb-2">
+                      Community Context *
+                    </label>
+                    <textarea
+                      id="communityContext"
+                      required
+                      rows={6}
+                      value={aiPrompts.communityContext}
+                      onChange={(e) => setAiPrompts(prev => ({ ...prev, communityContext: e.target.value }))}
+                      placeholder="Describe what Moms Fitness Mojo is, what activities you offer, your values, etc. This helps AI understand the community context."
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-[#F25129] focus:outline-none focus:ring-2 focus:ring-[#F25129]/20"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">This context is provided to the AI so it understands your community.</p>
+                  </div>
 
-          {!loadingTestimonials && !testimonialsError && filteredTestimonials.length === 0 && (
-            <div className="rounded-xl border border-dashed border-[#F25129]/30 bg-white/80 p-6 text-center text-gray-600">
-              No testimonials found for this filter.
-            </div>
-          )}
+                  {/* Guidelines */}
+                  <div>
+                    <label htmlFor="guidelines" className="block text-sm font-medium text-gray-700 mb-2">
+                      Guidelines *
+                    </label>
+                    <textarea
+                      id="guidelines"
+                      required
+                      rows={8}
+                      value={aiPrompts.guidelines}
+                      onChange={(e) => setAiPrompts(prev => ({ ...prev, guidelines: e.target.value }))}
+                      placeholder="Enter guidelines, one per line. Example:&#10;- Be authentic and heartfelt&#10;- Mention specific experiences&#10;- Keep it concise"
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-mono focus:border-[#F25129] focus:outline-none focus:ring-2 focus:ring-[#F25129]/20"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">One guideline per line. These guide how the AI generates testimonials.</p>
+                  </div>
 
-          {!loadingTestimonials && !testimonialsError && filteredTestimonials.length > 0 && (
-            <div className="space-y-4">
-              {filteredTestimonials.map((testimonial) => {
-                const statusMeta = statusLabels[testimonial.status];
-                return (
-                  <article
-                    key={testimonial.id}
-                    className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:shadow-md"
-                  >
-                    <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between mb-3">
-                      <div>
-                        <div className="flex items-center gap-2 text-[#FFC107] mb-1">
-                          {Array.from({ length: Math.round(testimonial.rating || 0) }).map((_, index) => (
-                            <Star key={index} className="h-4 w-4 fill-current" />
-                          ))}
-                        </div>
-                        <h3 className="text-lg font-semibold text-gray-900">{testimonial.displayName}</h3>
-                        {testimonial.highlight && (
-                          <p className="text-sm text-[#F25129] mt-1">{testimonial.highlight}</p>
-                        )}
-                      </div>
+                  {/* Example Activities */}
+                  <div>
+                    <label htmlFor="exampleActivities" className="block text-sm font-medium text-gray-700 mb-2">
+                      Example Activities
+                    </label>
+                    <input
+                      id="exampleActivities"
+                      type="text"
+                      value={aiPrompts.exampleActivities.join(', ')}
+                      onChange={(e) => setAiPrompts(prev => ({ ...prev, exampleActivities: e.target.value.split(',').map(a => a.trim()).filter(a => a) }))}
+                      placeholder="e.g., Saturday morning walks, yoga sessions, hiking trails, tennis matches"
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-[#F25129] focus:outline-none focus:ring-2 focus:ring-[#F25129]/20"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Comma-separated list. AI may mention these when relevant.</p>
+                  </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusMeta.className}`}>
-                          {statusMeta.label}
-                        </span>
-                        {testimonial.featured && (
-                          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700">
-                            Featured
-                          </span>
-                        )}
-                      </div>
-                    </header>
+                  {/* Example Events */}
+                  <div>
+                    <label htmlFor="exampleEvents" className="block text-sm font-medium text-gray-700 mb-2">
+                      Example Events
+                    </label>
+                    <input
+                      id="exampleEvents"
+                      type="text"
+                      value={aiPrompts.exampleEvents.join(', ')}
+                      onChange={(e) => setAiPrompts(prev => ({ ...prev, exampleEvents: e.target.value.split(',').map(e => e.trim()).filter(e => e) }))}
+                      placeholder="e.g., community hikes, fitness workshops, social brunches, dance sessions"
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-[#F25129] focus:outline-none focus:ring-2 focus:ring-[#F25129]/20"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Comma-separated list. AI may mention these when relevant.</p>
+                  </div>
 
-                    <p className="text-gray-700 mb-4">"{testimonial.quote}"</p>
+                  {/* Tone */}
+                  <div>
+                    <label htmlFor="tone" className="block text-sm font-medium text-gray-700 mb-2">
+                      Tone
+                    </label>
+                    <input
+                      id="tone"
+                      type="text"
+                      value={aiPrompts.tone}
+                      onChange={(e) => setAiPrompts(prev => ({ ...prev, tone: e.target.value }))}
+                      placeholder="e.g., warm, supportive, empowering, authentic"
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-[#F25129] focus:outline-none focus:ring-2 focus:ring-[#F25129]/20"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Describe the desired tone for generated testimonials.</p>
+                  </div>
 
-                    <footer className="flex flex-col gap-3 border-t border-dashed border-gray-200 pt-4 md:flex-row md:items-center md:justify-between">
-                      <div className="text-xs text-gray-500">
-                        <span>Submitted: {testimonial.createdAt.toLocaleDateString()}</span>
-                        {testimonial.updatedAt && <span className="ml-3">Updated: {testimonial.updatedAt.toLocaleDateString()}</span>}
-                      </div>
+                  {/* Last Updated */}
+                  {aiPrompts.updatedAt && (
+                    <div className="text-xs text-gray-500">
+                      Last updated: {aiPrompts.updatedAt.toLocaleString()}
+                      {aiPrompts.updatedBy && ` by ${aiPrompts.updatedBy}`}
+                    </div>
+                  )}
 
-                      <div className="flex flex-wrap gap-2">
-                        {testimonial.status !== 'published' && (
-                          <button
-                            type="button"
-                            onClick={() => handleTestimonialStatusChange(testimonial, 'published')}
-                            className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600"
-                          >
-                            <CheckCircle className="h-4 w-4" /> Publish
-                          </button>
-                        )}
-
-                        {testimonial.status === 'published' && (
-                          <button
-                            type="button"
-                            onClick={() => handleTestimonialStatusChange(testimonial, 'pending')}
-                            className="inline-flex items-center gap-2 rounded-full bg-blue-100 px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-200"
-                          >
-                            <Eye className="h-4 w-4" /> Unpublish
-                          </button>
-                        )}
-
-                        {testimonial.status !== 'rejected' && (
-                          <button
-                            type="button"
-                            onClick={() => handleTestimonialStatusChange(testimonial, 'rejected')}
-                            className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-200"
-                          >
-                            <XCircle className="h-4 w-4" /> Reject
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => handleToggleFeatured(testimonial)}
-                          className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
-                            testimonial.featured
-                              ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                              : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50'
-                          }`}
-                        >
-                          <Star className="h-4 w-4" /> {testimonial.featured ? 'Unfeature' : 'Feature'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteTestimonial(testimonial)}
-                          className="inline-flex items-center gap-2 rounded-full bg-red-100 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-200"
-                        >
-                          <Trash2 className="h-4 w-4" /> Delete
-                        </button>
-                      </div>
-                    </footer>
-                  </article>
-                );
-              })}
+                  {/* Save Button */}
+                  <div className="flex justify-end pt-4 border-t border-gray-200">
+                    <button
+                      type="submit"
+                      disabled={savingPrompts || !aiPrompts.communityContext.trim() || !aiPrompts.guidelines.trim()}
+                      className="inline-flex items-center gap-2 rounded-full bg-[#F25129] px-6 py-2 text-sm font-semibold text-white transition hover:bg-[#E0451F] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {savingPrompts ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        'Save AI Prompts'
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           )}
         </div>
@@ -895,3 +1145,5 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
     </div>
   );
 };
+
+export default ProfileAdminTab;

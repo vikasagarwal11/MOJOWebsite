@@ -1253,17 +1253,68 @@ export const generateTestimonialSuggestions = onCall({
       };
     }
 
-    // Build context-aware prompt
-    const buildPrompt = () => {
-      let userPrompt = `Generate 2-3 short, authentic testimonials (each 150-200 characters) based on the user's input.
-
-Guidelines:
-- Be authentic and heartfelt
+    // Fetch admin-configured prompts from Firestore (with cache)
+    const getAIPrompts = async () => {
+      try {
+        const db = getFirestore();
+        const promptsDoc = await db.collection('aiPrompts').doc('testimonialGeneration').get();
+        
+        if (promptsDoc.exists) {
+          const data = promptsDoc.data();
+          return {
+            communityContext: data?.communityContext || '',
+            guidelines: data?.guidelines || '',
+            exampleActivities: data?.exampleActivities || [],
+            exampleEvents: data?.exampleEvents || [],
+            tone: data?.tone || '',
+            updatedAt: data?.updatedAt?.toDate() || null,
+          };
+        }
+        
+        // Fallback to default if not configured
+        return {
+          communityContext: 'Moms Fitness Mojo is a fitness and wellness community for moms in Short Hills, Millburn, and surrounding New Jersey areas. We offer workouts (yoga, pilates, HIIT, strength training), hikes, tennis, dance sessions, fitness challenges, social events (brunches, dinners, cocktail nights), and festival celebrations. The community values friendship, accountability, wellness, and helping moms rediscover themselves beyond their roles as mothers.',
+          guidelines: `- Be authentic and heartfelt
 - Mention specific experiences, events, or moments when possible
 - Keep it concise (3-4 lines max)
 - Make it personal and relatable
-- Focus on community, fitness, and empowerment
-- Each testimonial should be unique`;
+- Focus on community, fitness, empowerment, and friendship
+- Each testimonial should be unique`,
+          exampleActivities: ['Saturday morning walks', 'yoga sessions', 'hiking trails', 'tennis matches', 'dance classes', 'fitness challenges', 'brunch meetups', 'cocktail nights'],
+          exampleEvents: ['community hikes', 'fitness workshops', 'social brunches', 'dance sessions', 'wellness events'],
+          tone: 'warm, supportive, empowering, authentic',
+          updatedAt: null,
+        };
+      } catch (error) {
+        console.error('❌ [AI] Error fetching prompts from Firestore:', error);
+        // Return defaults on error
+        return {
+          communityContext: 'Moms Fitness Mojo is a fitness and wellness community for moms.',
+          guidelines: '- Be authentic and heartfelt\n- Keep it concise (3-4 lines max)\n- Make it personal and relatable',
+          exampleActivities: [],
+          exampleEvents: [],
+          tone: 'warm and supportive',
+          updatedAt: null,
+        };
+      }
+    };
+
+    // Build context-aware prompt using admin-configured settings
+    const buildPrompt = async () => {
+      const aiPrompts = await getAIPrompts();
+      
+      let userPrompt = `You are helping a member of Moms Fitness Mojo write a testimonial. 
+
+COMMUNITY CONTEXT:
+${aiPrompts.communityContext}
+
+${aiPrompts.exampleActivities.length > 0 ? `\nEXAMPLE ACTIVITIES (mention when relevant): ${aiPrompts.exampleActivities.join(', ')}` : ''}
+${aiPrompts.exampleEvents.length > 0 ? `\nEXAMPLE EVENTS (mention when relevant): ${aiPrompts.exampleEvents.join(', ')}` : ''}
+
+GUIDELINES FOR TESTIMONIAL GENERATION:
+${aiPrompts.guidelines}
+
+${aiPrompts.tone ? `\nTONE: ${aiPrompts.tone}` : ''}`;
 
       if (userContext) {
         userPrompt += `\n\nUser context: ${userContext}`;
@@ -1273,8 +1324,9 @@ Guidelines:
         userPrompt += `\n\nUser wants to highlight: ${highlight}`;
       }
 
-      userPrompt += `\n\nUser's input/experience: "${prompt}"`;
-      userPrompt += `\n\nGenerate 2-3 testimonials. Format each on a new line starting with "1.", "2.", "3.". Each should be 150-200 characters.`;
+      userPrompt += `\n\nUSER'S INPUT/EXPERIENCE: "${prompt}"`;
+      userPrompt += `\n\nGenerate 2-3 testimonials based on the user's input above. Format each on a new line starting with "1.", "2.", "3.". Each should be 150-200 characters. Make them feel authentic and specific to their experience.`;
+      
       return userPrompt;
     };
 
@@ -1325,10 +1377,10 @@ Guidelines:
 
         for (const modelName of modelsToTry) {
           try {
-            console.log(`🤖 [Gemini] Trying model: ${modelName}`);
-            const model = genAI.getGenerativeModel({ model: modelName });
-            const systemPrompt = buildPrompt();
-            const result = await model.generateContent(systemPrompt);
+              console.log(`🤖 [Gemini] Trying model: ${modelName}`);
+              const model = genAI.getGenerativeModel({ model: modelName });
+              const systemPrompt = await buildPrompt();
+              const result = await model.generateContent(systemPrompt);
             const response = await result.response;
             text = response.text();
             console.log(`✅ [Gemini] Success with model: ${modelName}`);
@@ -1381,19 +1433,19 @@ Guidelines:
     const { default: OpenAI } = await import('openai');
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-    const userPrompt = buildPrompt();
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are helping a member of Moms Fitness Mojo write a testimonial. Be authentic, concise, and heartfelt.'
-        },
-        {
-          role: 'user',
-          content: userPrompt
-        }
-      ],
+          const userPrompt = await buildPrompt();
+          const completion = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are helping a member of Moms Fitness Mojo write a testimonial. Be authentic, concise, and heartfelt.'
+              },
+              {
+                role: 'user',
+                content: userPrompt
+              }
+            ],
       temperature: 0.7,
       max_tokens: 600
     });
