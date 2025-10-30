@@ -3,7 +3,7 @@ import { Workbox } from 'workbox-window';
 
 export function registerSW() {
   // Only register Service Worker in production
-  if (import.meta.env.DEV) {
+  if ((import.meta as any).env?.DEV) {
     console.log('🔧 Development mode: Service Worker disabled');
     
     // Unregister any existing service worker in development
@@ -20,7 +20,9 @@ export function registerSW() {
 
   if ('serviceWorker' in navigator) {
     try {
-      const wb = new Workbox('/sw.js', { scope: '/' });
+      // Append version to bypass aggressive SW caching on some clients
+      const swVersion = 'v8';
+      const wb = new Workbox(`/sw.js?${swVersion}`, { scope: '/' });
       
       // Add error handling for message events
       wb.addEventListener('message', (event) => {

@@ -1,10 +1,10 @@
 // Service Worker for Moms Fitness Mojo
 // Enhanced PWA service worker with advanced caching strategies
 
-const CACHE_NAME = 'moms-fitness-mojo-v7';
-const STATIC_CACHE = 'moms-fitness-mojo-static-v7';
-const DYNAMIC_CACHE = 'moms-fitness-mojo-dynamic-v7';
-const IMAGE_CACHE = 'moms-fitness-mojo-images-v7';
+const CACHE_NAME = 'moms-fitness-mojo-v8';
+const STATIC_CACHE = 'moms-fitness-mojo-static-v8';
+const DYNAMIC_CACHE = 'moms-fitness-mojo-dynamic-v8';
+const IMAGE_CACHE = 'moms-fitness-mojo-images-v8';
 
 // Static assets to cache immediately
 const urlsToCache = [
@@ -61,7 +61,7 @@ self.addEventListener('activate', (event) => {
       caches.keys().then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-            if (!cacheName.includes('moms-fitness-mojo-v7')) {
+            if (!cacheName.includes('moms-fitness-mojo-v8')) {
               console.log('Service Worker: Deleting old cache', cacheName);
               return caches.delete(cacheName);
             }

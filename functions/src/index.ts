@@ -893,7 +893,10 @@ export const onMediaFileFinalize = onObjectFinalized({
           ffmpeg(tmpOriginal)
             .inputOptions(['-ss', String(seekTime)])
             .outputOptions(['-frames:v 1', '-q:v 2'])
-            .save(posterLocal).on('end', () => res()).on('error', rej)
+            .output(posterLocal)
+            .on('end', () => res())
+            .on('error', rej)
+            .run()
         );
 
         const posterPath = `${dir}/poster_${base}.jpg`;
@@ -1467,3 +1470,5 @@ ${aiPrompts.tone ? `\nTONE: ${aiPrompts.tone}` : ''}`;
     };
   }
 });
+
+export { generatePostSuggestionsV2 } from './postAI';
