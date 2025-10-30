@@ -18,6 +18,12 @@ build/
 .env.production
 .env.production.local
 .env.test.local
+.env
+.env.*
+functions/.env
+
+extensions/firestore-stripe-payments.env
+extensions/firestore-stripe-payments.prod.env
 
 # Extension environment files (contain secrets)
 extensions/*.env
