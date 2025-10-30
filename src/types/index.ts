@@ -132,5 +132,16 @@ export interface TestimonialAIPrompts {
   updatedBy?: string;
 }
 
+export interface PostAIPrompts {
+  id: string;
+  communityContext: string;
+  guidelines: string;
+  exampleTopics: string[];
+  examplePostTypes: string[];
+  tone: string;
+  updatedAt: Date;
+  updatedBy?: string;
+}
+
 // Re-export payment types
 export * from './payment';

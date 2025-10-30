@@ -8,7 +8,7 @@ import EventCardNew from '../components/events/EventCardNew';
 import ContactMessagesAdmin from '../components/admin/ContactMessagesAdmin';
 import { useTestimonials } from '../hooks/useTestimonials';
 import { adminUpdateTestimonial, deleteTestimonial } from '../services/testimonialsService';
-import type { Testimonial, TestimonialStatus, TestimonialAIPrompts } from '../types';
+import type { Testimonial, TestimonialStatus, TestimonialAIPrompts, PostAIPrompts } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 interface Event {
@@ -72,7 +72,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
-  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials'>('events');
+  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts'>('events');
   const { currentUser } = useAuth();
   
   // Media management state
@@ -103,6 +103,19 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   });
   const [loadingPrompts, setLoadingPrompts] = useState(false);
   const [savingPrompts, setSavingPrompts] = useState(false);
+
+  // Posts AI Prompts management state
+  const [postAiPrompts, setPostAiPrompts] = useState<PostAIPrompts>({
+    id: 'postGeneration',
+    communityContext: '',
+    guidelines: '',
+    exampleTopics: [],
+    examplePostTypes: [],
+    tone: '',
+    updatedAt: new Date(),
+  });
+  const [loadingPostPrompts, setLoadingPostPrompts] = useState(false);
+  const [savingPostPrompts, setSavingPostPrompts] = useState(false);
 
   const filteredTestimonials = useMemo(() => {
     if (selectedStatusFilter === 'all') {
@@ -236,6 +249,79 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       loadAIPrompts();
     }
   }, [activeAdminSection, testimonialTab]);
+
+  // Load Post AI prompts from Firestore
+  const loadPostAIPrompts = async () => {
+    if (!currentUser) return;
+    setLoadingPostPrompts(true);
+    try {
+      const promptsRef = doc(db, 'aiPrompts', 'postGeneration');
+      const promptsSnap = await getDoc(promptsRef);
+
+      if (promptsSnap.exists()) {
+        const data = promptsSnap.data();
+        setPostAiPrompts({
+          id: 'postGeneration',
+          communityContext: data.communityContext || '',
+          guidelines: data.guidelines || '',
+          exampleTopics: data.exampleTopics || [],
+          examplePostTypes: data.examplePostTypes || [],
+          tone: data.tone || '',
+          updatedAt: data.updatedAt?.toDate() || new Date(),
+          updatedBy: data.updatedBy || '',
+        });
+      } else {
+        // Initialize sensible defaults
+        setPostAiPrompts({
+          id: 'postGeneration',
+          communityContext: 'Moms Fitness Mojo is a supportive fitness and wellness community for moms.',
+          guidelines: '- Be authentic and engaging\n- Keep it conversational\n- Encourage community engagement',
+          exampleTopics: ['fitness progress', 'workout tips', 'motivation', 'community events'],
+          examplePostTypes: ['progress update', 'question', 'motivational', 'event share'],
+          tone: 'warm, encouraging, authentic, community-focused',
+          updatedAt: new Date(),
+        });
+      }
+    } catch (error: any) {
+      console.error('[ProfileAdminTab] Failed to load Post AI prompts', error);
+      toast.error('Failed to load Post AI prompts');
+    } finally {
+      setLoadingPostPrompts(false);
+    }
+  };
+
+  // Save Post AI prompts to Firestore
+  const savePostAIPrompts = async () => {
+    if (!currentUser) return;
+    setSavingPostPrompts(true);
+    try {
+      const promptsRef = doc(db, 'aiPrompts', 'postGeneration');
+      await setDoc(promptsRef, {
+        communityContext: postAiPrompts.communityContext.trim(),
+        guidelines: postAiPrompts.guidelines.trim(),
+        exampleTopics: postAiPrompts.exampleTopics.filter(t => t.trim()),
+        examplePostTypes: postAiPrompts.examplePostTypes.filter(t => t.trim()),
+        tone: postAiPrompts.tone.trim(),
+        updatedAt: Timestamp.now(),
+        updatedBy: currentUser.id,
+      }, { merge: true });
+
+      setPostAiPrompts(prev => ({ ...prev, updatedAt: new Date() }));
+      toast.success('Post AI prompts saved successfully!');
+    } catch (error: any) {
+      console.error('[ProfileAdminTab] Failed to save Post AI prompts', error);
+      toast.error(error?.message ?? 'Failed to save Post AI prompts');
+    } finally {
+      setSavingPostPrompts(false);
+    }
+  };
+
+  // Load when Posts section is active
+  useEffect(() => {
+    if (activeAdminSection === 'posts') {
+      loadPostAIPrompts();
+    }
+  }, [activeAdminSection]);
 
   // Search users by name or email
   const handleSearchUsers = async () => {
@@ -481,6 +567,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         >
           <Star className="w-4 h-4 inline mr-2" />
           Testimonials
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('posts')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'posts'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4 inline mr-2" />
+          Posts
         </button>
       </div>
 
@@ -1139,6 +1236,136 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                 </form>
               )}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Posts - AI Prompts Configuration */}
+      {activeAdminSection === 'posts' && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Posts - AI Prompts Configuration</h2>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <p className="text-sm text-blue-800">
+              Configure the AI prompts that help users write community posts. These prompts guide the AI to generate engaging, on-brand content. Changes take effect immediately for new generations.
+            </p>
+          </div>
+
+          {loadingPostPrompts ? (
+            <div className="flex items-center gap-2 rounded-xl border border-dashed border-[#F25129]/30 bg-white/80 p-6 text-[#F25129]">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Loading prompts...
+            </div>
+          ) : (
+            <form onSubmit={(e) => { e.preventDefault(); savePostAIPrompts(); }} className="space-y-6">
+              {/* Community Context */}
+              <div>
+                <label htmlFor="postCommunityContext" className="block text-sm font-medium text-gray-700 mb-2">
+                  Community Context *
+                </label>
+                <textarea
+                  id="postCommunityContext"
+                  required
+                  rows={6}
+                  value={postAiPrompts.communityContext}
+                  onChange={(e) => setPostAiPrompts(prev => ({ ...prev, communityContext: e.target.value }))}
+                  placeholder="Describe the community context for posts..."
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-[#F25129] focus:outline-none focus:ring-2 focus:ring-[#F25129]/20"
+                />
+                <p className="mt-1 text-xs text-gray-500">This context is provided to the AI so it understands your community.</p>
+              </div>
+
+              {/* Guidelines */}
+              <div>
+                <label htmlFor="postGuidelines" className="block text-sm font-medium text-gray-700 mb-2">
+                  Guidelines *
+                </label>
+                <textarea
+                  id="postGuidelines"
+                  required
+                  rows={8}
+                  value={postAiPrompts.guidelines}
+                  onChange={(e) => setPostAiPrompts(prev => ({ ...prev, guidelines: e.target.value }))}
+                  placeholder="Enter guidelines, one per line."
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-mono focus:border-[#F25129] focus:outline-none focus:ring-2 focus:ring-[#F25129]/20"
+                />
+                <p className="mt-1 text-xs text-gray-500">One guideline per line. These guide how the AI generates posts.</p>
+              </div>
+
+              {/* Example Topics */}
+              <div>
+                <label htmlFor="exampleTopics" className="block text-sm font-medium text-gray-700 mb-2">
+                  Example Topics
+                </label>
+                <input
+                  id="exampleTopics"
+                  type="text"
+                  value={postAiPrompts.exampleTopics.join(', ')}
+                  onChange={(e) => setPostAiPrompts(prev => ({ ...prev, exampleTopics: e.target.value.split(',').map(t => t.trim()).filter(t => t) }))}
+                  placeholder="e.g., fitness progress, motivation, community events"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-[#F25129] focus:outline-none focus:ring-2 focus:ring-[#F25129]/20"
+                />
+                <p className="mt-1 text-xs text-gray-500">Comma-separated list. AI may mention these when relevant.</p>
+              </div>
+
+              {/* Example Post Types */}
+              <div>
+                <label htmlFor="examplePostTypes" className="block text-sm font-medium text-gray-700 mb-2">
+                  Example Post Types
+                </label>
+                <input
+                  id="examplePostTypes"
+                  type="text"
+                  value={postAiPrompts.examplePostTypes.join(', ')}
+                  onChange={(e) => setPostAiPrompts(prev => ({ ...prev, examplePostTypes: e.target.value.split(',').map(t => t.trim()).filter(t => t) }))}
+                  placeholder="e.g., progress update, question, motivational, event share"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-[#F25129] focus:outline-none focus:ring-2 focus:ring-[#F25129]/20"
+                />
+                <p className="mt-1 text-xs text-gray-500">Comma-separated list. AI may use these as inspiration.</p>
+              </div>
+
+              {/* Tone */}
+              <div>
+                <label htmlFor="postTone" className="block text-sm font-medium text-gray-700 mb-2">
+                  Tone
+                </label>
+                <input
+                  id="postTone"
+                  type="text"
+                  value={postAiPrompts.tone}
+                  onChange={(e) => setPostAiPrompts(prev => ({ ...prev, tone: e.target.value }))}
+                  placeholder="e.g., warm, encouraging, authentic, community-focused"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:border-[#F25129] focus:outline-none focus:ring-2 focus:ring-[#F25129]/20"
+                />
+                <p className="mt-1 text-xs text-gray-500">Describe the desired tone for generated posts.</p>
+              </div>
+
+              {/* Last Updated */}
+              {postAiPrompts.updatedAt && (
+                <div className="text-xs text-gray-500">
+                  Last updated: {postAiPrompts.updatedAt.toLocaleString()}
+                  {postAiPrompts.updatedBy && ` by ${postAiPrompts.updatedBy}`}
+                </div>
+              )}
+
+              {/* Save Button */}
+              <div className="flex justify-end pt-4 border-t border-gray-200">
+                <button
+                  type="submit"
+                  disabled={savingPostPrompts || !postAiPrompts.communityContext.trim() || !postAiPrompts.guidelines.trim()}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#F25129] px-6 py-2 text-sm font-semibold text-white transition hover:bg-[#E0451F] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingPostPrompts ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Post AI Prompts'
+                  )}
+                </button>
+              </div>
+            </form>
           )}
         </div>
       )}

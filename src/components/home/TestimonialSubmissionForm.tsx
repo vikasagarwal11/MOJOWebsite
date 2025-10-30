@@ -184,18 +184,18 @@ export const TestimonialSubmissionForm: React.FC<TestimonialSubmissionFormProps>
                 handleGenerateSuggestions();
               }}
               disabled={isGenerating}
-              className="inline-flex items-center gap-2 rounded-full border border-purple-200 bg-white/90 px-4 py-2 text-xs font-semibold text-purple-600 shadow-sm transition hover:border-purple-400 hover:bg-purple-600 hover:text-white disabled:cursor-not-allowed disabled:border-purple-100 disabled:text-purple-300 z-10"
-              style={{ minWidth: '140px', minHeight: '32px' }}
+              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#F25129] to-[#FFC107] px-5 py-2 text-sm font-semibold text-white shadow-md transition-all duration-300 hover:from-[#E0451F] hover:to-[#E55A2B] hover:shadow-lg hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 z-10"
+              style={{ minWidth: '140px', minHeight: '36px' }}
               data-testid="ai-help-button"
             >
               {isGenerating ? (
                 <>
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   <span>Generating...</span>
                 </>
               ) : (
                 <>
-                  <Sparkles className="h-3 w-3" />
+                  <Sparkles className="h-4 w-4" />
                   <span>Help me write</span>
                 </>
               )}

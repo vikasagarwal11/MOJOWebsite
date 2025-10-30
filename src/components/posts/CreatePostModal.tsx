@@ -3,13 +3,14 @@ import React, { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, FileText, Image, Lock, Globe } from 'lucide-react';
+import { X, FileText, Image, Lock, Globe, Sparkles, Loader2, Check } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFirestore } from '../../hooks/useFirestore';
 import { useStorage } from '../../hooks/useStorage';
 import { serverTimestamp } from 'firebase/firestore';
 import { stripUndefined } from '../../utils/firestore';
 import toast from 'react-hot-toast';
+import { generatePostSuggestionsV2 as generatePostSuggestions } from '../../services/postAIService';
 
 const postSchema = z.object({
   title: z.string()
@@ -36,6 +37,11 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isPublic, setIsPublic] = useState(true); // default: public
+  
+  // AI suggestions state
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const canPost = useMemo(
     () => !!currentUser && (currentUser.role === 'member' || currentUser.role === 'admin'),
@@ -47,12 +53,78 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
     handleSubmit,
     formState: { errors },
     watch,
+    setValue,
   } = useForm<PostFormData>({
     resolver: zodResolver(postSchema),
   });
 
   const title = watch('title') ?? '';
   const content = watch('content') ?? '';
+
+  const handleGenerateSuggestions = async () => {
+    if (!currentUser) {
+      toast.error('Please sign in to use AI suggestions');
+      return;
+    }
+
+    setIsGenerating(true);
+    setSuggestions([]);
+    setShowSuggestions(true);
+
+    try {
+      const userContext = currentUser.displayName 
+        ? `${currentUser.displayName}${currentUser.email ? ` (${currentUser.email})` : ''}`
+        : undefined;
+
+      const prompt = title.trim() || content.trim() || 'I want to share something with the community';
+
+      const result = await generatePostSuggestions({
+        prompt,
+        userContext
+      });
+
+      if (result.success && result.suggestions && result.suggestions.length > 0) {
+        setSuggestions(result.suggestions);
+        toast.success(`Generated ${result.suggestions.length} suggestions!`);
+      } else {
+        toast.error(result.error || 'Failed to generate suggestions. Please try writing your own.');
+        setShowSuggestions(false);
+      }
+    } catch (error: any) {
+      console.error('[CreatePostModal] Error generating suggestions:', error);
+      toast.error('Something went wrong. Please try again or write your own post.');
+      setShowSuggestions(false);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleUseSuggestion = (suggestion: string) => {
+    // If user doesn't have a title, try to extract one from suggestion
+    if (!title.trim()) {
+      const lines = suggestion.split(/[.!?]\s+/);
+      const firstSentence = lines[0]?.trim() || suggestion.substring(0, 60).trim();
+      if (firstSentence.length <= 100) {
+        setValue('title', firstSentence);
+        const remaining = suggestion.substring(firstSentence.length).trim();
+        if (remaining) {
+          setValue('content', remaining);
+        } else {
+          setValue('content', suggestion);
+        }
+      } else {
+        // First sentence too long, use as content and generate title
+        setValue('content', suggestion);
+        setValue('title', suggestion.substring(0, 100));
+      }
+    } else {
+      // User has title, just update content
+      setValue('content', suggestion);
+    }
+    setSuggestions([]);
+    setShowSuggestions(false);
+    toast.success('Suggestion applied! You can edit it before posting.');
+  };
 
   const onSubmit = async (data: PostFormData) => {
     if (!currentUser) return;
@@ -167,9 +239,29 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
 
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Post Title
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Post Title
+              </label>
+              <button
+                type="button"
+                onClick={handleGenerateSuggestions}
+                disabled={isGenerating}
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#F25129] to-[#FFC107] px-4 py-1.5 text-xs font-semibold text-white shadow-md transition-all duration-300 hover:from-[#E0451F] hover:to-[#E55A2B] hover:shadow-lg hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3 w-3" />
+                    <span>Help me write</span>
+                  </>
+                )}
+              </button>
+            </div>
             <div className="relative">
               <FileText className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
@@ -200,7 +292,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
               className={`w-full px-4 py-3 rounded-lg border ${
                 errors.content ? 'border-red-300' : 'border-gray-300'
               } focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
-              placeholder="Share your thoughts, experiences, or ask questions..."
+              placeholder="Share your thoughts, experiences, or ask questions... Or click 'Help me write' for AI suggestions!"
             />
             <div className="mt-1 flex justify-between text-xs text-gray-500">
               <span className={content.trim().length > 2000 ? 'text-red-600' : ''}>
@@ -208,6 +300,53 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
               </span>
               {errors.content && <span className="text-red-600">{errors.content.message}</span>}
             </div>
+
+            {/* AI Suggestions Display */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="mt-4 space-y-3 rounded-xl border border-[#F25129]/30 bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-[#F25129]" />
+                    <span className="text-sm font-semibold text-[#F25129]">AI Suggestions</span>
+                    <span className="text-xs text-[#F25129]/70">({suggestions.length} options)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSuggestions(false);
+                      setSuggestions([]);
+                    }}
+                    className="rounded-full p-1 text-[#F25129]/60 hover:bg-[#F25129]/20 hover:text-[#F25129] transition"
+                    aria-label="Close suggestions"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {suggestions.map((suggestion, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => handleUseSuggestion(suggestion)}
+                      className="w-full text-left rounded-lg border border-[#F25129]/30 bg-white p-3 hover:border-[#F25129] hover:bg-[#F25129]/5 transition group"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="flex-shrink-0 mt-0.5 h-5 w-5 rounded-full bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white flex items-center justify-center text-xs font-semibold">
+                          {index + 1}
+                        </span>
+                        <p className="flex-1 text-sm text-gray-700 group-hover:text-[#F25129]">
+                          {suggestion}
+                        </p>
+                        <Check className="h-4 w-4 text-[#F25129] opacity-0 group-hover:opacity-100 transition" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-[#F25129]/70 italic">
+                  💡 Click any suggestion to use it, or write your own!
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Image */}
