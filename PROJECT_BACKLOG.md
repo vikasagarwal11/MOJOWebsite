@@ -1,6 +1,6 @@
 # 📋 Moms Fitness Mojo - Project Backlog
 
-*Last Updated: January 7, 2025*
+*Last Updated: November 2, 2025*
 
 ## 🎯 Project Overview
 
@@ -217,11 +217,80 @@ This makes `getStorage().bucket()` default to the right bucket everywhere.
   - *Effort*: 4 hours
   - *Dependencies*: Individual event pages
 
+- [ ] **Progressive Quality Generation** - Enable 30-60s initial playback vs current 5-6min wait
+  - *Status*: Planned
+  - *Impact*: High - 10x improvement in user experience
+  - *Effort*: 4-6 hours
+  - *Dependencies*: Current adaptive streaming implementation
+  - *Description*: Generate video qualities sequentially (720p first → ready, then 1080p → 4K in background). Mark video as ready after 720p completes (30-60s) instead of waiting for all qualities. HLS.js automatically upgrades quality when higher resolutions become available.
+  - *Risk*: Low-Medium (with proper safeguards)
+  - *Assessment*: See docs/RISK_AND_COMPLEXITY_ASSESSMENT.md
+
+#### 📋 **Progressive Quality Generation - Technical Specification**
+
+**Current Implementation:**
+- ✅ Multiple quality generation (720p, 1080p, 4K) in parallel
+- ✅ Master playlist creation (`master.m3u8`)
+- ✅ Frontend support for adaptive streaming
+- ✅ Backward compatibility (fallback to single manifest)
+
+**Required Changes:**
+- ⚠️ Change from **parallel** to **sequential** generation
+- ⚠️ Mark video as "ready" **before all qualities complete**
+- ⚠️ Update master playlist **progressively** (as each quality finishes)
+
+**Implementation Approach:**
+
+**Phase 1: Test Sequential Generation (Zero Risk)**
+```typescript
+// Generate 720p first, but still wait for all qualities
+// Test that sequential works correctly
+// Time: 1-2 hours
+// Risk: VERY LOW (doesn't change behavior)
+```
+
+**Phase 2: Mark Ready After 720p (Feature Flag)**
+```typescript
+// Add feature flag: ENABLE_PROGRESSIVE_QUALITY
+// If flag ON: Mark ready after 720p
+// If flag OFF: Keep current behavior (wait for all)
+// Time: 1-2 hours
+// Risk: LOW (can disable if issues)
+```
+
+**Phase 3: Progressive Master Playlist Updates**
+```typescript
+// Update master playlist as each quality completes
+// Time: 1-2 hours
+// Risk: LOW-MEDIUM (but Phase 1 & 2 already tested)
+```
+
+**Safety Measures:**
+- ✅ Feature flag for instant rollback
+- ✅ Comprehensive error handling with automatic fallback
+- ✅ Backward compatibility (existing videos unaffected)
+- ✅ Atomic Firestore updates to prevent race conditions
+- ✅ Gradual rollout (10% → 50% → 100%)
+
+**Benefits:**
+- ✅ **10x Faster**: 30-60s initial playback vs 5-6min wait
+- ✅ **Progressive Enhancement**: Quality upgrades automatically
+- ✅ **Low Risk**: Backward compatible, can roll back easily
+- ✅ **Manageable Complexity**: Infrastructure already exists
+- ✅ **Same Code**: Just different timing/sequence
+
+**Performance Improvement:**
+| Metric | Current | Progressive | Improvement |
+|--------|---------|-------------|-------------|
+| Initial Playback | 5-6 min ❌ | 30-60s ✅ | **10x faster** |
+| Total Processing | 5-6 min | 5-6 min | Same (background) |
+| User Experience | Poor ❌ | Excellent ✅ | **100% better** |
+
 - [ ] **Optimize Media Processing Architecture** - Refactor from monolithic to queue-based processing
   - *Status*: Planned
   - *Impact*: High - Superior scalability and user experience
   - *Effort*: 25 hours
-  - *Dependencies*: Current video processing analysis
+  - *Dependencies*: Progressive Quality Generation
   - *Description*: Convert monolithic `onMediaFileFinalize` to lightweight Storage trigger + async Cloud Tasks worker pattern. Enables concurrent user uploads, prevents processing bottlenecks, and provides better resource utilization.
 
 #### 📋 **Media Processing Architecture - Technical Specification**
@@ -551,6 +620,69 @@ const errorMessages = {
   - *Effort*: 25 hours
   - *Dependencies*: User profile data
   - *Description*: AI suggests workouts based on user preferences and fitness level
+
+- [ ] **Voice RSVP System** - Hands-free event RSVP with voice commands
+  - *Status*: Future Enhancement
+  - *Impact*: High - Accessibility and convenience
+  - *Effort*: 35 hours
+  - *Dependencies*: Voice recognition API, Browser microphone permissions
+  - *Description*: Voice-activated RSVP system using speech recognition. Users can RSVP to events, cancel RSVPs, and manage family member attendance through voice commands.
+  - *Features*:
+    - "Hey Mojo, RSVP me to the yoga class"
+    - "Cancel my RSVP for Saturday's event"
+    - "Add my daughter to the park event"
+    - Natural language understanding for event names and dates
+    - Multi-user support (family members via voice)
+
+- [ ] **Voice Event Notes** - Record and auto-generate post-event summaries
+  - *Status*: Future Enhancement
+  - *Impact*: Medium - Enhanced event documentation
+  - *Effort*: 30 hours
+  - *Dependencies*: Voice-to-text API, Event note storage
+  - *Description*: Allow users to record voice notes after events. AI automatically transcribes and generates event summaries, highlights, and key moments.
+  - *Features*:
+    - Voice recording during/after events
+    - Auto-transcription with timestamp markers
+    - AI-generated event summaries
+    - Integration with event pages for community sharing
+
+- [ ] **Smart Event Matching** - AI-powered event recommendations
+  - *Status*: Future Enhancement
+  - *Impact*: High - Increased event participation
+  - *Effort*: 40 hours
+  - *Dependencies*: User preferences, event metadata, ML model
+  - *Description*: AI analyzes user interests, past attendance, schedule, and family composition to recommend relevant events.
+  - *Features*:
+    - Personalized event suggestions based on preferences
+    - Schedule-aware recommendations (available time slots)
+    - Family-friendly event filtering
+    - Interest-based matching (yoga, running, social events, etc.)
+    - "Events you might like" section
+
+- [ ] **Voice Family Coordination** - Voice commands for family event management
+  - *Status*: Future Enhancement
+  - *Impact*: Medium - Family event management convenience
+  - *Effort*: 25 hours
+  - *Dependencies*: Voice RSVP System, Family member management
+  - *Description*: Voice commands specifically for managing family member RSVPs and event coordination.
+  - *Features*:
+    - "Add my daughter to Saturday's event"
+    - "Who's going to the park event?"
+    - "RSVP all my family to the yoga class"
+    - "Check if my spouse is free for the event"
+
+- [ ] **AI Nutrition Assistant** - Personalized meal planning and nutrition tracking
+  - *Status*: Future Enhancement
+  - *Impact*: High - Comprehensive wellness platform
+  - *Effort*: 50 hours
+  - *Dependencies*: Nutrition database, User goals/profile
+  - *Description*: AI-powered nutrition assistant that provides meal planning, recipe suggestions, and calorie tracking based on fitness goals.
+  - *Features*:
+    - Meal planning based on fitness goals and preferences
+    - Recipe suggestions with dietary restrictions
+    - Calorie and macro tracking
+    - Integration with workout events
+    - Voice input for meal logging ("I had a chicken salad for lunch")
 
 ### 📱 Mobile Application
 - [ ] **Native Mobile App** - iOS and Android apps

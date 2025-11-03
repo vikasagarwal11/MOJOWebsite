@@ -486,6 +486,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                 closeBtnRef={closeBtnRef}
                 isCompact={isMobile}
                 capacityState={capacityState}
+                attendingCount={realTimeAttendingCount}
               />
               
               {/* Event Details (Mobile only) */}
@@ -968,5 +969,6 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
     document.body
   );
 };
+
 
 

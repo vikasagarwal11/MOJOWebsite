@@ -103,7 +103,7 @@ export const useAttendees = (eventId: string, userId: string, isAdmin: boolean =
   const addAttendee = useCallback(async (attendeeData: CreateAttendeeData): Promise<string> => {
     try {
       setError(null);
-      const attendeeId = await upsertAttendee(attendeeData);
+      const attendeeId = await upsertAttendee(eventId, attendeeData);
       
       // Optimistic update
       const newAttendee: Attendee = {
@@ -120,7 +120,7 @@ export const useAttendees = (eventId: string, userId: string, isAdmin: boolean =
       setError(errorMessage);
       throw new Error(errorMessage);
     }
-  }, []);
+  }, [eventId]);
 
   // Update attendee
   const updateAttendeeData = useCallback(async (attendeeId: string, updateData: UpdateAttendeeData): Promise<void> => {
