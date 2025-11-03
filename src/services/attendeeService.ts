@@ -1,11 +1,9 @@
-﻿import { 
+import { 
   collection, 
   doc, 
   getDocs, 
   getDoc,
   updateDoc, 
-  deleteDoc, 
-  addDoc,
   query, 
   where, 
   orderBy, 
@@ -19,15 +17,47 @@
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { AttendeeStatus } from '../types/attendee';
-import type { Attendee, CreateAttendeeData, UpdateAttendeeData } from '../types/attendee';
+import type { Attendee, CreateAttendeeData, UpdateAttendeeData, AttendeeCounts } from '../types/attendee';
 import { sanitizeFirebaseData, safeStringConversion } from '../utils/dataSanitizer';
+import type { DocumentReference, Transaction } from 'firebase/firestore';
+
+const getAttendingDelta = (
+  previousStatus: AttendeeStatus | null | undefined,
+  nextStatus: AttendeeStatus
+): number => {
+  const wasGoing = previousStatus === 'going';
+  const isGoing = nextStatus === 'going';
+
+  if (isGoing && !wasGoing) return 1;
+  if (!isGoing && wasGoing) return -1;
+  return 0;
+};
+
+const updateEventAttendingCount = async (
+  transaction: Transaction,
+  eventRef: DocumentReference,
+  delta: number
+) => {
+  if (delta === 0) return;
+
+  const eventSnap = await transaction.get(eventRef);
+  if (!eventSnap.exists()) return;
+
+  const currentCount = Number(eventSnap.data()?.attendingCount || 0);
+  const newCount = Math.max(0, currentCount + delta);
+
+  transaction.update(eventRef, {
+    attendingCount: newCount,
+    updatedAt: serverTimestamp()
+  });
+};
 
 // Create attendee
 export const createAttendee = async (
   eventId: string, 
   attendeeData: CreateAttendeeData
 ): Promise<string> => {
-  console.log('ðŸ” DEBUG: createAttendee called with:', { eventId, attendeeData });
+  console.log('dY"? DEBUG: createAttendee called with:', { eventId, attendeeData });
   
   // Validate required fields
   if (!eventId || !attendeeData.userId || !attendeeData.attendeeType || !attendeeData.rsvpStatus) {
@@ -46,29 +76,92 @@ export const createAttendee = async (
     familyMemberId: attendeeData.familyMemberId || null
   };
   
-  console.log('ðŸ” DEBUG: Cleaned attendee data:', cleanedData);
+  console.log('dY"? DEBUG: Cleaned attendee data:', cleanedData);
   
   const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  const eventRef = doc(db, 'events', eventId);
+  const newAttendeeRef = doc(attendeesRef);
   const newAttendee = {
     ...cleanedData,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
-  
-  console.log('ðŸ” DEBUG: Final attendee document:', newAttendee);
-  
+
+  console.log('dY"? DEBUG: Final attendee document:', newAttendee);
+
   try {
-    const docRef = await addDoc(attendeesRef, newAttendee);
-    console.log('ðŸ” DEBUG: Attendee created successfully with ID:', docRef.id);
-    return docRef.id;
+    await runTransaction(db, async (transaction) => {
+      // CRITICAL: All reads must happen before all writes in Firestore transactions
+      // Read the event document first to get current attendingCount
+      const eventSnap = await transaction.get(eventRef);
+      const currentCount = eventSnap.exists() ? Number(eventSnap.data()?.attendingCount || 0) : 0;
+
+      // Calculate the delta and new count
+      const delta = getAttendingDelta(null, cleanedData.rsvpStatus);
+      const newCount = Math.max(0, currentCount + delta);
+
+      // Now perform all writes (attendee creation and event update)
+      transaction.set(newAttendeeRef, newAttendee);
+
+      if (delta !== 0) {
+        transaction.update(eventRef, {
+          attendingCount: newCount,
+          updatedAt: serverTimestamp()
+        });
+      }
+    });
+
+    console.log('dY"? DEBUG: Attendee created successfully with ID:', newAttendeeRef.id);
+    return newAttendeeRef.id;
   } catch (error) {
     console.error('DEBUG: Failed to create attendee:', error);
     throw error instanceof Error ? error : new Error('Failed to create attendee');
   }
 };
 
-// Calculate attendee counts for an event
-export const calculateAttendeeCounts = async (eventId: string): Promise<{
+// Calculate attendee counts from an array of attendees (used in hooks)
+export const calculateAttendeeCounts = (attendees: Attendee[]): AttendeeCounts => {
+  const counts: AttendeeCounts = {
+    goingCount: 0,
+    notGoingCount: 0,
+    waitlistedCount: 0,
+    totalGoingByAgeGroup: {
+      '0-2': 0,
+      '3-5': 0,
+      '6-10': 0,
+      '11+': 0,
+      'adult': 0
+    },
+    totalGoing: 0
+  };
+
+  attendees.forEach(attendee => {
+    switch (attendee.rsvpStatus) {
+      case 'going':
+        counts.goingCount++;
+        counts.totalGoing++;
+        if (attendee.ageGroup && counts.totalGoingByAgeGroup[attendee.ageGroup] !== undefined) {
+          counts.totalGoingByAgeGroup[attendee.ageGroup]++;
+        }
+        break;
+      case 'not-going':
+        counts.notGoingCount++;
+        break;
+      case 'waitlisted':
+        counts.waitlistedCount++;
+        break;
+      default:
+        // Handle any invalid or legacy status values gracefully
+        // Note: 'pending' status is not in current AttendeeStatus type, so we ignore it
+        break;
+    }
+  });
+
+  return counts;
+};
+
+// Calculate attendee counts for an event by querying Firestore (used in functions)
+export const calculateAttendeeCountsFromEvent = async (eventId: string): Promise<{
   totalGoing: number;
   totalWaitlisted: number;
   totalNotGoing: number;
@@ -502,30 +595,104 @@ export const listAttendees = async (eventId: string, userId: string): Promise<At
   const q = query(
     attendeesRef,
     where('userId', '==', userId),
-    orderBy('createdAt', 'desc')
+    orderBy('createdAt', 'asc')
   );
   
   const snapshot = await getDocs(q);
   const attendees: Attendee[] = [];
   
   snapshot.forEach(doc => {
-    const data = doc.data();
-    attendees.push({
-      attendeeId: doc.id,
-      ...data,
-      createdAt: data.createdAt?.toDate(),
-      updatedAt: data.updatedAt?.toDate()
-    } as Attendee);
+    try {
+      const data = doc.data();
+      
+      // Safely convert timestamps
+      let createdAt: Date | undefined;
+      let updatedAt: Date | undefined;
+      
+      try {
+        if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+          createdAt = data.createdAt.toDate();
+        }
+      } catch (e) {
+        console.warn('⚠️ Error converting createdAt timestamp:', e);
+      }
+      
+      try {
+        if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
+          updatedAt = data.updatedAt.toDate();
+        }
+      } catch (e) {
+        console.warn('⚠️ Error converting updatedAt timestamp:', e);
+      }
+      
+      attendees.push({
+        attendeeId: doc.id,
+        ...data,
+        createdAt,
+        updatedAt
+      } as Attendee);
+    } catch (error) {
+      console.error(`❌ Error processing attendee ${doc.id}:`, error);
+      // Continue processing other attendees even if one fails
+    }
   });
   
   console.log('🔍 listAttendees returning:', { count: attendees.length, attendees });
   return attendees;
 };
 
-// List all attendees (alias for getAllAttendees)
+// List all attendees for an event (all users) - for admin view
 export const listAllAttendees = async (eventId: string): Promise<Attendee[]> => {
-  const result = await getAllAttendees(eventId);
-  return result.attendees;
+  console.log('🔍 listAllAttendees called for eventId:', eventId);
+  
+  const attendeesRef = collection(db, 'events', eventId, 'attendees');
+  const q = query(attendeesRef, orderBy('createdAt', 'asc'));
+  const snapshot = await getDocs(q);
+  
+  const attendees: Attendee[] = [];
+  
+  snapshot.forEach(doc => {
+    try {
+      const data = doc.data();
+      
+      // Safely convert timestamps
+      let createdAt: Date | undefined;
+      let updatedAt: Date | undefined;
+      
+      try {
+        if (data.createdAt && typeof data.createdAt.toDate === 'function') {
+          createdAt = data.createdAt.toDate();
+        }
+      } catch (e) {
+        console.warn('⚠️ Error converting createdAt timestamp:', e);
+      }
+      
+      try {
+        if (data.updatedAt && typeof data.updatedAt.toDate === 'function') {
+          updatedAt = data.updatedAt.toDate();
+        }
+      } catch (e) {
+        console.warn('⚠️ Error converting updatedAt timestamp:', e);
+      }
+      
+      attendees.push({
+        attendeeId: doc.id,
+        ...data,
+        createdAt,
+        updatedAt
+      } as Attendee);
+    } catch (error) {
+      console.error(`❌ Error processing attendee ${doc.id}:`, error);
+      // Continue processing other attendees even if one fails
+    }
+  });
+  
+  console.log('🔍 listAllAttendees result:', { 
+    eventId, 
+    attendeeCount: attendees.length
+  });
+  
+  return attendees;
 };
 
 // Subscribe to attendees for a specific user
@@ -599,6 +766,8 @@ export const bulkUpsertAttendees = async (
 ): Promise<string[]> => {
   const batch = writeBatch(db);
   const attendeeIds: string[] = [];
+  const eventRef = doc(db, 'events', eventId);
+  let goingDelta = 0;
 
   for (const attendeeData of attendeesData) {
     const attendeeRef = doc(collection(db, 'events', eventId, 'attendees'));
@@ -610,9 +779,19 @@ export const bulkUpsertAttendees = async (
     
     batch.set(attendeeRef, payload);
     attendeeIds.push(attendeeRef.id);
+
+    if ((attendeeData as CreateAttendeeData).rsvpStatus === 'going') {
+      goingDelta += 1;
+    }
+  }
+  await batch.commit();
+
+  if (goingDelta !== 0) {
+    await runTransaction(db, async (transaction) => {
+      await updateEventAttendingCount(transaction, eventRef, goingDelta);
+    });
   }
 
-  await batch.commit();
   return attendeeIds;
 };
 
@@ -622,7 +801,21 @@ export const deleteAttendee = async (
   attendeeId: string
 ): Promise<void> => {
   const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
-  await deleteDoc(attendeeRef);
+  const eventRef = doc(db, 'events', eventId);
+
+  await runTransaction(db, async (transaction) => {
+    const attendeeSnap = await transaction.get(attendeeRef);
+    if (!attendeeSnap.exists()) {
+      return;
+    }
+
+    const attendeeData = attendeeSnap.data() as Attendee;
+    transaction.delete(attendeeRef);
+
+    if (attendeeData.rsvpStatus === 'going') {
+      await updateEventAttendingCount(transaction, eventRef, -1);
+    }
+  });
 };
 
 // Set attendee status
@@ -631,14 +824,7 @@ export const setAttendeeStatus = async (
   attendeeId: string,
   status: AttendeeStatus
 ): Promise<void> => {
-  const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
-  
-  const updatePayload = {
-    rsvpStatus: status,
-    updatedAt: serverTimestamp(),
-  };
-
-  await updateDoc(attendeeRef, updatePayload);
+  await updateAttendee(eventId, attendeeId, { rsvpStatus: status });
 };
 
 // Update attendee
@@ -648,13 +834,53 @@ export const updateAttendee = async (
   updateData: UpdateAttendeeData
 ): Promise<void> => {
   const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
-  
-  const updatePayload = {
-    ...updateData,
-    updatedAt: serverTimestamp(),
-  };
+  const eventRef = doc(db, 'events', eventId);
 
-  await updateDoc(attendeeRef, updatePayload);
+  const initialSnap = await getDoc(attendeeRef);
+  if (!initialSnap.exists()) {
+    throw new Error('Attendee not found');
+  }
+
+  const initialData = initialSnap.data() as Attendee;
+  const initialStatus = initialData.rsvpStatus as AttendeeStatus;
+  const targetStatus = (updateData.rsvpStatus ?? initialStatus) as AttendeeStatus;
+
+  await runTransaction(db, async (transaction) => {
+    // CRITICAL: All reads must happen before all writes in Firestore transactions
+    // Read both attendee and event documents first
+    const attendeeSnap = await transaction.get(attendeeRef);
+    if (!attendeeSnap.exists()) {
+      throw new Error('Attendee not found');
+    }
+
+    const currentData = attendeeSnap.data() as Attendee;
+    const currentStatus = currentData.rsvpStatus as AttendeeStatus;
+    const nextStatus = (updateData.rsvpStatus ?? currentStatus) as AttendeeStatus;
+    const delta = getAttendingDelta(currentStatus, nextStatus);
+
+    // Read event document if we need to update attending count
+    let currentCount = 0;
+    if (delta !== 0) {
+      const eventSnap = await transaction.get(eventRef);
+      if (eventSnap.exists()) {
+        currentCount = Number(eventSnap.data()?.attendingCount || 0);
+      }
+    }
+
+    // Now perform all writes (attendee update and event update)
+    transaction.update(attendeeRef, {
+      ...updateData,
+      updatedAt: serverTimestamp(),
+    });
+
+    if (delta !== 0) {
+      const newCount = Math.max(0, currentCount + delta);
+      transaction.update(eventRef, {
+        attendingCount: newCount,
+        updatedAt: serverTimestamp()
+      });
+    }
+  });
 };
 
 // Upsert attendee (update or create)

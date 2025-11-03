@@ -548,12 +548,15 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
       // Determine the appropriate status based on capacity
       let rsvpStatus: AttendeeStatus = 'going';
       
+      // CRITICAL: Check capacity BEFORE making Firestore call
       if (capacityState?.isAtCapacity) {
         if (capacityState.canWaitlist) {
+          // Auto-waitlist if waitlist is available
           rsvpStatus = 'waitlisted';
         } else {
-          toast.error('Event is at full capacity and waitlist is not available.');
-          return;
+          // Event is full and waitlist is NOT available - block RSVP completely
+          toast.error('This event is already at capacity and cannot accept new RSVPs. The waitlist is not available for this event.');
+          return; // Early return - prevents Firestore call
         }
       }
 
@@ -646,7 +649,9 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                     Join Waitlist
                   </button>
                 ) : (
-                  <div className="text-sm text-red-600">Event is full and waitlist is not available.</div>
+                  <div className="text-sm text-red-600 font-medium">
+                    Event is at capacity. RSVPs are no longer being accepted.
+                  </div>
                 )
               ) : (
                 <button

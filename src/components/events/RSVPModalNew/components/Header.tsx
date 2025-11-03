@@ -1,8 +1,8 @@
-import React from 'react';
-import { X, ExternalLink } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { useEventDates } from '../hooks/useEventDates';
-import { EventDoc } from '../../../../hooks/useEvents';
+import React from "react";
+import { X, ExternalLink, Calendar, Clock, Users, MapPin } from "lucide-react";
+import { motion } from "framer-motion";
+import { useEventDates } from "../hooks/useEventDates";
+import { EventDoc } from "../../../../hooks/useEvents";
 
 interface HeaderProps {
   event: EventDoc;
@@ -10,13 +10,14 @@ interface HeaderProps {
   closeBtnRef: React.RefObject<HTMLButtonElement>;
   isCompact?: boolean;
   capacityState?: {
-    state: 'ok' | 'near' | 'full' | 'waitlist';
+    state: "ok" | "near" | "full" | "waitlist";
     remaining: number;
     isAtCapacity: boolean;
     isNearlyFull: boolean;
     warningMessage: string;
     slotsRemainingText: string;
   };
+  attendingCount?: number;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -24,9 +25,33 @@ export const Header: React.FC<HeaderProps> = ({
   onClose, 
   closeBtnRef,
   isCompact = false,
-  capacityState
+  capacityState,
+  attendingCount
 }) => {
   const { dateLabel, timeWithDuration } = useEventDates(event);
+
+  const maxAttendees = typeof event.maxAttendees === "number" ? event.maxAttendees : undefined;
+  const derivedFromProps = typeof attendingCount === "number"
+    ? attendingCount
+    : (typeof event.attendingCount === "number" ? event.attendingCount : undefined);
+  const derivedFromCapacity = capacityState && typeof maxAttendees === "number"
+    ? Math.max(0, maxAttendees - capacityState.remaining)
+    : undefined;
+
+  const normalizedCount = derivedFromProps ?? derivedFromCapacity;
+  const safeCount = normalizedCount !== undefined ? Math.max(0, Math.round(normalizedCount)) : undefined;
+
+  let capacityLabel: string | null = null;
+  if (typeof maxAttendees === "number") {
+    const countForLabel = safeCount ?? 0;
+    if (capacityState?.isAtCapacity) {
+      capacityLabel = countForLabel > maxAttendees
+        ? `Over capacity (${countForLabel}/${maxAttendees})`
+        : `Full (${countForLabel}/${maxAttendees})`;
+    } else {
+      capacityLabel = `${countForLabel}/${maxAttendees}`;
+    }
+  }
 
   // Helper function to generate map URL
   const getMapUrl = (address: string) => {
@@ -38,12 +63,12 @@ export const Header: React.FC<HeaderProps> = ({
   // Handle address click
   const handleAddressClick = (address: string) => {
     const mapUrl = getMapUrl(address);
-    window.open(mapUrl, '_blank', 'noopener,noreferrer');
+    window.open(mapUrl, "_blank", "noopener,noreferrer");
   };
 
   // Smart display logic for venue information
   const getDisplayVenueInfo = (venueName: string, venueAddress: string, isMobile: boolean) => {
-    if (!venueAddress && !venueName) return 'TBD';
+    if (!venueAddress && !venueName) return "TBD";
     
     // If we have both venue name and address
     if (venueName && venueAddress) {
@@ -84,27 +109,24 @@ export const Header: React.FC<HeaderProps> = ({
               {/* First row: Date and Time */}
               <div className="flex flex-wrap gap-3">
                 <div className="flex items-center gap-1">
-                  <span>📅</span>
+                  <Calendar className="w-3 h-3 flex-shrink-0" />
                   <span>{dateLabel}</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <span>🕐</span>
+                  <Clock className="w-3 h-3 flex-shrink-0" />
                   <span className="line-clamp-1">{timeWithDuration}</span>
                 </div>
                 {/* Capacity Status */}
-                {capacityState && event.maxAttendees && (
+                {capacityState && event.maxAttendees && capacityLabel && (
                   <div className="flex items-center gap-1">
-                    <span>👥</span>
+                    <Users className="w-3 h-3 flex-shrink-0" />
                     <span className={`font-medium ${
-                      capacityState.state === 'full' ? 'text-red-200' :
-                      capacityState.state === 'near' ? 'text-yellow-200' :
-                      capacityState.state === 'waitlist' ? 'text-purple-200' :
-                      'text-green-200'
+                      capacityState.state === "full" ? "text-red-200" :
+                      capacityState.state === "near" ? "text-yellow-200" :
+                      capacityState.state === "waitlist" ? "text-purple-200" :
+                      "text-green-200"
                     }`}>
-                      {capacityState.isAtCapacity ? 
-                        `Full (${event.maxAttendees})` : 
-                        `${event.maxAttendees - capacityState.remaining}/${event.maxAttendees}`
-                      }
+                      {capacityLabel}
                     </span>
                   </div>
                 )}
@@ -112,14 +134,14 @@ export const Header: React.FC<HeaderProps> = ({
               
               {/* Second row: Location - Smart display logic */}
               <div className="flex items-start gap-1">
-                <span className="mt-0.5">📍</span>
+                <MapPin className="w-3 h-3 flex-shrink-0 mt-0.5" />
                 {(event.venueAddress || event.venueName) ? (
                   <button
-                    onClick={() => handleAddressClick(event.venueAddress || event.venueName || '')}
+                    onClick={() => handleAddressClick(event.venueAddress || event.venueName || "")}
                     className="line-clamp-2 leading-tight text-left hover:underline hover:text-orange-200 transition-colors cursor-pointer inline-flex items-center gap-1"
                     title="Click to open in maps"
                   >
-                    <span>{getDisplayVenueInfo(event.venueName || '', event.venueAddress || '', true)}</span>
+                    <span>{getDisplayVenueInfo(event.venueName || "", event.venueAddress || "", true)}</span>
                     <ExternalLink className="w-3 h-3 flex-shrink-0 opacity-70" />
                   </button>
                 ) : (
@@ -162,40 +184,37 @@ export const Header: React.FC<HeaderProps> = ({
           
           <div className="space-y-2 text-sm">
             <div className="flex items-center gap-2">
-              <span>📅</span>
+              <Calendar className="w-4 h-4 flex-shrink-0" />
               <span>{dateLabel}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span>🕐</span>
+              <Clock className="w-4 h-4 flex-shrink-0" />
               <span>{timeWithDuration}</span>
             </div>
             {/* Capacity Status */}
-            {capacityState && event.maxAttendees && (
+            {capacityState && event.maxAttendees && capacityLabel && (
               <div className="flex items-center gap-2">
-                <span>👥</span>
+                <Users className="w-4 h-4 flex-shrink-0" />
                 <span className={`font-medium ${
-                  capacityState.state === 'full' ? 'text-red-200' :
-                  capacityState.state === 'near' ? 'text-yellow-200' :
-                  capacityState.state === 'waitlist' ? 'text-purple-200' :
-                  'text-green-200'
+                  capacityState.state === "full" ? "text-red-200" :
+                  capacityState.state === "near" ? "text-yellow-200" :
+                  capacityState.state === "waitlist" ? "text-purple-200" :
+                  "text-green-200"
                 }`}>
-                  {capacityState.isAtCapacity ? 
-                    `Full (${event.maxAttendees})` : 
-                    `${event.maxAttendees - capacityState.remaining}/${event.maxAttendees}`
-                  }
+                  {capacityLabel}
                 </span>
               </div>
             )}
             <div className="flex items-start gap-2">
-              <span className="mt-0.5">📍</span>
+              <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
               <div className="flex flex-col">
                 {(event.venueAddress || event.venueName) ? (
                   <button
-                    onClick={() => handleAddressClick(event.venueAddress || event.venueName || '')}
+                    onClick={() => handleAddressClick(event.venueAddress || event.venueName || "")}
                     className="text-left hover:underline hover:text-orange-200 transition-colors cursor-pointer inline-flex items-center gap-1"
                     title="Click to open in maps"
                   >
-                    <span>{getDisplayVenueInfo(event.venueName || '', event.venueAddress || '', false)}</span>
+                    <span>{getDisplayVenueInfo(event.venueName || "", event.venueAddress || "", false)}</span>
                     <ExternalLink className="w-3 h-3 flex-shrink-0 opacity-70" />
                   </button>
                 ) : (
@@ -218,3 +237,4 @@ export const Header: React.FC<HeaderProps> = ({
     </motion.div>
   );
 };
+

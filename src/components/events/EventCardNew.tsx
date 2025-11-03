@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
+import { useNavigate } from 'react-router-dom';
 import { Calendar, MapPin, Users, Share2, ThumbsUp, ThumbsDown, Clock, Edit } from 'lucide-react';
 import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { EventDoc } from '../../hooks/useEvents';
@@ -9,6 +10,14 @@ import { EventTeaserModal } from './EventTeaserModal';
 import { PastEventModal } from './PastEventModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { useUserBlocking } from '../../hooks/useUserBlocking';
+
+// ============================================
+// RSVP MODE TOGGLE - Easy revert option
+// ============================================
+// Set to 'modal' to use modal (original behavior)
+// Set to 'page' to use new page navigation
+const RSVP_MODE: 'modal' | 'page' = 'page';  // ← Change this to 'modal' to revert
+// ============================================
 
 import { useAttendees } from '../../hooks/useAttendees';
 import { CreateAttendeeData, AttendeeStatus } from '../../types/attendee';
@@ -30,6 +39,7 @@ interface EventCardProps {
 const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
+  const navigate = useNavigate();
   const { attendees, counts, addAttendee, setAttendeeStatus, refreshAttendees } = useAttendees(event.id, currentUser?.id || '');
   
   // Real-time attending count state - initialize with current event count
@@ -73,19 +83,23 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     return () => unsubscribe();
   }, [event.id]); // Only depend on event.id
   
-  // Create capacity state for this event using real-time count
-  const liveGoingCount = typeof counts.totalGoing === 'number' ? counts.totalGoing : realTimeAttendingCount;
+  // Real-time waitlist positions
+  const { myPosition: waitlistPosition, waitlistCount: totalWaitlistCount } = useWaitlistPositions(event.id, currentUser?.id);
+
+  // Create capacity state using live event-level metrics rather than per-user counts
+  const liveGoingCount = typeof realTimeAttendingCount === 'number' ? realTimeAttendingCount : counts.totalGoing;
+  const liveWaitlistCount = typeof event.waitlistCount === 'number'
+    ? event.waitlistCount
+    : (typeof totalWaitlistCount === 'number' ? totalWaitlistCount : counts.waitlistedCount);
 
   const capacityCounts = useMemo(() => ({
     ...counts,
     totalGoing: liveGoingCount,
-    goingCount: liveGoingCount
-  }), [counts, liveGoingCount]);
+    goingCount: liveGoingCount,
+    waitlistedCount: liveWaitlistCount
+  }), [counts, liveGoingCount, liveWaitlistCount]);
   
   const capacityState = useCapacityState(capacityCounts, event.maxAttendees, event.waitlistEnabled, event.waitlistLimit);
-  
-  // Real-time waitlist positions
-  const { myPosition: waitlistPosition } = useWaitlistPositions(event.id, currentUser?.id);
   
   // Debug logging for waitlist position
   console.log('🔍 EventCardNew: User waitlist position for event', event.id, ':', {
@@ -281,8 +295,14 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     } else if (isEventPast) {
       setShowPastEventModal(true);
     } else if (currentUser) {
-      // User is logged in - show RSVP modal for event management
-      setShowRSVPModal(true);
+      // User is logged in - flexible RSVP handling based on toggle
+      if (RSVP_MODE === 'page') {
+        // Navigate to new RSVP page
+        navigate(`/events/${event.id}/rsvp`);
+      } else {
+        // Use original modal (revert option)
+        setShowRSVPModal(true);
+      }
     } else {
       // User is not logged in - show teaser modal
       setShowTeaserModal(true);
@@ -291,80 +311,63 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
 
   // Quick RSVP handlers using new attendee system
   const handleQuickRSVP = async (status: AttendeeStatus) => {
-    if (isBlockedFromRSVP || isEventPast) return;
-    
-    // If user is not logged in, show teaser modal
+    if (isBlockedFromRSVP || isEventPast) {
+      return;
+    }
+
     if (!currentUser) {
       setShowTeaserModal(true);
       return;
     }
 
-    // Check capacity for 'going' status and handle waitlist
     let finalStatus = status;
     if (status === 'going' && !capacityState.canAddMore) {
       if (capacityState.canWaitlist) {
-        // Auto-waitlist for quick RSVP
         finalStatus = 'waitlisted';
-        // Calculate position (current waitlist count + 1)
-        const position = capacityState.waitlistCount + 1;
+        const position = (capacityState.waitlistCount ?? 0) + 1;
         toast.success(`Event is full. You're #${position} on the waitlist!`);
       } else {
-        toast.error('Event is at full capacity. No more RSVPs can be accepted.');
+        toast.error('This event is already at capacity and cannot accept new RSVPs. The waitlist is not available for this event.');
         return;
       }
     }
-    
-    console.log('🔍 DEBUG: Quick RSVP started with new attendee system:', {
-      originalStatus: status,
-      finalStatus: finalStatus,
+
+    console.log('[RSVP] Quick RSVP attempt', {
+      requestedStatus: status,
+      finalStatus,
       eventId: event.id,
       currentUser: currentUser.id,
       currentRSVPStatus: rsvpStatus,
       currentTotalCount: totalAttendeeCount
     });
-    
+
     setIsUpdating(true);
-    
+
     try {
-      // Check if user already has a primary attendee record
-      const existingAttendee = attendees.find(a => 
-        a.userId === currentUser.id && a.attendeeType === 'primary'
+      const existingAttendee = attendees.find(
+        (a) => a.userId === currentUser.id && a.attendeeType === 'primary'
       );
-      
+
       if (existingAttendee) {
-        // Update existing attendee status
-        console.log('🔍 DEBUG: Updating existing primary attendee status to:', finalStatus);
-        console.log('🔍 DEBUG: existingAttendee object:', existingAttendee);
-        console.log('🔍 DEBUG: existingAttendee.attendeeId:', existingAttendee.attendeeId);
-        console.log('🔍 DEBUG: existingAttendee.id:', existingAttendee.id);
-        await setAttendeeStatus(event.id, existingAttendee.attendeeId || existingAttendee.id, finalStatus);
-         
-        // If primary member is changing to "not-going", update all family members to "not-going" as well
+        await setAttendeeStatus(existingAttendee.attendeeId || existingAttendee.id, finalStatus);
+
         if (finalStatus === 'not-going') {
-          console.log('🔍 DEBUG: Primary member is not going, updating all family members to not-going');
-          const familyMembers = attendees.filter(a => 
-            a.userId === currentUser.id && 
-            a.attendeeType === 'family_member' && 
-            a.rsvpStatus === 'going'
+          const familyMembers = attendees.filter(
+            (a) =>
+              a.userId === currentUser.id &&
+              a.attendeeType === 'family_member' &&
+              a.rsvpStatus === 'going'
           );
-          
+
           for (const familyMember of familyMembers) {
-            console.log('🔍 DEBUG: Updating family member to not-going:', familyMember.name);
-            console.log('🔍 DEBUG: familyMember object:', familyMember);
-            console.log('🔍 DEBUG: familyMember.attendeeId:', familyMember.attendeeId);
-            console.log('🔍 DEBUG: familyMember.id:', familyMember.id);
-            await setAttendeeStatus(event.id, familyMember.attendeeId || familyMember.id, 'not-going');
+            await setAttendeeStatus(familyMember.attendeeId || familyMember.id, 'not-going');
           }
-          
+
           if (familyMembers.length > 0) {
             toast.success(`${familyMembers.length} family member${familyMembers.length > 1 ? 's' : ''} automatically marked as "Not Going" since you cannot attend.`);
           }
         }
       } else {
-        // Create new primary attendee
-        console.log('🔍 DEBUG: Creating new primary attendee with status:', finalStatus);
-        
-        // Ensure all values are properly defined and not null/undefined
         const attendeeData: CreateAttendeeData = {
           eventId: event.id,
           userId: currentUser.id,
@@ -374,26 +377,33 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
           ageGroup: 'adult',
           rsvpStatus: finalStatus
         };
-        
-        console.log('🔍 DEBUG: Attendee data being created:', attendeeData);
+
         await addAttendee(attendeeData);
       }
-      
-      // Update local state - handle waitlisted status too
+
       if (finalStatus === 'going' || finalStatus === 'not-going' || finalStatus === 'waitlisted') {
-        setRsvpStatus(finalStatus); // Keep actual status for proper UI display
+        setRsvpStatus(finalStatus);
       }
-      
-             // Refresh attendees to get updated counts
-       await refreshAttendees();
-       
-       // Add a small delay to ensure Firestore update has propagated
-       await new Promise(resolve => setTimeout(resolve, 500));
-       
-        console.log('🔍 DEBUG: Quick RSVP completed successfully. New total count should be updated via real-time updates.');
-      
+
+      await refreshAttendees();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      console.log('[RSVP] Quick RSVP completed successfully');
     } catch (error) {
-      console.error('❌ Error in quick RSVP:', error);
+      console.error('[RSVP] Error in quick RSVP:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      const lowerMessage = message.toLowerCase();
+      if (
+        lowerMessage.includes('permission') ||
+        lowerMessage.includes('insufficient') ||
+        lowerMessage.includes('full') ||
+        lowerMessage.includes('capacity') ||
+        lowerMessage.includes('quota')
+      ) {
+        toast.error('This event is already at capacity and cannot accept additional RSVPs.');
+      } else {
+        toast.error('Unable to update your RSVP right now. Please try again in a moment.');
+      }
     } finally {
       setIsUpdating(false);
     }
@@ -415,8 +425,14 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     if (isEventPast) {
       setShowPastEventModal(true);
     } else if (currentUser) {
-      // User is logged in - show RSVP modal for event management
-      setShowRSVPModal(true);
+      // User is logged in - flexible RSVP handling based on toggle
+      if (RSVP_MODE === 'page') {
+        // Navigate to new RSVP page
+        navigate(`/events/${event.id}/rsvp`);
+      } else {
+        // Use original modal (revert option)
+        setShowRSVPModal(true);
+      }
     } else {
       // User is not logged in - show teaser modal
       setShowTeaserModal(true);
@@ -780,6 +796,3 @@ const EventCardNewWithErrorBoundary = withErrorBoundary(
 );
 
 export default EventCardNewWithErrorBoundary;
-
-
-
