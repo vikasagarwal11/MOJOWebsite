@@ -498,7 +498,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('🔍 AuthContext: checkSMSDeliveryStatus called with:', { phoneNumber, verificationId });
     
     try {
-      const functions = getFunctions(app, (import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-central1');
+      // Explicitly use us-east1 to match function deployment region
+      const functions = getFunctions(app, (import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-east1');
       const checkSMSStatus = httpsCallable(functions, 'checkSMSDeliveryStatus');
       
       console.log('🔍 AuthContext: Calling Cloud Function to check SMS delivery status...');

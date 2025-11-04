@@ -11,7 +11,7 @@
   "functions": {
     "source": "functions",
     "runtime": "nodejs22",
-    "region": "us-central1"
+    "region": "us-east1"
   },
   "hosting": {
     "public": "dist",

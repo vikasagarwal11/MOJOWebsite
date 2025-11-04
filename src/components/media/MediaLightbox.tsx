@@ -94,7 +94,8 @@ export default function MediaLightbox({
           getDownloadURL(ref(storage, nextItem.rotatedImagePath)).then(preloadImage).catch(() => {});
         }
       } else if (nextItem.type === 'video') {
-        if (nextItem.sources?.hls) preloadVideo(nextItem.sources.hls);
+        const nextHlsPath = nextItem.sources?.hlsMaster || nextItem.sources?.hls;
+        if (nextHlsPath) preloadVideo(nextHlsPath);
         if (nextItem.thumbnailPath) {
           getDownloadURL(ref(storage, nextItem.thumbnailPath)).then(preloadImage).catch(() => {});
         }
@@ -109,7 +110,8 @@ export default function MediaLightbox({
           getDownloadURL(ref(storage, prevItem.rotatedImagePath)).then(preloadImage).catch(() => {});
         }
       } else if (prevItem.type === 'video') {
-        if (prevItem.sources?.hls) preloadVideo(prevItem.sources.hls);
+        const prevHlsPath = prevItem.sources?.hlsMaster || prevItem.sources?.hls;
+        if (prevHlsPath) preloadVideo(prevHlsPath);
         if (prevItem.thumbnailPath) {
           getDownloadURL(ref(storage, prevItem.thumbnailPath)).then(preloadImage).catch(() => {});
         }
@@ -157,17 +159,21 @@ export default function MediaLightbox({
     let cancelled = false;
     (async () => {
       try {
-        if (item.sources?.hls) {
-          console.log('🎬 [HLS] Attaching HLS to video:', item.sources.hls);
+        // Prefer master playlist for adaptive streaming, fallback to single manifest
+        const hlsPath = item.sources?.hlsMaster || item.sources?.hls;
+        const isMasterPlaylist = !!item.sources?.hlsMaster;
+        
+        if (hlsPath) {
+          console.log(`🎬 [HLS] Attaching HLS ${isMasterPlaylist ? '(adaptive streaming)' : '(single quality)'}:`, hlsPath);
           const canNativeHls = !!v.canPlayType?.('application/vnd.apple.mpegURL');
           if (canNativeHls) {
             console.log('🎬 [HLS] Using native HLS support');
             // Still need to get download URL even for native HLS
-            const hlsUrl = await getDownloadURL(ref(storage, item.sources.hls));
+            const hlsUrl = await getDownloadURL(ref(storage, hlsPath));
             v.src = hlsUrl;
           } else {
             console.log('🎬 [HLS] Using HLS.js');
-            await attachHls(v, item.sources.hls);
+            await attachHls(v, hlsPath, isMasterPlaylist);
           }
         } else {
           console.log('🎬 [FALLBACK] No HLS source, using direct URL:', item.url);
@@ -198,7 +204,7 @@ export default function MediaLightbox({
       setVideoLoading(false);
       try { detachHls(v); } catch {}
     };
-  }, [isVideo, item?.sources?.hls, item?.url, item?.id]);
+  }, [isVideo, item?.sources?.hlsMaster, item?.sources?.hls, item?.url, item?.id]);
 
   // Auto-advance images
   useEffect(() => {

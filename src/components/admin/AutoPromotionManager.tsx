@@ -61,7 +61,8 @@ export const AutoPromotionManager: React.FC<AutoPromotionManagerProps> = ({
     }
     setIsRecalculating(true);
     try {
-      const functions = getFunctions();
+      // Explicitly use us-east1 to match function deployment region
+      const functions = getFunctions(undefined, 'us-east1');
       const recalc = httpsCallable(functions, 'recalcWaitlistPositions');
       await recalc({ eventId });
       const message = '✅ Waitlist positions recalculated on server';

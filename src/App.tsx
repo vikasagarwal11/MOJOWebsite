@@ -27,6 +27,7 @@ import AdminBulkAttendees from './pages/AdminBulkAttendees';
 import AdminCleanup from './pages/AdminCleanup';
 import EventsReadOnly from './pages/EventsReadOnly';
 import EventDetailsPage from './pages/EventDetailsPage';
+import RSVPPage from './pages/RSVPPage';
 import AdminTestimonials from './pages/AdminTestimonials';
 import ShareYourStory from './pages/ShareYourStory';
 
@@ -82,6 +83,7 @@ function AppContent() {
             <Route index element={<Home />} />
             <Route path="events" element={<Events />} />
             <Route path="events/:eventId" element={<Events />} />
+            <Route path="events/:eventId/rsvp" element={<RSVPPage />} />
             <Route path="events-readonly" element={<EventsReadOnly />} />
             <Route path="events-readonly/:eventId" element={<EventDetailsPage />} />
             <Route path="media" element={<Media />} />  {/* UPDATED VERSION WITH LIVE UPLOAD */}

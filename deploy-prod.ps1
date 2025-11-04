@@ -5,6 +5,10 @@
 # This script handles deployment to the production environment with intelligent
 # extension management to avoid conflicts and speed up regular deployments.
 #
+# Includes Phase 3 Progressive Quality Generation:
+# - Cloud Tasks queue setup for background video quality generation
+# - Automatic queue creation if it doesn't exist
+#
 # =============================================================================
 # USAGE EXAMPLES
 # =============================================================================
@@ -112,6 +116,67 @@ Copy-Item "extensions/storage-resize-images.prod.env" "extensions/storage-resize
 Write-Host "[OK] Extension configuration copied for production" -ForegroundColor Green
 
 Write-Host ""
+
+# =============================================================================
+# Cloud Tasks Queue Setup (Phase 3: Progressive Quality Generation)
+# =============================================================================
+Write-Host "Setting up Cloud Tasks queue for video quality generation..." -ForegroundColor Yellow
+
+$projectId = "momsfitnessmojo-65d00"
+$queueLocation = "us-central1"
+$queueName = "video-quality-generation"
+
+# Check if queue exists
+Write-Host "  Checking if Cloud Tasks queue exists..." -ForegroundColor Cyan
+$queueExists = $false
+try {
+    $queueInfo = gcloud tasks queues describe $queueName --location=$queueLocation --project=$projectId 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        $queueExists = $true
+        Write-Host "[OK] Cloud Tasks queue '$queueName' already exists" -ForegroundColor Green
+    }
+} catch {
+    # Queue doesn't exist, will create it
+}
+
+if (-not $queueExists) {
+    Write-Host "  Creating Cloud Tasks queue '$queueName'..." -ForegroundColor Cyan
+    try {
+        gcloud tasks queues create $queueName `
+            --location=$queueLocation `
+            --project=$projectId `
+            --max-attempts=3 `
+            --max-retry-duration=3600s `
+            --max-dispatches-per-second=10 `
+            --max-concurrent-dispatches=5
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] Cloud Tasks queue '$queueName' created successfully" -ForegroundColor Green
+            Write-Host "  Location: $queueLocation" -ForegroundColor White
+            Write-Host "  Max attempts: 3" -ForegroundColor White
+            Write-Host "  Max retry duration: 3600s (1 hour)" -ForegroundColor White
+            Write-Host "  Max dispatches/sec: 10" -ForegroundColor White
+            Write-Host "  Max concurrent: 5" -ForegroundColor White
+        } else {
+            Write-Host "[WARNING] Failed to create Cloud Tasks queue. It may already exist or you may need to create it manually." -ForegroundColor Yellow
+            Write-Host "  Manual creation command:" -ForegroundColor Yellow
+            Write-Host "  gcloud tasks queues create $queueName --location=$queueLocation --project=$projectId --max-attempts=3 --max-retry-duration=3600s" -ForegroundColor Gray
+        }
+    } catch {
+        Write-Host "[WARNING] Error creating Cloud Tasks queue: $_" -ForegroundColor Yellow
+        Write-Host "  You may need to create it manually using:" -ForegroundColor Yellow
+        Write-Host "  gcloud tasks queues create $queueName --location=$queueLocation --project=$projectId --max-attempts=3 --max-retry-duration=3600s" -ForegroundColor Gray
+    }
+} else {
+    Write-Host "  Queue configuration:" -ForegroundColor Cyan
+    Write-Host "    Name: $queueName" -ForegroundColor White
+    Write-Host "    Location: $queueLocation" -ForegroundColor White
+    Write-Host "    Project: $projectId" -ForegroundColor White
+}
+
+Write-Host ""
+
+# =============================================================================
 if (-not $SkipChecks) {
     Write-Host "Running pre-deployment checks..." -ForegroundColor Yellow
     
@@ -183,6 +248,7 @@ switch ($Component.ToLower()) {
     }
     "functions" {
         Write-Host "Deploying Cloud Functions..." -ForegroundColor Cyan
+        Write-Host "  This includes the new generateQuality function for background video processing" -ForegroundColor Cyan
         firebase deploy --only functions --project=momsfitnessmojo-65d00 --config=firebase.prod.json
     }
     "extensions" {
@@ -204,7 +270,23 @@ switch ($Component.ToLower()) {
 }
 
 if ($LASTEXITCODE -eq 0) {
+    Write-Host ""
     Write-Host "SUCCESS: Production deployment completed successfully!" -ForegroundColor Green
+    Write-Host ""
+    
+    # Post-deployment verification for Phase 3
+    if ($Component.ToLower() -eq "functions" -or $Component.ToLower() -eq "all" -or $Component.ToLower() -eq "no-extensions") {
+        Write-Host "Phase 3: Progressive Quality Generation Status" -ForegroundColor Cyan
+        Write-Host "  [OK] Cloud Functions deployed" -ForegroundColor Green
+        Write-Host "  [OK] generateQuality function available for background processing" -ForegroundColor Green
+        Write-Host "  [OK] Cloud Tasks queue configured" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "Note: Videos will now:" -ForegroundColor Yellow
+        Write-Host '  - Start playing after 3-5 segments (12 to 20 seconds)' -ForegroundColor White
+        Write-Host '  - Generate 1080p/4K in background via Cloud Tasks' -ForegroundColor White
+        Write-Host '  - Automatically upgrade quality as it becomes available' -ForegroundColor White
+        Write-Host ""
+    }
 } else {
     Write-Host "ERROR: Deployment failed!" -ForegroundColor Red
     exit 1

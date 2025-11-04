@@ -24,13 +24,90 @@ function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
+/**
+ * Reconstruct nested objects from flattened dotted keys.
+ * Firestore updates using dot notation (e.g., 'sources.hls') result in flattened keys
+ * that need to be reconstructed into nested objects.
+ */
+function reconstructNestedObjects(data: any): any {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return data;
+  }
+
+  const reconstructed: any = { ...data };
+  const keysToDelete: string[] = [];
+
+  // Reconstruct sources object from flattened keys
+  const hls = data['sources.hls'];
+  const hlsMaster = data['sources.hlsMaster'];
+  if (!data.sources && (hls || hlsMaster)) {
+    reconstructed.sources = {};
+    if (hls) {
+      reconstructed.sources.hls = hls;
+      keysToDelete.push('sources.hls');
+    }
+    if (hlsMaster) {
+      reconstructed.sources.hlsMaster = hlsMaster;
+      keysToDelete.push('sources.hlsMaster');
+    }
+    console.log('🔧 [normalizeDoc] Reconstructed sources object from flattened keys:', {
+      hasHls: !!hls,
+      hasHlsMaster: !!hlsMaster,
+      reconstructedSources: reconstructed.sources
+    });
+  }
+
+  // Reconstruct qualityLevels object from flattened keys (e.g., 'qualityLevels.720p')
+  const qualityLevelKeys = Object.keys(data).filter(key => key.startsWith('qualityLevels.'));
+  if (qualityLevelKeys.length > 0 && !data.qualityLevels) {
+    reconstructed.qualityLevels = {};
+    for (const key of qualityLevelKeys) {
+      const qualityName = key.replace('qualityLevels.', '');
+      reconstructed.qualityLevels[qualityName] = data[key];
+      keysToDelete.push(key);
+    }
+    console.log('🔧 [normalizeDoc] Reconstructed qualityLevels object from flattened keys:', {
+      qualityCount: qualityLevelKeys.length,
+      qualities: Object.keys(reconstructed.qualityLevels)
+    });
+  }
+
+  // Delete flattened keys to prevent leaks
+  for (const key of keysToDelete) {
+    delete reconstructed[key];
+  }
+
+  return reconstructed;
+}
+
 /** Convert common timestamp fields (if present) to Date for UI convenience. */
 function normalizeDoc(docData: any) {
   console.log('🔍 [useFirestore] normalizeDoc START:', { type: typeof docData, hasId: !!docData?.id });
   try {
     const sanitized = sanitizeFirebaseData(docData);
-    console.log('✅ [useFirestore] normalizeDoc sanitized:', { keys: Object.keys(sanitized), id: sanitized.id });
-    const out = { id: sanitized.id, ...sanitized };
+    
+    // Reconstruct nested objects from flattened dotted keys (fix for Firestore dot notation)
+    const reconstructed = reconstructNestedObjects(sanitized);
+    
+    console.log('✅ [useFirestore] normalizeDoc sanitized:', { keys: Object.keys(reconstructed), id: reconstructed.id });
+    
+    // Enhanced debugging for video sources field
+    if (reconstructed.type === 'video') {
+      console.log('🔍 [normalizeDoc] Video document sources check:', {
+        docId: reconstructed.id,
+        hasSources: !!reconstructed.sources,
+        sourcesType: typeof reconstructed.sources,
+        sourcesKeys: reconstructed.sources ? Object.keys(reconstructed.sources) : [],
+        hasHls: !!reconstructed.sources?.hls,
+        hasHlsMaster: !!reconstructed.sources?.hlsMaster,
+        hlsValue: reconstructed.sources?.hls,
+        hlsMasterValue: reconstructed.sources?.hlsMaster,
+        fullSourcesObject: reconstructed.sources,
+        flattenedKeysBeforeReconstruction: Object.keys(sanitized).filter(k => k.includes('.'))
+      });
+    }
+    
+    const out = { id: reconstructed.id, ...reconstructed };
     const tsFields = ['createdAt', 'updatedAt', 'date', 'validUntil', 'startAt'];
     for (const f of tsFields) {
       const v = (out as any)[f];

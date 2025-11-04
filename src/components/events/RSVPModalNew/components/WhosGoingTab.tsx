@@ -14,7 +14,6 @@ interface WhosGoingTabProps {
   event: EventDoc;
   attendees: Attendee[];
   isAdmin: boolean;
-  currentUser: User | null;
   waitlistPositions?: Map<string, number>;
 }
 
@@ -126,13 +125,16 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
         const familyMembers = allAttendees.filter(f => 
           f.userId === attendee.userId && f.attendeeType === 'family_member'
         );
+        
+        // Only count family members with "going" status
+        const goingFamilyMembers = familyMembers.filter(f => f.rsvpStatus === 'going');
 
         grouped[attendee.userId] = {
           userId: attendee.userId,
           name: attendee.name,
           status: attendee.rsvpStatus,
-          // For "Not Going" status, show 0 additional family (they're not bringing anyone)
-          familyCount: attendee.rsvpStatus === 'not-going' ? 0 : familyMembers.length,
+          // Only count family members who are "going" - if primary is not going, show 0
+          familyCount: attendee.rsvpStatus === 'not-going' ? 0 : goingFamilyMembers.length,
           displayName: attendee.name,
           email: userContacts[attendee.userId]?.email || 'Not Available',
           phone: userContacts[attendee.userId]?.phone || 'Not Available',

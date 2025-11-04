@@ -44,8 +44,8 @@ export async function sendNotificationViaAuthSMS(
     
     console.log('📱 Sending SMS to phone number:', phoneNumber);
     
-    // Use Firebase Functions to trigger SMS
-    const functions = getFunctions();
+    // Use Firebase Functions to trigger SMS - explicitly use us-east1 to match function deployment region
+    const functions = getFunctions(undefined, 'us-east1');
     
     // Create a Cloud Function call to send SMS
     const sendNotificationSMS = httpsCallable(functions, 'sendNotificationSMS');

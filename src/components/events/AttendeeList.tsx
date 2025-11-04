@@ -23,6 +23,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { familyMemberService } from '../../services/familyMemberService';
 import { useFamilyMembers } from '../../hooks/useFamilyMembers';
 import toast from 'react-hot-toast';
+import { CapacityError, PermissionError } from '../../errors';
 
 interface AttendeeListProps {
   eventId: string;
@@ -264,23 +265,38 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
         isChangingToGoing: pendingUpdate.rsvpStatus === 'going'
       });
 
-      // Check if this is a primary member changing to "going" while at capacity
-      if (attendeeToUpdate.userId === currentUser.id &&
-          attendeeToUpdate.attendeeType === 'primary' &&
-          pendingUpdate.rsvpStatus === 'going') {
-        
-        if (capacityState?.isAtCapacity) {
-          if (capacityState.canWaitlist) {
-            console.log('DEBUG: Event at capacity with waitlist - converting primary update to waitlisted');
-            pendingUpdate = { ...pendingUpdate, rsvpStatus: 'waitlisted' };
-            toast.success('Event is full, so you have been added to the waitlist.');
-          } else {
-            const blockedMessage = getCapacityBlockedMessage();
-            console.log('DEBUG: Blocking primary update due to capacity with no waitlist');
-            updateStatusError(attendeeId, blockedMessage);
-            toast.error(blockedMessage);
-            return;
-          }
+      // CLIENT-SIDE PRE-VALIDATION: Check capacity for ALL attendee types when changing to 'going'
+      // Security check: Only allow users to update their own RSVPs (unless admin)
+      if (attendeeToUpdate.userId !== currentUser.id && !isAdmin) {
+        toast.error('You can only update your own RSVP.');
+        return;
+      }
+
+      // Capacity pre-check: Check if changing to 'going' would violate capacity
+      // This applies to ALL attendee types, not just primary
+      const current = attendeeToUpdate.rsvpStatus;
+      console.log('DEBUG: Capacity pre-check:', {
+        newStatus: pendingUpdate.rsvpStatus,
+        currentStatus: current,
+        isChangingToGoing: pendingUpdate.rsvpStatus === 'going' && current !== 'going',
+        capacityState: capacityState,
+        isAtCapacity: capacityState?.isAtCapacity,
+        canWaitlist: capacityState?.canWaitlist
+      });
+      
+      if (pendingUpdate.rsvpStatus === 'going' && current !== 'going' && capacityState?.isAtCapacity) {
+        if (capacityState.canWaitlist) {
+          // Auto-convert to waitlisted for fast feedback
+          console.log('DEBUG: Event at capacity with waitlist - converting to waitlisted');
+          pendingUpdate = { ...pendingUpdate, rsvpStatus: 'waitlisted' };
+          toast.info('Event is full. Adding you to the waitlist…');
+        } else {
+          // Block immediately with user-friendly message
+          const blockedMessage = getCapacityBlockedMessage();
+          console.log('DEBUG: Blocking update due to capacity with no waitlist');
+          updateStatusError(attendeeId, blockedMessage);
+          toast.error(blockedMessage);
+          return;
         }
       }
 
@@ -324,19 +340,35 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
           console.log('DEBUG: Capacity allows - auto-updating primary member to going');
           try {
             await updateAttendee(getAttendeeId(primaryAttendee), { rsvpStatus: 'going' });
-          toast.success('You have been automatically set to "going" since a family member is attending.');
+            toast.success('You have been automatically set to "going" since a family member is attending.');
           } catch (primaryUpdateError) {
-            const message = primaryUpdateError instanceof Error ? primaryUpdateError.message : String(primaryUpdateError);
-            const lowerMessage = message.toLowerCase();
-
-            if (lowerMessage.includes('over capacity') || lowerMessage.includes('cannot change status to "going"') || lowerMessage.includes('event is full')) {
+            // Handle capacity errors with custom error classes
+            if (primaryUpdateError instanceof CapacityError) {
+              const message = primaryUpdateError.getUserMessage();
               console.warn('DEBUG: Capacity blocked during primary auto-update:', message);
-              const blockedMessage = getCapacityBlockedMessage();
-              updateStatusError(attendeeId, blockedMessage);
-              toast.error(blockedMessage);
+              updateStatusError(attendeeId, message);
+              toast.error(message);
+            } else if (primaryUpdateError instanceof PermissionError) {
+              const message = primaryUpdateError.getUserMessage();
+              console.warn('DEBUG: Permission error during primary auto-update:', message);
+              updateStatusError(attendeeId, message);
+              toast.error(message);
             } else {
-              console.error('DEBUG: Failed to auto-update primary member:', primaryUpdateError);
-              toast.error('Failed to update your status. Please try again.');
+              // Fallback for legacy errors
+              const message = primaryUpdateError instanceof Error ? primaryUpdateError.message : String(primaryUpdateError);
+              const lowerMessage = message.toLowerCase();
+
+              if (lowerMessage.includes('over capacity') || 
+                  lowerMessage.includes('cannot change status to "going"') || 
+                  lowerMessage.includes('event is full')) {
+                console.warn('DEBUG: Capacity blocked during primary auto-update:', message);
+                const blockedMessage = getCapacityBlockedMessage();
+                updateStatusError(attendeeId, blockedMessage);
+                toast.error(blockedMessage);
+              } else {
+                console.error('DEBUG: Failed to auto-update primary member:', primaryUpdateError);
+                toast.error('Failed to update your status. Please try again.');
+              }
             }
             return;
           }
@@ -353,46 +385,79 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
       console.log('DEBUG: updateAttendee completed successfully');
       updateStatusError(attendeeId);
       onAttendeeUpdate?.();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to update attendee:', error);
+      console.log('DEBUG: AttendeeList caught error:', {
+        errorType: error?.constructor?.name,
+        isCapacityError: error instanceof CapacityError,
+        isPermissionError: error instanceof PermissionError,
+        message: error?.message,
+        code: error?.code,
+        name: error?.name
+      });
 
-      // Robust error message extraction
-      let message = 'Unknown error';
-      try {
-        if (error && typeof error === 'object') {
-          if ('message' in error && typeof error.message === 'string') {
-            message = error.message;
-          } else if ('code' in error && typeof error.code === 'string') {
-            message = error.code;
-          } else {
-            message = String(error);
+      // Type-safe error handling with custom error classes
+      if (error instanceof CapacityError) {
+        console.log('DEBUG: Handling CapacityError');
+        // Auto-retry with waitlist if server says it's possible (better UX flow - retry before showing error)
+        if (error.canWaitlist && pendingUpdate.rsvpStatus !== 'waitlisted') {
+          try {
+            await updateAttendee(attendeeId, { ...pendingUpdate, rsvpStatus: 'waitlisted' });
+            toast.success('Event is full. You have been added to the waitlist.');
+            updateStatusError(attendeeId); // Clear error state
+            onAttendeeUpdate?.();
+            return;
+          } catch (retryError) {
+            // Show error if retry fails
+            console.error('Failed to add to waitlist:', retryError);
+            toast.error('Failed to add to waitlist. Please try again.');
+            // Fall through to show main error
           }
-        } else {
-          message = String(error);
         }
-      } catch (e) {
-        message = 'Error processing error message';
+
+        // Show error message using helper method
+        const message = error.getUserMessage();
+        updateStatusError(attendeeId, message);
+        toast.error(message);
+        return;
       }
 
-      const lowerMessage = message.toLowerCase();
+      // Handle other permission errors
+      if (error instanceof PermissionError) {
+        const message = error.getUserMessage();
+        updateStatusError(attendeeId, message);
+        toast.error(message);
+        return;
+      }
 
-      if (lowerMessage.includes('over capacity') || lowerMessage.includes('cannot change status to "going"') || lowerMessage.includes('event is full')) {
+      // Fallback for legacy errors (string-based detection)
+      const errorStr = String(error?.message || '').toLowerCase();
+      if (errorStr.includes('permission') && capacityState?.isAtCapacity) {
+        const message = capacityState.canWaitlist
+          ? 'Event is full. You have been added to the waitlist.'
+          : 'Event is full. No more RSVPs can be accepted.';
+        updateStatusError(attendeeId, message);
+        toast.error(message);
+        return;
+      }
+
+      if (errorStr.includes('over capacity') || 
+          errorStr.includes('cannot change status to "going"') || 
+          errorStr.includes('event is full')) {
         const blockedMessage = getCapacityBlockedMessage();
         updateStatusError(attendeeId, blockedMessage);
         toast.error(blockedMessage);
         return;
       }
-      
-      // Enhanced error handling with specific error messages
+
+      // Generic error handling
       if (error instanceof Error) {
-        if (error.message.includes('permission')) {
-          toast.error('You do not have permission to update this attendee.');
-        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+        if (error.message.includes('network') || error.message.includes('fetch')) {
           toast.error('Network error. Please check your connection and try again.');
         } else if (error.message.includes('indexOf')) {
           toast.error('Invalid attendee data. Please refresh the page and try again.');
         } else {
-          toast.error('Failed to update attendee: ' + error.message);
+          toast.error(error.message || 'Failed to update RSVP');
         }
       } else {
         toast.error('An unexpected error occurred. Please try again.');
