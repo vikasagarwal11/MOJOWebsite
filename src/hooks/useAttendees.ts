@@ -19,6 +19,7 @@ import {
   subscribeToAllAttendees,
   getUserAttendees
 } from '../services/attendeeService';
+import { CapacityError, PermissionError } from '../errors';
 
 interface UseAttendeesReturn {
   attendees: Attendee[];
@@ -135,6 +136,31 @@ export const useAttendees = (eventId: string, userId: string, isAdmin: boolean =
           : attendee
       ));
     } catch (err) {
+      // Preserve custom error types (CapacityError, PermissionError) instead of converting to generic Error
+      console.log('DEBUG: useAttendees caught error:', {
+        errorType: err?.constructor?.name,
+        isCapacityError: err instanceof CapacityError,
+        isPermissionError: err instanceof PermissionError,
+        message: err instanceof Error ? err.message : String(err),
+        code: (err as any)?.code
+      });
+      
+      if (err instanceof CapacityError || err instanceof PermissionError) {
+        // Don't set error state for capacity conflicts (handled by UI)
+        const errorMessage = err.message;
+        const lower = errorMessage.toLowerCase();
+        const capacityConflict = lower.includes('over capacity') || lower.includes('cannot change status to "going"') || lower.includes('event is full') || err instanceof CapacityError;
+
+        if (!capacityConflict) {
+          setError(errorMessage);
+        }
+
+        // Re-throw the original error to preserve type information
+        console.log('DEBUG: Re-throwing custom error:', err.constructor.name);
+        throw err;
+      }
+
+      // For other errors, use legacy handling
       const errorMessage = err instanceof Error ? err.message : 'Failed to update attendee';
       const lower = errorMessage.toLowerCase();
       const capacityConflict = lower.includes('over capacity') || lower.includes('cannot change status to "going"') || lower.includes('event is full');

@@ -217,31 +217,48 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
       return;
     }
 
+    // Prefer master playlist for adaptive streaming, fallback to single manifest
+    const hlsPath = localMedia.sources?.hlsMaster || localMedia.sources?.hls;
+    const isMasterPlaylist = !!localMedia.sources?.hlsMaster;
+    
     console.log('🔧 HLS Attachment Logic:', {
       hasVideoRef: !!videoRef.current,
+      hasHlsMaster: !!localMedia.sources?.hlsMaster,
       hasHlsSource: !!localMedia.sources?.hls,
-      hlsPath: localMedia.sources?.hls,
+      hlsPath: hlsPath,
+      isMasterPlaylist: isMasterPlaylist,
       isAlreadyAttached: isHlsAttached,
       videoUrl: localMedia.url
     });
-
-    if (videoRef.current && localMedia.sources?.hls && !isHlsAttached) {
-      console.log('✅ Attempting to attach HLS:', localMedia.sources.hls);
-      // HLS is ready - upgrade to HLS streaming
-      attachHls(videoRef.current, localMedia.sources.hls)
+    
+    if (videoRef.current && hlsPath && !isHlsAttached) {
+      console.log(`✅ Attempting to attach HLS ${isMasterPlaylist ? '(adaptive streaming)' : '(single quality)'}:`, hlsPath);
+      // HLS is ready - upgrade to HLS streaming (prefer master playlist for adaptive streaming)
+      attachHls(videoRef.current, hlsPath, isMasterPlaylist)
         .then(() => {
           console.log('✅ HLS attached successfully');
           setIsHlsAttached(true);
         })
         .catch(error => {
+          // Check if it's a 404 (object not found) - common for old videos
+          const is404 = error?.code === 'storage/object-not-found' || 
+                       error?.message?.includes('does not exist') ||
+                       error?.message?.includes('404');
+          
+          if (is404) {
+            console.warn('⚠️ HLS file not found (404) - likely an old video. Original video will be used.');
+            // Don't set src - the <source> tag already has the original URL
+            return;
+          }
+          
           console.error('❌ Failed to attach HLS, using fallback:', error);
-          // Fallback to original video URL
+          // Fallback to original video URL only if not a 404
           if (videoRef.current) {
             console.log('🔄 Setting fallback video source:', localMedia.url);
             videoRef.current.src = localMedia.url;
           }
         });
-    } else if (videoRef.current && !isHlsAttached && !localMedia.sources?.hls) {
+    } else if (videoRef.current && !isHlsAttached && !hlsPath) {
       console.log('⚠️ No HLS source available, using original video URL:', localMedia.url);
       // No HLS yet - show original file immediately for instant playback
       videoRef.current.src = localMedia.url;
@@ -252,7 +269,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
         isAlreadyAttached: isHlsAttached
       });
     }
-  }, [localMedia.sources?.hls, localMedia.url, isHlsAttached]);
+  }, [localMedia.sources?.hlsMaster, localMedia.sources?.hls, localMedia.url, isHlsAttached]);
 
   // Enhanced poster image handling - show poster immediately when available
   useEffect(() => {
@@ -398,12 +415,40 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
     const m = localMedia;
     if (!m) return null;
 
-    if (m.transcodeStatus === 'failed') return { color: 'red', label: 'Upgrade Failed' };
+    if (m.transcodeStatus === 'failed') {
+      const errorMsg = m.transcodingMessage || m.transcodeError || 'Upgrade Failed';
+      return { color: 'red', label: errorMsg.length > 30 ? 'Upgrade Failed' : errorMsg };
+    }
 
     if (m.type === 'video') {
-      if (m.transcodeStatus === 'ready' && !!m.sources?.hls) return { color: 'green', label: 'HLS Ready' };
-      if (m.transcodeStatus === 'processing' && !!m.thumbnailPath) return { color: 'purple', label: 'Poster Ready' };
-      if (m.transcodeStatus === 'processing') return { color: 'blue', label: 'Processing…' };
+      if (m.transcodeStatus === 'ready' && (!!m.sources?.hlsMaster || !!m.sources?.hls)) {
+        const isAdaptive = !!m.sources?.hlsMaster;
+        return { color: 'green', label: isAdaptive ? 'Adaptive Streaming Ready' : 'HLS Ready' };
+      }
+      if (m.transcodeStatus === 'processing' && !!m.thumbnailPath) {
+        // Check if video has been processing for too long (more than 10 minutes)
+        const processingTime = m.transcodeStartTime 
+          ? (Date.now() - (m.transcodeStartTime?.toDate?.()?.getTime() || Date.now())) / 1000 / 60
+          : null;
+        
+        if (processingTime && processingTime > 10) {
+          return { color: 'orange', label: `Taking longer than expected (${Math.round(processingTime)}m)` };
+        }
+        
+        // Show progress message if available
+        if (m.transcodingMessage) {
+          return { color: 'purple', label: m.transcodingMessage };
+        }
+        
+        return { color: 'purple', label: 'Poster Ready' };
+      }
+      if (m.transcodeStatus === 'processing') {
+        // Show progress message if available
+        if (m.transcodingMessage) {
+          return { color: 'blue', label: m.transcodingMessage };
+        }
+        return { color: 'blue', label: 'Processing…' };
+      }
     }
 
     if (m.type === 'image') {
@@ -417,30 +462,46 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
   const previewEl = useMemo(() => {
     return localMedia.type === 'video' ? (
       <div className="relative" onDoubleClick={onDoubleTap} onClick={onOpen}>
-        <video 
-          ref={videoRef} 
-          poster={thumbnailUrl} 
-          playsInline 
-          muted
-          preload="metadata"
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-        >
-          {/* Original source for immediate playback while HLS processes */}
-          <source src={localMedia.url} type={localMedia.type === 'video' ? 'video/mp4' : 'video/*'} />
-          {/* HLS will be attached dynamically via useEffect when ready */}
-        </video>
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center">
-            <Play className="w-6 h-6 text-[#F25129] ml-0.5" />
+        {/* Show loading placeholder when no thumbnail yet and processing */}
+        {localMedia.transcodeStatus === 'processing' && !localMedia.thumbnailPath && isThumbnailLoading ? (
+          <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-12 h-12 border-4 border-[#F25129] border-t-transparent rounded-full animate-spin"></div>
+              <div className="text-gray-500 text-xs">Processing video...</div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <>
+            <video 
+              ref={videoRef} 
+              poster={thumbnailUrl && thumbnailUrl !== localMedia.url ? thumbnailUrl : undefined}
+              playsInline 
+              muted
+              preload="metadata"
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              onError={(e) => {
+                console.warn('⚠️ Video load error, showing placeholder:', e);
+              }}
+            >
+              {/* Original source for immediate playback while HLS processes */}
+              <source src={localMedia.url} type={localMedia.type === 'video' ? 'video/mp4' : 'video/*'} />
+              {/* HLS will be attached dynamically via useEffect when ready */}
+            </video>
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center">
+                <Play className="w-6 h-6 text-[#F25129] ml-0.5" />
+              </div>
+            </div>
+          </>
+        )}
                  {/* Single status chip - prevents conflicting chips */}
          {status && (
            <div className={`absolute top-3 left-3 z-10 px-3 py-1.5 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2
                           ${status.color === 'green' ? 'bg-green-500' :
                                     status.color === 'purple' ? 'bg-[#F25129]' :
+                                    status.color === 'orange' ? 'bg-orange-500' :
         status.color === 'blue' ? 'bg-blue-500' : 'bg-red-500'}`}>
-      <div className={`w-2 h-2 bg-white rounded-full ${status.color === 'blue' || status.color === 'purple' ? 'animate-pulse' : ''}`}></div>
+      <div className={`w-2 h-2 bg-white rounded-full ${status.color === 'blue' || status.color === 'purple' || status.color === 'orange' ? 'animate-pulse' : ''}`}></div>
              {status.label}
            </div>
          )}
@@ -471,7 +532,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
         />
       )
     );
-  }, [localMedia, onOpen, liked, thumbnailUrl, isThumbnailLoading]);
+  }, [localMedia, onOpen, liked, thumbnailUrl, isThumbnailLoading, status, localMedia.transcodeStatus]);
 
   return (
           <div className="bg-white/80 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-[#F25129]/20 group" data-media-card>

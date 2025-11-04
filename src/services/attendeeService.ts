@@ -20,6 +20,7 @@ import { AttendeeStatus } from '../types/attendee';
 import type { Attendee, CreateAttendeeData, UpdateAttendeeData, AttendeeCounts } from '../types/attendee';
 import { sanitizeFirebaseData, safeStringConversion } from '../utils/dataSanitizer';
 import type { DocumentReference, Transaction } from 'firebase/firestore';
+import { CapacityError, PermissionError } from '../errors';
 
 const getAttendingDelta = (
   previousStatus: AttendeeStatus | null | undefined,
@@ -845,42 +846,114 @@ export const updateAttendee = async (
   const initialStatus = initialData.rsvpStatus as AttendeeStatus;
   const targetStatus = (updateData.rsvpStatus ?? initialStatus) as AttendeeStatus;
 
-  await runTransaction(db, async (transaction) => {
-    // CRITICAL: All reads must happen before all writes in Firestore transactions
-    // Read both attendee and event documents first
-    const attendeeSnap = await transaction.get(attendeeRef);
-    if (!attendeeSnap.exists()) {
-      throw new Error('Attendee not found');
-    }
+  try {
+    await runTransaction(db, async (transaction) => {
+      // CRITICAL: All reads must happen before all writes in Firestore transactions
+      // Read both attendee and event documents first
+      const attendeeSnap = await transaction.get(attendeeRef);
+      if (!attendeeSnap.exists()) {
+        throw new Error('Attendee not found');
+      }
 
-    const currentData = attendeeSnap.data() as Attendee;
-    const currentStatus = currentData.rsvpStatus as AttendeeStatus;
-    const nextStatus = (updateData.rsvpStatus ?? currentStatus) as AttendeeStatus;
-    const delta = getAttendingDelta(currentStatus, nextStatus);
+      const currentData = attendeeSnap.data() as Attendee;
+      const currentStatus = currentData.rsvpStatus as AttendeeStatus;
+      const nextStatus = (updateData.rsvpStatus ?? currentStatus) as AttendeeStatus;
+      const delta = getAttendingDelta(currentStatus, nextStatus);
 
-    // Read event document if we need to update attending count
-    let currentCount = 0;
-    if (delta !== 0) {
-      const eventSnap = await transaction.get(eventRef);
-      if (eventSnap.exists()) {
-        currentCount = Number(eventSnap.data()?.attendingCount || 0);
+      // Read event document if we need to update attending count
+      let currentCount = 0;
+      if (delta !== 0) {
+        const eventSnap = await transaction.get(eventRef);
+        if (eventSnap.exists()) {
+          currentCount = Number(eventSnap.data()?.attendingCount || 0);
+        }
+      }
+
+      // Now perform all writes (attendee update and event update)
+      transaction.update(attendeeRef, {
+        ...updateData,
+        updatedAt: serverTimestamp(),
+      });
+
+      if (delta !== 0) {
+        const newCount = Math.max(0, currentCount + delta);
+        transaction.update(eventRef, {
+          attendingCount: newCount,
+          updatedAt: serverTimestamp()
+        });
+      }
+    });
+  } catch (error: any) {
+    // Wrap Firestore permission errors with capacity context
+    if (error?.code === 'permission-denied' && updateData.rsvpStatus === 'going') {
+      try {
+        const eventSnap = await getDoc(doc(db, 'events', eventId));
+        
+        // Existence check - if event doesn't exist, use generic permission error
+        if (!eventSnap.exists()) {
+          throw new PermissionError('Permission denied', 'unknown');
+        }
+        
+        // Extract event data (concise extraction style)
+        const e = eventSnap.data() || {};
+        const at = e.attendingCount || 0;
+        const max = e.maxAttendees || 0;
+        const wlEnabled = !!e.waitlistEnabled;
+        const wlLimit = e.waitlistLimit;
+        const wlCount = e.waitlistCount || 0;
+        const canWl = wlEnabled && (!wlLimit || wlCount < wlLimit);
+
+        // If event is at capacity, throw CapacityError with context
+        if (max && at >= max) {
+          // Calculate reason for better error categorization
+          let reason: 'capacity_exceeded' | 'waitlist_disabled' | 'waitlist_full' = 'capacity_exceeded';
+          if (!wlEnabled) {
+            reason = 'waitlist_disabled';
+          } else if (wlLimit && wlCount >= wlLimit) {
+            reason = 'waitlist_full';
+          }
+          
+          const capacityError = new CapacityError(
+            'Event is at capacity',
+            eventId,
+            at,
+            max,
+            wlEnabled,
+            canWl,
+            reason
+          );
+          console.log('DEBUG: Throwing CapacityError:', {
+            message: capacityError.message,
+            eventId,
+            currentCount: at,
+            maxAttendees: max,
+            waitlistEnabled: wlEnabled,
+            canWaitlist: canWl,
+            reason,
+            isCapacityError: capacityError instanceof CapacityError
+          });
+          throw capacityError;
+        }
+      } catch (eventReadError) {
+        // If event read fails or event doesn't exist, fallback to generic permission error
+        if (eventReadError instanceof CapacityError || eventReadError instanceof PermissionError) {
+          throw eventReadError;
+        }
+        throw new PermissionError('Permission denied', 'unknown');
       }
     }
-
-    // Now perform all writes (attendee update and event update)
-    transaction.update(attendeeRef, {
-      ...updateData,
-      updatedAt: serverTimestamp(),
-    });
-
-    if (delta !== 0) {
-      const newCount = Math.max(0, currentCount + delta);
-      transaction.update(eventRef, {
-        attendingCount: newCount,
-        updatedAt: serverTimestamp()
-      });
+    
+    // Handle other transaction errors
+    if (error?.code === 'aborted') {
+      throw new Error('Transaction conflict. Please try again.');
     }
-  });
+    if (error?.code === 'unavailable') {
+      throw new Error('Service temporarily unavailable. Please try again.');
+    }
+    
+    // Re-throw other errors as-is
+    throw error;
+  }
 };
 
 // Upsert attendee (update or create)

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Filter, Calendar, TrendingUp } from 'lucide-react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 // COMMENTED OUT: Unused imports for layout testing
 // import { Share2, Plus, Tag } from 'lucide-react';
 import EventCalendar from '../components/events/EventCalendar';
@@ -20,9 +20,18 @@ import { PastEventModal } from '../components/events/PastEventModal';
 // import toast from 'react-hot-toast';
 import { useDebounce } from 'use-debounce';
 
+// ============================================
+// RSVP MODE TOGGLE - Easy revert option
+// ============================================
+// Set to 'modal' to use modal (original behavior)
+// Set to 'page' to use new page navigation
+const RSVP_MODE: 'modal' | 'page' = 'page';  // ← Change this to 'modal' to revert
+// ============================================
+
 const Events: React.FC = () => {
   const { currentUser } = useAuth();
   const { eventId } = useParams<{ eventId?: string }>();
+  const navigate = useNavigate();
   const { upcomingEvents, pastEvents, loading, error } = useEvents({ includeGuestTeasers: true });
   
   // Real-time updates
@@ -79,8 +88,15 @@ const Events: React.FC = () => {
       const allEvents = [...upcomingEvents, ...pastEvents];
       const targetEvent = allEvents.find(event => event.id === eventId);
       if (targetEvent) {
-        setSelectedEvent(targetEvent);
-        setShowRSVPModal(true);
+        // Flexible RSVP handling based on toggle
+        if (RSVP_MODE === 'page') {
+          // Navigate to new RSVP page
+          navigate(`/events/${targetEvent.id}/rsvp`);
+        } else {
+          // Use original modal (revert option)
+          setSelectedEvent(targetEvent);
+          setShowRSVPModal(true);
+        }
       }
     }
   }, [eventId, upcomingEvents, pastEvents]);
@@ -338,9 +354,16 @@ const Events: React.FC = () => {
       setSelectedEvent(e);
       setShowTeaserModal(true);
     } else {
-      console.log('🔍 Opening RSVPModal for authenticated user from calendar');
-      setSelectedEvent(e);
-      setShowRSVPModal(true);
+      console.log('🔍 Opening RSVP for authenticated user from calendar');
+      // Flexible RSVP handling based on toggle
+      if (RSVP_MODE === 'page') {
+        // Navigate to new RSVP page
+        navigate(`/events/${e.id}/rsvp`);
+      } else {
+        // Use original modal (revert option)
+        setSelectedEvent(e);
+        setShowRSVPModal(true);
+      }
     }
   };
 

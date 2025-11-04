@@ -151,6 +151,122 @@ const db = getFirestore();
 // Helper
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
 
+// ───────────────── SMART ENCODING PRESETS ─────────────────
+interface EncodingPreset {
+  preset: string;
+  crf: number;
+  scale: string;
+  priority: 'speed' | 'quality' | 'balanced';
+}
+
+/**
+ * Determines optimal encoding preset based on video characteristics
+ */
+function getEncodingPreset(videoInfo: {
+  duration: number | null;
+  width: number | null;
+  height: number | null;
+  fileSize: number;
+  frameRate: number;
+}): EncodingPreset {
+  const { duration, width, height, fileSize, frameRate } = videoInfo;
+  
+  // Short videos (<30s): Prioritize speed
+  if (duration && duration < 30) {
+    console.log(`⚡ [SMART] Short video detected (${duration}s), using ultrafast preset for speed`);
+    return {
+      preset: 'ultrafast',
+      crf: 25, // Slightly lower quality for faster encoding
+      scale: '720p', // Lower resolution for speed
+      priority: 'speed'
+    };
+  }
+  
+  // Very short videos (<10s): Even faster
+  if (duration && duration < 10) {
+    console.log(`⚡ [SMART] Very short video detected (${duration}s), using ultrafast preset`);
+    return {
+      preset: 'ultrafast',
+      crf: 26,
+      scale: '720p',
+      priority: 'speed'
+    };
+  }
+  
+  // High resolution (>1080p): Prioritize quality
+  const isHighRes = (width && width > 1920) || (height && height > 1080);
+  const is4K = (width && width >= 3840) || (height && height >= 2160);
+  
+  if (is4K) {
+    console.log(`🎬 [SMART] 4K video detected (${width}x${height}), using medium preset for quality`);
+    return {
+      preset: 'medium',
+      crf: 21, // Higher quality for 4K
+      scale: 'original', // Keep original resolution
+      priority: 'quality'
+    };
+  }
+  
+  if (isHighRes) {
+    console.log(`🎬 [SMART] High-res video detected (${width}x${height}), using balanced preset`);
+    return {
+      preset: 'fast',
+      crf: 22, // Better quality for high-res
+      scale: 'original', // Keep original resolution
+      priority: 'quality'
+    };
+  }
+  
+  // High frame rate (>50fps): Use faster preset (frame rate adds encoding complexity)
+  if (frameRate > 50) {
+    console.log(`📹 [SMART] High frame rate detected (${frameRate}fps), using fast preset`);
+    return {
+      preset: 'fast',
+      crf: 23,
+      scale: '1080p',
+      priority: 'balanced'
+    };
+  }
+  
+  // Large files (>100MB): Use faster preset to reduce processing time
+  if (fileSize > 100 * 1024 * 1024) {
+    console.log(`📦 [SMART] Large file detected (${(fileSize / 1024 / 1024).toFixed(1)}MB), using fast preset`);
+    return {
+      preset: 'fast',
+      crf: 23,
+      scale: '1080p',
+      priority: 'balanced'
+    };
+  }
+  
+  // Standard: Balanced settings
+  console.log(`⚙️ [SMART] Standard video, using balanced preset`);
+  return {
+    preset: 'fast',
+    crf: 23,
+    scale: '1080p',
+    priority: 'balanced'
+  };
+}
+
+/**
+ * Generates FFmpeg scale filter based on target scale
+ */
+function getScaleFilter(scale: string, width: number | null, height: number | null): string {
+  switch (scale) {
+    case '720p':
+      return 'scale=w=min(iw\\,1280):h=-2';
+    case '1080p':
+      return 'scale=w=min(iw\\,1920):h=-2';
+    case 'original':
+      // Keep original resolution
+      return 'scale=iw:ih';
+    default:
+      return 'scale=w=min(iw\\,1280):h=-2';
+  }
+}
+
+// ───────────────── HELPER FUNCTIONS ─────────────────
 async function findMediaDocRef(name: string, dir: string, tries = 5): Promise<FirebaseFirestore.DocumentReference | null> {
   console.log(`🔍 Searching for media doc:`, { name, dir });
   for (let i = 0; i < tries; i++) {
@@ -671,17 +787,17 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
   }
   
   // 4. HLS segments for videos (delete entire HLS folder)
-  if (deletedData.sources?.hls) {
-    // Add the main HLS playlist
-    filesToDelete.push({ path: deletedData.sources.hls, type: 'hls-playlist' });
-    
-    // For videos, we also need to delete the entire HLS folder with all segments
+  if (deletedData.type === 'video' && deletedData.filePath) {
     const folderPath = deletedData.filePath.substring(0, deletedData.filePath.lastIndexOf('/'));
-    filesToDelete.push({ 
-      path: `${folderPath}/hls/`, 
+    filesToDelete.push({
+      path: `${folderPath}/hls/`,
       type: 'hls-folder',
       isFolder: true // Mark as folder for special handling
     });
+
+    if (deletedData.sources?.hls) {
+      filesToDelete.push({ path: deletedData.sources.hls, type: 'hls-playlist' });
+    }
   }
   
   // 5. Extension thumbnails (cleanup all formats in correct location)
@@ -791,10 +907,14 @@ export const onMediaFileFinalize = onObjectFinalized({
       return;
     }
     const baseName = path.basename(name);
-    if (baseName.startsWith('thumb_') || baseName.startsWith('poster_')) {
-      console.log('⏭️ Skipping thumbnail/poster file:', name);
-      return;
-    }
+  if (baseName.startsWith('thumb_') || baseName.startsWith('poster_')) {
+    console.log('⏭️ Skipping thumbnail/poster file:', name);
+    return;
+  }
+  if (name.includes('/thumbnails/') && name.includes('_400x400.')) {
+    console.log('⏭️ Skipping extension-generated thumbnail:', name);
+    return;
+  }
 
     const ext = path.extname(name).toLowerCase();
     const looksLikeVideo =
@@ -844,10 +964,22 @@ export const onMediaFileFinalize = onObjectFinalized({
       `${base}-${Date.now()}-${Math.random().toString(36).slice(2)}${path.extname(name)}`
     );
 
+    // Declare these for error logging (will be set in try block)
+    let videoDuration: number | null = null;
+    let videoWidth: number | null = null;
+    let videoHeight: number | null = null;
+
     try {
       await bucket.file(name).download({ destination: tmpOriginal });
 
-      const mediaData = (await mediaRef.get()).data();
+      const mediaSnapshot = await mediaRef.get();
+      if (!mediaSnapshot.exists) {
+        console.warn(`⚠️ Media document ${name} no longer exists. Skipping processing.`);
+        try { fs.unlinkSync(tmpOriginal); } catch {}
+        return;
+      }
+
+      const mediaData = mediaSnapshot.data();
       console.log(`Processing media file: ${name}`);
       console.log(`Found media doc: ${mediaRef.id}, current status: ${mediaData?.transcodeStatus || 'none'}`);
       console.log(`Media type: ${mediaData?.type}, uploaded by: ${mediaData?.uploadedBy}`);
@@ -876,23 +1008,17 @@ export const onMediaFileFinalize = onObjectFinalized({
       // Videos → poster + HLS + metadata
       await mediaRef.set({ transcodeStatus: 'processing' }, { merge: true });
 
-      // Probe
-      const probe: any = await new Promise((res, rej) =>
-        ffmpeg(tmpOriginal).ffprobe((err: any, data: any) => err ? rej(err) : res(data))
-      );
-      const stream = (probe.streams || []).find((s: any) => s.width && s.height) || {};
-      const duration = probe.format?.duration != null ? Number(probe.format.duration) : null;
-      const width = stream.width || null;
-      const height = stream.height || null;
-
-      // Poster (seek ~10%)
+      // ⚡ FAST THUMBNAIL GENERATION - Extract thumbnail IMMEDIATELY after download
+      // This happens before probing to provide instant visual feedback
+      console.log(`🖼️ [FAST] Generating thumbnail immediately for ${mediaRef.id}...`);
+      let thumbnailPath: string | null = null;
       try {
-        const posterLocal = path.join(os.tmpdir(), `poster_${base}.jpg`);
-        const seekTime = duration ? Math.max(0, duration * 0.1) : 0;
+        const posterLocal = path.join(os.tmpdir(), `poster_${base}-${Date.now()}.jpg`);
+        // Extract frame at 1 second (fast, doesn't require duration)
         await new Promise<void>((res, rej) =>
           ffmpeg(tmpOriginal)
-            .inputOptions(['-ss', String(seekTime)])
-            .outputOptions(['-frames:v 1', '-q:v 2'])
+            .inputOptions(['-ss', '1']) // Seek to 1 second
+            .outputOptions(['-frames:v', '1', '-q:v', '2'])
             .output(posterLocal)
             .on('end', () => res())
             .on('error', rej)
@@ -908,85 +1034,380 @@ export const onMediaFileFinalize = onObjectFinalized({
           },
         });
 
+        thumbnailPath = posterPath;
+        // Update Firestore IMMEDIATELY so UI shows thumbnail right away
         await mediaRef.set({
           thumbnailPath: posterPath,
-          transcodeStatus: 'processing',
-          duration,
-          dimensions: { width, height },
+          transcodingMessage: 'Thumbnail ready, processing video...'
         }, { merge: true });
 
-        console.log(`Early poster written for video ${mediaRef.id}, poster: ${posterPath}`);
+        console.log(`✅ [FAST] Thumbnail uploaded immediately for ${mediaRef.id}, poster: ${posterPath}`);
         fs.unlinkSync(posterLocal);
       } catch (e) {
-        console.warn('Poster generation failed; continuing with HLS:', e);
+        console.warn('⚠️ [FAST] Thumbnail generation failed (non-fatal), continuing with processing:', e);
       }
 
-      // HLS transcode (NO -hls_base_url)
-      const hlsDirLocal = path.join(os.tmpdir(), `hls_${base}`);
-      fs.mkdirSync(hlsDirLocal, { recursive: true });
-
-      await new Promise<void>((res, rej) =>
-        ffmpeg(tmpOriginal)
-          .addOptions([
-            '-preset', 'fast', // Faster encoding: ultrafast/superfast/veryfast/fast/medium/slow
-            '-crf', '23', // Constant Rate Factor (18-28 range, 23 = balanced quality/size)
-            '-profile:v', 'main',
-            '-vf', 'scale=w=min(iw\\,1280):h=-2',
-            '-start_number', '0',
-            '-hls_time', '4',
-            '-hls_list_size', '0',
-            '-f', 'hls'
-          ])
-          .output(path.join(hlsDirLocal, 'index.m3u8'))
-          .on('end', () => res()).on('error', rej)
-          .run()
+      // Probe video (can happen in parallel, but we need it for encoding decisions)
+      const probe: any = await new Promise((res, rej) =>
+        ffmpeg(tmpOriginal).ffprobe((err: any, data: any) => err ? rej(err) : res(data))
       );
+      const stream = (probe.streams || []).find((s: any) => s.width && s.height) || {};
+      const duration = probe.format?.duration != null ? Number(probe.format.duration) : null;
+      const width = stream.width || null;
+      const height = stream.height || null;
+      const fileSize = object.size || 0;
+      const frameRate = stream.r_frame_rate ? 
+        parseFloat(stream.r_frame_rate.split('/')[0]) / parseFloat(stream.r_frame_rate.split('/')[1] || '1') : 
+        30;
+      
+      // Store these for error logging
+      videoDuration = duration;
+      videoWidth = width;
+      videoHeight = height;
 
-      // Shared token for all HLS files
-      const sharedToken = uuidv4();
-      const hlsPath = `${dir}/hls/${base}/`; // media/<uid>/<batch>/hls/<base>/
-      console.log(`🔑 Shared token for HLS: ${sharedToken}`);
-
-      // Rewrite manifest to absolute URLs with token AFTER the filename (critical)
-      const manifestLocalPath = path.join(hlsDirLocal, 'index.m3u8');
-      rewriteManifestWithAbsoluteUrls(
-        manifestLocalPath,
-        bucket.name,
-        hlsPath,
-        sharedToken
-      );
-
-      // Upload HLS files (manifest + segments)
-      const files = fs.readdirSync(hlsDirLocal);
-      await Promise.all(files.map(f => {
-        const dest = `${hlsPath}${f}`;
-        const ct = f.endsWith('.m3u8')
-          ? 'application/vnd.apple.mpegurl'
-          : 'video/mp2t';
-        return bucket.upload(path.join(hlsDirLocal, f), {
-          destination: dest,
-          metadata: {
-            contentType: ct,
-            cacheControl: 'public,max-age=31536000,immutable',
-            metadata: { firebaseStorageDownloadTokens: sharedToken }
-          },
-        });
-      }));
-
-      // Final write
-      const hlsSourcePath = `${hlsPath}index.m3u8`;
+      // Update Firestore with video metadata (including thumbnail if generated)
       await mediaRef.set({
-        sources: { hls: hlsSourcePath },
-        transcodeStatus: 'ready',
-        transcodeUpdatedAt: FieldValue.serverTimestamp()
+        duration,
+        dimensions: { width, height },
+        ...(thumbnailPath ? { thumbnailPath } : {})
       }, { merge: true });
 
-      console.log(`✅ HLS ready for ${mediaRef.id} -> ${hlsSourcePath}`);
+      // 🎬 MULTI-QUALITY ADAPTIVE STREAMING
+      // Determine which quality levels to generate based on video resolution
+      const is4K = (width && width >= 3840) || (height && height >= 2160);
+      const is1080pOrHigher = (width && width >= 1920) || (height && height >= 1080);
+      
+      // Define quality levels to generate
+      interface QualityLevel {
+        name: string;
+        label: string;
+        resolution: string;
+        scaleFilter: string;
+        preset: string;
+        crf: number;
+        bandwidth: number; // Estimated bandwidth in bits per second
+      }
+      
+      const qualityLevels: QualityLevel[] = [];
+      
+      // Always generate 720p
+      qualityLevels.push({
+        name: '720p',
+        label: '720p',
+        resolution: '1280x720',
+        scaleFilter: 'scale=w=min(iw\\,1280):h=-2',
+        preset: 'ultrafast',
+        crf: 26,
+        bandwidth: 2000000 // 2 Mbps
+      });
+      
+      // Generate 1080p if video is at least 1080p
+      if (is1080pOrHigher) {
+        qualityLevels.push({
+          name: '1080p',
+          label: '1080p',
+          resolution: '1920x1080',
+          scaleFilter: 'scale=w=min(iw\\,1920):h=-2',
+          preset: 'fast',
+          crf: 23,
+          bandwidth: 5000000 // 5 Mbps
+        });
+      }
+      
+      // Generate 2160p (4K) if video is at least 4K
+      if (is4K) {
+        qualityLevels.push({
+          name: '2160p',
+          label: '4K',
+          resolution: '3840x2160',
+          scaleFilter: 'scale=iw:ih', // Keep original resolution
+          preset: 'medium',
+          crf: 21,
+          bandwidth: 20000000 // 20 Mbps
+        });
+      }
+      
+      console.log(`🎬 [ADAPTIVE] Generating ${qualityLevels.length} quality levels for ${mediaRef.id}:`, {
+        qualities: qualityLevels.map(q => q.label),
+        originalResolution: `${width}x${height}`,
+        duration: `${duration}s`,
+        fileSize: `${(fileSize / 1024 / 1024).toFixed(1)}MB`,
+        frameRate: `${frameRate}fps`
+      });
+      
+      // Update status
+      await mediaRef.set({
+        transcodeStartTime: FieldValue.serverTimestamp(),
+        transcodingMessage: `Generating ${qualityLevels.length} quality levels...`
+      }, { merge: true });
+      
+      const transcodeStartTime = Date.now();
+      const TRANSCODE_TIMEOUTS: Record<string, number> = {
+        '720p': 300000,  // 5 minutes
+        '1080p': 420000, // 7 minutes
+        '2160p': 720000  // 12 minutes
+      };
+      
+      // Shared token for all HLS files
+      const sharedToken = uuidv4();
+      const hlsBasePath = `${dir}/hls/${base}/`; // media/<uid>/<batch>/hls/<base>/
+      console.log(`🔑 Shared token for HLS: ${sharedToken}`);
+      const cleanupHlsArtifacts = async () => {
+        try {
+          const [files] = await bucket.getFiles({ prefix: hlsBasePath });
+          if (files.length) {
+            await Promise.all(files.map(f => f.delete().catch(() => {})));
+            console.log(`🧹 [ADAPTIVE] Cleaned up ${files.length} HLS artifacts at ${hlsBasePath}`);
+          }
+        } catch (cleanupError) {
+          console.warn(`⚠️ [ADAPTIVE] Failed to clean HLS artifacts at ${hlsBasePath}:`, cleanupError);
+        }
+      };
+      
+      // Generate all quality levels in parallel, capturing successes and failures
+      const qualitySettled = await Promise.allSettled(
+        qualityLevels.map(async (quality): Promise<{ quality: QualityLevel; storagePath: string }> => {
+          const qualityDirLocal = path.join(os.tmpdir(), `hls_${base}_${quality.name}`);
+          fs.mkdirSync(qualityDirLocal, { recursive: true });
+          const qualityDirStorage = `${hlsBasePath}${quality.name}/`;
+          
+          console.log(`🎬 [ADAPTIVE] Starting ${quality.label} transcoding...`);
+          
+          await new Promise<void>((res, rej) => {
+            const timeoutForQuality = TRANSCODE_TIMEOUTS[quality.name] ?? TRANSCODE_TIMEOUTS['720p'];
+            const timeoutId = setTimeout(() => {
+              rej(new Error(`Transcode timeout for ${quality.label}: Processing exceeded ${timeoutForQuality / 1000} seconds`));
+            }, timeoutForQuality);
+            
+            ffmpeg(tmpOriginal)
+              .addOptions([
+                '-preset', quality.preset,
+                '-crf', String(quality.crf),
+                '-profile:v', 'main',
+                '-vf', quality.scaleFilter,
+                '-start_number', '0',
+                '-hls_time', '4',
+                '-hls_list_size', '0',
+                '-f', 'hls'
+              ])
+              .output(path.join(qualityDirLocal, 'index.m3u8'))
+              .on('start', (cmdline) => {
+                console.log(`🎬 [ADAPTIVE] ${quality.label} FFmpeg started:`, cmdline.substring(0, 100) + '...');
+              })
+              .on('progress', (progress) => {
+                const elapsed = (Date.now() - transcodeStartTime) / 1000;
+                if (elapsed % 30 < 1) {
+                  console.log(`📊 [ADAPTIVE] ${quality.label} progress: ${progress.percent || 'unknown'}% (${elapsed.toFixed(1)}s)`);
+                }
+              })
+              .on('end', () => {
+                clearTimeout(timeoutId);
+                console.log(`✅ [ADAPTIVE] ${quality.label} transcoding completed`);
+                res();
+              })
+              .on('error', (err) => {
+                clearTimeout(timeoutId);
+                console.error(`❌ [ADAPTIVE] ${quality.label} FFmpeg error:`, err);
+                rej(err);
+              })
+              .run();
+          });
+          
+          const manifestLocalPath = path.join(qualityDirLocal, 'index.m3u8');
+          rewriteManifestWithAbsoluteUrls(manifestLocalPath, bucket.name, qualityDirStorage, sharedToken);
+          
+          const files = fs.readdirSync(qualityDirLocal);
+          await Promise.all(files.map(f => {
+            const dest = `${qualityDirStorage}${f}`;
+            const ct = f.endsWith('.m3u8')
+              ? 'application/vnd.apple.mpegurl'
+              : 'video/mp2t';
+            return bucket.upload(path.join(qualityDirLocal, f), {
+              destination: dest,
+              metadata: {
+                contentType: ct,
+                cacheControl: 'public,max-age=31536000,immutable',
+                metadata: { firebaseStorageDownloadTokens: sharedToken }
+              },
+            });
+          }));
+          
+          fs.rmSync(qualityDirLocal, { recursive: true, force: true });
+          
+          return {
+            quality,
+            storagePath: `${qualityDirStorage}index.m3u8`
+          };
+        })
+      );
 
-      fs.rmSync(hlsDirLocal, { recursive: true, force: true });
+      const qualityResults = qualitySettled
+        .map((result, index) => {
+          if (result.status === 'fulfilled') return result.value;
+          console.warn(`⚠️ [ADAPTIVE] ${qualityLevels[index].label} failed:`, result.reason);
+          return null;
+        })
+        .filter((value): value is { quality: QualityLevel; storagePath: string } => value !== null);
+
+      if (!qualityResults.length) {
+        throw new Error('All quality levels failed to transcode');
+      }
+      const has720p = qualityResults.some(r => r.quality.name === '720p');
+      if (!has720p) {
+        console.error(`❌ [ADAPTIVE] Critical: 720p failed for ${mediaRef.id}`);
+        await cleanupHlsArtifacts();
+        throw new Error('720p transcoding failed - video cannot play');
+      }
+      
+      // Create master playlist with absolute URLs (with tokens)
+      const masterPlaylistContent = [
+        '#EXTM3U',
+        '#EXT-X-VERSION:3'
+      ];
+      
+      // Helper function to create absolute Firebase Storage URL with token
+      const createAbsoluteUrl = (storagePath: string) => {
+        const encodedPath = encodeURIComponent(storagePath);
+        return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${sharedToken}`;
+      };
+      
+      // Add stream info for each quality (sorted by bandwidth, lowest first)
+      qualityResults
+        .sort((a, b) => a.quality.bandwidth - b.quality.bandwidth)
+        .forEach(({ quality, storagePath }) => {
+          // Use absolute URL with token instead of relative path
+          const absoluteUrl = createAbsoluteUrl(storagePath);
+          console.log(`📋 [ADAPTIVE] Master playlist: Adding ${quality.name} with absolute URL:`, {
+            quality: quality.name,
+            storagePath,
+            absoluteUrl: absoluteUrl.substring(0, 100) + '...'
+          });
+          masterPlaylistContent.push(
+            `#EXT-X-STREAM-INF:BANDWIDTH=${quality.bandwidth},RESOLUTION=${quality.resolution}`,
+            absoluteUrl
+          );
+        });
+      
+      // Write master playlist locally
+      const masterPlaylistLocal = path.join(os.tmpdir(), `master_${base}.m3u8`);
+      fs.writeFileSync(masterPlaylistLocal, masterPlaylistContent.join('\n') + '\n');
+      
+      // Upload master playlist
+      const masterPlaylistStorage = `${hlsBasePath}master.m3u8`;
+      await bucket.upload(masterPlaylistLocal, {
+        destination: masterPlaylistStorage,
+        metadata: {
+          contentType: 'application/vnd.apple.mpegurl',
+          cacheControl: 'public,max-age=31536000,immutable',
+          metadata: { firebaseStorageDownloadTokens: sharedToken }
+        },
+      });
+      
+      // Cleanup master playlist local file
+      fs.unlinkSync(masterPlaylistLocal);
+      
+      // Use first quality (720p) as fallback single manifest for backward compatibility
+      const fallbackHlsPath = qualityResults.find(r => r.quality.name === '720p')?.storagePath || qualityResults[0].storagePath;
+      
+      if (!fallbackHlsPath) {
+        throw new Error(`❌ [ADAPTIVE] No fallback HLS path found for ${mediaRef.id}`);
+      }
+      
+      console.log(`🔍 [ADAPTIVE] Starting final Firestore update for ${mediaRef.id}`, {
+        masterPlaylist: masterPlaylistStorage,
+        fallbackHls: fallbackHlsPath,
+        qualityCount: qualityLevels.length
+      });
+      
+      // Manual merge approach: Read current document, merge sources object, then update
+      console.log(`🔍 [ADAPTIVE] Reading current Firestore document for ${mediaRef.id}`);
+      const currentDoc = await mediaRef.get();
+      if (!currentDoc.exists) {
+        console.warn(`⚠️ [ADAPTIVE] Media document ${mediaRef.id} deleted during processing - skipping Firestore update.`);
+        await cleanupHlsArtifacts();
+        return;
+      }
+      const currentData = currentDoc.data() || {};
+      const currentSources = currentData?.sources || {};
+      
+      console.log(`🔍 [ADAPTIVE] Current document data:`, {
+        hasSources: !!currentData?.sources,
+        sourcesKeys: currentData?.sources ? Object.keys(currentData.sources) : [],
+        transcodeStatus: currentData?.transcodeStatus
+      });
+      
+      // Merge sources object manually
+      const mergedSources = {
+        ...currentSources,
+        hlsMaster: masterPlaylistStorage,
+        hls: fallbackHlsPath
+      };
+      
+      console.log(`🔍 [ADAPTIVE] About to update Firestore with merged sources:`, {
+        mergedSourcesKeys: Object.keys(mergedSources),
+        hasHlsMaster: !!mergedSources.hlsMaster,
+        hasHls: !!mergedSources.hls
+      });
+      
+      // Final write - use manual merge approach
+      const updateData = {
+        sources: mergedSources,
+        transcodeStatus: 'ready',
+        transcodeUpdatedAt: FieldValue.serverTimestamp(),
+        qualityLevels: qualityLevels.map(q => ({
+          name: q.name,
+          label: q.label,
+          resolution: q.resolution,
+          bandwidth: q.bandwidth
+        }))
+      };
+      
+      await mediaRef.set(updateData, { merge: true });
+      
+      // Verify the update
+      const verifyDoc = await mediaRef.get();
+      const verifyData = verifyDoc.exists ? verifyDoc.data() : {};
+      console.log(`✅ [ADAPTIVE] Firestore updated with sources:`, {
+        hasSources: !!verifyData?.sources,
+        sourcesKeys: verifyData?.sources ? Object.keys(verifyData.sources) : [],
+        hasHlsMaster: !!verifyData?.sources?.hlsMaster,
+        hasHls: !!verifyData?.sources?.hls,
+        hlsMasterValue: verifyData?.sources?.hlsMaster,
+        hlsValue: verifyData?.sources?.hls
+      });
+      
+      console.log(`✅ [ADAPTIVE] Multi-quality HLS ready for ${mediaRef.id}:`, {
+        masterPlaylist: masterPlaylistStorage,
+        fallbackHls: fallbackHlsPath,
+        qualityCount: qualityLevels.length,
+        qualities: qualityLevels.map(q => q.label).join(', ')
+      });
     } catch (err) {
-      console.error('Transcode error for', name, err);
-      try { await mediaRef.set({ transcodeStatus: 'failed' }, { merge: true }); } catch {}
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('exceeded');
+      
+      console.error(`❌ Transcode error for ${name}:`, {
+        error: errorMessage,
+        isTimeout,
+        mediaId: mediaRef?.id,
+        videoDuration: videoDuration,
+        resolution: `${videoWidth}x${videoHeight}`
+      });
+      
+      try {
+        const errorDetails = {
+          transcodeStatus: 'failed',
+          transcodeError: errorMessage,
+          transcodeFailedAt: FieldValue.serverTimestamp(),
+          transcodingMessage: isTimeout 
+            ? 'Processing timed out - video may be too large. Please try uploading a smaller file.' 
+            : 'Processing failed. Please try uploading again.'
+        };
+        await mediaRef.set(errorDetails, { merge: true });
+        console.log(`✅ Marked ${mediaRef.id} as failed with error details`);
+      } catch (updateError) {
+        console.error('Failed to update media document with error status:', updateError);
+      }
     } finally {
       try { if (fs.existsSync(tmpOriginal)) fs.unlinkSync(tmpOriginal); } catch {}
     }

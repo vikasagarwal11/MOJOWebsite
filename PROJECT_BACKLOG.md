@@ -1,6 +1,6 @@
 # 📋 Moms Fitness Mojo - Project Backlog
 
-*Last Updated: November 2, 2025*
+*Last Updated: November 4, 2025*
 
 ## 🎯 Project Overview
 
@@ -217,14 +217,176 @@ This makes `getStorage().bucket()` default to the right bucket everywhere.
   - *Effort*: 4 hours
   - *Dependencies*: Individual event pages
 
-- [ ] **Progressive Quality Generation** - Enable 30-60s initial playback vs current 5-6min wait
-  - *Status*: Planned
+- [x] **Progressive Quality Generation** - Enable 30-60s initial playback vs current 5-6min wait
+  - *Status*: ✅ Completed - November 4, 2025
   - *Impact*: High - 10x improvement in user experience
-  - *Effort*: 4-6 hours
+  - *Effort*: 8-12 hours (actual: 10 hours)
   - *Dependencies*: Current adaptive streaming implementation
-  - *Description*: Generate video qualities sequentially (720p first → ready, then 1080p → 4K in background). Mark video as ready after 720p completes (30-60s) instead of waiting for all qualities. HLS.js automatically upgrades quality when higher resolutions become available.
-  - *Risk*: Low-Medium (with proper safeguards)
-  - *Assessment*: See docs/RISK_AND_COMPLEXITY_ASSESSMENT.md
+  - *Description*: ✅ COMPLETED - Implemented three-phase progressive quality generation: Phase 1 (pre-declared master playlist), Phase 2 (streaming segments), Phase 3 (background Cloud Tasks). Videos now start playing after 12-20 seconds (3-5 segments) instead of 5-6 minutes. Higher qualities generate in background automatically.
+  - *Documentation*: See UNIFIED_PROGRESSIVE_QUALITY_PLAN.md, PROGRESSIVE_MEDIA_IMPLEMENTATION_SUMMARY.md
+
+### 🎬 Progressive Media Enhancements (Post-Implementation)
+*Based on Grok & ChatGPT feedback review - November 4, 2025*
+
+#### 🔴 Critical Priority (P0) - Implement This Week
+- [ ] **Add Bandwidth Threshold for HLS Reloads** - Prevent unnecessary buffering during quality upgrades
+  - *Status*: Planned
+  - *Impact*: High - Improves network variability handling
+  - *Effort*: 2-3 hours
+  - *Dependencies*: Current HLS.js integration
+  - *Description*: Only reload HLS source if bandwidth > current quality's bitrate. Prevents buffering on slow networks when higher quality becomes available. Source: Grok feedback - HLS.js Integration edge case.
+  - *Code Location*: `src/utils/hls.ts` or `src/components/media/MediaCard.tsx`
+
+- [ ] **Use Firestore Transactions for Concurrent Updates** - Prevent contention in high-write scenarios
+  - *Status*: Pending Implementation
+  - *Impact*: High - Prevents race conditions
+  - *Effort*: 3-4 hours
+  - *Dependencies*: Current Firestore merge logic
+  - *Description*: Replace manual merge with Firestore transactions for atomic source updates. Prevents contention when multiple quality updates happen simultaneously. Current code uses manual merge (lines 1322-1365) which could have race conditions. Source: Grok feedback - Firestore Updates concern.
+  - *Code Location*: `functions/src/index.ts` (lines 1322-1365 in `onMediaFileFinalize`)
+  - *Implementation Notes*: Replace `mediaRef.set()` with `db.runTransaction()` for atomic updates. Ensure cleanup is called if document is deleted during transaction.
+
+- [ ] **Add Dead-Letter Queue for Cloud Tasks** - Improve debugging visibility for failed tasks
+  - *Status*: Planned
+  - *Impact*: Medium - Better error visibility
+  - *Effort*: 1 hour
+  - *Dependencies*: Cloud Tasks queue setup
+  - *Description*: Configure dead-letter queue in Cloud Tasks to capture and debug failed quality generation tasks. Source: Grok feedback - Cloud Tasks limitation.
+  - *Configuration*: `gcloud tasks queues update video-quality-generation --dead-letter-queue=...`
+
+- [ ] **Add Partial Failure Notifications** - Alert admins when higher qualities fail
+  - *Status*: Pending Implementation
+  - *Impact*: Medium - Better monitoring
+  - *Effort*: 2-3 hours
+  - *Dependencies*: Pub/Sub topic setup
+  - *Description*: Publish Pub/Sub event when higher qualities fail but lower qualities succeed. Currently only logs warnings. When 1080p succeeds but 4K fails, admins should be notified to investigate. Source: Grok feedback - Error Handling gap.
+  - *Code Location*: `functions/src/index.ts` (after line 1260 in `onMediaFileFinalize`, after 720p critical check)
+  - *Implementation Notes*: Check if `qualityResults.length < qualityLevels.length`, identify failed qualities, publish Pub/Sub event with details. Consider creating `media-quality-failures` topic.
+
+#### 🟡 Important Priority (P1) - Implement Next Week
+- [ ] **Add Upgrade Indicators (Toast Notifications)** - Show users when quality upgrades
+  - *Status*: Planned
+  - *Impact*: Medium - Better UX transparency
+  - *Effort*: 2 hours
+  - *Dependencies*: Toast notification library
+  - *Description*: Show subtle toast notification when higher quality becomes available. Improves user awareness of quality upgrades. Source: Grok feedback - UX Improvement.
+  - *Code Location*: `src/components/media/MediaCard.tsx`
+
+- [ ] **Add Manual Quality Selector** - Give users control over quality selection
+  - *Status*: Planned
+  - *Impact*: High - YouTube-level feature
+  - *Effort*: 3-4 hours
+  - *Dependencies*: HLS.js levels API
+  - *Description*: Expose HLS.js levels API for manual quality selection. Users on poor networks can force lower quality, users on good networks can force higher quality. Source: Grok feedback - UX Improvement.
+  - *Code Location*: `src/components/media/MediaCard.tsx` or `src/utils/hls.ts`
+
+- [ ] **Batch Deletions for Large HLS Folders** - Prevent timeouts for long videos
+  - *Status*: Planned
+  - *Impact*: Medium - Handles edge cases
+  - *Effort*: 2 hours
+  - *Dependencies*: Current storage cleanup logic
+  - *Description*: Delete HLS folders in batches (100 files at a time) to prevent timeouts for long videos with many segments. Source: Grok feedback - Storage Cleanup edge case.
+  - *Code Location*: `functions/src/index.ts` (onMediaDeletedCleanup function)
+
+- [ ] **Add FFmpeg Health Checks** - Validate encoding success
+  - *Status*: Planned
+  - *Impact*: Medium - Better error detection
+  - *Effort*: 2 hours
+  - *Dependencies*: Current FFmpeg processing
+  - *Description*: Validate playlist segments post-encoding to detect FFmpeg crashes or incomplete encoding. Source: Grok feedback - Error Handling gap.
+  - *Code Location*: `functions/src/index.ts` (after FFmpeg completes)
+
+- [ ] **Add Exponential Backoff to Retries** - Smarter retry logic
+  - *Status*: Planned
+  - *Impact*: Medium - Better reliability
+  - *Effort*: 1-2 hours
+  - *Dependencies*: Current retry logic
+  - *Description*: Add exponential backoff to our own retry logic (Cloud Tasks already has it). Prevents retry storms. Source: Grok feedback - Error Handling improvement.
+  - *Code Location*: `functions/src/index.ts`
+
+- [ ] **Add Storage Lifecycle Rules** - Auto-cleanup of old files
+  - *Status*: Planned
+  - *Impact*: Low - Cost optimization
+  - *Effort*: 1 hour
+  - *Dependencies*: Storage bucket configuration
+  - *Description*: Configure Storage lifecycle rules to auto-delete old HLS folders after 30 days. Prevents orphaned files from accumulating. Source: Grok feedback - Storage Cleanup optimization.
+  - *Configuration*: `storage.rules` or `gcloud` command
+
+- [ ] **Add Enhanced Error Metrics/Reporting** - Track failure rates and patterns
+  - *Status*: Pending Implementation
+  - *Impact*: Low - Data-driven improvements
+  - *Effort*: 2-3 hours
+  - *Dependencies*: Current error handling
+  - *Description*: Track failure metrics for analytics: which qualities fail most often, timeout frequency by quality, video characteristics (size, resolution, duration). Currently only logs errors but doesn't track patterns. Would enable data-driven improvements.
+  - *Code Location*: `functions/src/index.ts` (after quality processing, could use Firestore analytics collection or external service)
+  - *Implementation Notes*: Create `media_processing_metrics` collection or use Firebase Analytics. Track: quality name, timeout status, video duration, resolution, file size, timestamp.
+
+#### 🟢 Nice-to-Have Priority (P2) - Future Enhancements
+- [ ] **Pseudo-Live HLS Configuration** - Reduce pauses during reloads
+  - *Status*: Future
+  - *Impact*: Low - Minor UX improvement
+  - *Effort*: 2-3 hours (needs testing)
+  - *Dependencies*: Current HLS.js config
+  - *Description*: Configure HLS.js as pseudo-live with `liveSyncDurationCount: 3` to enable periodic manifest refreshes. Could reduce pauses during quality upgrades. Source: Grok feedback - HLS.js optimization.
+  - *Code Location*: `src/utils/hls.ts`
+
+- [ ] **Add Performance Metrics Table to Docs** - Documentation improvement
+  - *Status*: Future
+  - *Impact*: Low - Documentation clarity
+  - *Effort*: 30 minutes
+  - *Dependencies*: PROGRESSIVE_MEDIA_IMPLEMENTATION_SUMMARY.md
+  - *Description*: Add performance metrics table (Before/After/Goal/Status) to summary documentation. Source: ChatGPT feedback - Documentation gap.
+
+- [ ] **Add Cross-Reference IDs to Docs** - Easier code navigation
+  - *Status*: Future
+  - *Impact*: Low - Documentation clarity
+  - *Effort*: 1 hour
+  - *Dependencies*: All documentation files
+  - *Description*: Add file:line references (e.g., `functions/src/index.ts:1047-1090`) to documentation for easier code navigation. Source: ChatGPT feedback - Documentation gap.
+
+- [ ] **Add Post-Deployment Results Section** - Real production metrics
+  - *Status*: Future
+  - *Impact*: Low - Documentation completeness
+  - *Effort*: 30 minutes
+  - *Dependencies*: Production testing
+  - *Description*: Add post-deployment results section with real production metrics after testing. Source: ChatGPT feedback - Documentation gap.
+
+- [ ] **Multi-Tab Playback Handling** - Prevent duplicate reloads across tabs
+  - *Status*: Future
+  - *Impact*: Low - Edge case handling
+  - *Effort*: 1-2 hours
+  - *Dependencies*: Current real-time listener
+  - *Description*: Use sessionStorage to debounce HLS reloads across multiple browser tabs. Prevents duplicate reloads when same video is open in multiple tabs. Source: Grok feedback - HLS.js edge case.
+  - *Code Location*: `src/components/media/MediaCard.tsx`
+
+#### 📊 Enhancement Summary
+- **Critical (P0)**: 4 items, ~8-10 hours
+- **Important (P1)**: 7 items, ~14-18 hours (added Error Metrics)
+- **Nice-to-Have (P2)**: 5 items, ~6-8 hours
+- **Total**: 16 items, ~28-36 hours
+- **Source**: Grok & ChatGPT feedback review (November 4, 2025) + Code review (November 4, 2025)
+- **Documentation**: See FEEDBACK_ACTION_ITEMS.md for detailed specifications
+
+#### ✅ Recently Completed (November 4, 2025)
+- [x] **Per-Quality Timeout Configuration** - Different timeouts for 720p (5min), 1080p (7min), 4K (12min)
+  - *Completed*: November 4, 2025
+  - *Code Location*: `functions/src/index.ts` (lines 1145-1149, 1177)
+  - *Impact*: Reduces 4K timeouts significantly, faster failure detection for 720p
+
+- [x] **720p Critical Check** - Ensures playback quality exists before marking video as ready
+  - *Completed*: November 4, 2025
+  - *Code Location*: `functions/src/index.ts` (lines 1255-1260)
+  - *Impact*: Prevents "ready" videos that can't play
+
+- [x] **Promise.allSettled Implementation** - Continues with successful qualities even if one fails
+  - *Completed*: November 4, 2025
+  - *Code Location*: `functions/src/index.ts` (lines 1168-1242)
+  - *Impact*: Fixes 4K timeout issue - 720p and 1080p still save even if 4K fails
+
+- [x] **Race Condition Handling** - Prevents recreating deleted documents during processing
+  - *Completed*: November 4, 2025
+  - *Code Location*: `functions/src/index.ts` (lines 1324-1328)
+  - *Impact*: Prevents orphaned files and document recreation
 
 #### 📋 **Progressive Quality Generation - Technical Specification**
 
@@ -1436,15 +1598,16 @@ const StripeIntegration = {
 
 ## 📊 Backlog Statistics
 
-- **Total Tasks**: 86
-- **Completed**: 11 (13%)
-- **Pending**: 8 (9%)
-- **Planned**: 67 (78%)
-- **High Priority**: 2
-- **Medium Priority**: 6
-- **Low Priority**: 2
+- **Total Tasks**: 101
+- **Completed**: 12 (12%)
+- **Pending**: 8 (8%)
+- **Planned**: 81 (80%)
+- **High Priority**: 6 (2 existing + 4 new enhancements)
+- **Medium Priority**: 12 (6 existing + 6 new enhancements)
+- **Low Priority**: 7 (2 existing + 5 new enhancements)
 - **Advanced Features**: 30
 - **Content & Lifestyle Features**: 40
+- **Progressive Media Enhancements**: 15 (4 Critical, 6 Important, 5 Nice-to-Have)
 
 ---
 

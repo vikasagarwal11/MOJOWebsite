@@ -27,16 +27,6 @@ const EventImage: React.FC<EventImageProps> = ({
 }) => {
   const [naturalRatio, setNaturalRatio] = React.useState<number | null>(null);
   const [imageError, setImageError] = React.useState<boolean>(false);
-  
-  // If no src provided or image failed to load, use placeholder
-  if (!src || imageError) {
-    return (
-      <EventPlaceholder className={className} aspect={aspect} title={title}>
-        {children}
-      </EventPlaceholder>
-    );
-  }
-  
   const resolved = src;
 
   // Decide object-fit based on image ratio and fit mode
@@ -60,7 +50,16 @@ const EventImage: React.FC<EventImageProps> = ({
       default: return "center";
     }
   }, [focus]);
-
+  
+  // If no src provided or image failed to load, use placeholder
+  if (!src || imageError) {
+    return (
+      <EventPlaceholder className={className} aspect={aspect} title={title}>
+        {children}
+      </EventPlaceholder>
+    );
+  }
+  
   // Dynamic aspect ratio - use natural ratio if available, otherwise fallback
   const style: React.CSSProperties = {
     aspectRatio: naturalRatio ? naturalRatio : (typeof aspect === "number" ? String(aspect) : aspect),

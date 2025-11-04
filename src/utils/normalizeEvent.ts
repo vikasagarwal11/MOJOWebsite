@@ -6,6 +6,7 @@
 import { RRule, RRuleStrOptions } from 'rrule';
 import { safeToDate } from './dateUtils';
 import { EventDoc } from '../hooks/useEvents';
+import { isFirebaseTimestamp } from './dataSanitizer';
 
 /**
  * Safely convert any input to RRule instance
@@ -15,6 +16,18 @@ export function toRRule(input: unknown): RRule | null {
   if (!input) return null;
   
   try {
+    // CRITICAL: Check if input is a Firebase Timestamp FIRST - don't convert to string
+    if (isFirebaseTimestamp(input)) {
+      console.warn('🔍 RRULE input is a Firebase Timestamp, not a recurrence rule:', input);
+      return null;
+    }
+    
+    // CRITICAL: Check if input is a Date object - don't convert to string
+    if (input instanceof Date) {
+      console.warn('🔍 RRULE input is a Date object, not a recurrence rule:', input);
+      return null;
+    }
+    
     // Handle string input (RRULE string) - ADD EXTRA TYPE CHECK
     if (typeof input === 'string' && input.trim()) {
       try { 
@@ -27,7 +40,7 @@ export function toRRule(input: unknown): RRule | null {
     
     // CRITICAL: Handle non-string inputs that might cause .split() errors
     if (typeof input !== 'string') {
-      console.warn('RRULE input is not a string, skipping:', typeof input, input);
+      console.warn('🔍 RRULE input is not a string, skipping:', typeof input, input?.constructor?.name);
       return null;
     }
     
@@ -66,24 +79,25 @@ export function ultraSafeToRRule(input: unknown): RRule | null {
   if (!input) return null;
   
   try {
-    // Convert everything to string first, then validate
-    let stringInput: string;
-    
-    if (typeof input === 'string') {
-      stringInput = input.trim();
-    } else if (input && typeof input === 'object') {
-      // Try to extract string representation
-      if ('toString' in input && typeof input.toString === 'function') {
-        stringInput = input.toString().trim();
-      } else if ('valueOf' in input && typeof input.valueOf === 'function') {
-        stringInput = String(input.valueOf()).trim();
-      } else {
-        console.warn('Cannot convert object to string for RRule:', input);
-        return null;
-      }
-    } else {
-      stringInput = String(input).trim();
+    // CRITICAL: Check if input is a Firebase Timestamp FIRST - don't convert to string
+    if (isFirebaseTimestamp(input)) {
+      console.warn('🔍 RRULE input is a Firebase Timestamp, not a recurrence rule:', input);
+      return null;
     }
+    
+    // CRITICAL: Check if input is a Date object - don't convert to string
+    if (input instanceof Date) {
+      console.warn('🔍 RRULE input is a Date object, not a recurrence rule:', input);
+      return null;
+    }
+    
+    // Only process string inputs
+    if (typeof input !== 'string') {
+      console.warn('🔍 RRULE input is not a string, skipping:', typeof input, input?.constructor?.name);
+      return null;
+    }
+    
+    const stringInput = input.trim();
     
     // Validate string is not empty and looks like an RRULE
     if (!stringInput || stringInput.length < 3) {
@@ -92,18 +106,24 @@ export function ultraSafeToRRule(input: unknown): RRule | null {
     
     // Additional safety check - ensure it contains RRULE-like patterns
     if (!stringInput.includes('RRULE') && !stringInput.includes('FREQ') && !stringInput.includes('INTERVAL')) {
-      console.warn('String does not appear to be an RRULE:', stringInput);
+      console.warn('🔍 String does not appear to be an RRULE:', stringInput);
+      return null;
+    }
+    
+    // Final validation: ensure it's actually a string before calling fromString
+    if (typeof stringInput !== 'string') {
+      console.error('🔍 CRITICAL: stringInput is not a string after processing:', typeof stringInput, stringInput);
       return null;
     }
     
     try {
       return RRule.fromString(stringInput);
     } catch (error) {
-      console.warn('Failed to parse RRULE string (ultra-safe):', stringInput, error);
+      console.warn('🔍 Failed to parse RRULE string (ultra-safe):', stringInput, error);
       return null;
     }
   } catch (error) {
-    console.error('Error in ultraSafeToRRule conversion:', input, error);
+    console.error('🔍 Error in ultraSafeToRRule conversion:', input, error);
     return null;
   }
 }

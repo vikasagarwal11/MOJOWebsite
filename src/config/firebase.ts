@@ -11,12 +11,46 @@ import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 import { getPerformance } from 'firebase/performance';
 
+const normalizeStorageBucket = (rawBucket: string | undefined, fallbackProjectId: string): string => {
+  const trimmed = rawBucket?.trim();
+  if (!trimmed) {
+    return `${fallbackProjectId}.appspot.com`;
+  }
+
+  // Remove gs:// prefix if provided
+  const withoutScheme = trimmed.replace(/^gs:\/\//i, '');
+  let normalized = withoutScheme;
+
+  // Some environments incorrectly use the *.firebasestorage.app pseudo-domain.
+  if (normalized.endsWith('.firebasestorage.app')) {
+    normalized = normalized.replace(/\.firebasestorage\.app$/i, '.appspot.com');
+  }
+
+  // If value is just the project id, append the default domain suffix.
+  if (!normalized.includes('.')) {
+    normalized = `${normalized}.appspot.com`;
+  }
+
+  return normalized;
+};
+
+const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'demo-project';
+const rawStorageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+const storageBucket = normalizeStorageBucket(rawStorageBucket, projectId);
+
+if (import.meta.env.DEV && rawStorageBucket && storageBucket !== rawStorageBucket.replace(/^gs:\/\//i, '')) {
+  console.warn('[Firebase] Normalized storage bucket value. Check your VITE_FIREBASE_STORAGE_BUCKET env var.', {
+    provided: rawStorageBucket,
+    normalized: storageBucket
+  });
+}
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'demo-api-key',
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'demo-project.firebaseapp.com',
   databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || 'https://demo-project-default-rtdb.firebaseio.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'demo-project',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET?.replace('gs://', '') || 'demo-project.appspot.com',
+  projectId,
+  storageBucket,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '123456789',
   appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:123456789:web:abcdef',
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-XXXXXXXXXX',
@@ -28,6 +62,7 @@ console.log(`🚨 [CRITICAL] Firebase Auth Domain: ${firebaseConfig.authDomain}`
 console.log(`🚨 [CRITICAL] Firebase Storage Bucket: ${firebaseConfig.storageBucket}`);
 console.log(`🚨 [CRITICAL] Environment Variables:`, {
   VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  VITE_FIREBASE_STORAGE_BUCKET: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   VITE_ENVIRONMENT: import.meta.env.VITE_ENVIRONMENT,
   MODE: import.meta.env.MODE
 });
@@ -58,6 +93,7 @@ console.log(`🚨 [CRITICAL] Firebase Auth Domain: ${firebaseConfig.authDomain}`
 console.log(`🚨 [CRITICAL] Firebase Storage Bucket: ${firebaseConfig.storageBucket}`);
 console.log(`🚨 [CRITICAL] Environment Variables:`, {
   VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  VITE_FIREBASE_STORAGE_BUCKET: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   VITE_ENVIRONMENT: import.meta.env.VITE_ENVIRONMENT,
   MODE: import.meta.env.MODE
 });
