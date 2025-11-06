@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2, RefreshCw, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc, getDoc, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
-import { ref, deleteObject } from 'firebase/storage';
+import { ref, deleteObject, listAll } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
 import EventCardNew from '../components/events/EventCardNew';
@@ -477,7 +477,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
     }
   };
 
-  // Fix stuck processing videos
+  // Fix stuck processing videos - improved to check HLS files
   const handleFixStuckProcessing = async () => {
     setIsFixingStuckProcessing(true);
     try {
@@ -486,36 +486,83 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       const q = query(mediaRef, where('transcodeStatus', '==', 'processing'));
       const snapshot = await getDocs(q);
       
+      if (snapshot.empty) {
+        toast.success('No stuck processing files found');
+        setIsFixingStuckProcessing(false);
+        return;
+      }
+      
+      toast.loading(`Checking ${snapshot.docs.length} stuck files...`, { id: 'fix-stuck' });
+      
       const batch = writeBatch(db);
       let fixedCount = 0;
+      let readyCount = 0;
+      let failedCount = 0;
+      const now = new Date();
       
-      snapshot.docs.forEach(doc => {
+      // Check each file
+      for (const doc of snapshot.docs) {
         const data = doc.data();
-        const createdAt = data.createdAt?.toDate();
-        const now = new Date();
-        const hoursDiff = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+        const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt;
+        const hoursStuck = createdAt ? (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60) : 0;
         
-        // If it's been more than 2 hours, mark as completed
-        if (hoursDiff > 2) {
+        // Check if HLS files exist in Storage
+        let hasHlsFiles = false;
+        if (data.filePath && data.type === 'video') {
+          try {
+            const folderPath = data.filePath.substring(0, data.filePath.lastIndexOf('/'));
+            const hlsFolderRef = ref(storage, `${folderPath}/hls/`);
+            const hlsList = await listAll(hlsFolderRef);
+            hasHlsFiles = hlsList.items.length > 0;
+          } catch (error) {
+            // If folder doesn't exist or error, assume no HLS files
+            hasHlsFiles = false;
+          }
+        }
+        
+        // Check if HLS exists in Firestore
+        const hasHlsInFirestore = !!data.sources?.hls || !!data.sources?.hlsMaster;
+        
+        // Fix if:
+        // 1. Has HLS files but status is still processing
+        // 2. Stuck for more than 2 hours and no HLS files (mark as failed)
+        if (hasHlsFiles || hasHlsInFirestore) {
+          // Has HLS - mark as ready
           batch.update(doc.ref, { 
-            transcodeStatus: 'completed',
+            transcodeStatus: 'ready',
+            lastManualFix: serverTimestamp(),
+            manualFixReason: 'HLS files exist but status was stuck in processing',
             updatedAt: serverTimestamp()
           });
           fixedCount++;
+          readyCount++;
+        } else if (hoursStuck > 2) {
+          // No HLS and stuck >2 hours - mark as failed
+          batch.update(doc.ref, { 
+            transcodeStatus: 'failed',
+            lastManualFix: serverTimestamp(),
+            manualFixReason: 'Stuck in processing for more than 2 hours with no HLS files',
+            updatedAt: serverTimestamp()
+          });
+          fixedCount++;
+          failedCount++;
         }
-      });
+      }
       
       if (fixedCount > 0) {
         await batch.commit();
-        toast.success(`Fixed ${fixedCount} stuck processing videos`);
+        toast.success(
+          `Fixed ${fixedCount} stuck files: ${readyCount} marked ready, ${failedCount} marked failed`,
+          { id: 'fix-stuck', duration: 5000 }
+        );
         // Reload media to show updated status
         loadAllMedia();
       } else {
-        toast.success('No stuck processing videos found');
+        toast.success('No files need fixing (all are legitimately processing)', { id: 'fix-stuck' });
       }
     } catch (error) {
       console.error('Failed to fix stuck processing:', error);
-      toast.error('Failed to fix stuck processing videos');
+      toast.error('Failed to fix stuck processing files', { id: 'fix-stuck' });
     } finally {
       setIsFixingStuckProcessing(false);
     }

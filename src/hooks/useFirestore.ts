@@ -82,30 +82,11 @@ function reconstructNestedObjects(data: any): any {
 
 /** Convert common timestamp fields (if present) to Date for UI convenience. */
 function normalizeDoc(docData: any) {
-  console.log('🔍 [useFirestore] normalizeDoc START:', { type: typeof docData, hasId: !!docData?.id });
   try {
     const sanitized = sanitizeFirebaseData(docData);
     
     // Reconstruct nested objects from flattened dotted keys (fix for Firestore dot notation)
     const reconstructed = reconstructNestedObjects(sanitized);
-    
-    console.log('✅ [useFirestore] normalizeDoc sanitized:', { keys: Object.keys(reconstructed), id: reconstructed.id });
-    
-    // Enhanced debugging for video sources field
-    if (reconstructed.type === 'video') {
-      console.log('🔍 [normalizeDoc] Video document sources check:', {
-        docId: reconstructed.id,
-        hasSources: !!reconstructed.sources,
-        sourcesType: typeof reconstructed.sources,
-        sourcesKeys: reconstructed.sources ? Object.keys(reconstructed.sources) : [],
-        hasHls: !!reconstructed.sources?.hls,
-        hasHlsMaster: !!reconstructed.sources?.hlsMaster,
-        hlsValue: reconstructed.sources?.hls,
-        hlsMasterValue: reconstructed.sources?.hlsMaster,
-        fullSourcesObject: reconstructed.sources,
-        flattenedKeysBeforeReconstruction: Object.keys(sanitized).filter(k => k.includes('.'))
-      });
-    }
     
     const out = { id: reconstructed.id, ...reconstructed };
     const tsFields = ['createdAt', 'updatedAt', 'date', 'validUntil', 'startAt'];
@@ -113,7 +94,6 @@ function normalizeDoc(docData: any) {
       const v = (out as any)[f];
       (out as any)[f] = v?.toDate?.() ? v.toDate() : v instanceof Date ? v : v;
     }
-    console.log('✅ [useFirestore] normalizeDoc SUCCESS:', { id: out.id, timestampFields: tsFields.filter(f => (out as any)[f]) });
     return out;
   } catch (error) {
     console.error('❌ [useFirestore] normalizeDoc ERROR:', error, { docData });
@@ -419,18 +399,7 @@ export const useFirestore = () => {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          console.log('✅ [useFirestore] Snapshot received:', { 
-            collectionName, 
-            docCount: snapshot.docs.length,
-            hasChanges: !snapshot.metadata.fromCache 
-          });
-          
           const rows = snapshot.docs.map(d => normalizeDoc({ id: d.id, ...d.data() }));
-          console.log('✅ [useFirestore] Documents processed:', { 
-            collectionName, 
-            processedCount: rows.length 
-          });
-          
           setData(rows);
           setLoading(false);
         },

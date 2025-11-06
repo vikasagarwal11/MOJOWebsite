@@ -367,6 +367,81 @@ This makes `getStorage().bucket()` default to the right bucket everywhere.
 - **Source**: Grok & ChatGPT feedback review (November 4, 2025) + Code review (November 4, 2025)
 - **Documentation**: See FEEDBACK_ACTION_ITEMS.md for detailed specifications
 
+#### 🎯 Additional Performance & Quality Improvements
+*From QUALITY_PERFORMANCE_IMPROVEMENTS.md and NEXT_STEPS_ROADMAP.md*
+
+- [ ] **Fine-tune CRF Values** - Optimize quality vs file size balance
+  - *Status*: Planned
+  - *Impact*: Medium - Better quality/size balance
+  - *Effort*: 1-2 hours
+  - *Dependencies*: Current encoding settings
+  - *Description*: Adjust CRF values: 720p: CRF 24-25 (slight quality improvement), 1080p: CRF 22 (better quality), 4K: CRF 20 (higher quality for 4K content). Test with sample videos and compare file sizes and visual quality.
+  - *Source*: QUALITY_PERFORMANCE_IMPROVEMENTS.md
+
+- [ ] **Audio Quality Enhancement** - Better audio encoding
+  - *Status*: Planned
+  - *Impact*: Medium - Better audio quality
+  - *Effort*: 1 hour
+  - *Dependencies*: Current FFmpeg processing
+  - *Description*: Improve audio encoding with higher bitrate (192k), higher sample rate (48000), and stereo output. Minimal processing overhead.
+  - *Source*: QUALITY_PERFORMANCE_IMPROVEMENTS.md
+
+- [ ] **Optimize HLS Segment Settings** - Better adaptive streaming
+  - *Status*: Planned
+  - *Impact*: Medium - Better adaptive streaming
+  - *Effort*: 1-2 hours
+  - *Dependencies*: Current HLS generation
+  - *Description*: Optimize HLS segment settings: 6-second segments (better for adaptation), keep last 10 segments (reduces manifest size), independent segments flag (better seeking), explicit segment type.
+  - *Source*: QUALITY_PERFORMANCE_IMPROVEMENTS.md
+
+- [ ] **Priority Queue System** - Faster initial playback during bulk uploads
+  - *Status*: Planned
+  - *Impact*: Medium - Faster initial playback
+  - *Effort*: 3-4 hours
+  - *Dependencies*: Cloud Tasks queue setup
+  - *Description*: Process 720p tasks first (high priority), then 1080p (medium priority), finally 4K (low priority). Use Cloud Tasks priority queues or add delay/scheduling for lower priorities.
+  - *Source*: QUALITY_PERFORMANCE_IMPROVEMENTS.md, NEXT_STEPS_ROADMAP.md
+
+- [ ] **Adaptive Timeouts** - Prevent premature timeouts for large files
+  - *Status*: Planned
+  - *Impact*: Medium - Better handling of large files
+  - *Effort*: 2-3 hours
+  - *Dependencies*: Current timeout logic
+  - *Description*: Calculate timeout based on file size. Adjust timeout dynamically. Better handling of edge cases. Prevents premature timeouts for large files, faster completion for small files.
+  - *Source*: QUALITY_PERFORMANCE_IMPROVEMENTS.md, NEXT_STEPS_ROADMAP.md
+
+- [ ] **Network Optimization** - Faster uploads and better efficiency
+  - *Status*: Planned
+  - *Impact*: Medium - Faster uploads
+  - *Effort*: 2-3 hours
+  - *Dependencies*: Current upload logic
+  - *Description*: Parallel upload of HLS segments, batch upload operations, compression for smaller files. Faster uploads, reduced network overhead.
+  - *Source*: QUALITY_PERFORMANCE_IMPROVEMENTS.md, NEXT_STEPS_ROADMAP.md
+
+- [ ] **Enhanced Monitoring & Logging** - Better visibility into processing performance
+  - *Status*: Planned
+  - *Impact*: Medium - Better troubleshooting
+  - *Effort*: 2-3 hours
+  - *Dependencies*: Current logging
+  - *Description*: Add structured logging for quality generation. Create Cloud Logging metrics for: average processing time per quality, success/failure rates, queue depth and wait times. Set up alerts for stuck processing. Create dashboard for processing metrics.
+  - *Source*: NEXT_STEPS_ROADMAP.md
+
+- [ ] **Two-Pass Encoding (Premium Content)** - Better quality/size ratio for high-value content
+  - *Status*: Planned
+  - *Impact*: Medium - Better quality for premium content
+  - *Effort*: 4-5 hours
+  - *Dependencies*: Current encoding logic
+  - *Description*: Optional two-pass encoding for 4K premium content. Feature flag to enable/disable. Only for premium or high-value content. Better quality at same file size, or smaller files at same quality, more consistent bitrate.
+  - *Source*: QUALITY_PERFORMANCE_IMPROVEMENTS.md, NEXT_STEPS_ROADMAP.md
+
+- [ ] **CDN Integration** - Cloudflare/Cloud CDN for faster global delivery
+  - *Status*: Planned
+  - *Impact*: High - Faster global playback
+  - *Effort*: 5-8 hours
+  - *Dependencies*: Storage bucket configuration
+  - *Description*: Integrate CDN (Cloudflare/Cloud CDN) for faster global video delivery, lower bandwidth costs, better mobile performance, and reduced latency. Requires CDN setup and cache invalidation strategy.
+  - *Source*: PLATFORM_COMPARISON_AND_IMPROVEMENTS.md
+
 #### ✅ Recently Completed (November 4, 2025)
 - [x] **Per-Quality Timeout Configuration** - Different timeouts for 720p (5min), 1080p (7min), 4K (12min)
   - *Completed*: November 4, 2025

@@ -75,5 +75,7 @@
     "cleanUrls": true,
     "trailingSlash": false
   },
-  "extensions": {}
+  "extensions": {
+    "storage-resize-images": "firebase/storage-resize-images@0.2.10"
+  }
 }

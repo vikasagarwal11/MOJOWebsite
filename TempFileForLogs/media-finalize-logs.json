@@ -1,0 +1,1205 @@
+﻿{
+    "value":  [
+                  {
+                      "execution_id":  "mwhf8cwzf1hl",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2d694a88-4598-4c4d-ba37-34a7446ed8e4/hls/13689814-uhd_3840_2160_60fps/master.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.300"
+                  },
+                  {
+                      "execution_id":  "mwhf8cwzf1hl",
+                      "log":  "Size: 687\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.300"
+                  },
+                  {
+                      "execution_id":  "mwhf8cwzf1hl",
+                      "log":  "Content type: application/vnd.apple.mpegurl\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.300"
+                  },
+                  {
+                      "execution_id":  "mwhf8cwzf1hl",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.300"
+                  },
+                  {
+                      "execution_id":  "mwhf8cwzf1hl",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2d694a88-4598-4c4d-ba37-34a7446ed8e4/hls/13689814-uhd_3840_2160_60fps/master.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.300"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.295"
+                  },
+                  {
+                      "execution_id":  "mwhf2mttgffc",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2d694a88-4598-4c4d-ba37-34a7446ed8e4/hls/13689814-uhd_3840_2160_60fps/1080p/index1.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.094"
+                  },
+                  {
+                      "execution_id":  "mwhf2mttgffc",
+                      "log":  "Size: 13010540\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.094"
+                  },
+                  {
+                      "execution_id":  "mwhf2mttgffc",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.094"
+                  },
+                  {
+                      "execution_id":  "mwhf2mttgffc",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.094"
+                  },
+                  {
+                      "execution_id":  "mwhf2mttgffc",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2d694a88-4598-4c4d-ba37-34a7446ed8e4/hls/13689814-uhd_3840_2160_60fps/1080p/index1.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.094"
+                  },
+                  {
+                      "execution_id":  "mwhf2jw3beub",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2d694a88-4598-4c4d-ba37-34a7446ed8e4/hls/13689814-uhd_3840_2160_60fps/1080p/index0.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.092"
+                  },
+                  {
+                      "execution_id":  "mwhf2jw3beub",
+                      "log":  "Size: 14026304\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.092"
+                  },
+                  {
+                      "execution_id":  "mwhf2jw3beub",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.092"
+                  },
+                  {
+                      "execution_id":  "mwhf2jw3beub",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.092"
+                  },
+                  {
+                      "execution_id":  "mwhf2jw3beub",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2d694a88-4598-4c4d-ba37-34a7446ed8e4/hls/13689814-uhd_3840_2160_60fps/1080p/index0.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.091"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.089"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.086"
+                  },
+                  {
+                      "execution_id":  "mwhf1xhp4qy9",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2d694a88-4598-4c4d-ba37-34a7446ed8e4/hls/13689814-uhd_3840_2160_60fps/1080p/index3.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.069"
+                  },
+                  {
+                      "execution_id":  "mwhf1xhp4qy9",
+                      "log":  "Size: 12558024\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.069"
+                  },
+                  {
+                      "execution_id":  "mwhf1xhp4qy9",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.069"
+                  },
+                  {
+                      "execution_id":  "mwhf1xhp4qy9",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.069"
+                  },
+                  {
+                      "execution_id":  "mwhf1xhp4qy9",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2d694a88-4598-4c4d-ba37-34a7446ed8e4/hls/13689814-uhd_3840_2160_60fps/1080p/index3.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.069"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.064"
+                  },
+                  {
+                      "execution_id":  "mwhf1r1h85jv",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2d694a88-4598-4c4d-ba37-34a7446ed8e4/hls/13689814-uhd_3840_2160_60fps/1080p/index2.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.063"
+                  },
+                  {
+                      "execution_id":  "mwhf1r1h85jv",
+                      "log":  "Size: 12356864\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.063"
+                  },
+                  {
+                      "execution_id":  "mwhf1r1h85jv",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.063"
+                  },
+                  {
+                      "execution_id":  "mwhf1r1h85jv",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.063"
+                  },
+                  {
+                      "execution_id":  "mwhf1r1h85jv",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2d694a88-4598-4c4d-ba37-34a7446ed8e4/hls/13689814-uhd_3840_2160_60fps/1080p/index2.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.063"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:06.058"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:05.617"
+                  },
+                  {
+                      "execution_id":  "mwhe7ugrbkdw",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2d694a88-4598-4c4d-ba37-34a7446ed8e4/hls/13689814-uhd_3840_2160_60fps/1080p/index.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:04.987"
+                  },
+                  {
+                      "execution_id":  "mwhe7ugrbkdw",
+                      "log":  "Size: 1548\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:04.987"
+                  },
+                  {
+                      "execution_id":  "mwhe7ugrbkdw",
+                      "log":  "Content type: application/vnd.apple.mpegurl\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:04.987"
+                  },
+                  {
+                      "execution_id":  "mwhe7ugrbkdw",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:04.987"
+                  },
+                  {
+                      "execution_id":  "mwhe7ugrbkdw",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/2d694a88-4598-4c4d-ba37-34a7446ed8e4/hls/13689814-uhd_3840_2160_60fps/1080p/index.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:04.987"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:02:04.969"
+                  },
+                  {
+                      "execution_id":  "mwfjurrv91qr",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/4329d542-2aae-4722-a91b-ce09e0db5a56/hls/12436947_1080_1920_60fps/master.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:38.979"
+                  },
+                  {
+                      "execution_id":  "mwfjurrv91qr",
+                      "log":  "Size: 679\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:38.979"
+                  },
+                  {
+                      "execution_id":  "mwfjurrv91qr",
+                      "log":  "Content type: application/vnd.apple.mpegurl\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:38.979"
+                  },
+                  {
+                      "execution_id":  "mwfjurrv91qr",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:38.979"
+                  },
+                  {
+                      "execution_id":  "mwfjurrv91qr",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/4329d542-2aae-4722-a91b-ce09e0db5a56/hls/12436947_1080_1920_60fps/master.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:38.979"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:38.974"
+                  },
+                  {
+                      "execution_id":  "mwfjjk9g8akx",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/4329d542-2aae-4722-a91b-ce09e0db5a56/hls/12436947_1080_1920_60fps/1080p/index0.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:38.576"
+                  },
+                  {
+                      "execution_id":  "mwfjjk9g8akx",
+                      "log":  "Size: 11115312\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:38.575"
+                  },
+                  {
+                      "execution_id":  "mwfjjk9g8akx",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:38.575"
+                  },
+                  {
+                      "execution_id":  "mwfjjk9g8akx",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:38.575"
+                  },
+                  {
+                      "execution_id":  "mwfjjk9g8akx",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/4329d542-2aae-4722-a91b-ce09e0db5a56/hls/12436947_1080_1920_60fps/1080p/index0.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:38.575"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:38.570"
+                  },
+                  {
+                      "execution_id":  "mwfipvqheicq",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/4329d542-2aae-4722-a91b-ce09e0db5a56/hls/12436947_1080_1920_60fps/1080p/index1.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:37.507"
+                  },
+                  {
+                      "execution_id":  "mwfipvqheicq",
+                      "log":  "Size: 5986296\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:37.507"
+                  },
+                  {
+                      "execution_id":  "mwfipvqheicq",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:37.507"
+                  },
+                  {
+                      "execution_id":  "mwfipvqheicq",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:37.507"
+                  },
+                  {
+                      "execution_id":  "mwfipvqheicq",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/4329d542-2aae-4722-a91b-ce09e0db5a56/hls/12436947_1080_1920_60fps/1080p/index1.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:37.507"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:37.502"
+                  },
+                  {
+                      "execution_id":  "mwfi6g84ulc3",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/4329d542-2aae-4722-a91b-ce09e0db5a56/hls/12436947_1080_1920_60fps/1080p/index2.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:36.807"
+                  },
+                  {
+                      "execution_id":  "mwfi6g84ulc3",
+                      "log":  "Size: 3222132\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:36.807"
+                  },
+                  {
+                      "execution_id":  "mwfi6g84ulc3",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:36.807"
+                  },
+                  {
+                      "execution_id":  "mwfi6g84ulc3",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:36.807"
+                  },
+                  {
+                      "execution_id":  "mwfi6g84ulc3",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/4329d542-2aae-4722-a91b-ce09e0db5a56/hls/12436947_1080_1920_60fps/1080p/index2.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:36.807"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:36.802"
+                  },
+                  {
+                      "execution_id":  "mwfhbhc7pran",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/4329d542-2aae-4722-a91b-ce09e0db5a56/hls/12436947_1080_1920_60fps/1080p/index.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:35.693"
+                  },
+                  {
+                      "execution_id":  "mwfhbhc7pran",
+                      "log":  "Size: 952\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:35.693"
+                  },
+                  {
+                      "execution_id":  "mwfhbhc7pran",
+                      "log":  "Content type: application/vnd.apple.mpegurl\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:35.692"
+                  },
+                  {
+                      "execution_id":  "mwfhbhc7pran",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:35.692"
+                  },
+                  {
+                      "execution_id":  "mwfhbhc7pran",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/4329d542-2aae-4722-a91b-ce09e0db5a56/hls/12436947_1080_1920_60fps/1080p/index.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:35.692"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:35.687"
+                  },
+                  {
+                      "execution_id":  "mwfbs09k9i0l",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/7d31c2a6-5816-4537-86df-4ff44b919d60/hls/IMG_7508/master.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.513"
+                  },
+                  {
+                      "execution_id":  "mwfbs09k9i0l",
+                      "log":  "Size: 647\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.513"
+                  },
+                  {
+                      "execution_id":  "mwfbs09k9i0l",
+                      "log":  "Content type: application/vnd.apple.mpegurl\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.513"
+                  },
+                  {
+                      "execution_id":  "mwfbs09k9i0l",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.513"
+                  },
+                  {
+                      "execution_id":  "mwfbs09k9i0l",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/7d31c2a6-5816-4537-86df-4ff44b919d60/hls/IMG_7508/master.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.513"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.507"
+                  },
+                  {
+                      "execution_id":  "mwfbl2f1ir8f",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/7d31c2a6-5816-4537-86df-4ff44b919d60/hls/IMG_7508/1080p/index1.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.263"
+                  },
+                  {
+                      "execution_id":  "mwfbl2f1ir8f",
+                      "log":  "Size: 6521156\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.263"
+                  },
+                  {
+                      "execution_id":  "mwfbl2f1ir8f",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.263"
+                  },
+                  {
+                      "execution_id":  "mwfbl2f1ir8f",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.263"
+                  },
+                  {
+                      "execution_id":  "mwfbl2f1ir8f",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/7d31c2a6-5816-4537-86df-4ff44b919d60/hls/IMG_7508/1080p/index1.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.263"
+                  },
+                  {
+                      "execution_id":  "mwfbkw1ace2e",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/7d31c2a6-5816-4537-86df-4ff44b919d60/hls/IMG_7508/1080p/index2.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.258"
+                  },
+                  {
+                      "execution_id":  "mwfbkw1ace2e",
+                      "log":  "Size: 6825152\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.258"
+                  },
+                  {
+                      "execution_id":  "mwfbkw1ace2e",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.258"
+                  },
+                  {
+                      "execution_id":  "mwfbkw1ace2e",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.258"
+                  },
+                  {
+                      "execution_id":  "mwfbkw1ace2e",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/7d31c2a6-5816-4537-86df-4ff44b919d60/hls/IMG_7508/1080p/index2.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.258"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.255"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.250"
+                  },
+                  {
+                      "execution_id":  "mwfbkk5dx6eh",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/7d31c2a6-5816-4537-86df-4ff44b919d60/hls/IMG_7508/1080p/index0.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.245"
+                  },
+                  {
+                      "execution_id":  "mwfbkk5dx6eh",
+                      "log":  "Size: 6554432\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.245"
+                  },
+                  {
+                      "execution_id":  "mwfbkk5dx6eh",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.245"
+                  },
+                  {
+                      "execution_id":  "mwfbkk5dx6eh",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.245"
+                  },
+                  {
+                      "execution_id":  "mwfbkk5dx6eh",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/7d31c2a6-5816-4537-86df-4ff44b919d60/hls/IMG_7508/1080p/index0.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.245"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:28.240"
+                  },
+                  {
+                      "execution_id":  "mwfbalrso4ri",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/7d31c2a6-5816-4537-86df-4ff44b919d60/hls/IMG_7508/1080p/index.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:27.886"
+                  },
+                  {
+                      "execution_id":  "mwfbalrso4ri",
+                      "log":  "Size: 904\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:27.886"
+                  },
+                  {
+                      "execution_id":  "mwfbalrso4ri",
+                      "log":  "Content type: application/vnd.apple.mpegurl\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:27.886"
+                  },
+                  {
+                      "execution_id":  "mwfbalrso4ri",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:27.886"
+                  },
+                  {
+                      "execution_id":  "mwfbalrso4ri",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/7d31c2a6-5816-4537-86df-4ff44b919d60/hls/IMG_7508/1080p/index.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:27.886"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 04:00:27.870"
+                  },
+                  {
+                      "execution_id":  "mwdz46nmxfws",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/677b782b-052f-4fd5-a6de-d6e9d2a0deb1/hls/20043445-uhd_2160_3840_60fps/master.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.447"
+                  },
+                  {
+                      "execution_id":  "mwdz46nmxfws",
+                      "log":  "Size: 687\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.447"
+                  },
+                  {
+                      "execution_id":  "mwdz46nmxfws",
+                      "log":  "Content type: application/vnd.apple.mpegurl\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.447"
+                  },
+                  {
+                      "execution_id":  "mwdz46nmxfws",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.447"
+                  },
+                  {
+                      "execution_id":  "mwdz46nmxfws",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/677b782b-052f-4fd5-a6de-d6e9d2a0deb1/hls/20043445-uhd_2160_3840_60fps/master.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.447"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.442"
+                  },
+                  {
+                      "execution_id":  "mwdyxul7egj8",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/677b782b-052f-4fd5-a6de-d6e9d2a0deb1/hls/20043445-uhd_2160_3840_60fps/1080p/index0.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.219"
+                  },
+                  {
+                      "execution_id":  "mwdyxul7egj8",
+                      "log":  "Size: 8437440\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.219"
+                  },
+                  {
+                      "execution_id":  "mwdyxul7egj8",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.219"
+                  },
+                  {
+                      "execution_id":  "mwdyxul7egj8",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.219"
+                  },
+                  {
+                      "execution_id":  "mwdyxul7egj8",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/677b782b-052f-4fd5-a6de-d6e9d2a0deb1/hls/20043445-uhd_2160_3840_60fps/1080p/index0.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.219"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.213"
+                  },
+                  {
+                      "execution_id":  "mwdyxkif7nn9",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/677b782b-052f-4fd5-a6de-d6e9d2a0deb1/hls/20043445-uhd_2160_3840_60fps/1080p/index1.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.208"
+                  },
+                  {
+                      "execution_id":  "mwdyxkif7nn9",
+                      "log":  "Size: 8833744\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.208"
+                  },
+                  {
+                      "execution_id":  "mwdyxkif7nn9",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.208"
+                  },
+                  {
+                      "execution_id":  "mwdyxkif7nn9",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.208"
+                  },
+                  {
+                      "execution_id":  "mwdyxkif7nn9",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/677b782b-052f-4fd5-a6de-d6e9d2a0deb1/hls/20043445-uhd_2160_3840_60fps/1080p/index1.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.208"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.202"
+                  },
+                  {
+                      "execution_id":  "mwdyw4neicen",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/677b782b-052f-4fd5-a6de-d6e9d2a0deb1/hls/20043445-uhd_2160_3840_60fps/1080p/index2.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.156"
+                  },
+                  {
+                      "execution_id":  "mwdyw4neicen",
+                      "log":  "Size: 7054512\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.156"
+                  },
+                  {
+                      "execution_id":  "mwdyw4neicen",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.156"
+                  },
+                  {
+                      "execution_id":  "mwdyw4neicen",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.156"
+                  },
+                  {
+                      "execution_id":  "mwdyw4neicen",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/677b782b-052f-4fd5-a6de-d6e9d2a0deb1/hls/20043445-uhd_2160_3840_60fps/1080p/index2.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.156"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:25.151"
+                  },
+                  {
+                      "execution_id":  "mwdyh0afyl7q",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/677b782b-052f-4fd5-a6de-d6e9d2a0deb1/hls/20043445-uhd_2160_3840_60fps/1080p/index.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:24.612"
+                  },
+                  {
+                      "execution_id":  "mwdyh0afyl7q",
+                      "log":  "Size: 964\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:24.612"
+                  },
+                  {
+                      "execution_id":  "mwdyh0afyl7q",
+                      "log":  "Content type: application/vnd.apple.mpegurl\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:24.612"
+                  },
+                  {
+                      "execution_id":  "mwdyh0afyl7q",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:24.612"
+                  },
+                  {
+                      "execution_id":  "mwdyh0afyl7q",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/677b782b-052f-4fd5-a6de-d6e9d2a0deb1/hls/20043445-uhd_2160_3840_60fps/1080p/index.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:24.612"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:24.602"
+                  },
+                  {
+                      "execution_id":  "mwdlk9atlirr",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/master.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:07.882"
+                  },
+                  {
+                      "execution_id":  "mwdlk9atlirr",
+                      "log":  "Size: 687\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:07.881"
+                  },
+                  {
+                      "execution_id":  "mwdlk9atlirr",
+                      "log":  "Content type: application/vnd.apple.mpegurl\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:07.881"
+                  },
+                  {
+                      "execution_id":  "mwdlk9atlirr",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:07.881"
+                  },
+                  {
+                      "execution_id":  "mwdlk9atlirr",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/master.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:07.881"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:07.875"
+                  },
+                  {
+                      "execution_id":  "mwdkuxskjlfq",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index3.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:06.970"
+                  },
+                  {
+                      "execution_id":  "mwdkuxskjlfq",
+                      "log":  "Size: 5224708\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:06.970"
+                  },
+                  {
+                      "execution_id":  "mwdkuxskjlfq",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:06.970"
+                  },
+                  {
+                      "execution_id":  "mwdkuxskjlfq",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:06.969"
+                  },
+                  {
+                      "execution_id":  "mwdkuxskjlfq",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index3.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:06.969"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:06.963"
+                  },
+                  {
+                      "execution_id":  "mwdk70ds1p6d",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index2.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:06.107"
+                  },
+                  {
+                      "execution_id":  "mwdk70ds1p6d",
+                      "log":  "Size: 4216840\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:06.107"
+                  },
+                  {
+                      "execution_id":  "mwdk70ds1p6d",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:06.107"
+                  },
+                  {
+                      "execution_id":  "mwdk70ds1p6d",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:06.107"
+                  },
+                  {
+                      "execution_id":  "mwdk70ds1p6d",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index2.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:06.107"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:06.101"
+                  },
+                  {
+                      "execution_id":  "mwdjw4vgvfni",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index0.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.716"
+                  },
+                  {
+                      "execution_id":  "mwdjw4vgvfni",
+                      "log":  "Size: 3711496\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.716"
+                  },
+                  {
+                      "execution_id":  "mwdjw4vgvfni",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.716"
+                  },
+                  {
+                      "execution_id":  "mwdjw4vgvfni",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.716"
+                  },
+                  {
+                      "execution_id":  "mwdjw4vgvfni",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index0.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.716"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.711"
+                  },
+                  {
+                      "execution_id":  "mwdjvnbsaj2n",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index4.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.699"
+                  },
+                  {
+                      "execution_id":  "mwdjvnbsaj2n",
+                      "log":  "Size: 3891224\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.699"
+                  },
+                  {
+                      "execution_id":  "mwdjvnbsaj2n",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.699"
+                  },
+                  {
+                      "execution_id":  "mwdjvnbsaj2n",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.699"
+                  },
+                  {
+                      "execution_id":  "mwdjvnbsaj2n",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index4.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.699"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.693"
+                  },
+                  {
+                      "execution_id":  "mwdjtpazkhum",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index1.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.629"
+                  },
+                  {
+                      "execution_id":  "mwdjtpazkhum",
+                      "log":  "Size: 3737064\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.629"
+                  },
+                  {
+                      "execution_id":  "mwdjtpazkhum",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.629"
+                  },
+                  {
+                      "execution_id":  "mwdjtpazkhum",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.629"
+                  },
+                  {
+                      "execution_id":  "mwdjtpazkhum",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index1.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.629"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.623"
+                  },
+                  {
+                      "execution_id":  "mwdjskbh1hhe",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index5.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.589"
+                  },
+                  {
+                      "execution_id":  "mwdjskbh1hhe",
+                      "log":  "Size: 3490220\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.589"
+                  },
+                  {
+                      "execution_id":  "mwdjskbh1hhe",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.589"
+                  },
+                  {
+                      "execution_id":  "mwdjskbh1hhe",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.589"
+                  },
+                  {
+                      "execution_id":  "mwdjskbh1hhe",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index5.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.589"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:05.582"
+                  },
+                  {
+                      "execution_id":  "mwdihs1x37gn",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/3eed6ccd-afac-4780-b1a0-96f16d59e5d1/hls/14133963_1920_1080_24fps/master.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.903"
+                  },
+                  {
+                      "execution_id":  "mwdihs1x37gn",
+                      "log":  "Size: 679\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.903"
+                  },
+                  {
+                      "execution_id":  "mwdihs1x37gn",
+                      "log":  "Content type: application/vnd.apple.mpegurl\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.903"
+                  },
+                  {
+                      "execution_id":  "mwdihs1x37gn",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.903"
+                  },
+                  {
+                      "execution_id":  "mwdihs1x37gn",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/3eed6ccd-afac-4780-b1a0-96f16d59e5d1/hls/14133963_1920_1080_24fps/master.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.903"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.898"
+                  },
+                  {
+                      "execution_id":  "mwdicsybzpqa",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/3eed6ccd-afac-4780-b1a0-96f16d59e5d1/hls/14133963_1920_1080_24fps/1080p/index1.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.724"
+                  },
+                  {
+                      "execution_id":  "mwdicsybzpqa",
+                      "log":  "Size: 4822764\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.724"
+                  },
+                  {
+                      "execution_id":  "mwdicsybzpqa",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.724"
+                  },
+                  {
+                      "execution_id":  "mwdicsybzpqa",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.724"
+                  },
+                  {
+                      "execution_id":  "mwdicsybzpqa",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/3eed6ccd-afac-4780-b1a0-96f16d59e5d1/hls/14133963_1920_1080_24fps/1080p/index1.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.724"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.716"
+                  },
+                  {
+                      "execution_id":  "mwdiblga1uet",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/3eed6ccd-afac-4780-b1a0-96f16d59e5d1/hls/14133963_1920_1080_24fps/1080p/index0.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.681"
+                  },
+                  {
+                      "execution_id":  "mwdiblga1uet",
+                      "log":  "Size: 3692696\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.681"
+                  },
+                  {
+                      "execution_id":  "mwdiblga1uet",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.681"
+                  },
+                  {
+                      "execution_id":  "mwdiblga1uet",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.681"
+                  },
+                  {
+                      "execution_id":  "mwdiblga1uet",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/3eed6ccd-afac-4780-b1a0-96f16d59e5d1/hls/14133963_1920_1080_24fps/1080p/index0.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.681"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.675"
+                  },
+                  {
+                      "execution_id":  "mwdi7pi21uy4",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/3eed6ccd-afac-4780-b1a0-96f16d59e5d1/hls/14133963_1920_1080_24fps/1080p/index2.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.540"
+                  },
+                  {
+                      "execution_id":  "mwdi7pi21uy4",
+                      "log":  "Size: 732824\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.540"
+                  },
+                  {
+                      "execution_id":  "mwdi7pi21uy4",
+                      "log":  "Content type: video/mp2t\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.540"
+                  },
+                  {
+                      "execution_id":  "mwdi7pi21uy4",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.540"
+                  },
+                  {
+                      "execution_id":  "mwdi7pi21uy4",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/3eed6ccd-afac-4780-b1a0-96f16d59e5d1/hls/14133963_1920_1080_24fps/1080p/index2.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.540"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.534"
+                  },
+                  {
+                      "execution_id":  "mwdi6bfypv6o",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/3eed6ccd-afac-4780-b1a0-96f16d59e5d1/hls/14133963_1920_1080_24fps/1080p/index.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.490"
+                  },
+                  {
+                      "execution_id":  "mwdi6bfypv6o",
+                      "log":  "Size: 955\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.490"
+                  },
+                  {
+                      "execution_id":  "mwdi6bfypv6o",
+                      "log":  "Content type: application/vnd.apple.mpegurl\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.490"
+                  },
+                  {
+                      "execution_id":  "mwdi6bfypv6o",
+                      "log":  "Bucket: momsfitnessmojo-65d00.firebasestorage.app\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.490"
+                  },
+                  {
+                      "execution_id":  "mwdi6bfypv6o",
+                      "log":  "? onMediaFileFinalize triggered for: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/3eed6ccd-afac-4780-b1a0-96f16d59e5d1/hls/14133963_1920_1080_24fps/1080p/index.m3u8\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.490"
+                  },
+                  {
+                      "level":  "I",
+                      "log":  null,
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:03.484"
+                  },
+                  {
+                      "execution_id":  "mwdfsh2h61zf",
+                      "log":  "?? Skipping HLS output file: media/seD0CPP2EVOGbMsZaB3sndzkQSx2/35502f21-1116-49f6-99f0-0f03093e52d5/hls/14169131-uhd_3840_2160_30fps/1080p/index6.ts\n",
+                      "name":  "onmediafilefinalize",
+                      "time_utc":  "2025-11-06 03:59:00.402"
+                  }
+              ],
+    "Count":  200
+}
