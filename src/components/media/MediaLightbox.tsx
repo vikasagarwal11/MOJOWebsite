@@ -324,18 +324,18 @@ export default function MediaLightbox({
     };
   }, []);
 
-  // ---- SWIPE: TikTok-style vertical navigation with native pointer events
+  // ---- SWIPE: Horizontal navigation (left/right) with native pointer events
   const bindSwipeRef = useSwipeRaw<HTMLDivElement>({
-    onUp: onNext,        // Up swipe = Next item (TikTok style)
-    onDown: onPrev,      // Down swipe = Previous item
-    axis: 'y',           // Vertical swipes only
-    thresholdPx: 20,     // Slightly generous for phones
+    onLeft: onNext,      // Left swipe = Next item
+    onRight: onPrev,     // Right swipe = Previous item
+    axis: 'x',           // Horizontal swipes only
+    thresholdPx: 50,     // Minimum distance to trigger swipe
     restraintPx: 80,     // Don't cancel for small diagonal noise
     slopPx: 8,
     edgeGuardPx: 24,     // Avoid edge gestures
     allowMouse: true,    // Nice for desktop testing
     disabled: !item || (!isVideo && scale > 1.02), // Keep zoom rule
-    debug: true          // Enable debugging to see what's happening
+    debug: false         // Disable debug logs
   });
 
   return (
@@ -379,21 +379,19 @@ export default function MediaLightbox({
           id="lightbox-media-area"
           ref={bindSwipeRef}
           className={`flex-1 ${isMobile ? 'lb-stage' : 'flex items-center justify-center p-3 gap-4'}`}
-          style={{ touchAction: isMobile ? 'pan-x pinch-zoom' : (scale > 1.02 ? 'auto' : 'pan-y') }}
+          style={{ touchAction: isMobile ? 'pan-y pinch-zoom' : (scale > 1.02 ? 'auto' : 'pan-y') }}
           onClick={() => { if (isMobile) setControlsVisible(v => !v); }}
         >
-          {/* Prev button (desktop) */}
-          {!isMobile && (
-            <button
-              data-no-swipe
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); onPrev(); }}
-              className={`text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors lb-controls transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-              aria-label="Previous"
-            >
-              <ChevronLeft className="w-8 h-8" />
-            </button>
-          )}
+          {/* Prev button (always visible) */}
+          <button
+            data-no-swipe
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onPrev(); }}
+            className={`text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors lb-controls transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'} ${isMobile ? 'absolute left-2 top-1/2 -translate-y-1/2 z-20' : ''}`}
+            aria-label="Previous"
+          >
+            <ChevronLeft className={`${isMobile ? 'w-6 h-6' : 'w-8 h-8'}`} />
+          </button>
 
           {/* Media */}
           {isVideo ? (
@@ -416,7 +414,7 @@ export default function MediaLightbox({
                 preload="metadata"
                 poster={posterUrl || undefined}
                 className={`${isMobile ? 'lb-media fill' : 'max-h-[85vh] max-w-[85vw] object-contain'} rounded-2xl`}
-                style={{ touchAction: isMobile ? 'none' : 'auto' }}
+                style={{ touchAction: isMobile ? 'pan-y pinch-zoom' : 'auto' }}
                 onEnded={() => {
                   if (autoAdvanceVideos) {
                     onNext();
@@ -426,10 +424,27 @@ export default function MediaLightbox({
                   }
                 }}
                 onPlay={() => setVideoLoading(false)}
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   if (!videoRef.current) return;
-                  if (videoRef.current.paused) videoRef.current.play().catch(() => {});
-                  else videoRef.current.pause();
+                  // On mobile, double-tap to toggle mute, single tap to play/pause
+                  const now = Date.now();
+                  const lastClick = (videoRef.current as any).lastClickTime || 0;
+                  const timeSinceLastClick = now - lastClick;
+                  (videoRef.current as any).lastClickTime = now;
+                  
+                  if (isMobile && timeSinceLastClick < 300 && timeSinceLastClick > 0) {
+                    // Double-tap detected - toggle mute
+                    setIsMuted(m => !m);
+                    setShowSoundHint(false);
+                  } else {
+                    // Single tap - play/pause
+                    if (videoRef.current.paused) {
+                      videoRef.current.play().catch(() => {});
+                    } else {
+                      videoRef.current.pause();
+                    }
+                  }
                 }}
               />
             </div>
@@ -474,26 +489,31 @@ export default function MediaLightbox({
             )
           )}
 
-          {/* Next button (desktop) */}
-          {!isMobile && (
-            <button
-              data-no-swipe
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); onNext(); }}
-              className={`text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors lb-controls transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-              aria-label="Next"
-            >
-              <ChevronRight className="w-8 h-8" />
-            </button>
-          )}
+          {/* Next button (always visible) */}
+          <button
+            data-no-swipe
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onNext(); }}
+            className={`text-white text-3xl px-3 hover:bg-white/10 rounded-full transition-colors lb-controls transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'} ${isMobile ? 'absolute right-2 top-1/2 -translate-y-1/2 z-20' : ''}`}
+            aria-label="Next"
+          >
+            <ChevronRight className={`${isMobile ? 'w-6 h-6' : 'w-8 h-8'}`} />
+          </button>
 
-          {/* Sound pill (mobile) */}
+          {/* Sound pill (mobile) - shows hint to unmute */}
           {isMobile && showSoundHint && isVideo && isMuted && (
             <div
               data-no-swipe
-              onClick={() => { setIsMuted(false); setShowSoundHint(false); }}
-              className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-black/70 hover:bg-black/90 text-white px-4 py-2 rounded-full text-sm backdrop-blur-sm flex items-center gap-2 animate-pulse z-30 transition-all duration-200 cursor-pointer"
-              style={{ marginBottom: `env(safe-area-inset-bottom)` }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMuted(false);
+                setShowSoundHint(false);
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+              }}
+              className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-black/70 hover:bg-black/90 active:bg-black/95 text-white px-4 py-2 rounded-full text-sm backdrop-blur-sm flex items-center gap-2 animate-pulse z-50 transition-all duration-200 cursor-pointer touch-manipulation"
+              style={{ marginBottom: `env(safe-area-inset-bottom)`, pointerEvents: 'auto' }}
             >
               <Volume2 className="w-4 h-4" />
               <span>Tap for sound</span>
@@ -512,6 +532,20 @@ export default function MediaLightbox({
             >
               {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               <span className="text-sm">{playing ? 'Pause' : 'Play'}</span>
+            </button>
+          )}
+          {isMobile && isVideo && (
+            <button
+              data-no-swipe
+              onClick={() => {
+                setIsMuted(m => !m);
+                setShowSoundHint(false);
+              }}
+              className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center gap-2 transition-colors"
+              aria-label={isMuted ? 'Unmute audio' : 'Mute audio'}
+            >
+              {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              <span className="text-sm">{isMuted ? 'Unmute' : 'Mute'}</span>
             </button>
           )}
         </div>

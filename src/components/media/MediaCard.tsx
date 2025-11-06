@@ -1,12 +1,11 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Heart, MessageCircle, Tag, Play, Share2, Download, MoreHorizontal, EyeOff, Eye, Trash2, Check } from 'lucide-react';
+import { Heart, MessageCircle, Tag, Play, Download, MoreHorizontal, EyeOff, Eye, Trash2, Check } from 'lucide-react';
 import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../config/firebase';
 import { collection, addDoc, doc, deleteDoc, serverTimestamp, updateDoc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
 import { useViewCounter } from '../../hooks/useViewCounter';
 import { usePagedComments } from '../../hooks/usePagedComments';
-import { shareUrl } from '../../utils/share';
 import { attachHls, detachHls } from '../../utils/hls';
 import { getDownloadURL, ref, deleteObject } from 'firebase/storage';
 import { storage } from '../../config/firebase';
@@ -49,6 +48,17 @@ export default function MediaCard({
   const [newComment, setNewComment] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => 
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 768px)');
+    const handleChange = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -588,13 +598,18 @@ export default function MediaCard({
         )}
         {previewEl}
         <div className="absolute top-3 right-3 flex gap-2">
-          <button onClick={(e) => {
-            e.stopPropagation();
-            shareUrl(localMedia.url, localMedia.title);
-          }} className="p-2 rounded-full bg-white/90 hover:bg-white">
-            <Share2 className="w-4 h-4 text-gray-700" />
-          </button>
-          <a href={localMedia.url} download onClick={(e) => e.stopPropagation()} className="p-2 rounded-full bg-white/90 hover:bg-white">
+          <a 
+            href={localMedia.url} 
+            download={isMobile ? (localMedia.filePath?.split('/').pop() || undefined) : undefined}
+            target={!isMobile ? '_blank' : undefined}
+            rel={!isMobile ? 'noopener noreferrer' : undefined}
+            onClick={(e) => {
+              e.stopPropagation();
+              // On desktop, open in new tab; on mobile, download directly
+            }} 
+            className="p-2 rounded-full bg-white/90 hover:bg-white"
+            title="Download"
+          >
             <Download className="w-4 h-4 text-gray-700" />
           </a>
           {canModerate && (
