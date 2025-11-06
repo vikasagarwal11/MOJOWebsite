@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2 } from 'lucide-react';
-import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2, RefreshCw, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc, getDoc, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
 import { ref, deleteObject } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
@@ -80,6 +80,8 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const [loadingMedia, setLoadingMedia] = useState(false);
   const [mediaPage, setMediaPage] = useState(0);
   const MEDIA_PAGE_SIZE = 10;
+  const [expandedMediaId, setExpandedMediaId] = useState<string | null>(null);
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
 
   // Testimonials moderation state
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<TestimonialStatus | 'all'>('pending');
@@ -432,6 +434,46 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
     } catch (error) {
       console.error('Failed to delete media:', error);
       toast.error('Failed to delete media file');
+    }
+  };
+
+  // Update media status manually
+  const handleUpdateMediaStatus = async (mediaId: string, newStatus: 'processing' | 'ready' | 'failed', reason?: string) => {
+    setUpdatingStatus(mediaId);
+    try {
+      const mediaRef = doc(db, 'media', mediaId);
+      const updateData: any = {
+        transcodeStatus: newStatus,
+        transcodeUpdatedAt: serverTimestamp(),
+        manualStatusUpdate: true,
+        manualStatusUpdateAt: serverTimestamp(),
+        manualStatusUpdateBy: currentUser?.id,
+      };
+      
+      if (newStatus === 'failed' && reason) {
+        updateData.transcodeError = reason;
+        updateData.transcodingMessage = reason;
+      } else if (newStatus === 'ready') {
+        updateData.transcodingMessage = 'Manually marked as ready';
+      } else if (newStatus === 'processing') {
+        updateData.transcodingMessage = 'Manually reset to processing - will reprocess';
+      }
+      
+      await updateDoc(mediaRef, updateData);
+      
+      // Update local state
+      setAllMedia(prev => prev.map(m => 
+        m.id === mediaId 
+          ? { ...m, transcodeStatus: newStatus, ...updateData }
+          : m
+      ));
+      
+      toast.success(`Media status updated to ${newStatus}`);
+    } catch (error) {
+      console.error('Failed to update media status:', error);
+      toast.error('Failed to update media status');
+    } finally {
+      setUpdatingStatus(null);
     }
   };
 
@@ -830,54 +872,231 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {allMedia.slice(mediaPage * MEDIA_PAGE_SIZE, (mediaPage + 1) * MEDIA_PAGE_SIZE).map((media) => (
-                  <div key={media.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        {media.type === 'video' ? (
-                          <Video className="w-5 h-5 text-[#F25129]" />
-                        ) : (
-                          <Image className="w-5 h-5 text-green-500" />
-                        )}
-                        <span className="text-sm font-medium capitalize">{media.type}</span>
+              <div className="grid grid-cols-1 gap-4">
+                {allMedia.slice(mediaPage * MEDIA_PAGE_SIZE, (mediaPage + 1) * MEDIA_PAGE_SIZE).map((media) => {
+                  const isExpanded = expandedMediaId === media.id;
+                  const isUpdating = updatingStatus === media.id;
+                  const bgProcessingStatus = media.backgroundProcessingStatus;
+                  const qualityLevels = media.qualityLevels || [];
+                  const failedQualities = media.failedQualities || [];
+                  const bgSummary = media.backgroundProcessingSummary;
+                  
+                  return (
+                    <div key={media.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2 flex-1">
+                          {media.type === 'video' ? (
+                            <Video className="w-5 h-5 text-[#F25129]" />
+                          ) : (
+                            <Image className="w-5 h-5 text-green-500" />
+                          )}
+                          <span className="text-sm font-medium capitalize">{media.type}</span>
+                          <span className="text-xs text-gray-500">ID: {media.id.substring(0, 8)}...</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setExpandedMediaId(isExpanded ? null : media.id)}
+                            className="p-1 text-gray-500 hover:bg-gray-100 rounded"
+                            title={isExpanded ? "Hide details" : "Show details"}
+                          >
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteMedia(media.id, media)}
+                            className="p-1 text-red-500 hover:bg-red-50 rounded"
+                            title="Delete media"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => handleDeleteMedia(media.id, media)}
-                        className="p-1 text-red-500 hover:bg-red-50 rounded"
-                        title="Delete media"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                    
-                    {media.thumbnailUrl && (
-                      <img 
-                        src={media.thumbnailUrl} 
-                        alt="Media thumbnail" 
-                        className="w-full h-32 object-cover rounded mb-2"
-                      />
-                    )}
-                    
-                    <div className="space-y-1 text-sm text-gray-600">
-                      <p><strong>Status:</strong> 
-                        <span className={`ml-1 px-2 py-1 rounded text-xs ${
-                          media.transcodeStatus === 'completed' ? 'bg-green-100 text-green-800' :
-                          media.transcodeStatus === 'processing' ? 'bg-yellow-100 text-yellow-800' :
-                          media.transcodeStatus === 'failed' ? 'bg-red-100 text-red-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {media.transcodeStatus || 'pending'}
-                        </span>
-                      </p>
-                      <p><strong>Uploaded by:</strong> {userNames[media.uploadedBy] || 'Unknown'}</p>
-                      <p><strong>Created:</strong> {media.createdAt?.toLocaleDateString() || 'Unknown'}</p>
-                      {media.fileSize && (
-                        <p><strong>Size:</strong> {(media.fileSize / 1024 / 1024).toFixed(2)} MB</p>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+                        {media.thumbnailUrl && (
+                          <div className="md:col-span-1">
+                            <img 
+                              src={media.thumbnailUrl} 
+                              alt="Media thumbnail" 
+                              className="w-full h-32 object-cover rounded"
+                            />
+                          </div>
+                        )}
+                        <div className={`text-sm text-gray-600 space-y-1 ${!media.thumbnailUrl ? 'md:col-span-3' : 'md:col-span-2'}`}>
+                          <div className="flex items-center gap-2">
+                            <strong>Status:</strong>
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              media.transcodeStatus === 'ready' ? 'bg-green-100 text-green-800' :
+                              media.transcodeStatus === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                              media.transcodeStatus === 'failed' ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {media.transcodeStatus || 'pending'}
+                            </span>
+                            {media.transcodeStatus === 'ready' && media.sources?.hls && (
+                              <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">HLS Ready</span>
+                            )}
+                          </div>
+                          <p><strong>Uploaded by:</strong> {userNames[media.uploadedBy] || 'Unknown'}</p>
+                          <p><strong>Created:</strong> {media.createdAt?.toLocaleDateString() || 'Unknown'}</p>
+                          {media.fileSize && (
+                            <p><strong>Size:</strong> {(media.fileSize / 1024 / 1024).toFixed(2)} MB</p>
+                          )}
+                          {media.transcodingMessage && (
+                            <p className="text-xs text-gray-500 italic">{media.transcodingMessage}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Expanded Details */}
+                      {isExpanded && (
+                        <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
+                          {/* Video Quality Status */}
+                          {media.type === 'video' && (
+                            <div className="space-y-2">
+                              <h4 className="font-semibold text-sm text-gray-700">Video Processing Status</h4>
+                              
+                              {/* Quality Levels */}
+                              {qualityLevels.length > 0 && (
+                                <div>
+                                  <p className="text-xs text-gray-600 mb-1"><strong>Completed Qualities:</strong></p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {qualityLevels.map((q: any, idx: number) => (
+                                      <span key={idx} className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">
+                                        {q.label || q.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Background Processing Status */}
+                              {bgProcessingStatus && (
+                                <div className="bg-gray-50 p-3 rounded">
+                                  <p className="text-xs font-semibold text-gray-700 mb-2">Background Processing:</p>
+                                  <div className="space-y-1 text-xs">
+                                    <p>
+                                      <strong>Status:</strong> 
+                                      <span className={`ml-1 px-2 py-0.5 rounded ${
+                                        bgProcessingStatus === 'completed' ? 'bg-green-100 text-green-800' :
+                                        bgProcessingStatus === 'completed_with_failures' ? 'bg-orange-100 text-orange-800' :
+                                        bgProcessingStatus === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                                        bgProcessingStatus === 'failed' ? 'bg-red-100 text-red-800' :
+                                        'bg-gray-100 text-gray-800'
+                                      }`}>
+                                        {bgProcessingStatus}
+                                      </span>
+                                    </p>
+                                    {bgSummary && (
+                                      <p>
+                                        <strong>Summary:</strong> {bgSummary.succeeded || 0} succeeded, {bgSummary.failed || 0} failed out of {bgSummary.totalExpected || 0} expected
+                                      </p>
+                                    )}
+                                    {media.backgroundProcessingTargetQualities && (
+                                      <p>
+                                        <strong>Target Qualities:</strong> {media.backgroundProcessingTargetQualities.join(', ')}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Failed Qualities */}
+                              {failedQualities.length > 0 && (
+                                <div className="bg-red-50 p-3 rounded">
+                                  <p className="text-xs font-semibold text-red-700 mb-2">Failed Qualities:</p>
+                                  <div className="space-y-1">
+                                    {failedQualities.map((fq: any, idx: number) => (
+                                      <div key={idx} className="text-xs text-red-600">
+                                        <strong>{fq.label || fq.name}:</strong> {fq.error || 'Unknown error'}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* HLS Sources */}
+                              {media.sources && (
+                                <div>
+                                  <p className="text-xs text-gray-600 mb-1"><strong>HLS Sources:</strong></p>
+                                  <div className="text-xs text-gray-500 space-y-1">
+                                    {media.sources.hlsMaster && (
+                                      <p className="truncate">Master: {media.sources.hlsMaster}</p>
+                                    )}
+                                    {media.sources.hls && (
+                                      <p className="truncate">Fallback: {media.sources.hls}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Manual Status Update */}
+                          <div className="pt-3 border-t border-gray-200">
+                            <p className="text-xs font-semibold text-gray-700 mb-2">Manual Status Update:</p>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={() => handleUpdateMediaStatus(media.id, 'processing')}
+                                disabled={isUpdating || media.transcodeStatus === 'processing'}
+                                className="px-3 py-1.5 bg-yellow-100 text-yellow-800 rounded text-xs hover:bg-yellow-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                              >
+                                {isUpdating && media.transcodeStatus === 'processing' ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="w-3 h-3" />
+                                )}
+                                Reset to Processing
+                              </button>
+                              <button
+                                onClick={() => handleUpdateMediaStatus(media.id, 'ready')}
+                                disabled={isUpdating || media.transcodeStatus === 'ready'}
+                                className="px-3 py-1.5 bg-green-100 text-green-800 rounded text-xs hover:bg-green-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                              >
+                                {isUpdating && media.transcodeStatus === 'ready' ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <CheckCircle className="w-3 h-3" />
+                                )}
+                                Mark as Ready
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const reason = prompt('Enter failure reason (optional):');
+                                  if (reason !== null) {
+                                    handleUpdateMediaStatus(media.id, 'failed', reason || 'Manually marked as failed');
+                                  }
+                                }}
+                                disabled={isUpdating || media.transcodeStatus === 'failed'}
+                                className="px-3 py-1.5 bg-red-100 text-red-800 rounded text-xs hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                              >
+                                {isUpdating && media.transcodeStatus === 'failed' ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <XCircle className="w-3 h-3" />
+                                )}
+                                Mark as Failed
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Additional Metadata */}
+                          <div className="pt-3 border-t border-gray-200">
+                            <p className="text-xs font-semibold text-gray-700 mb-2">Metadata:</p>
+                            <div className="text-xs text-gray-500 space-y-1">
+                              {media.filePath && <p><strong>File Path:</strong> {media.filePath}</p>}
+                              {media.thumbnailPath && <p><strong>Thumbnail:</strong> {media.thumbnailPath}</p>}
+                              {media.duration && <p><strong>Duration:</strong> {media.duration}s</p>}
+                              {media.dimensions && <p><strong>Resolution:</strong> {media.dimensions.width}x{media.dimensions.height}</p>}
+                              {media.transcodeError && (
+                                <p className="text-red-600"><strong>Error:</strong> {media.transcodeError}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               
               {/* Pagination */}
