@@ -1,10 +1,11 @@
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onDocumentWritten, onDocumentDeleted, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
-import { onCall } from "firebase-functions/v2/https";
+import { onCall, onRequest } from "firebase-functions/v2/https";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
+import { CloudTasksClient } from "@google-cloud/tasks";
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs';
@@ -18,6 +19,9 @@ import { v4 as uuidv4 } from 'uuid';
 setGlobalOptions({ region: 'us-east1' });
 // Initialize Firebase Admin BEFORE importing modules that use it
 initializeApp();
+
+// Initialize Cloud Tasks client
+const tasksClient = new CloudTasksClient();
 
 import { onAttendeeChange, manualRecalculateCount, bulkAttendeeOperation } from './attendeeCounts';
 import { manualRecalculateWaitlistPositions as _manualRecalcWaitlist } from './autoPromotionService';
@@ -875,12 +879,75 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
   console.log(`🗑️ [CLOUD] Storage cleanup complete: ${deletedCount} deleted, ${failedCount} failed`);
 });
 
+// ───────────────── CLOUD TASKS HELPERS ─────────────────
+
+/**
+ * Enqueues a Cloud Task for processing a quality level
+ */
+async function enqueueQualityTask(
+  mediaId: string,
+  qualityLevel: string,
+  taskPayload: {
+    mediaId: string;
+    qualityLevel: string;
+    filePath: string;
+    storageFolder: string;
+    hlsBasePath: string;
+    sharedToken: string;
+    originalResolution: string;
+    remainingQualities: string[];
+    qualityConfig: {
+      name: string;
+      label: string;
+      resolution: string;
+      scaleFilter: string;
+      preset: string;
+      crf: number;
+      bandwidth: number;
+    };
+  }
+): Promise<void> {
+  const project = process.env.GCLOUD_PROJECT || 'momsfitnessmojo-65d00';
+  const location = 'us-central1'; // Cloud Tasks queue location
+  const queue = 'video-quality-generation';
+  
+  const queuePath = tasksClient.queuePath(project, location, queue);
+  
+  // Get the function URL for processQualityLevel
+  // In production, this will be the deployed function URL
+  const functionUrl = process.env.PROCESS_QUALITY_FUNCTION_URL || 
+    `https://us-east1-${project}.cloudfunctions.net/processQualityLevel`;
+  
+  const task = {
+    httpRequest: {
+      httpMethod: 'POST' as const,
+      url: functionUrl,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: Buffer.from(JSON.stringify(taskPayload)).toString('base64'),
+    },
+  };
+  
+  try {
+    const [response] = await tasksClient.createTask({
+      parent: queuePath,
+      task: task,
+    });
+    
+    console.log(`✅ [CLOUD TASKS] Enqueued task for ${qualityLevel}: ${response.name}`);
+  } catch (error) {
+    console.error(`❌ [CLOUD TASKS] Failed to enqueue task for ${qualityLevel}:`, error);
+    throw error;
+  }
+}
+
 // ───────────────── MEDIA: FFmpeg + Manifest Rewrite ─────────────────
 
 export const onMediaFileFinalize = onObjectFinalized({ 
   region: 'us-east1',
   memory: '8GiB', // Maximum memory for fastest video processing
-  timeoutSeconds: 540, // Increase timeout for large videos
+  timeoutSeconds: 900, // 15 minutes - increased to support 4K processing and match worker function timeout
   cpu: 2, // Use 2 vCPUs for parallel processing
   maxInstances: 20 // Handle spike days with many concurrent uploads (default: 80)
 }, async (event) => {
@@ -911,7 +978,8 @@ export const onMediaFileFinalize = onObjectFinalized({
     console.log('⏭️ Skipping thumbnail/poster file:', name);
     return;
   }
-  if (name.includes('/thumbnails/') && name.includes('_400x400.')) {
+  // Skip extension-generated thumbnails (updated to 800x800)
+  if (name.includes('/thumbnails/') && (name.includes('_400x400.') || name.includes('_800x800.'))) {
     console.log('⏭️ Skipping extension-generated thumbnail:', name);
     return;
   }
@@ -941,22 +1009,55 @@ export const onMediaFileFinalize = onObjectFinalized({
     console.log(`🔧 Environment STORAGE_BUCKET: ${process.env.STORAGE_BUCKET || 'undefined (using default)'}`);
     console.log(`🔧 Final bucket used: ${bucketName}`);
 
+    // Add initial delay to allow Firestore document creation to complete
+    // This prevents race condition where storage trigger fires before Firestore write is replicated
+    console.log(`⏳ Waiting 2 seconds for Firestore document creation...`);
+    await sleep(2000);
+
     console.log(`🔍 Looking for media document for file: ${name}`);
-    const mediaRef = await findMediaDocRef(name, dir, 5);
+    let mediaRef = await findMediaDocRef(name, dir, 15); // Increased retries from 10 to 15
     if (!mediaRef) {
       console.error(`❌ CRITICAL: No media doc found for ${name} after retries!`);
+      console.error(`❌ This video will remain stuck in 'processing' state. Please check if the Firestore document was created properly.`);
+      
+      // Try one more time with a broader search - look for any document with matching filename in the folder
       try {
-        const allMedia = await db.collection('media').limit(5).get();
-        console.log('🔍 Available media documents:', allMedia.docs.map(d => ({
-          id: d.id,
-          filePath: d.data()?.filePath,
-          storageFolder: d.data()?.storageFolder,
-          transcodeStatus: d.data()?.transcodeStatus
-        })));
-      } catch (checkError) {
-        console.error('Failed to check media collection:', checkError);
+        const filename = path.basename(name);
+        const searchFolder = dir.endsWith('/') ? dir : `${dir}/`;
+        console.log(`🔍 Attempting fallback search for filename: ${filename} in folder: ${searchFolder}`);
+        
+        // Get all media documents and try to find a match by filename
+        const allMedia = await db.collection('media')
+          .where('storageFolder', '==', searchFolder)
+          .limit(10)
+          .get();
+        
+        console.log(`🔍 Found ${allMedia.docs.length} documents in folder ${searchFolder}:`, 
+          allMedia.docs.map(d => ({
+            id: d.id,
+            filePath: d.data()?.filePath,
+            storageFolder: d.data()?.storageFolder,
+            transcodeStatus: d.data()?.transcodeStatus
+          }))
+        );
+        
+        // Try to find a document where the filePath ends with the filename
+        const matchingDoc = allMedia.docs.find(doc => {
+          const docPath = doc.data()?.filePath || '';
+          return docPath.endsWith(filename) || docPath.includes(filename);
+        });
+        
+        if (matchingDoc) {
+          console.log(`✅ Found matching document via fallback search: ${matchingDoc.id}`);
+          mediaRef = matchingDoc.ref; // Assign to outer variable
+        } else {
+          console.error(`❌ No matching document found even with fallback search`);
+          return;
+        }
+      } catch (fallbackError) {
+        console.error('❌ Fallback search also failed:', fallbackError);
+        return;
       }
-      return;
     }
 
     const tmpOriginal = path.join(
@@ -1144,8 +1245,8 @@ export const onMediaFileFinalize = onObjectFinalized({
       const transcodeStartTime = Date.now();
       const TRANSCODE_TIMEOUTS: Record<string, number> = {
         '720p': 300000,  // 5 minutes
-        '1080p': 420000, // 7 minutes
-        '2160p': 720000  // 12 minutes
+        '1080p': 600000, // 10 minutes - increased to handle large videos and resource contention during bulk uploads
+        '2160p': 840000  // 14 minutes - increased from 12 to ensure completion
       };
       
       // Shared token for all HLS files
@@ -1164,90 +1265,289 @@ export const onMediaFileFinalize = onObjectFinalized({
         }
       };
       
-      // Generate all quality levels in parallel, capturing successes and failures
-      const qualitySettled = await Promise.allSettled(
-        qualityLevels.map(async (quality): Promise<{ quality: QualityLevel; storagePath: string }> => {
-          const qualityDirLocal = path.join(os.tmpdir(), `hls_${base}_${quality.name}`);
-          fs.mkdirSync(qualityDirLocal, { recursive: true });
-          const qualityDirStorage = `${hlsBasePath}${quality.name}/`;
+      // Helper function to generate a single quality level
+      const generateQualityLevel = async (quality: QualityLevel): Promise<{ quality: QualityLevel; storagePath: string }> => {
+        const qualityDirLocal = path.join(os.tmpdir(), `hls_${base}_${quality.name}`);
+        fs.mkdirSync(qualityDirLocal, { recursive: true });
+        const qualityDirStorage = `${hlsBasePath}${quality.name}/`;
+        
+        console.log(`🎬 [ADAPTIVE] Starting ${quality.label} transcoding...`);
+        
+        await new Promise<void>((res, rej) => {
+          const timeoutForQuality = TRANSCODE_TIMEOUTS[quality.name] ?? TRANSCODE_TIMEOUTS['720p'];
+          const timeoutId = setTimeout(() => {
+            rej(new Error(`Transcode timeout for ${quality.label}: Processing exceeded ${timeoutForQuality / 1000} seconds`));
+          }, timeoutForQuality);
           
-          console.log(`🎬 [ADAPTIVE] Starting ${quality.label} transcoding...`);
+          ffmpeg(tmpOriginal)
+            .addOptions([
+              '-preset', quality.preset,
+              '-crf', String(quality.crf),
+              '-profile:v', 'main',
+              '-vf', quality.scaleFilter,
+              // Audio quality improvements
+              '-c:a', 'aac',
+              '-b:a', '192k',
+              '-ar', '48000',
+              '-ac', '2',
+              // Optimized HLS settings for better adaptive streaming
+              '-start_number', '0',
+              '-hls_time', '6',              // 6-second segments (better for adaptation)
+              '-hls_list_size', '10',        // Keep last 10 segments (reduces manifest size)
+              '-hls_flags', 'independent_segments', // Better seeking
+              '-hls_segment_type', 'mpegts',  // Explicit segment type
+              '-f', 'hls'
+            ])
+            .output(path.join(qualityDirLocal, 'index.m3u8'))
+            .on('start', (cmdline) => {
+              console.log(`🎬 [ADAPTIVE] ${quality.label} FFmpeg started:`, cmdline.substring(0, 100) + '...');
+            })
+            .on('progress', (progress) => {
+              const elapsed = (Date.now() - transcodeStartTime) / 1000;
+              if (elapsed % 30 < 1) {
+                console.log(`📊 [ADAPTIVE] ${quality.label} progress: ${progress.percent || 'unknown'}% (${elapsed.toFixed(1)}s)`);
+              }
+            })
+            .on('end', () => {
+              clearTimeout(timeoutId);
+              console.log(`✅ [ADAPTIVE] ${quality.label} transcoding completed`);
+              res();
+            })
+            .on('error', (err) => {
+              clearTimeout(timeoutId);
+              console.error(`❌ [ADAPTIVE] ${quality.label} FFmpeg error:`, err);
+              rej(err);
+            })
+            .run();
+        });
+        
+        const manifestLocalPath = path.join(qualityDirLocal, 'index.m3u8');
+        rewriteManifestWithAbsoluteUrls(manifestLocalPath, bucket.name, qualityDirStorage, sharedToken);
+        
+        const files = fs.readdirSync(qualityDirLocal);
+        await Promise.all(files.map(f => {
+          const dest = `${qualityDirStorage}${f}`;
+          const ct = f.endsWith('.m3u8')
+            ? 'application/vnd.apple.mpegurl'
+            : 'video/mp2t';
+          return bucket.upload(path.join(qualityDirLocal, f), {
+            destination: dest,
+            metadata: {
+              contentType: ct,
+              cacheControl: 'public,max-age=31536000,immutable',
+              metadata: { firebaseStorageDownloadTokens: sharedToken }
+            },
+          });
+        }));
+        
+        fs.rmSync(qualityDirLocal, { recursive: true, force: true });
+        
+        return {
+          quality,
+          storagePath: `${qualityDirStorage}index.m3u8`
+        };
+      };
+
+      // Helper function to create/update master playlist
+      const createOrUpdateMasterPlaylist = async (completedQualities: { quality: QualityLevel; storagePath: string }[]): Promise<string> => {
+        const masterPlaylistContent = [
+          '#EXTM3U',
+          '#EXT-X-VERSION:3'
+        ];
+        
+        const createAbsoluteUrl = (storagePath: string) => {
+          const encodedPath = encodeURIComponent(storagePath);
+          return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${sharedToken}`;
+        };
+        
+        completedQualities
+          .sort((a, b) => a.quality.bandwidth - b.quality.bandwidth)
+          .forEach(({ quality, storagePath }) => {
+            const absoluteUrl = createAbsoluteUrl(storagePath);
+            masterPlaylistContent.push(
+              `#EXT-X-STREAM-INF:BANDWIDTH=${quality.bandwidth},RESOLUTION=${quality.resolution}`,
+              absoluteUrl
+            );
+          });
+        
+        const masterPlaylistLocal = path.join(os.tmpdir(), `master_${base}.m3u8`);
+        fs.writeFileSync(masterPlaylistLocal, masterPlaylistContent.join('\n') + '\n');
+        
+        const masterPlaylistStorage = `${hlsBasePath}master.m3u8`;
+        await bucket.upload(masterPlaylistLocal, {
+          destination: masterPlaylistStorage,
+          metadata: {
+            contentType: 'application/vnd.apple.mpegurl',
+            cacheControl: 'public,max-age=31536000,immutable',
+            metadata: { firebaseStorageDownloadTokens: sharedToken }
+          },
+        });
+        
+        fs.unlinkSync(masterPlaylistLocal);
+        return masterPlaylistStorage;
+      };
+
+      // Feature flag for progressive quality generation (mark ready after 720p)
+      const ENABLE_PROGRESSIVE_QUALITY = process.env.ENABLE_PROGRESSIVE_QUALITY !== 'false'; // Default: true
+      
+      let qualityResults: { quality: QualityLevel; storagePath: string }[];
+      
+      if (ENABLE_PROGRESSIVE_QUALITY) {
+        // PROGRESSIVE MODE: Generate 720p first, mark as ready, then continue others in background
+        console.log(`🚀 [PROGRESSIVE] Progressive quality generation enabled - marking ready after 720p`);
+        
+        const quality720p = qualityLevels.find(q => q.name === '720p');
+        if (!quality720p) {
+          throw new Error('720p quality level not found - cannot proceed with progressive generation');
+        }
+        
+        let quality720pResult: { quality: QualityLevel; storagePath: string };
+        try {
+          quality720pResult = await generateQualityLevel(quality720p);
+          qualityResults = [quality720pResult];
+        } catch (error) {
+          console.error(`❌ [PROGRESSIVE] 720p generation failed:`, error);
+          await cleanupHlsArtifacts();
+          throw new Error('720p transcoding failed - video cannot play');
+        }
+        
+        const masterPlaylistStorage = await createOrUpdateMasterPlaylist(qualityResults);
+        const fallbackHlsPath = quality720pResult.storagePath;
+        
+        // Mark video as READY immediately (user can play now!)
+        const currentDoc = await mediaRef.get();
+        const currentData = currentDoc.exists ? currentDoc.data() : {};
+        const currentSources = currentData?.sources || {};
+        
+        const mergedSources = {
+          ...currentSources,
+          hlsMaster: masterPlaylistStorage,
+          hls: fallbackHlsPath
+        };
+        
+        // Store sharedToken in Firestore for worker function to access
+        await mediaRef.set({
+          sources: mergedSources,
+          transcodeStatus: 'ready',
+          transcodeUpdatedAt: FieldValue.serverTimestamp(),
+          qualityLevels: [{
+            name: quality720p.name,
+            label: quality720p.label,
+            resolution: quality720p.resolution,
+            bandwidth: quality720p.bandwidth,
+            storagePath: quality720pResult.storagePath // Store path for master playlist
+          }],
+          transcodingMessage: '720p ready, generating higher qualities...',
+          hlsSharedToken: sharedToken // Store for worker function
+        }, { merge: true });
+        
+        console.log(`✅ [PROGRESSIVE] Video marked as READY after 720p completion - user can play now!`);
+        
+        // Continue with higher qualities via Cloud Tasks (proper background processing)
+        const otherQualities = qualityLevels.filter(q => q.name !== '720p');
+        if (otherQualities.length > 0) {
+          console.log(`🔄 [PROGRESSIVE] Enqueuing ${otherQualities.length} higher quality levels via Cloud Tasks...`);
           
-          await new Promise<void>((res, rej) => {
-            const timeoutForQuality = TRANSCODE_TIMEOUTS[quality.name] ?? TRANSCODE_TIMEOUTS['720p'];
-            const timeoutId = setTimeout(() => {
-              rej(new Error(`Transcode timeout for ${quality.label}: Processing exceeded ${timeoutForQuality / 1000} seconds`));
-            }, timeoutForQuality);
-            
-            ffmpeg(tmpOriginal)
-              .addOptions([
-                '-preset', quality.preset,
-                '-crf', String(quality.crf),
-                '-profile:v', 'main',
-                '-vf', quality.scaleFilter,
-                '-start_number', '0',
-                '-hls_time', '4',
-                '-hls_list_size', '0',
-                '-f', 'hls'
-              ])
-              .output(path.join(qualityDirLocal, 'index.m3u8'))
-              .on('start', (cmdline) => {
-                console.log(`🎬 [ADAPTIVE] ${quality.label} FFmpeg started:`, cmdline.substring(0, 100) + '...');
-              })
-              .on('progress', (progress) => {
-                const elapsed = (Date.now() - transcodeStartTime) / 1000;
-                if (elapsed % 30 < 1) {
-                  console.log(`📊 [ADAPTIVE] ${quality.label} progress: ${progress.percent || 'unknown'}% (${elapsed.toFixed(1)}s)`);
-                }
-              })
-              .on('end', () => {
-                clearTimeout(timeoutId);
-                console.log(`✅ [ADAPTIVE] ${quality.label} transcoding completed`);
-                res();
-              })
-              .on('error', (err) => {
-                clearTimeout(timeoutId);
-                console.error(`❌ [ADAPTIVE] ${quality.label} FFmpeg error:`, err);
-                rej(err);
-              })
-              .run();
+          // Store full quality configs in Firestore for worker function to access
+          const qualityConfigsMap: Record<string, any> = {};
+          qualityLevels.forEach(q => {
+            qualityConfigsMap[q.name] = {
+              name: q.name,
+              label: q.label,
+              resolution: q.resolution,
+              scaleFilter: q.scaleFilter,
+              preset: q.preset,
+              crf: q.crf,
+              bandwidth: q.bandwidth
+            };
           });
           
-          const manifestLocalPath = path.join(qualityDirLocal, 'index.m3u8');
-          rewriteManifestWithAbsoluteUrls(manifestLocalPath, bucket.name, qualityDirStorage, sharedToken);
+          // Initialize background processing tracking
+          await mediaRef.set({
+            backgroundProcessingStatus: 'processing',
+            backgroundProcessingStarted: FieldValue.serverTimestamp(),
+            backgroundProcessingTargetQualities: otherQualities.map(q => q.name),
+            failedQualities: [],
+            qualityConfigs: qualityConfigsMap // Store for worker function
+          }, { merge: true });
           
-          const files = fs.readdirSync(qualityDirLocal);
-          await Promise.all(files.map(f => {
-            const dest = `${qualityDirStorage}${f}`;
-            const ct = f.endsWith('.m3u8')
-              ? 'application/vnd.apple.mpegurl'
-              : 'video/mp2t';
-            return bucket.upload(path.join(qualityDirLocal, f), {
-              destination: dest,
-              metadata: {
-                contentType: ct,
-                cacheControl: 'public,max-age=31536000,immutable',
-                metadata: { firebaseStorageDownloadTokens: sharedToken }
-              },
+          // Get base name for HLS paths
+          const base = path.parse(name).name;
+          
+          // Enqueue only the FIRST quality (others will be chained by the worker)
+          // This ensures sequential processing and prevents overwhelming the system
+          const firstQuality = otherQualities[0];
+          const remainingAfterFirst = otherQualities.slice(1).map(q => q.name);
+          
+          try {
+            await enqueueQualityTask(mediaRef.id, firstQuality.name, {
+              mediaId: mediaRef.id,
+              qualityLevel: firstQuality.name,
+              filePath: name,
+              storageFolder: dir,
+              hlsBasePath: `${dir}/hls/${base}/`,
+              sharedToken: sharedToken,
+              originalResolution: `${width}x${height}`,
+              remainingQualities: remainingAfterFirst,
+              qualityConfig: {
+                name: firstQuality.name,
+                label: firstQuality.label,
+                resolution: firstQuality.resolution,
+                scaleFilter: firstQuality.scaleFilter,
+                preset: firstQuality.preset,
+                crf: firstQuality.crf,
+                bandwidth: firstQuality.bandwidth
+              }
             });
-          }));
+            
+            console.log(`✅ [PROGRESSIVE] Enqueued first Cloud Task for ${firstQuality.label} (remaining will chain)`);
+          } catch (enqueueError) {
+            console.error(`❌ [PROGRESSIVE] Failed to enqueue task for ${firstQuality.label}:`, enqueueError);
+            
+            // Track failed enqueue in Firestore
+            try {
+              const currentDocForFailure = await mediaRef.get();
+              const currentDataForFailure = currentDocForFailure.exists ? currentDocForFailure.data() : {};
+              const currentFailedQualities = currentDataForFailure?.failedQualities || [];
+              
+              await mediaRef.set({
+                failedQualities: [
+                  ...currentFailedQualities,
+                  {
+                    name: firstQuality.name,
+                    label: firstQuality.label,
+                    error: `Failed to enqueue task: ${enqueueError instanceof Error ? enqueueError.message : String(enqueueError)}`,
+                    failedAt: FieldValue.serverTimestamp()
+                  }
+                ]
+              }, { merge: true });
+            } catch (updateError) {
+              console.error(`❌ Failed to update failedQualities for ${firstQuality.label}:`, updateError);
+            }
+          }
           
-          fs.rmSync(qualityDirLocal, { recursive: true, force: true });
-          
-          return {
-            quality,
-            storagePath: `${qualityDirStorage}index.m3u8`
-          };
-        })
-      );
-
-      const qualityResults = qualitySettled
-        .map((result, index) => {
-          if (result.status === 'fulfilled') return result.value;
-          console.warn(`⚠️ [ADAPTIVE] ${qualityLevels[index].label} failed:`, result.reason);
-          return null;
-        })
-        .filter((value): value is { quality: QualityLevel; storagePath: string } => value !== null);
+          console.log(`✅ [PROGRESSIVE] First quality task enqueued, chaining will continue automatically`);
+        }
+        
+        return; // Return early in progressive mode
+      } else {
+        // STANDARD MODE: Generate all qualities in parallel, wait for all
+        console.log(`⏳ [ADAPTIVE] Standard mode - generating all qualities in parallel`);
+        
+        const qualitySettled = await Promise.allSettled(
+          qualityLevels.map(async (quality) => {
+            return await generateQualityLevel(quality);
+          })
+        );
+        
+        qualityResults = qualitySettled
+          .map((result, index) => {
+            if (result.status === 'fulfilled') return result.value;
+            console.warn(`⚠️ [ADAPTIVE] ${qualityLevels[index].label} failed:`, result.reason);
+            return null;
+          })
+          .filter((value): value is { quality: QualityLevel; storagePath: string } => value !== null);
+      }
 
       if (!qualityResults.length) {
         throw new Error('All quality levels failed to transcode');
@@ -1503,6 +1803,335 @@ export const resetStuckProcessing = onDocumentCreated("manual_fixes/{fixId}", as
       error: error instanceof Error ? error.message : 'Unknown error',
       failedAt: FieldValue.serverTimestamp()
     }, { merge: true });
+  }
+});
+
+// ───────────────── WORKER FUNCTION: Process Quality Level (Cloud Tasks) ─────────────────
+
+/**
+ * Worker function that processes a single quality level
+ * Triggered by Cloud Tasks via HTTP POST
+ */
+export const processQualityLevel = onRequest({
+  region: 'us-east1',
+  memory: '8GiB',
+  timeoutSeconds: 900, // 15 minutes - increased to support 4K processing (2160p needs up to 14 minutes)
+  cpu: 2,
+  maxInstances: 15, // Increased from 10 to handle bulk uploads (102+ files) with better throughput
+  cors: true,
+}, async (request, response) => {
+  // Only allow POST requests
+  if (request.method !== 'POST') {
+    response.status(405).json({ error: 'Method not allowed' });
+    return;
+  }
+
+  let taskPayload: any;
+  try {
+    // Parse task payload from request body
+    if (request.body.message && request.body.message.data) {
+      // Cloud Tasks sends base64 encoded payload
+      const decodedData = Buffer.from(request.body.message.data, 'base64').toString('utf-8');
+      taskPayload = JSON.parse(decodedData);
+    } else {
+      taskPayload = request.body;
+    }
+  } catch (error) {
+    console.error('❌ [WORKER] Failed to parse task payload:', error);
+    response.status(400).json({ error: 'Invalid task payload' });
+    return;
+  }
+
+  const { mediaId, qualityLevel, filePath, storageFolder, hlsBasePath, sharedToken, originalResolution, remainingQualities, qualityConfig } = taskPayload;
+
+  if (!mediaId || !qualityLevel || !filePath || !qualityConfig) {
+    console.error('❌ [WORKER] Missing required task parameters:', { mediaId, qualityLevel, filePath, hasQualityConfig: !!qualityConfig });
+    response.status(400).json({ error: 'Missing required parameters' });
+    return;
+  }
+
+  console.log(`🎬 [WORKER] Processing quality level: ${qualityLevel} for media: ${mediaId}`);
+
+  const bucketName = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
+  const bucket = getStorage().bucket(bucketName);
+  const mediaRef = db.doc(`media/${mediaId}`);
+  const tmpOriginal = path.join(os.tmpdir(), `${path.basename(filePath)}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+  const TRANSCODE_TIMEOUTS: Record<string, number> = {
+    '720p': 300000,  // 5 minutes
+    '1080p': 600000, // 10 minutes - increased to handle large videos and resource contention during bulk uploads
+    '2160p': 840000  // 14 minutes - increased from 12 to ensure completion before function timeout (15 min)
+  };
+
+  try {
+    // Verify media document exists
+    const mediaDoc = await mediaRef.get();
+    if (!mediaDoc.exists) {
+      console.error(`❌ [WORKER] Media document ${mediaId} not found`);
+      response.status(404).json({ error: 'Media document not found' });
+      return;
+    }
+
+    const mediaData = mediaDoc.data();
+    const tokenToUse = sharedToken || mediaData?.hlsSharedToken || uuidv4();
+
+    // Download original file from Storage
+    console.log(`📥 [WORKER] Downloading original file: ${filePath}`);
+    await bucket.file(filePath).download({ destination: tmpOriginal });
+    console.log(`✅ [WORKER] Original file downloaded to: ${tmpOriginal}`);
+
+    // Process the quality level
+    const base = path.parse(filePath).name;
+    const qualityDirLocal = path.join(os.tmpdir(), `hls_${base}_${qualityLevel}_${Date.now()}`);
+    fs.mkdirSync(qualityDirLocal, { recursive: true });
+    const qualityDirStorage = `${hlsBasePath}${qualityLevel}/`;
+
+    console.log(`🎬 [WORKER] Starting ${qualityConfig.label} transcoding...`);
+    const transcodeStartTime = Date.now();
+
+    await new Promise<void>((res, rej) => {
+      const timeoutForQuality = TRANSCODE_TIMEOUTS[qualityLevel] ?? TRANSCODE_TIMEOUTS['720p'];
+      const timeoutId = setTimeout(() => {
+        rej(new Error(`Transcode timeout for ${qualityConfig.label}: Processing exceeded ${timeoutForQuality / 1000} seconds`));
+      }, timeoutForQuality);
+
+      ffmpeg(tmpOriginal)
+        .addOptions([
+          '-preset', qualityConfig.preset,
+          '-crf', String(qualityConfig.crf),
+          '-profile:v', 'main',
+          '-vf', qualityConfig.scaleFilter,
+          // Audio quality improvements
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-ar', '48000',
+          '-ac', '2',
+          // Optimized HLS settings for better adaptive streaming
+          '-start_number', '0',
+          '-hls_time', '6',              // 6-second segments (better for adaptation)
+          '-hls_list_size', '10',        // Keep last 10 segments (reduces manifest size)
+          '-hls_flags', 'independent_segments', // Better seeking
+          '-hls_segment_type', 'mpegts',  // Explicit segment type
+          '-f', 'hls'
+        ])
+        .output(path.join(qualityDirLocal, 'index.m3u8'))
+        .on('start', (cmdline) => {
+          console.log(`🎬 [WORKER] ${qualityConfig.label} FFmpeg started:`, cmdline.substring(0, 100) + '...');
+        })
+        .on('progress', (progress) => {
+          const elapsed = (Date.now() - transcodeStartTime) / 1000;
+          if (elapsed % 30 < 1) {
+            console.log(`📊 [WORKER] ${qualityConfig.label} progress: ${progress.percent || 'unknown'}% (${elapsed.toFixed(1)}s)`);
+          }
+        })
+        .on('end', () => {
+          clearTimeout(timeoutId);
+          console.log(`✅ [WORKER] ${qualityConfig.label} transcoding completed`);
+          res();
+        })
+        .on('error', (err) => {
+          clearTimeout(timeoutId);
+          console.error(`❌ [WORKER] ${qualityConfig.label} FFmpeg error:`, err);
+          rej(err);
+        })
+        .run();
+    });
+
+    // Rewrite manifest with absolute URLs
+    const manifestLocalPath = path.join(qualityDirLocal, 'index.m3u8');
+    rewriteManifestWithAbsoluteUrls(manifestLocalPath, bucket.name, qualityDirStorage, tokenToUse);
+
+    // Upload all HLS files
+    const files = fs.readdirSync(qualityDirLocal);
+    await Promise.all(files.map(f => {
+      const dest = `${qualityDirStorage}${f}`;
+      const ct = f.endsWith('.m3u8')
+        ? 'application/vnd.apple.mpegurl'
+        : 'video/mp2t';
+      return bucket.upload(path.join(qualityDirLocal, f), {
+        destination: dest,
+        metadata: {
+          contentType: ct,
+          cacheControl: 'public,max-age=31536000,immutable',
+          metadata: { firebaseStorageDownloadTokens: tokenToUse }
+        },
+      });
+    }));
+
+    // Cleanup local files
+    fs.rmSync(qualityDirLocal, { recursive: true, force: true });
+    fs.unlinkSync(tmpOriginal);
+
+    const qualityStoragePath = `${qualityDirStorage}index.m3u8`;
+    console.log(`✅ [WORKER] ${qualityConfig.label} uploaded to: ${qualityStoragePath}`);
+
+    // Get current media document to read existing quality levels
+    const currentDoc = await mediaRef.get();
+    const currentData = currentDoc.exists ? currentDoc.data() : {};
+    const currentQualityLevels = currentData?.qualityLevels || [];
+    const currentSources = currentData?.sources || {};
+
+    // Update Firestore with new quality level (include storagePath for master playlist reconstruction)
+    // Note: Cannot use FieldValue.serverTimestamp() inside arrays, so use Timestamp.now()
+    const completedAtTimestamp = Timestamp.now();
+    const updatedQualityLevels = [
+      ...currentQualityLevels,
+      {
+        name: qualityConfig.name,
+        label: qualityConfig.label,
+        resolution: qualityConfig.resolution,
+        bandwidth: qualityConfig.bandwidth,
+        storagePath: qualityStoragePath, // Store path for master playlist
+        completedAt: completedAtTimestamp
+      }
+    ];
+
+    // Create/update master playlist with all completed qualities
+    const createAbsoluteUrl = (storagePath: string) => {
+      const encodedPath = encodeURIComponent(storagePath);
+      return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${tokenToUse}`;
+    };
+
+    const masterPlaylistContent = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:3'
+    ];
+
+    // Sort qualities by bandwidth (lowest first)
+    updatedQualityLevels
+      .sort((a, b) => (a.bandwidth || 0) - (b.bandwidth || 0))
+      .forEach((q: any) => {
+        // Use storagePath from quality level (stored in Firestore)
+        const qualityPath = q.storagePath || `${hlsBasePath}${q.name}/index.m3u8`;
+        const absoluteUrl = createAbsoluteUrl(qualityPath);
+        masterPlaylistContent.push(
+          `#EXT-X-STREAM-INF:BANDWIDTH=${q.bandwidth || 0},RESOLUTION=${q.resolution || '1280x720'}`,
+          absoluteUrl
+        );
+      });
+
+    const masterPlaylistLocal = path.join(os.tmpdir(), `master_${base}_${Date.now()}.m3u8`);
+    fs.writeFileSync(masterPlaylistLocal, masterPlaylistContent.join('\n') + '\n');
+    const masterPlaylistStorage = `${hlsBasePath}master.m3u8`;
+    await bucket.upload(masterPlaylistLocal, {
+      destination: masterPlaylistStorage,
+      metadata: {
+        contentType: 'application/vnd.apple.mpegurl',
+        cacheControl: 'public,max-age=31536000,immutable',
+        metadata: { firebaseStorageDownloadTokens: tokenToUse }
+      },
+    });
+    fs.unlinkSync(masterPlaylistLocal);
+
+    // Update Firestore
+    const updateData: any = {
+      sources: {
+        ...currentSources,
+        hlsMaster: masterPlaylistStorage
+      },
+      qualityLevels: updatedQualityLevels,
+    };
+
+    // Check if this was the last quality
+    if (remainingQualities.length === 0) {
+      updateData.backgroundProcessingStatus = 'completed';
+      updateData.backgroundProcessingCompleted = FieldValue.serverTimestamp();
+      updateData.transcodingMessage = 'All qualities ready';
+      updateData.backgroundProcessingSummary = {
+        totalExpected: currentData?.backgroundProcessingTargetQualities?.length || 1,
+        succeeded: updatedQualityLevels.length,
+        failed: currentData?.failedQualities?.length || 0,
+        completedAt: Timestamp.now() // Use Timestamp.now() instead of FieldValue for nested objects
+      };
+    } else {
+      updateData.transcodingMessage = `${updatedQualityLevels.length} quality levels ready, ${remainingQualities.length} remaining...`;
+    }
+
+    await mediaRef.set(updateData, { merge: true });
+
+    console.log(`✅ [WORKER] ${qualityConfig.label} completed and Firestore updated`);
+
+    // Enqueue next quality if there are remaining qualities
+    if (remainingQualities.length > 0) {
+      const nextQuality = remainingQualities[0];
+      const nextRemaining = remainingQualities.slice(1);
+      
+      // Get quality config from Firestore (stored during initialization)
+      const qualityConfigs = currentData?.qualityConfigs || {};
+      const nextQualityConfig = qualityConfigs[nextQuality];
+      
+      if (!nextQualityConfig) {
+        console.error(`❌ [WORKER] Quality config not found for ${nextQuality} in Firestore`);
+        response.status(500).json({ 
+          error: 'Quality config not found',
+          qualityLevel: nextQuality
+        });
+        return;
+      }
+      
+      console.log(`🔄 [WORKER] Enqueuing next quality: ${nextQuality}`);
+      try {
+        await enqueueQualityTask(mediaId, nextQuality, {
+          mediaId,
+          qualityLevel: nextQuality,
+          filePath,
+          storageFolder,
+          hlsBasePath,
+          sharedToken: tokenToUse,
+          originalResolution,
+          remainingQualities: nextRemaining,
+          qualityConfig: nextQualityConfig
+        });
+        console.log(`✅ [WORKER] Successfully enqueued next quality: ${nextQuality}`);
+      } catch (enqueueError) {
+        console.error(`❌ [WORKER] Failed to enqueue next quality ${nextQuality}:`, enqueueError);
+        // Don't fail the current task if enqueueing next fails - log and continue
+      }
+    }
+
+    response.status(200).json({ 
+      success: true, 
+      qualityLevel,
+      message: `${qualityConfig.label} processing completed` 
+    });
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`❌ [WORKER] Error processing ${qualityLevel} for ${mediaId}:`, error);
+
+    // Update Firestore with failure
+    try {
+      const currentDoc = await mediaRef.get();
+      const currentData = currentDoc.exists ? currentDoc.data() : {};
+      const currentFailedQualities = currentData?.failedQualities || [];
+
+      // Cannot use FieldValue.serverTimestamp() inside arrays, so use Timestamp.now()
+      const failedAtTimestamp = Timestamp.now();
+      await mediaRef.set({
+        failedQualities: [
+          ...currentFailedQualities,
+          {
+            name: qualityLevel,
+            label: qualityConfig.label,
+            error: errorMessage,
+            failedAt: failedAtTimestamp
+          }
+        ]
+      }, { merge: true });
+    } catch (updateError) {
+      console.error(`❌ [WORKER] Failed to update failedQualities:`, updateError);
+    }
+
+    // Cleanup
+    try {
+      if (fs.existsSync(tmpOriginal)) fs.unlinkSync(tmpOriginal);
+    } catch {}
+
+    response.status(500).json({ 
+      error: 'Processing failed', 
+      qualityLevel,
+      message: errorMessage 
+    });
   }
 });
 

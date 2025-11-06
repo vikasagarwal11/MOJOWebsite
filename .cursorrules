@@ -32,6 +32,15 @@ This is a React/TypeScript fitness community website built with Vite, Firebase, 
 - Use Firebase Cloud Messaging for notifications
 - Use Firebase Cloud Functions for ephemeral Moments and challenge logic
 
+## Firebase Storage Bucket Domain - CRITICAL RULE
+- **NEVER use `.appspot.com` domain for Firebase Storage buckets**
+- **ALWAYS use `.firebasestorage.app` domain for Firebase Storage buckets**
+- The legacy `.appspot.com` domain does NOT support proper CORS and will cause CORS errors
+- When normalizing storage bucket names, always convert `.appspot.com` → `.firebasestorage.app`
+- The `normalizeStorageBucket` function in `src/config/firebase.ts` must always ensure `.firebasestorage.app` is used
+- If you see `.appspot.com` in the code, it is a bug that must be fixed
+- Production storage bucket format: `momsfitnessmojo-65d00.firebasestorage.app` (NOT `.appspot.com`)
+
 ## Environment File Handling
 - **ALWAYS** reference the .env file when making environment-related changes
 - The .env file contains the actual Firebase configuration for development
@@ -57,10 +66,11 @@ This is a React/TypeScript fitness community website built with Vite, Firebase, 
 - **CRITICAL**: Always check .env file before making environment-related changes
 - The project uses .env as the development environment file (not .env.local)
 - Current Firebase project: momfitnessmojo (development)
-- Storage bucket: mojomediafiles
+- Storage bucket: mojomediafiles (use `.firebasestorage.app` domain, NEVER `.appspot.com`)
 - Functions region: us-central1
 - Environment: development
 - Use momsfitnessmojo@gmail.com for email communications
+- Production storage bucket: `momsfitnessmojo-65d00.firebasestorage.app` (must use `.firebasestorage.app`, NOT `.appspot.com`)
 
 ## Database Rules
 - Every table includes soft delete columns (isDeleted, deletedAt, deletedBy)

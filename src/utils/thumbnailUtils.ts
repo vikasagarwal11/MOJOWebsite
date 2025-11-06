@@ -5,7 +5,7 @@
 
 /**
  * Generate a thumbnail URL from a Firebase Storage URL
- * Firebase Extensions create thumbnails in the format: originalPath/thumbnails/filename_400x400.ext
+ * Firebase Extensions create thumbnails in the format: originalPath/thumbnails/filename_800x800.ext (for medium size)
  */
 export function getThumbnailUrl(originalUrl: string, size: 'small' | 'medium' | 'large' = 'medium'): string {
   if (!originalUrl) return originalUrl;
@@ -38,7 +38,7 @@ export function getThumbnailUrl(originalUrl: string, size: 'small' | 'medium' | 
     // Generate thumbnail path based on size
     const sizeMap = {
       small: '200x200',
-      medium: '400x400', 
+      medium: '800x800', 
       large: '600x600'
     };
     

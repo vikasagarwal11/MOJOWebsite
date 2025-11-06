@@ -63,3 +63,4 @@ temp/
 
 # Bolt specific
 .bolt/
+scripts/log-reader-key.json

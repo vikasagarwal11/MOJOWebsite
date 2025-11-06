@@ -1,7 +1,7 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Upload, Image, Video, Filter } from 'lucide-react';
 // import { Video as VideoIcon } from 'lucide-react'; // PHASE 2: Re-enable live camera functionality
-import { orderBy } from 'firebase/firestore';
+import { orderBy, doc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { useFirestore } from '../hooks/useFirestore';
 import MediaUploadModal from '../components/media/MediaUploadModal';
@@ -9,6 +9,8 @@ import MediaUploadModal from '../components/media/MediaUploadModal';
 import MediaCard from '../components/media/MediaCard';
 import MediaLightbox from '../components/media/MediaLightbox';
 import { useLightbox } from '../hooks/useLightbox';
+import { db } from '../config/firebase';
+import toast from 'react-hot-toast';
 
 const Media: React.FC = () => {
   const { currentUser } = useAuth();
@@ -37,6 +39,10 @@ const Media: React.FC = () => {
   const [eventSearchQuery, setEventSearchQuery] = useState<string>('');
   const [debouncedEventSearchQuery, setDebouncedEventSearchQuery] = useState<string>('');
   const [showEventSuggestions, setShowEventSuggestions] = useState<boolean>(false);
+  const isAdmin = currentUser?.role === 'admin';
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   // Debounce search queries (300ms delay)
   useEffect(() => {
@@ -74,6 +80,20 @@ const Media: React.FC = () => {
     });
   }, [events]);
 
+  // Ensure selections stay in sync with live data and permissions
+  useEffect(() => {
+    if (!selectionMode) return;
+    setSelectedIds((prev) =>
+      prev.filter((id) => mediaFiles.some((item: any) => item.id === id))
+    );
+  }, [selectionMode, mediaFiles]);
+
+  useEffect(() => {
+    if (isAdmin) return;
+    setSelectionMode(false);
+    setSelectedIds([]);
+  }, [isAdmin]);
+
   // Apply UI filters to media
   const filteredMedia = useMemo(() => {
     return mediaFiles.filter((m: any) => {
@@ -108,6 +128,63 @@ const Media: React.FC = () => {
 
   // Lightbox functionality
   const lightbox = useLightbox(filteredMedia, { loop: true });
+
+  const toggleSelectionMode = useCallback(() => {
+    setSelectionMode((prev) => {
+      if (prev) {
+        setSelectedIds([]);
+      }
+      return !prev;
+    });
+  }, []);
+
+  const handleToggleSelect = useCallback((mediaId: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(mediaId)
+        ? prev.filter((id) => id !== mediaId)
+        : [...prev, mediaId]
+    );
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (!isAdmin || !selectedIds.length || isBulkDeleting) return;
+
+    const confirmed = window.confirm(
+      `Delete ${selectedIds.length} media item${selectedIds.length === 1 ? '' : 's'}? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setIsBulkDeleting(true);
+    try {
+      // Use Promise.allSettled to handle partial failures gracefully
+      const results = await Promise.allSettled(
+        selectedIds.map((id) => deleteDoc(doc(db, 'media', id)))
+      );
+
+      const succeeded = results.filter(r => r.status === 'fulfilled').length;
+      const failed = results.filter(r => r.status === 'rejected').length;
+
+      if (failed > 0) {
+        console.error('Some deletions failed:', results.filter(r => r.status === 'rejected'));
+        toast.error(
+          `Deleted ${succeeded} of ${selectedIds.length} media item${selectedIds.length === 1 ? '' : 's'}. ${failed} failed.`
+        );
+      } else {
+        toast.success(
+          `Deleted ${selectedIds.length} media item${selectedIds.length === 1 ? '' : 's'}.`
+        );
+      }
+
+      // Clear selection regardless of partial failures
+      setSelectedIds([]);
+      setSelectionMode(false);
+    } catch (error: any) {
+      console.error('Failed to delete selected media:', error);
+      toast.error(error?.message ?? 'Failed to delete selected media.');
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  }, [isAdmin, selectedIds, isBulkDeleting]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -291,10 +368,54 @@ const Media: React.FC = () => {
         )}
       </div>
 
+      {isAdmin && (
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4 md:mb-6">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleSelectionMode}
+              className={`px-3 py-2 rounded-full text-sm font-medium transition-colors duration-200 border ${
+                selectionMode
+                  ? 'bg-[#F25129] text-white border-[#F25129] hover:bg-[#E0451F]'
+                  : 'bg-white text-gray-700 border-gray-300 hover:border-[#F25129] hover:text-[#F25129]'
+              }`}
+            >
+              {selectionMode ? 'Cancel multi-select' : 'Select multiple'}
+            </button>
+            {selectionMode && (
+              <span className="text-sm text-gray-600">
+                {selectedIds.length} selected
+              </span>
+            )}
+          </div>
+          {selectionMode && (
+            <button
+              onClick={handleBulkDelete}
+              disabled={!selectedIds.length || isBulkDeleting}
+              className="px-3 py-2 rounded-full text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isBulkDeleting
+                ? 'Deleting…'
+                : `Delete selected (${selectedIds.length})`}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Media Grid - Optimized for Mobile */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
         {filteredMedia.map((media: any, index: number) => (
-          <MediaCard key={media.id} media={media} onOpen={() => lightbox.open(index)} />
+          <MediaCard
+            key={media.id}
+            media={media}
+            onOpen={
+              selectionMode ? undefined : () => lightbox.open(index)
+            }
+            selectionMode={isAdmin && selectionMode}
+            selected={selectedIds.includes(media.id)}
+            onToggleSelect={
+              isAdmin && selectionMode ? handleToggleSelect : undefined
+            }
+          />
         ))}
         
         {/* Empty State - Compact Card Style */}

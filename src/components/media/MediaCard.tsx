@@ -132,11 +132,11 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
     
     // For images: Try extension-generated thumbnails first
     if (localMedia.type === 'image' && localMedia.filePath) {
-      // Generate extension thumbnail path: media/userId/batchId/thumbnails/image_400x400.webp
+      // Generate extension thumbnail path: media/userId/batchId/thumbnails/image_800x800.webp
       const fileName = localMedia.filePath.split('/').pop(); // Get just the filename
       const folderPath = localMedia.filePath.substring(0, localMedia.filePath.lastIndexOf('/'));
       const baseName = fileName.substring(0, fileName.lastIndexOf('.')); // Remove extension
-      const extensionThumbnailPath = `${folderPath}/thumbnails/${baseName}_400x400.webp`;
+      const extensionThumbnailPath = `${folderPath}/thumbnails/${baseName}_800x800.webp`;
       
       console.log('🖼️ [DEBUG] Trying extension thumbnail (correct path):', extensionThumbnailPath);
       
@@ -147,7 +147,19 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
           setIsThumbnailLoading(false);
         })
         .catch(error => {
-          console.log('🖼️ [DEBUG] Extension thumbnail not found, trying fallbacks');
+          // 404 is expected - Firebase Extension processes thumbnails asynchronously
+          // The thumbnail may not exist yet when we first check
+          const is404 = error?.code === 'storage/object-not-found' || 
+                       error?.message?.includes('404') ||
+                       error?.code === 404;
+          
+          if (!is404) {
+            // Only log non-404 errors (unexpected issues)
+            console.warn('🖼️ [DEBUG] Extension thumbnail error (non-404):', error);
+          } else {
+            console.log('🖼️ [DEBUG] Extension thumbnail not yet generated (expected), trying fallbacks');
+          }
+          
           // Fallback to custom thumbnail or original
           if (localMedia.thumbnailPath) {
             getDownloadURL(ref(storage, localMedia.thumbnailPath))

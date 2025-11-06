@@ -110,12 +110,17 @@ Write-Host "  VITE_FIREBASE_STORAGE_BUCKET: $viteStorageBucket" -ForegroundColor
 
 Write-Host ""
 
-# Copy environment-specific extension configuration
-Write-Host "Copying production extension configuration..." -ForegroundColor Yellow
-Copy-Item "extensions/storage-resize-images.prod.env" "extensions/storage-resize-images.env" -Force
-Write-Host "[OK] Extension configuration copied for production" -ForegroundColor Green
-
-Write-Host ""
+# Copy environment-specific extension configuration (skip if no-extensions)
+if ($Component.ToLower() -ne "no-extensions") {
+    Write-Host "Copying production extension configuration..." -ForegroundColor Yellow
+    if (Test-Path "extensions/storage-resize-images.prod.env") {
+        Copy-Item "extensions/storage-resize-images.prod.env" "extensions/storage-resize-images.env" -Force -ErrorAction SilentlyContinue
+        Write-Host "[OK] Extension configuration copied for production" -ForegroundColor Green
+    } else {
+        Write-Host "[WARNING] Extension config file not found, skipping..." -ForegroundColor Yellow
+    }
+    Write-Host ""
+}
 
 # =============================================================================
 # Cloud Tasks Queue Setup (Phase 3: Progressive Quality Generation)

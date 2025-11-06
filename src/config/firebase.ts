@@ -14,21 +14,27 @@ import { getPerformance } from 'firebase/performance';
 const normalizeStorageBucket = (rawBucket: string | undefined, fallbackProjectId: string): string => {
   const trimmed = rawBucket?.trim();
   if (!trimmed) {
-    return `${fallbackProjectId}.appspot.com`;
+    return `${fallbackProjectId}.firebasestorage.app`;
   }
 
   // Remove gs:// prefix if provided
   const withoutScheme = trimmed.replace(/^gs:\/\//i, '');
   let normalized = withoutScheme;
 
-  // Some environments incorrectly use the *.firebasestorage.app pseudo-domain.
-  if (normalized.endsWith('.firebasestorage.app')) {
-    normalized = normalized.replace(/\.firebasestorage\.app$/i, '.appspot.com');
+  // Convert legacy .appspot.com domains to modern .firebasestorage.app for proper CORS support
+  if (normalized.endsWith('.appspot.com')) {
+    normalized = normalized.replace(/\.appspot\.com$/i, '.firebasestorage.app');
   }
 
-  // If value is just the project id, append the default domain suffix.
+  // If value is just the project id, append the modern domain suffix.
   if (!normalized.includes('.')) {
-    normalized = `${normalized}.appspot.com`;
+    normalized = `${normalized}.firebasestorage.app`;
+  }
+
+  // Ensure we always use .firebasestorage.app (don't change if already correct)
+  if (!normalized.endsWith('.firebasestorage.app')) {
+    // If it doesn't end with either domain, assume it's a project ID and add the modern domain
+    normalized = `${normalized}.firebasestorage.app`;
   }
 
   return normalized;
