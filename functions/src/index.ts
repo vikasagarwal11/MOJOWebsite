@@ -819,17 +819,22 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
       folderPath: folderPath
     });
     
-    // Extensions create: original format + other formats
-    // Pattern: baseName_400x400.originalExt + baseName_400x400.format
+    // Extensions create: original format + other formats for all sizes
+    // Pattern: baseName_{size}.originalExt + baseName_{size}.format
+    // Sizes: 400x400, 800x800, 1200x1200
+    const thumbnailSizes = ['400x400', '800x800', '1200x1200'];
     const extensionFormats = [originalExt.toLowerCase(), 'webp', 'jpeg', 'png', 'avif', 'gif', 'tiff'];
     const uniqueFormats = [...new Set(extensionFormats)]; // Remove duplicates
     
-    uniqueFormats.forEach(format => {
-      const thumbnailPath = `${folderPath}/thumbnails/${baseName}_400x400.${format}`;
-      console.log(`🗑️ [CLOUD] [DEBUG] Generated thumbnail path:`, thumbnailPath);
-      filesToDelete.push({ 
-        path: thumbnailPath, 
-        type: `extension-thumbnail-${format}` 
+    // Delete thumbnails for all sizes and formats
+    thumbnailSizes.forEach(size => {
+      uniqueFormats.forEach(format => {
+        const thumbnailPath = `${folderPath}/thumbnails/${baseName}_${size}.${format}`;
+        console.log(`🗑️ [CLOUD] [DEBUG] Generated thumbnail path:`, thumbnailPath);
+        filesToDelete.push({ 
+          path: thumbnailPath, 
+          type: `extension-thumbnail-${size}-${format}` 
+        });
       });
     });
     
@@ -968,21 +973,164 @@ export const onMediaFileFinalize = onObjectFinalized({
     }
 
     // Skip generated outputs
-    if (!name.startsWith('media/')) return;
+    if (!name.startsWith('media/')) {
+      console.log('⏭️ Skipping file not in media/ folder:', name);
+      return;
+    }
+    
+    // Handle extension-generated thumbnails - update Firestore when ready
+    // Firebase Extensions create thumbnails in format: .../thumbnails/filename_{size}.ext
+    // Sizes: 400x400, 800x800, 1200x1200
+    if (name.includes('/thumbnails/')) {
+      console.log('🖼️ [THUMBNAIL FINALIZE] Thumbnail finalized:', name);
+      
+      // Extract thumbnail size and parent directory
+      let thumbnailSize: 'small' | 'medium' | 'large' | null = null;
+      if (name.includes('_400x400.')) {
+        thumbnailSize = 'small';
+      } else if (name.includes('_800x800.')) {
+        thumbnailSize = 'medium';
+      } else if (name.includes('_1200x1200.')) {
+        thumbnailSize = 'large';
+      }
+      
+      if (!thumbnailSize) {
+        console.log('⏭️ Skipping thumbnail with unknown size:', name);
+        return;
+      }
+      
+      // Extract parent directory (media/{userId}/{batchId})
+      // Thumbnail path: media/{userId}/{batchId}/thumbnails/{filename}_{size}.ext
+      // Parent dir: media/{userId}/{batchId}
+      const thumbnailsIndex = name.indexOf('/thumbnails/');
+      if (thumbnailsIndex === -1) {
+        console.log('⏭️ Skipping thumbnail with invalid path:', name);
+        return;
+      }
+      
+      const parentDir = name.substring(0, thumbnailsIndex);
+      console.log('🔍 [THUMBNAIL] Parent directory:', parentDir);
+      
+      // Find the media document by storageFolder (with fallback to filePath)
+      // Try multiple path formats to handle edge cases
+      const searchFolderWithSlash = parentDir.endsWith('/') ? parentDir : `${parentDir}/`;
+      const searchFolderWithoutSlash = parentDir.endsWith('/') ? parentDir.slice(0, -1) : parentDir;
+      
+      let mediaSnapshot = await db.collection('media')
+        .where('storageFolder', '==', searchFolderWithSlash)
+        .limit(1)
+        .get();
+      
+      // Try without trailing slash if first attempt failed
+      if (mediaSnapshot.empty) {
+        mediaSnapshot = await db.collection('media')
+          .where('storageFolder', '==', searchFolderWithoutSlash)
+          .limit(1)
+          .get();
+      }
+      
+      // Fallback: If no match by storageFolder, try to find by filePath pattern
+      // Extract the original filename from thumbnail path (remove _size suffix)
+      if (mediaSnapshot.empty) {
+        console.log('⚠️ [THUMBNAIL] No match by storageFolder, trying fallback query...');
+        
+        // Extract original filename from thumbnail: thumbnails/image_800x800.jpg -> image.jpg
+        const thumbnailFileName = name.substring(name.lastIndexOf('/') + 1);
+        const originalFileName = thumbnailFileName
+          .replace(/_400x400\./, '.')
+          .replace(/_800x800\./, '.')
+          .replace(/_1200x1200\./, '.');
+        
+        // Try to find by filePath pattern (any file in the same folder)
+        const filePathPattern = `${parentDir}/${originalFileName}`;
+        mediaSnapshot = await db.collection('media')
+          .where('filePath', '==', filePathPattern)
+          .limit(1)
+          .get();
+        
+        // If still no match, try to find ANY document in the same folder
+        if (mediaSnapshot.empty) {
+          console.log('⚠️ [THUMBNAIL] No match by filePath, trying any document in folder...');
+          // Get recent documents and filter by folder (fallback for when query fails)
+          // Note: This is a fallback, so we get a reasonable number of recent docs
+          const allDocs = await db.collection('media')
+            .orderBy('createdAt', 'desc')
+            .limit(200) // Increased from 100 to catch more recent uploads
+            .get();
+          
+          const matchingDoc = allDocs.docs.find(doc => {
+            const docFolder = doc.data()?.storageFolder || '';
+            const docFilePath = doc.data()?.filePath || '';
+            // Match if storageFolder matches (with or without trailing slash) or filePath is in parentDir
+            const normalizedDocFolder = docFolder.endsWith('/') ? docFolder : `${docFolder}/`;
+            const normalizedParentDir = parentDir.endsWith('/') ? parentDir : `${parentDir}/`;
+            return normalizedDocFolder === normalizedParentDir || 
+                   docFolder === parentDir ||
+                   docFilePath.startsWith(parentDir) ||
+                   docFilePath.includes(parentDir);
+          });
+          
+          if (matchingDoc) {
+            mediaSnapshot = { docs: [matchingDoc], empty: false } as any;
+            console.log('✅ [THUMBNAIL] Found document using fallback filter');
+          }
+        }
+      }
+      
+      if (mediaSnapshot.empty) {
+        console.error('❌ [THUMBNAIL] No media document found for thumbnail after all attempts:', name);
+        console.error('❌ [THUMBNAIL] Parent directory:', parentDir);
+        console.error('❌ [THUMBNAIL] Search folder (with slash):', searchFolderWithSlash);
+        console.error('❌ [THUMBNAIL] Search folder (without slash):', searchFolderWithoutSlash);
+        // Log available documents for debugging
+        const debugDocs = await db.collection('media').orderBy('createdAt', 'desc').limit(10).get();
+        console.error('❌ [THUMBNAIL] Sample documents:', debugDocs.docs.map(d => ({
+          id: d.id,
+          filePath: d.data()?.filePath,
+          storageFolder: d.data()?.storageFolder,
+          createdAt: d.data()?.createdAt
+        })));
+        return;
+      }
+      
+      const mediaRef = mediaSnapshot.docs[0].ref;
+      const mediaId = mediaRef.id;
+      console.log('✅ [THUMBNAIL] Found media document:', mediaId);
+      
+      // Update Firestore with thumbnail status (wrapped in try/catch for safety)
+      try {
+        const thumbnailUpdate: any = {
+          [`thumbnails.${thumbnailSize}Ready`]: true,
+          [`thumbnails.${thumbnailSize}Path`]: name,
+          [`thumbnails.updatedAt`]: FieldValue.serverTimestamp()
+        };
+        
+        await mediaRef.set(thumbnailUpdate, { merge: true });
+        console.log(`✅ [THUMBNAIL] Updated media document ${mediaId} with ${thumbnailSize} thumbnail ready:`, name);
+      } catch (error) {
+        // Server-side fallback: If Firestore update fails, log it but don't break
+        // The UI will continue using the original image (graceful degradation)
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`❌ [THUMBNAIL] Failed to update Firestore for ${mediaId}:`, errorMessage);
+        console.error(`❌ [THUMBNAIL] Thumbnail exists at: ${name}, but Firestore update failed`);
+        console.error(`❌ [THUMBNAIL] UI will continue using original image (graceful degradation)`);
+        // Don't throw - let the function complete successfully
+        // The original image path is still available, so nothing breaks visually
+      }
+      
+      return; // Don't process thumbnails further
+    }
+    
     if (name.includes('/hls/') || name.endsWith('.m3u8') || name.endsWith('.ts')) {
       console.log('⏭️ Skipping HLS output file:', name);
       return;
     }
+    
     const baseName = path.basename(name);
-  if (baseName.startsWith('thumb_') || baseName.startsWith('poster_')) {
-    console.log('⏭️ Skipping thumbnail/poster file:', name);
-    return;
-  }
-  // Skip extension-generated thumbnails (updated to 800x800)
-  if (name.includes('/thumbnails/') && (name.includes('_400x400.') || name.includes('_800x800.'))) {
-    console.log('⏭️ Skipping extension-generated thumbnail:', name);
-    return;
-  }
+    if (baseName.startsWith('thumb_') || baseName.startsWith('poster_')) {
+      console.log('⏭️ Skipping thumbnail/poster file:', name);
+      return;
+    }
 
     const ext = path.extname(name).toLowerCase();
     const looksLikeVideo =
@@ -1941,21 +2089,53 @@ export const processQualityLevel = onRequest({
     const manifestLocalPath = path.join(qualityDirLocal, 'index.m3u8');
     rewriteManifestWithAbsoluteUrls(manifestLocalPath, bucket.name, qualityDirStorage, tokenToUse);
 
-    // Upload all HLS files
+    // Upload all HLS files with retry logic for network errors
     const files = fs.readdirSync(qualityDirLocal);
+    
+    const uploadWithRetry = async (filePath: string, dest: string, contentType: string, maxRetries = 3) => {
+      let lastError: any;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          await bucket.upload(filePath, {
+            destination: dest,
+            metadata: {
+              contentType,
+              cacheControl: 'public,max-age=31536000,immutable',
+              metadata: { firebaseStorageDownloadTokens: tokenToUse }
+            },
+            // Enable resumable uploads (default, but explicit for clarity)
+            resumable: true,
+          });
+          if (attempt > 1) {
+            console.log(`✅ [WORKER] Upload succeeded on retry ${attempt} for ${dest}`);
+          }
+          return;
+        } catch (error: any) {
+          lastError = error;
+          const isNetworkError = error.code === 'ECONNRESET' || 
+                                 error.code === 'ETIMEDOUT' || 
+                                 error.code === 'ENOTFOUND' ||
+                                 error.message?.includes('socket hang up') ||
+                                 error.message?.includes('timeout');
+          
+          if (isNetworkError && attempt < maxRetries) {
+            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Exponential backoff, max 10s
+            console.warn(`⚠️ [WORKER] Upload failed (attempt ${attempt}/${maxRetries}) for ${dest}: ${error.message}. Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+          throw error;
+        }
+      }
+      throw lastError;
+    };
+    
     await Promise.all(files.map(f => {
       const dest = `${qualityDirStorage}${f}`;
       const ct = f.endsWith('.m3u8')
         ? 'application/vnd.apple.mpegurl'
         : 'video/mp2t';
-      return bucket.upload(path.join(qualityDirLocal, f), {
-        destination: dest,
-        metadata: {
-          contentType: ct,
-          cacheControl: 'public,max-age=31536000,immutable',
-          metadata: { firebaseStorageDownloadTokens: tokenToUse }
-        },
-      });
+      return uploadWithRetry(path.join(qualityDirLocal, f), dest, ct);
     }));
 
     // Cleanup local files
@@ -1971,20 +2151,38 @@ export const processQualityLevel = onRequest({
     const currentQualityLevels = currentData?.qualityLevels || [];
     const currentSources = currentData?.sources || {};
 
-    // Update Firestore with new quality level (include storagePath for master playlist reconstruction)
-    // Note: Cannot use FieldValue.serverTimestamp() inside arrays, so use Timestamp.now()
-    const completedAtTimestamp = Timestamp.now();
-    const updatedQualityLevels = [
-      ...currentQualityLevels,
-      {
+    // Check for duplicate quality level (prevent duplicates from retries or race conditions)
+    const existingQualityIndex = currentQualityLevels.findIndex((q: any) => q.name === qualityConfig.name);
+    let updatedQualityLevels: any[];
+    
+    if (existingQualityIndex !== -1) {
+      console.log(`⚠️ [WORKER] Quality level ${qualityConfig.name} already exists, updating instead of duplicating`);
+      // Update existing entry instead of creating duplicate
+      updatedQualityLevels = [...currentQualityLevels];
+      updatedQualityLevels[existingQualityIndex] = {
         name: qualityConfig.name,
         label: qualityConfig.label,
         resolution: qualityConfig.resolution,
         bandwidth: qualityConfig.bandwidth,
-        storagePath: qualityStoragePath, // Store path for master playlist
-        completedAt: completedAtTimestamp
-      }
-    ];
+        storagePath: qualityStoragePath,
+        completedAt: Timestamp.now()
+      };
+    } else {
+      // Update Firestore with new quality level (include storagePath for master playlist reconstruction)
+      // Note: Cannot use FieldValue.serverTimestamp() inside arrays, so use Timestamp.now()
+      const completedAtTimestamp = Timestamp.now();
+      updatedQualityLevels = [
+        ...currentQualityLevels,
+        {
+          name: qualityConfig.name,
+          label: qualityConfig.label,
+          resolution: qualityConfig.resolution,
+          bandwidth: qualityConfig.bandwidth,
+          storagePath: qualityStoragePath, // Store path for master playlist
+          completedAt: completedAtTimestamp
+        }
+      ];
+    }
 
     // Create/update master playlist with all completed qualities
     const createAbsoluteUrl = (storagePath: string) => {
@@ -1997,8 +2195,27 @@ export const processQualityLevel = onRequest({
       '#EXT-X-VERSION:3'
     ];
 
+    // Remove duplicates by quality name before generating master playlist
+    const uniqueQualities = updatedQualityLevels.reduce((acc: any[], q: any) => {
+      const existing = acc.find((existing: any) => existing.name === q.name);
+      if (!existing) {
+        acc.push(q);
+      } else {
+        // Keep the most recent one (with latest completedAt)
+        const existingIndex = acc.indexOf(existing);
+        if (q.completedAt && existing.completedAt) {
+          const qTime = q.completedAt.toMillis ? q.completedAt.toMillis() : q.completedAt;
+          const existingTime = existing.completedAt.toMillis ? existing.completedAt.toMillis() : existing.completedAt;
+          if (qTime > existingTime) {
+            acc[existingIndex] = q; // Replace with newer entry
+          }
+        }
+      }
+      return acc;
+    }, []);
+
     // Sort qualities by bandwidth (lowest first)
-    updatedQualityLevels
+    uniqueQualities
       .sort((a, b) => (a.bandwidth || 0) - (b.bandwidth || 0))
       .forEach((q: any) => {
         // Use storagePath from quality level (stored in Firestore)
@@ -2023,13 +2240,32 @@ export const processQualityLevel = onRequest({
     });
     fs.unlinkSync(masterPlaylistLocal);
 
+    // Remove duplicates from qualityLevels before storing (in case of existing duplicates)
+    const uniqueQualityLevels = updatedQualityLevels.reduce((acc: any[], q: any) => {
+      const existing = acc.find((existing: any) => existing.name === q.name);
+      if (!existing) {
+        acc.push(q);
+      } else {
+        // Keep the most recent one (with latest completedAt)
+        const existingIndex = acc.indexOf(existing);
+        if (q.completedAt && existing.completedAt) {
+          const qTime = q.completedAt.toMillis ? q.completedAt.toMillis() : q.completedAt;
+          const existingTime = existing.completedAt.toMillis ? existing.completedAt.toMillis() : existing.completedAt;
+          if (qTime > existingTime) {
+            acc[existingIndex] = q; // Replace with newer entry
+          }
+        }
+      }
+      return acc;
+    }, []);
+
     // Update Firestore
     const updateData: any = {
       sources: {
         ...currentSources,
         hlsMaster: masterPlaylistStorage
       },
-      qualityLevels: updatedQualityLevels,
+      qualityLevels: uniqueQualityLevels, // Store unique qualities only
     };
 
     // Check if this was the last quality
@@ -2037,14 +2273,26 @@ export const processQualityLevel = onRequest({
       updateData.backgroundProcessingStatus = 'completed';
       updateData.backgroundProcessingCompleted = FieldValue.serverTimestamp();
       updateData.transcodingMessage = 'All qualities ready';
+      
+      // Get unique quality names to calculate accurate summary (use uniqueQualityLevels from above)
+      const uniqueQualityNames = new Set(uniqueQualityLevels.map((q: any) => q.name));
+      const uniqueQualityCount = uniqueQualityNames.size;
+      
       updateData.backgroundProcessingSummary = {
         totalExpected: currentData?.backgroundProcessingTargetQualities?.length || 1,
-        succeeded: updatedQualityLevels.length,
+        succeeded: uniqueQualityCount, // Use unique count to avoid duplicates
         failed: currentData?.failedQualities?.length || 0,
         completedAt: Timestamp.now() // Use Timestamp.now() instead of FieldValue for nested objects
       };
+      
+      // Set transcodeStatus to 'ready' when all background processing completes
+      // This ensures status sync between transcodeStatus and backgroundProcessingStatus
+      updateData.transcodeStatus = 'ready';
+      updateData.transcodeUpdatedAt = FieldValue.serverTimestamp();
+      
+      console.log(`✅ [WORKER] All background processing completed - setting transcodeStatus to 'ready'`);
     } else {
-      updateData.transcodingMessage = `${updatedQualityLevels.length} quality levels ready, ${remainingQualities.length} remaining...`;
+      updateData.transcodingMessage = `${uniqueQualityLevels.length} quality levels ready, ${remainingQualities.length} remaining...`;
     }
 
     await mediaRef.set(updateData, { merge: true });

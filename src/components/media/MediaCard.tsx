@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Heart, MessageCircle, Tag, Play, Share2, Download, MoreHorizontal, EyeOff, Eye, Trash2 } from 'lucide-react';
+import { Heart, MessageCircle, Tag, Play, Share2, Download, MoreHorizontal, EyeOff, Eye, Trash2, Check } from 'lucide-react';
 import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../config/firebase';
@@ -13,8 +13,21 @@ import { storage } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '../ConfirmDialog';
 import { useImageOrientation } from '../../utils/imageOrientation';
+import { getResponsiveThumbnailSrcSet, isFirebaseStorageUrl, getThumbnailUrl } from '../../utils/thumbnailUtils';
 
-export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>void }) {
+export default function MediaCard({ 
+  media, 
+  onOpen,
+  selectionMode = false,
+  selected = false,
+  onToggleSelect
+}: {
+  media: any;
+  onOpen?: () => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (mediaId: string) => void;
+}) {
   const { currentUser } = useAuth();
   const canEngage = !!currentUser && (currentUser.role === 'member' || currentUser.role === 'admin');
   const { correctImageOrientation } = useImageOrientation();
@@ -64,48 +77,18 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
   useEffect(() => {
     if (!media.id) return;
     
-    console.log('🔄 [DEBUG] Setting up real-time sync for media:', {
-      mediaId: media.id,
-      currentStatus: media.transcodeStatus,
-      mediaType: media.type
-    });
-    
     const unsubscribe = onSnapshot(
       doc(db, 'media', media.id),
       (docSnapshot) => {
         if (docSnapshot.exists()) {
           const serverData = docSnapshot.data();
           
-          console.log('🔄 [DEBUG] Real-time update received:', {
-            mediaId: media.id,
-            serverStatus: serverData.transcodeStatus,
-            localStatus: localMedia.transcodeStatus,
-            hasHls: !!serverData.sources?.hls,
-            hasThumbnailPath: !!serverData.thumbnailPath,
-            hasRotatedImagePath: !!serverData.rotatedImagePath,
-            serverDataKeys: Object.keys(serverData)
-          });
-          
           setLocalMedia((prev: any) => {
-            console.log('🔄 [DEBUG] Updating localMedia from:', prev.transcodeStatus, 'to:', serverData.transcodeStatus);
             return {
               ...prev,
               ...serverData
             };
           });
-          
-          // Debug: Log status changes
-          if (serverData.transcodeStatus !== media.transcodeStatus) {
-            console.log('🔄 [DEBUG] Status change detected:', {
-              mediaId: media.id,
-              oldStatus: media.transcodeStatus,
-              newStatus: serverData.transcodeStatus,
-              hasHls: !!serverData.sources?.hls,
-              changeReason: 'Real-time sync'
-            });
-          }
-        } else {
-          console.log('🔄 [DEBUG] Document does not exist for media:', media.id);
         }
       },
       (error: any) => {
@@ -116,90 +99,75 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
     return unsubscribe;
   }, [media.id, media.transcodeStatus]);
   
-  // Load thumbnail URL - prioritize extension-generated thumbnails
+  // Load thumbnail URL - wait for Firestore flags (no more 404s!)
   useEffect(() => {
-    console.log('🖼️ [DEBUG] Loading thumbnail for media:', {
-      mediaId: localMedia.id,
-      mediaType: localMedia.type,
-      hasThumbnailPath: !!localMedia.thumbnailPath,
-      thumbnailPath: localMedia.thumbnailPath,
-      filePath: localMedia.filePath,
-      originalUrl: localMedia.url,
-      isImage: localMedia.type === 'image'
-    });
-
     setIsThumbnailLoading(true);
     
-    // For images: Try extension-generated thumbnails first
-    if (localMedia.type === 'image' && localMedia.filePath) {
-      // Generate extension thumbnail path: media/userId/batchId/thumbnails/image_800x800.webp
-      const fileName = localMedia.filePath.split('/').pop(); // Get just the filename
-      const folderPath = localMedia.filePath.substring(0, localMedia.filePath.lastIndexOf('/'));
-      const baseName = fileName.substring(0, fileName.lastIndexOf('.')); // Remove extension
-      const extensionThumbnailPath = `${folderPath}/thumbnails/${baseName}_800x800.webp`;
-      
-      console.log('🖼️ [DEBUG] Trying extension thumbnail (correct path):', extensionThumbnailPath);
-      
-      getDownloadURL(ref(storage, extensionThumbnailPath))
-        .then(url => {
-          console.log('🖼️ [DEBUG] Extension thumbnail loaded:', url);
-          setThumbnailUrl(url);
-          setIsThumbnailLoading(false);
-        })
-        .catch(error => {
-          // 404 is expected - Firebase Extension processes thumbnails asynchronously
-          // The thumbnail may not exist yet when we first check
-          const is404 = error?.code === 'storage/object-not-found' || 
-                       error?.message?.includes('404') ||
-                       error?.code === 404;
-          
-          if (!is404) {
-            // Only log non-404 errors (unexpected issues)
-            console.warn('🖼️ [DEBUG] Extension thumbnail error (non-404):', error);
-          } else {
-            console.log('🖼️ [DEBUG] Extension thumbnail not yet generated (expected), trying fallbacks');
-          }
-          
-          // Fallback to custom thumbnail or original
-          if (localMedia.thumbnailPath) {
-            getDownloadURL(ref(storage, localMedia.thumbnailPath))
-              .then(url => {
-                console.log('🖼️ [DEBUG] Custom thumbnail loaded:', url);
-                setThumbnailUrl(url);
-                setIsThumbnailLoading(false);
-              })
-              .catch(() => {
-                console.log('🖼️ [DEBUG] Using original image');
-                setThumbnailUrl(localMedia.url);
-                setIsThumbnailLoading(false);
-              });
-          } else {
-            setThumbnailUrl(localMedia.url);
-            setIsThumbnailLoading(false);
-          }
-        });
-    } else {
-      // For videos or images without filePath: Use existing logic
-      if (localMedia.thumbnailPath) {
-        console.log('🖼️ [DEBUG] Using existing thumbnailPath:', localMedia.thumbnailPath);
-        getDownloadURL(ref(storage, localMedia.thumbnailPath))
+    // For images: Wait for Firestore thumbnail flags (no polling, no 404s!)
+    if (localMedia.type === 'image' && localMedia.url) {
+      // Check if medium thumbnail is ready (preferred size for cards)
+      if (localMedia.thumbnails?.mediumReady && localMedia.thumbnails?.mediumPath) {
+        getDownloadURL(ref(storage, localMedia.thumbnails.mediumPath))
           .then(url => {
-            console.log('🖼️ [DEBUG] Thumbnail URL resolved:', url);
             setThumbnailUrl(url);
             setIsThumbnailLoading(false);
           })
           .catch(error => {
-            console.warn('🖼️ [DEBUG] Failed to load thumbnail, using original URL:', error);
+            console.warn('🖼️ Error loading medium thumbnail, falling back:', error);
+            setThumbnailUrl(localMedia.url);
+            setIsThumbnailLoading(false);
+          });
+      }
+      // Check if small thumbnail is ready (fallback)
+      else if (localMedia.thumbnails?.smallReady && localMedia.thumbnails?.smallPath) {
+        getDownloadURL(ref(storage, localMedia.thumbnails.smallPath))
+          .then(url => {
+            setThumbnailUrl(url);
+            setIsThumbnailLoading(false);
+          })
+          .catch(error => {
+            console.warn('🖼️ Error loading small thumbnail, falling back:', error);
+            setThumbnailUrl(localMedia.url);
+            setIsThumbnailLoading(false);
+          });
+      }
+      // Check if large thumbnail is ready (fallback)
+      else if (localMedia.thumbnails?.largeReady && localMedia.thumbnails?.largePath) {
+        getDownloadURL(ref(storage, localMedia.thumbnails.largePath))
+          .then(url => {
+            setThumbnailUrl(url);
+            setIsThumbnailLoading(false);
+          })
+          .catch(error => {
+            console.warn('🖼️ Error loading large thumbnail, falling back:', error);
+            setThumbnailUrl(localMedia.url);
+            setIsThumbnailLoading(false);
+          });
+      }
+      // No thumbnails ready yet - use original (will update when thumbnail is ready via real-time listener)
+      else {
+        setThumbnailUrl(localMedia.url);
+        setIsThumbnailLoading(false);
+      }
+    } else {
+      // For videos or images without filePath: Use existing logic
+      if (localMedia.thumbnailPath) {
+        getDownloadURL(ref(storage, localMedia.thumbnailPath))
+          .then(url => {
+            setThumbnailUrl(url);
+            setIsThumbnailLoading(false);
+          })
+          .catch(error => {
+            console.warn('🖼️ Failed to load thumbnail, using original URL:', error);
             setThumbnailUrl(localMedia.url);
             setIsThumbnailLoading(false);
           });
       } else {
-        console.log('🖼️ [DEBUG] No thumbnailPath, using original URL:', localMedia.url);
         setThumbnailUrl(localMedia.url);
         setIsThumbnailLoading(false);
       }
     }
-  }, [localMedia.thumbnailPath, localMedia.url, localMedia.filePath, localMedia.type]);
+  }, [localMedia.thumbnailPath, localMedia.url, localMedia.filePath, localMedia.type, localMedia.thumbnails]);
 
   // Enhanced debugging for video playback issues (reduced logging)
   useEffect(() => {
@@ -473,7 +441,7 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
 
   const previewEl = useMemo(() => {
     return localMedia.type === 'video' ? (
-      <div className="relative" onDoubleClick={onDoubleTap} onClick={onOpen}>
+      <div className="relative" onDoubleClick={onDoubleTap} onClick={selectionMode ? undefined : onOpen}>
         {/* Show loading placeholder when no thumbnail yet and processing */}
         {localMedia.transcodeStatus === 'processing' && !localMedia.thumbnailPath && isThumbnailLoading ? (
           <div className="w-full h-full bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
@@ -506,8 +474,8 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
             </div>
           </>
         )}
-                 {/* Single status chip - prevents conflicting chips */}
-         {status && (
+                 {/* Status labels - can be enabled/disabled for development/debugging */}
+         {status && (import.meta.env.DEV || import.meta.env.VITE_SHOW_STATUS_LABELS === 'true') && (
            <div className={`absolute top-3 left-3 z-10 px-3 py-1.5 text-white text-xs font-medium rounded-full shadow-lg flex items-center gap-2
                           ${status.color === 'green' ? 'bg-green-500' :
                                     status.color === 'purple' ? 'bg-[#F25129]' :
@@ -524,31 +492,100 @@ export default function MediaCard({ media, onOpen }:{ media:any; onOpen?:()=>voi
           <div className="text-gray-400">Loading...</div>
         </div>
       ) : (
-        <img 
-          src={thumbnailUrl} 
-          alt={localMedia.title} 
-          loading="lazy" 
-          onDoubleClick={onDoubleTap} 
-          onClick={onOpen}
-          onLoad={(e) => {
-            console.log('🖼️ [DEBUG] Image onLoad triggered:', {
-              mediaId: localMedia.id,
-              src: e.currentTarget.src,
-              naturalDimensions: `${e.currentTarget.naturalWidth}x${e.currentTarget.naturalHeight}`,
-              displayDimensions: `${e.currentTarget.clientWidth}x${e.currentTarget.clientHeight}`,
-              cssImageOrientation: getComputedStyle(e.currentTarget).imageOrientation
-            });
-            correctImageOrientation(e.currentTarget);
-          }}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
-        />
+        (() => {
+          // Generate responsive srcset for images with Firebase Storage URLs
+          const originalUrl = localMedia.url;
+          // Only use srcset if we have a valid thumbnail (not the original image as fallback)
+          // This prevents srcset from trying to load URLs without tokens when falling back to original
+          const hasValidThumbnail = thumbnailUrl && thumbnailUrl !== originalUrl;
+          const useResponsiveSrcSet = localMedia.type === 'image' && isFirebaseStorageUrl(originalUrl) && hasValidThumbnail;
+          
+          // Build image props with responsive srcset if applicable
+          // Use thumbnailUrl as fallback src (already loaded/verified by existing logic)
+          const imageSrc = thumbnailUrl;
+          
+          const imageSrcSet = useResponsiveSrcSet 
+            ? getResponsiveThumbnailSrcSet(originalUrl)
+            : undefined;
+          
+          const imageSizes = useResponsiveSrcSet
+            ? '(max-width: 640px) 400px, (max-width: 1024px) 800px, 1200px'
+            : undefined;
+          
+          return (
+            <img 
+              src={imageSrc}
+              srcSet={imageSrcSet}
+              sizes={imageSizes}
+              alt={localMedia.title} 
+              loading="lazy" 
+              onDoubleClick={onDoubleTap} 
+              onClick={selectionMode ? undefined : onOpen}
+              onLoad={(e) => {
+                correctImageOrientation(e.currentTarget);
+              }}
+              onError={(e) => {
+                const img = e.currentTarget;
+                console.warn('🖼️ [DEBUG] Image load error:', {
+                  mediaId: localMedia.id,
+                  failedSrc: img.src,
+                  currentSrc: img.currentSrc,
+                  srcsetUsed: useResponsiveSrcSet
+                });
+                
+                // If thumbnail failed, fallback to original image
+                if (img.src !== localMedia.url && thumbnailUrl !== localMedia.url) {
+                  console.log('🖼️ [DEBUG] Falling back to original image URL');
+                  img.src = localMedia.url;
+                  // Remove srcset to prevent browser from trying other sizes
+                  img.srcset = '';
+                } else {
+                  console.error('🖼️ [DEBUG] Original image also failed to load');
+                }
+              }}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+            />
+          );
+        })()
       )
     );
-  }, [localMedia, onOpen, liked, thumbnailUrl, isThumbnailLoading, status, localMedia.transcodeStatus]);
+  }, [localMedia, onOpen, liked, thumbnailUrl, isThumbnailLoading, status, localMedia.transcodeStatus, selectionMode]);
+
+  // Handle card click - toggle selection in selection mode, otherwise open lightbox
+  const handleCardClick = (e: React.MouseEvent) => {
+    if (selectionMode && onToggleSelect) {
+      e.stopPropagation();
+      onToggleSelect(media.id);
+    } else if (onOpen && !selectionMode) {
+      onOpen();
+    }
+  };
 
   return (
-          <div className="bg-white/80 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border border-[#F25129]/20 group" data-media-card>
+    <div 
+      className={`bg-white/80 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden border ${
+        selectionMode 
+          ? selected 
+            ? 'border-[#F25129] border-4' 
+            : 'border-gray-300'
+          : 'border-[#F25129]/20'
+      } group ${selectionMode ? 'cursor-pointer' : ''}`}
+      data-media-card
+      onClick={handleCardClick}
+    >
       <div className="relative aspect-square overflow-hidden">
+        {/* Selection checkbox overlay */}
+        {selectionMode && (
+          <div className="absolute top-2 left-2 z-20">
+            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+              selected 
+                ? 'bg-[#F25129] border-[#F25129]' 
+                : 'bg-white/90 border-gray-400'
+            }`}>
+              {selected && <Check className="w-4 h-4 text-white" />}
+            </div>
+          </div>
+        )}
         {previewEl}
         <div className="absolute top-3 right-3 flex gap-2">
           <button onClick={(e) => {

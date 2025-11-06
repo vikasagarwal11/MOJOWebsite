@@ -289,12 +289,15 @@ export class AdminThreadDeletionService {
                     try {
                       const thumbnailsList = await listAll(thumbnailsListRef);
                       
-                      // Find thumbnails that contain the original filename and end with _400x400
+                      // Find thumbnails that contain the original filename for all sizes: 400x400, 800x800, 1200x1200
+                      const thumbnailSizes = ['_400x400', '_800x800', '_1200x1200'];
                       const matchingThumbnails = thumbnailsList.items.filter(item => {
                         const itemName = item.name;
                         // Check if this thumbnail corresponds to our original file
-                        // Pattern: [timestamp]_[original-filename]_400x400.[extension]
-                        return itemName.includes(fileName.replace(/\.[^/.]+$/, '')) && itemName.includes('_400x400');
+                        // Pattern: [timestamp]_[original-filename]_{size}.[extension]
+                        const baseNameMatch = itemName.includes(fileName.replace(/\.[^/.]+$/, ''));
+                        const sizeMatch = thumbnailSizes.some(size => itemName.includes(size));
+                        return baseNameMatch && sizeMatch;
                       });
                       
                       console.log(`🔍 [AdminThreadDeletion] Found ${matchingThumbnails.length} matching comment thumbnails for ${fileName}`);

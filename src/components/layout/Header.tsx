@@ -53,7 +53,7 @@ const Header: React.FC = () => {
   const navigation = [
     { name: 'Home', href: '/' },
     { name: 'Events', href: '/events' },
-    { name: 'Events (Read-Only)', href: '/events-readonly' },
+    // { name: 'Events (Read-Only)', href: '/events-readonly' }, // Hidden for now
     { name: 'Media', href: '/media' },
     { name: 'Posts', href: '/posts' },
     { name: 'About Us', href: '/about' },

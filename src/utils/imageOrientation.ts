@@ -45,35 +45,11 @@ export function useImageOrientation() {
   const correctImageOrientation = React.useCallback(async (img: HTMLImageElement) => {
     if (!img || !img.isConnected) return;
 
-    console.log('🖼️ [DEBUG] Image orientation check triggered:', {
-      src: img.src,
-      naturalWidth: img.naturalWidth,
-      naturalHeight: img.naturalHeight,
-      clientWidth: img.clientWidth,
-      clientHeight: img.clientHeight,
-      currentTransform: img.style.transform,
-      cssImageOrientation: getComputedStyle(img).imageOrientation,
-      alreadyProcessed: img.dataset.oriented === '1'
-    });
-
     // Check if already processed
     if (img.dataset.oriented === '1') {
-      console.log('🖼️ [DEBUG] Image already processed, skipping');
       return;
     }
 
-    // Check what CSS is doing
-    const computedStyle = getComputedStyle(img);
-    const cssImageOrientation = computedStyle.imageOrientation;
-    
-    console.log('🖼️ [DEBUG] CSS image-orientation value:', cssImageOrientation);
-    console.log('🖼️ [DEBUG] Image natural dimensions:', img.naturalWidth, 'x', img.naturalHeight);
-    console.log('🖼️ [DEBUG] Image display dimensions:', img.clientWidth, 'x', img.clientHeight);
-    console.log('🖼️ [DEBUG] Image current transform:', img.style.transform || 'none');
-    
-    // Let CSS handle it, but log what's happening
-    console.log('🖼️ [DEBUG] Letting CSS handle rotation via image-orientation: from-image');
-    
     // Mark as processed to prevent any other rotation attempts
     img.dataset.oriented = '1';
     
