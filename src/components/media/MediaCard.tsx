@@ -13,6 +13,7 @@ import toast from 'react-hot-toast';
 import ConfirmDialog from '../ConfirmDialog';
 import { useImageOrientation } from '../../utils/imageOrientation';
 import { getResponsiveThumbnailSrcSet, isFirebaseStorageUrl, getThumbnailUrl } from '../../utils/thumbnailUtils';
+import { requestWatermarkedDownload } from '../../services/mediaDownloadService';
 
 export default function MediaCard({ 
   media, 
@@ -51,6 +52,7 @@ export default function MediaCard({
   const [isMobile, setIsMobile] = useState(() => 
     typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false
   );
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -318,6 +320,49 @@ export default function MediaCard({
       setLiked(v => !v); 
       setLikesCount(c => c + (liked ? 1 : -1));
       toast.error(e?.message || 'Failed to update like');
+    }
+  };
+
+  const handleDownloadMedia = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (isDownloading) return;
+    
+    const toastId = 'watermark-download';
+    try {
+      setIsDownloading(true);
+      
+      // Show loading toast for first-time generation
+      toast.loading('Preparing watermarked download...', { id: toastId });
+      
+      const { url, isCached } = await requestWatermarkedDownload(localMedia.id);
+      
+      // Build filename with _watermarked suffix
+      const originalFilename = localMedia.filePath?.split('/').pop() || `${localMedia.title || 'media'}`;
+      const ext = originalFilename.includes('.') ? originalFilename.substring(originalFilename.lastIndexOf('.')) : '';
+      const baseName = ext ? originalFilename.substring(0, originalFilename.lastIndexOf('.')) : originalFilename;
+      const filename = `${baseName}_watermarked${ext}`;
+      
+      if (isCached) {
+        toast.success('Download ready!', { id: toastId, duration: 2000 });
+      } else {
+        toast.success('Watermarked copy generated!', { id: toastId, duration: 2000 });
+      }
+      
+      if (isMobile) {
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error: any) {
+      console.error('Failed to download watermarked media:', error);
+      toast.error(error?.message || 'Failed to download media', { id: toastId });
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -598,20 +643,14 @@ export default function MediaCard({
         )}
         {previewEl}
         <div className="absolute top-3 right-3 flex gap-2">
-          <a 
-            href={localMedia.url} 
-            download={isMobile ? (localMedia.filePath?.split('/').pop() || undefined) : undefined}
-            target={!isMobile ? '_blank' : undefined}
-            rel={!isMobile ? 'noopener noreferrer' : undefined}
-            onClick={(e) => {
-              e.stopPropagation();
-              // On desktop, open in new tab; on mobile, download directly
-            }} 
-            className="p-2 rounded-full bg-white/90 hover:bg-white"
+          <button
+            onClick={handleDownloadMedia}
+            disabled={isDownloading}
+            className={`p-2 rounded-full bg-white/90 hover:bg-white transition-colors ${isDownloading ? 'opacity-70 cursor-wait' : ''}`}
             title="Download"
           >
-            <Download className="w-4 h-4 text-gray-700" />
-          </a>
+            <Download className={`w-4 h-4 ${isDownloading ? 'text-gray-400 animate-pulse' : 'text-gray-700'}`} />
+          </button>
           {canModerate && (
             <div className="relative admin-menu">
               <button onClick={(e) => {

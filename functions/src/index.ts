@@ -1,9 +1,9 @@
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onDocumentWritten, onDocumentDeleted, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
-import { onCall, onRequest } from "firebase-functions/v2/https";
+import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, Timestamp, DocumentData } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { CloudTasksClient } from "@google-cloud/tasks";
 import * as path from 'node:path';
@@ -14,6 +14,7 @@ import ffmpegStatic from 'ffmpeg-static';
 import ffprobe from '@ffprobe-installer/ffprobe';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
+const fsp = fs.promises;
 
 // Set global options for all functions - set to us-east1 to match prod bucket
 setGlobalOptions({ region: 'us-east1' });
@@ -151,9 +152,16 @@ const sendPromotionNotifications = async (
 
 // Get Firestore instance - using momsfitnessmojo database
 const db = getFirestore();
+type StorageBucket = ReturnType<ReturnType<typeof getStorage>['bucket']>;
 
 // Helper
 const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+// Watermark configuration
+const WATERMARK_FOLDER = process.env.WATERMARK_FOLDER || 'watermarked';
+const WATERMARK_TEXT = process.env.WATERMARK_TEXT || 'Moms Fitness Mojo';
+const WATERMARK_URL_TTL_SECONDS = Number(process.env.WATERMARK_URL_TTL || 60 * 60); // 1 hour
+const WATERMARK_VIDEO_PRESET = process.env.WATERMARK_VIDEO_PRESET || 'veryfast';
 
 // ───────────────── SMART ENCODING PRESETS ─────────────────
 interface EncodingPreset {
@@ -2766,6 +2774,313 @@ ${aiPrompts.tone ? `\nTONE: ${aiPrompts.tone}` : ''}`;
       success: false,
       error: error?.message || 'Failed to generate suggestions. Please try again or write your own testimonial.'
     };
+  }
+});
+
+// ───────────────── WATERMARKED DOWNLOADS ─────────────────
+
+const escapeSvgText = (text: string): string =>
+  text.replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+
+const sanitizeFilename = (name: string): string => {
+  const normalized = name
+    .replace(/[^a-z0-9._-]+/gi, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return normalized || 'media';
+};
+
+const determineMediaType = (mediaData: DocumentData): 'image' | 'video' | null => {
+  const declaredType = typeof mediaData.type === 'string' ? mediaData.type.toLowerCase() : '';
+  if (declaredType === 'image' || declaredType === 'video') {
+    return declaredType;
+  }
+
+  const mime = (mediaData.mimeType || mediaData.contentType || '').toLowerCase();
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+
+  const ext = path.extname(mediaData.filePath || '').toLowerCase();
+  if (['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif'].includes(ext)) return 'image';
+  if (['.mp4', '.mov', '.m4v', '.webm', '.mkv'].includes(ext)) return 'video';
+
+  return null;
+};
+
+const buildWatermarkPaths = (
+  originalPath: string,
+  mediaData: DocumentData,
+  mediaId: string,
+  mediaType: 'image' | 'video'
+) => {
+  const fallbackExt = mediaType === 'image' ? '.jpg' : '.mp4';
+  const ext = path.extname(originalPath) || fallbackExt;
+  const baseDir = originalPath.includes('/') ? originalPath.substring(0, originalPath.lastIndexOf('/')) : '';
+  const storageFileName = `${path.basename(originalPath, ext) || mediaId}_watermarked${ext}`;
+  const storagePath = baseDir
+    ? `${baseDir}/${WATERMARK_FOLDER}/${storageFileName}`
+    : `${WATERMARK_FOLDER}/${storageFileName}`;
+  const downloadBase = sanitizeFilename(mediaData.originalFileName || mediaData.title || path.basename(originalPath, ext));
+  const downloadName = `${downloadBase}_watermarked${ext}`;
+
+  return { storagePath, downloadName, ext };
+};
+
+const guessMimeType = (ext: string, defaultType: 'image' | 'video'): string => {
+  const normalized = ext.toLowerCase();
+  const map: Record<string, string> = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.mp4': 'video/mp4',
+    '.mov': 'video/quicktime',
+    '.m4v': 'video/x-m4v',
+    '.webm': 'video/webm',
+    '.mkv': 'video/x-matroska'
+  };
+  if (map[normalized]) return map[normalized];
+  return defaultType === 'image' ? 'image/jpeg' : 'video/mp4';
+};
+
+const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+
+const buildWatermarkSvg = (targetWidth: number): string => {
+  const width = Math.max(Math.round(targetWidth), 320);
+  const fontSize = clamp(Math.round(width * 0.045), 36, 72);
+  const paddingX = Math.round(fontSize * 1.1);
+  const paddingY = Math.round(fontSize * 0.75);
+  const height = Math.round(fontSize * 2.6);
+  const cornerRadius = Math.round(height * 0.3);
+  const text = escapeSvgText(WATERMARK_TEXT);
+  const textX = width - paddingX;
+  const textY = height - paddingY;
+
+  return `
+<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="${width}" height="${height}" rx="${cornerRadius}" fill="#000" fill-opacity="0.32" />
+  <text x="${textX}" y="${textY}" font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}"
+    text-anchor="end" fill="#FFFFFF" fill-opacity="0.92" font-weight="700">${text}</text>
+</svg>
+`.trim();
+};
+
+const cleanupTempFiles = async (...pathsToDelete: Array<string | undefined>): Promise<void> => {
+  await Promise.all(
+    pathsToDelete
+      .filter((p): p is string => Boolean(p))
+      .map((tempPath) => fsp.unlink(tempPath).catch(() => undefined))
+  );
+};
+
+const applyImageWatermark = async (sourcePath: string, outputPath: string): Promise<void> => {
+  const metadata = await sharp(sourcePath).metadata();
+  const orientation = metadata.orientation || 1;
+  const rawWidth = metadata.width || 1600;
+  const rawHeight = metadata.height || Math.max(Math.round(rawWidth * 0.75), 900);
+  const rotated = [5, 6, 7, 8].includes(orientation);
+  const effectiveWidth = rotated ? rawHeight : rawWidth;
+  const targetWidth = clamp(effectiveWidth * 0.35, 480, 1280);
+  const svg = buildWatermarkSvg(targetWidth);
+
+  await sharp(sourcePath)
+    .rotate() // honor EXIF orientation before compositing
+    .composite([{ input: Buffer.from(svg), gravity: 'southeast' }])
+    .withMetadata() // preserve metadata after rotation
+    .toFile(outputPath);
+};
+
+const createWatermarkOverlayFile = async (): Promise<string> => {
+  const svg = buildWatermarkSvg(720);
+  const overlayPath = path.join(os.tmpdir(), `wm-overlay-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
+  await sharp(Buffer.from(svg)).png().toFile(overlayPath);
+  return overlayPath;
+};
+
+const applyVideoWatermark = async (sourcePath: string, outputPath: string): Promise<void> => {
+  const overlayPath = await createWatermarkOverlayFile();
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(sourcePath)
+        .input(overlayPath)
+        .complexFilter([
+          {
+            filter: 'overlay',
+            options: {
+              x: 'main_w-overlay_w-48',
+              y: 'main_h-overlay_h-48',
+            },
+          },
+        ])
+        .outputOptions([
+          '-c:v libx264',
+          `-preset ${WATERMARK_VIDEO_PRESET}`,
+          '-crf 21',
+          '-c:a copy',
+          '-movflags +faststart',
+        ])
+        .output(outputPath)
+        .on('error', reject)
+        .on('end', resolve)
+        .run();
+    });
+  } finally {
+    await cleanupTempFiles(overlayPath);
+  }
+};
+
+const tryReuseCachedWatermark = async (bucket: StorageBucket, pathToFile?: string) => {
+  if (!pathToFile) return null;
+  const file = bucket.file(pathToFile);
+  const [exists] = await file.exists();
+  if (!exists) return null;
+
+  const expiresAt = Date.now() + WATERMARK_URL_TTL_SECONDS * 1000;
+  const [url] = await file.getSignedUrl({
+    action: 'read',
+    expires: new Date(expiresAt),
+  });
+
+  return { url, expiresAt };
+};
+
+export const getWatermarkedMedia = onCall({
+  region: 'us-east1',
+  memory: '4GiB',
+  timeoutSeconds: 540,
+  cpu: 2,
+  maxInstances: 10,
+}, async (request) => {
+  const mediaId = typeof request.data?.mediaId === 'string' ? request.data.mediaId.trim() : '';
+
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Please sign in to download media.');
+  }
+
+  if (!mediaId) {
+    throw new HttpsError('invalid-argument', 'mediaId is required.');
+  }
+
+  const docRef = db.collection('media').doc(mediaId);
+  const mediaSnap = await docRef.get();
+
+  if (!mediaSnap.exists) {
+    throw new HttpsError('not-found', 'Media not found.');
+  }
+
+  const mediaData = mediaSnap.data() || {};
+  const mediaType = determineMediaType(mediaData);
+  const filePath: string | undefined = mediaData.filePath;
+
+  if (!mediaType) {
+    throw new HttpsError('failed-precondition', 'Unsupported media type.');
+  }
+
+  if (!filePath) {
+    throw new HttpsError('failed-precondition', 'Media is missing storage path.');
+  }
+
+  // Require STORAGE_BUCKET env var - fail fast if not set
+  const bucketName = process.env.STORAGE_BUCKET;
+  if (!bucketName) {
+    throw new HttpsError('internal', 'Storage bucket not configured. STORAGE_BUCKET environment variable is required.');
+  }
+  const bucket = getStorage().bucket(bucketName);
+  const { storagePath, downloadName, ext } = buildWatermarkPaths(filePath, mediaData, mediaId, mediaType);
+
+  const cached =
+    (await tryReuseCachedWatermark(bucket, mediaData?.watermarkedDownload?.path)) ||
+    (await tryReuseCachedWatermark(bucket, storagePath));
+
+  if (cached) {
+    console.log('📦 [WATERMARK] Using cached copy for media:', mediaId);
+    if (!mediaData?.watermarkedDownload?.path) {
+      await docRef.set(
+        {
+          watermarkedDownload: {
+            path: storagePath,
+            cacheSource: 'bucket-only',
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+        },
+        { merge: true }
+      );
+    }
+    // Return cached URL with flag indicating it's cached
+    return { ...cached, isCached: true };
+  }
+
+  console.log('🆕 [WATERMARK] Generating new watermarked copy for media:', mediaId);
+
+  const tmpOriginal = path.join(os.tmpdir(), `wm-source-${mediaId}-${Date.now()}${ext}`);
+  const tmpWatermarked = path.join(os.tmpdir(), `wm-output-${mediaId}-${Date.now()}${ext}`);
+
+  try {
+    await bucket.file(filePath).download({ destination: tmpOriginal });
+  } catch (error) {
+    console.error('❌ [WATERMARK] Failed to download source file', { mediaId, filePath, error });
+    await cleanupTempFiles(tmpOriginal, tmpWatermarked);
+    throw new HttpsError('internal', 'Unable to download source media.');
+  }
+
+  try {
+    if (mediaType === 'image') {
+      await applyImageWatermark(tmpOriginal, tmpWatermarked);
+    } else {
+      await applyVideoWatermark(tmpOriginal, tmpWatermarked);
+    }
+
+    const contentType = mediaData.mimeType || mediaData.contentType || guessMimeType(ext, mediaType);
+
+    await bucket.upload(tmpWatermarked, {
+      destination: storagePath,
+      metadata: {
+        contentType,
+        cacheControl: 'private, max-age=3600',
+        contentDisposition: `attachment; filename="${downloadName}"`,
+        metadata: {
+          watermark: 'true',
+          originalMediaId: mediaId,
+        },
+      },
+    });
+
+    const fileStat = await fsp.stat(tmpWatermarked).catch(() => null);
+
+    await docRef.set(
+      {
+        watermarkedDownload: {
+          path: storagePath,
+          size: fileStat?.size ?? null,
+          mediaType,
+          updatedAt: FieldValue.serverTimestamp(),
+          generatedBy: request.auth.uid || null,
+        },
+      },
+      { merge: true }
+    );
+
+    const expiresAt = Date.now() + WATERMARK_URL_TTL_SECONDS * 1000;
+    const [url] = await bucket.file(storagePath).getSignedUrl({
+      action: 'read',
+      expires: new Date(expiresAt),
+    });
+
+    console.log('✅ [WATERMARK] Ready for download', { mediaId, path: storagePath });
+
+    // Return URL with flag indicating it was newly generated
+    return { url, expiresAt, isCached: false };
+  } catch (error) {
+    console.error('❌ [WATERMARK] Failed to generate watermark', { mediaId, error });
+    throw new HttpsError('internal', 'Failed to generate watermarked copy.');
+  } finally {
+    await cleanupTempFiles(tmpOriginal, tmpWatermarked);
   }
 });
 
