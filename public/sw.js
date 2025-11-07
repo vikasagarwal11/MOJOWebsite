@@ -1,5 +1,7 @@
 // Service Worker for Moms Fitness Mojo
-// Enhanced PWA service worker with advanced caching strategies
+// Enhanced PWA service worker with advanced caching strategies + Workbox helpers
+
+importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
 
 const CACHE_NAME = 'moms-fitness-mojo-v8';
 const STATIC_CACHE = 'moms-fitness-mojo-static-v8';
@@ -74,6 +76,41 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+let thumbnailStrategy = null;
+let hlsManifestStrategy = null;
+
+if (self.workbox) {
+  workbox.setConfig({ debug: false });
+  const { strategies, expiration, cacheableResponse } = workbox;
+
+  thumbnailStrategy = new strategies.StaleWhileRevalidate({
+    cacheName: 'thumbnail-cache-v1',
+    plugins: [
+      new expiration.ExpirationPlugin({
+        maxEntries: 120,
+        maxAgeSeconds: 60 * 60 * 24, // 24 hours
+      }),
+      new cacheableResponse.CacheableResponsePlugin({
+        statuses: [200],
+      }),
+    ],
+  });
+
+  hlsManifestStrategy = new strategies.NetworkFirst({
+    cacheName: 'hls-manifest-cache-v1',
+    networkTimeoutSeconds: 4,
+    plugins: [
+      new expiration.ExpirationPlugin({
+        maxEntries: 40,
+        maxAgeSeconds: 60 * 10, // 10 minutes
+      }),
+      new cacheableResponse.CacheableResponsePlugin({
+        statuses: [200],
+      }),
+    ],
+  });
+}
+
 self.addEventListener('fetch', (event) => {
   // Only handle GET requests
   if (event.request.method !== 'GET') {
@@ -81,14 +118,23 @@ self.addEventListener('fetch', (event) => {
   }
 
   const url = new URL(event.request.url);
+
+  if (thumbnailStrategy && url.pathname.includes('/thumbnails/')) {
+    event.respondWith(thumbnailStrategy.handle({ event, request: event.request }));
+    return;
+  }
+
+  if (hlsManifestStrategy && url.pathname.endsWith('.m3u8')) {
+    event.respondWith(hlsManifestStrategy.handle({ event, request: event.request }));
+    return;
+  }
   
-  // 🔥 CRITICAL: Bypass service worker for HLS streaming content
-  // HLS uses HTTP 206 (Partial Content) which can't be cached
-  const isHLS = url.pathname.includes('/hls/') || 
-                url.pathname.endsWith('.m3u8') || 
-                url.pathname.endsWith('.ts');
+  // 🔥 CRITICAL: Bypass service worker for HLS segment content
+  // Segments use HTTP 206 (Partial Content) which can't be cached
+  // Only bypass files in /hls/ folders that end with .ts (not all .ts files)
+  const isHlsSegment = url.pathname.includes('/hls/') && url.pathname.endsWith('.ts');
   
-  if (isHLS) {
+  if (isHlsSegment) {
     // Let HLS requests pass through to network without caching
     event.respondWith(fetch(event.request));
     return;

@@ -7,6 +7,8 @@ import { getDownloadURL, ref } from 'firebase/storage';
 import { storage } from '../../config/firebase';
 import { attachHls, detachHls } from '../../utils/hls';
 import { useImageOrientation } from '../../utils/imageOrientation';
+import toast from 'react-hot-toast';
+import { requestWatermarkedDownload } from '../../services/mediaDownloadService';
 
 type Props = {
   item: any;
@@ -42,6 +44,9 @@ export default function MediaLightbox({
   const [controlsVisible, setControlsVisible] = useState(true);
   const [videoLoading, setVideoLoading] = useState(false);
   const [showSoundHint, setShowSoundHint] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const lastTapTimeRef = useRef<number>(0);
+  const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const { correctImageOrientation } = useImageOrientation();
@@ -206,6 +211,15 @@ export default function MediaLightbox({
     };
   }, [isVideo, item?.sources?.hlsMaster, item?.sources?.hls, item?.url, item?.id]);
 
+  useEffect(() => {
+    return () => {
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+    };
+  }, []);
+
   // Auto-advance images
   useEffect(() => {
     if (!item || isVideo) return;
@@ -338,6 +352,48 @@ export default function MediaLightbox({
     debug: false         // Disable debug logs
   });
 
+  const handleDownloadMedia = async () => {
+    if (isDownloading) return;
+    
+    const toastId = 'watermark-download';
+    try {
+      setIsDownloading(true);
+      
+      // Show loading toast for first-time generation
+      toast.loading('Preparing watermarked download...', { id: toastId });
+      
+      const { url, isCached } = await requestWatermarkedDownload(item.id);
+      
+      // Build filename with _watermarked suffix
+      const originalFilename = item.filePath?.split('/').pop() || `${item.title || 'media'}`;
+      const ext = originalFilename.includes('.') ? originalFilename.substring(originalFilename.lastIndexOf('.')) : '';
+      const baseName = ext ? originalFilename.substring(0, originalFilename.lastIndexOf('.')) : originalFilename;
+      const filename = `${baseName}_watermarked${ext}`;
+      
+      if (isCached) {
+        toast.success('Download ready!', { id: toastId, duration: 2000 });
+      } else {
+        toast.success('Watermarked copy generated!', { id: toastId, duration: 2000 });
+      }
+      
+      if (isMobile) {
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error: any) {
+      console.error('Failed to download media:', error);
+      toast.error(error?.message || 'Failed to download media', { id: toastId });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   return (
     <div
       ref={rootRef}
@@ -367,9 +423,14 @@ export default function MediaLightbox({
               <button data-no-swipe onClick={() => shareUrl(item.url, item.title)} className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1">
                 <Share2 className="w-4 h-4" /> Share
               </button>
-              <a data-no-swipe href={item.url} download className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1">
-                <Download className="w-4 h-4" /> Download
-              </a>
+              <button
+                data-no-swipe
+                onClick={handleDownloadMedia}
+                disabled={isDownloading}
+                className={`px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1 ${isDownloading ? 'opacity-70 cursor-wait' : ''}`}
+              >
+                <Download className="w-4 h-4" /> {isDownloading ? 'Preparing…' : 'Download'}
+              </button>
             </div>
           )}
         </div>
@@ -427,66 +488,81 @@ export default function MediaLightbox({
                 onClick={(e) => {
                   e.stopPropagation();
                   if (!videoRef.current) return;
-                  // On mobile, double-tap to toggle mute, single tap to play/pause
-                  const now = Date.now();
-                  const lastClick = (videoRef.current as any).lastClickTime || 0;
-                  const timeSinceLastClick = now - lastClick;
-                  (videoRef.current as any).lastClickTime = now;
-                  
-                  if (isMobile && timeSinceLastClick < 300 && timeSinceLastClick > 0) {
-                    // Double-tap detected - toggle mute
-                    setIsMuted(m => !m);
-                    setShowSoundHint(false);
-                  } else {
-                    // Single tap - play/pause
-                    if (videoRef.current.paused) {
-                      videoRef.current.play().catch(() => {});
-                    } else {
-                      videoRef.current.pause();
+
+                  if (isMobile) {
+                    if (singleTapTimerRef.current) {
+                      clearTimeout(singleTapTimerRef.current);
+                      singleTapTimerRef.current = null;
                     }
+
+                    const now = Date.now();
+                    if (now - lastTapTimeRef.current < 280) {
+                      lastTapTimeRef.current = 0;
+                      setIsMuted((m) => !m);
+                      setShowSoundHint(false);
+                      return;
+                    }
+
+                    lastTapTimeRef.current = now;
+                    singleTapTimerRef.current = setTimeout(() => {
+                      if (!videoRef.current) return;
+                      if (videoRef.current.paused) {
+                        videoRef.current.play().catch(() => {});
+                      } else {
+                        videoRef.current.pause();
+                      }
+                      singleTapTimerRef.current = null;
+                    }, 240);
+                    return;
+                  }
+
+                  if (videoRef.current.paused) {
+                    videoRef.current.play().catch(() => {});
+                  } else {
+                    videoRef.current.pause();
                   }
                 }}
               />
             </div>
           ) : (
-            isMobile ? (
-              // NOTE: NO swipe handlers here; the stage handles them
-              <div className="lb-media">
-                <img
-                  key={item.id}
-                  src={rotatedImageUrl || item.url}
-                  alt={item.title || ''}
-                  className="w-full h-full object-contain rounded-2xl"
-                  draggable={false}
-                  data-no-swipe
-                  onLoad={(e) => correctImageOrientation(e.currentTarget)}
-                />
-              </div>
-            ) : (
-              <TransformWrapper
-                initialScale={1}
-                minScale={0.5}
-                maxScale={4}
-                centerOnInit
-                wheel={{ step: 0.1 }}
-                pinch={{ step: 5 }}
-                onTransformed={({ state }) => setScale(state.scale)}
+            <TransformWrapper
+              initialScale={1}
+              minScale={isMobile ? 1 : 0.5}
+              maxScale={isMobile ? 3 : 4}
+              centerOnInit
+              wheel={{ step: 0.1, disabled: isMobile }}
+              pinch={{ step: 5 }}
+              doubleClick={{ disabled: true }}
+              panning={{ velocity: true }}
+              onTransformed={({ state }) => setScale(state.scale)}
+            >
+              <TransformComponent
+                wrapperClass={isMobile ? 'relative w-full h-full' : undefined}
+                contentClass={isMobile ? 'w-full h-full' : undefined}
               >
-                <TransformComponent>
-                  <div className="lb-img-wrap">
-                    <img
-                      key={item.id}
-                      src={rotatedImageUrl || item.url}
-                      alt={item.title || ''}
-                      className="max-h-[85vh] max-w-[85vw] rounded-2xl object-contain"
-                      draggable={false}
-                      data-no-swipe
-                      onLoad={(e) => correctImageOrientation(e.currentTarget)}
-                    />
-                  </div>
-                </TransformComponent>
-              </TransformWrapper>
-            )
+                <div
+                  className={
+                    isMobile
+                      ? 'w-full h-full flex items-center justify-center bg-black'
+                      : 'lb-img-wrap'
+                  }
+                >
+                  <img
+                    key={item.id}
+                    src={rotatedImageUrl || item.url}
+                    alt={item.title || ''}
+                    className={
+                      isMobile
+                        ? 'max-h-full max-w-full object-contain rounded-2xl'
+                        : 'max-h-[85vh] max-w-[85vw] rounded-2xl object-contain'
+                    }
+                    draggable={false}
+                    data-no-swipe
+                    onLoad={(e) => correctImageOrientation(e.currentTarget)}
+                  />
+                </div>
+              </TransformComponent>
+            </TransformWrapper>
           )}
 
           {/* Next button (always visible) */}

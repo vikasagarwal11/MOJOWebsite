@@ -8,6 +8,7 @@ import {
   connectFirestoreEmulator
 } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 import { getPerformance } from 'firebase/performance';
 
@@ -119,6 +120,10 @@ export const db = initializeFirestore(app, {
 
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+export const functions = getFunctions(
+  app,
+  (import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-east1'
+);
 
 // Note: reCAPTCHA v2 configuration is now handled in src/utils/recaptcha.ts
 // and initialized early in main.tsx to prevent Enterprise probing
@@ -128,6 +133,7 @@ if (USING_EMULATORS) {
   try { connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true }); } catch {}
   try { connectFirestoreEmulator(db, '127.0.0.1', 8080); } catch {}
   try { connectStorageEmulator(storage, '127.0.0.1', 9199); } catch {}
+  try { connectFunctionsEmulator(functions, '127.0.0.1', 5001); } catch {}
 }
 
 export let analytics: Analytics | undefined;
