@@ -110,6 +110,21 @@ Server poster ready → Replace client thumbnail → Delete IndexedDB entry
 - ✅ Error handling with null fallback
 - ✅ IndexedDB cleanup after server poster arrives
 
+- [ ] **Integrated Editing** - Client-side image cropper and video trim tool
+  - *Status*: Planned
+  - *Impact*: High - Better content quality and creator experience
+  - *Effort*: 20 hours
+  - *Dependencies*: None
+  - *Description*: Plug in a client-side image cropper for cover/promo shots before upload, and a simple in-app trim tool for short videos so creators can polish without leaving the site.
+
+- [ ] **Manual Quality Selector (YouTube-style)** - User-controlled video quality selection
+  - *Status*: Future Consideration - Monitor user adoption before implementing
+  - *Impact*: Medium - User control over video quality and data usage
+  - *Effort*: 15-21 hours
+  - *Dependencies*: Current adaptive streaming implementation (already have)
+  - *Description*: Add manual quality selector (720p/1080p/4K) and "Auto" mode toggle, similar to YouTube. Users can manually select quality or use auto-adaptive streaming. Includes "Data Saver" mode option. Requires Firestore schema update to store individual quality paths, UI component for quality selection, HLS.js integration for manual level selection, and user preference persistence.
+  - *Note*: Defer implementation until user base grows. Current auto-adaptive streaming is sufficient for initial launch. Monitor user feedback and platform usage before investing in this feature.
+
 - [ ] **Add View Details Buttons** - Link event cards to individual pages
   - *Status*: Pending
   - *Impact*: Medium - Better navigation
@@ -1673,12 +1688,12 @@ const StripeIntegration = {
 
 ## 📊 Backlog Statistics
 
-- **Total Tasks**: 101
+- **Total Tasks**: 103
 - **Completed**: 12 (12%)
 - **Pending**: 8 (8%)
-- **Planned**: 81 (80%)
+- **Planned**: 83 (81%)
 - **High Priority**: 6 (2 existing + 4 new enhancements)
-- **Medium Priority**: 12 (6 existing + 6 new enhancements)
+- **Medium Priority**: 14 (6 existing + 8 new enhancements)
 - **Low Priority**: 7 (2 existing + 5 new enhancements)
 - **Advanced Features**: 30
 - **Content & Lifestyle Features**: 40

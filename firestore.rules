@@ -566,13 +566,16 @@ service cloud.firestore {
           'createdAt',
           'updatedAt',
           'highlight',
-          'avatarUrl'
+          'avatarUrl',
+          'toneLabel',
+          'toneConfidence',
+          'toneKeywords'
         ])
         && request.resource.data.userId == request.auth.uid
         && isNonEmptyString(request.resource.data.displayName)
         && isNonEmptyString(request.resource.data.quote)
         && request.resource.data.quote.size() >= 20
-        && request.resource.data.quote.size() <= 800
+        && request.resource.data.quote.size() <= 2000
         && isValidRating(request.resource.data.rating)
         && request.resource.data.status == 'pending'
         && isAllowedTestimonialStatus(request.resource.data.status)
@@ -580,7 +583,10 @@ service cloud.firestore {
         && (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp)
         && (!('featured' in request.resource.data) || request.resource.data.featured == false)
         && (!('avatarUrl' in request.resource.data) || isUrlLike(request.resource.data.avatarUrl))
-        && (!('highlight' in request.resource.data) || (request.resource.data.highlight is string && request.resource.data.highlight.size() <= 120));
+        && (!('highlight' in request.resource.data) || (request.resource.data.highlight is string && request.resource.data.highlight.size() <= 120))
+        && (!('toneLabel' in request.resource.data) || (request.resource.data.toneLabel is string && request.resource.data.toneLabel.size() <= 40))
+        && (!('toneConfidence' in request.resource.data) || (request.resource.data.toneConfidence is number && request.resource.data.toneConfidence >= 0 && request.resource.data.toneConfidence <= 1))
+        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 5));
 
       allow update: if isSignedIn() && isAdmin()
         && request.resource.data.keys().hasOnly([
@@ -596,14 +602,17 @@ service cloud.firestore {
           'avatarUrl',
           'reviewedBy',
           'reviewedAt',
-          'publishedAt'
+          'publishedAt',
+          'toneLabel',
+          'toneConfidence',
+          'toneKeywords'
         ])
         && request.resource.data.userId == resource.data.userId
         && request.resource.data.createdAt == resource.data.createdAt
         && isNonEmptyString(request.resource.data.displayName)
         && isNonEmptyString(request.resource.data.quote)
         && request.resource.data.quote.size() >= 10
-        && request.resource.data.quote.size() <= 800
+        && request.resource.data.quote.size() <= 2000
         && isValidRating(request.resource.data.rating)
         && isAllowedTestimonialStatus(request.resource.data.status)
         && request.resource.data.updatedAt is timestamp
@@ -611,7 +620,10 @@ service cloud.firestore {
         && (!('highlight' in request.resource.data) || (request.resource.data.highlight is string && request.resource.data.highlight.size() <= 120))
         && (!('reviewedBy' in request.resource.data) || request.resource.data.reviewedBy == null || request.resource.data.reviewedBy is string)
         && (!('reviewedAt' in request.resource.data) || request.resource.data.reviewedAt is timestamp)
-        && (!('publishedAt' in request.resource.data) || request.resource.data.publishedAt == null || request.resource.data.publishedAt is timestamp);
+        && (!('publishedAt' in request.resource.data) || request.resource.data.publishedAt == null || request.resource.data.publishedAt is timestamp)
+        && (!('toneLabel' in request.resource.data) || (request.resource.data.toneLabel is string && request.resource.data.toneLabel.size() <= 40))
+        && (!('toneConfidence' in request.resource.data) || (request.resource.data.toneConfidence is number && request.resource.data.toneConfidence >= 0 && request.resource.data.toneConfidence <= 1))
+        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 5));
 
       allow delete: if isSignedIn() && (
         isAdmin() ||

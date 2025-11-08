@@ -6,7 +6,7 @@ import { useTestimonials } from '../../hooks/useTestimonials';
 import { generateTestimonialSuggestions } from '../../services/testimonialAIService';
 import toast from 'react-hot-toast';
 
-const MAX_QUOTE_LENGTH = 200; // ~3-4 lines - optimal for carousel display
+const MAX_QUOTE_LENGTH = 2000; // Matches Firestore guardrail; modal shows full story
 const MIN_QUOTE_LENGTH = 40;
 
 const ratingOptions = [5, 4, 3, 2, 1];
@@ -213,7 +213,7 @@ export const TestimonialSubmissionForm: React.FC<TestimonialSubmissionFormProps>
             rows={4}
           />
           <div className="mt-1 text-xs text-gray-500">
-            {quote.length}/{MAX_QUOTE_LENGTH} characters (about 3-4 lines recommended for best display)
+            {quote.length}/{MAX_QUOTE_LENGTH} characters (share as much detail as you’d like—up to 2000 characters)
           </div>
 
           {/* AI Suggestions Display */}

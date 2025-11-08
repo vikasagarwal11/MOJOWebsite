@@ -202,7 +202,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         const defaultPrompts: TestimonialAIPrompts = {
           id: 'testimonialGeneration',
           communityContext: 'Moms Fitness Mojo is a fitness and wellness community for moms in Short Hills, Millburn, and surrounding New Jersey areas. We offer workouts (yoga, pilates, HIIT, strength training), hikes, tennis, dance sessions, fitness challenges, social events (brunches, dinners, cocktail nights), and festival celebrations. The community values friendship, accountability, wellness, and helping moms rediscover themselves beyond their roles as mothers.',
-          guidelines: '- Be authentic and heartfelt\n- Mention specific experiences, events, or moments when possible\n- Keep it concise (3-4 lines max)\n- Make it personal and relatable\n- Focus on community, fitness, empowerment, and friendship\n- Each testimonial should be unique',
+          guidelines: '- Be authentic and heartfelt\n- Mention specific experiences, events, or moments when possible\n- Share a fuller story (aim for 600-1500 characters)\n- Make it personal and relatable\n- Focus on community, fitness, empowerment, and friendship\n- Each testimonial should be unique',
           exampleActivities: ['Saturday morning walks', 'yoga sessions', 'hiking trails', 'tennis matches', 'dance classes', 'fitness challenges', 'brunch meetups', 'cocktail nights'],
           exampleEvents: ['community hikes', 'fitness workshops', 'social brunches', 'dance sessions', 'wellness events'],
           tone: 'warm, supportive, empowering, authentic',

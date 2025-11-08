@@ -19,6 +19,18 @@ import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import { sanitizeFirebaseData } from '../utils/dataSanitizer';
 
+const ENABLE_FIRESTORE_DEBUG = import.meta.env.DEV && false;
+const debugLog = (...args: any[]) => {
+  if (ENABLE_FIRESTORE_DEBUG) {
+    console.log(...args);
+  }
+};
+const debugWarn = (...args: any[]) => {
+  if (ENABLE_FIRESTORE_DEBUG) {
+    console.warn(...args);
+  }
+};
+
 /** Remove undefined so Firestore doesn’t throw on writes. */
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
@@ -50,7 +62,7 @@ function reconstructNestedObjects(data: any): any {
       reconstructed.sources.hlsMaster = hlsMaster;
       keysToDelete.push('sources.hlsMaster');
     }
-    console.log('🔧 [normalizeDoc] Reconstructed sources object from flattened keys:', {
+    debugLog('🔧 [normalizeDoc] Reconstructed sources object from flattened keys:', {
       hasHls: !!hls,
       hasHlsMaster: !!hlsMaster,
       reconstructedSources: reconstructed.sources
@@ -66,7 +78,7 @@ function reconstructNestedObjects(data: any): any {
       reconstructed.qualityLevels[qualityName] = data[key];
       keysToDelete.push(key);
     }
-    console.log('🔧 [normalizeDoc] Reconstructed qualityLevels object from flattened keys:', {
+    debugLog('🔧 [normalizeDoc] Reconstructed qualityLevels object from flattened keys:', {
       qualityCount: qualityLevelKeys.length,
       qualities: Object.keys(reconstructed.qualityLevels)
     });
@@ -181,11 +193,11 @@ export const useFirestore = () => {
   const { currentUser } = useAuth();
 
   const getCollection = async (collectionName: string) => {
-    console.log('🔍 [useFirestore] getCollection START:', collectionName);
+    debugLog('🔍 [useFirestore] getCollection START:', collectionName);
     try {
       const snap = await getDocs(collection(db, collectionName));
       const result = snap.docs.map(d => normalizeDoc({ id: d.id, ...d.data() }));
-      console.log('✅ [useFirestore] getCollection SUCCESS:', { collectionName, count: result.length });
+      debugLog('✅ [useFirestore] getCollection SUCCESS:', { collectionName, count: result.length });
       return result;
     } catch (error) {
       console.error('❌ [useFirestore] getCollection ERROR:', collectionName, error);
@@ -195,16 +207,16 @@ export const useFirestore = () => {
   };
 
   const addDocument = async (collectionName: string, data: any) => {
-    console.log('🔍 [useFirestore] addDocument START:', collectionName, { dataKeys: Object.keys(data || {}) });
+    debugLog('🔍 [useFirestore] addDocument START:', collectionName, { dataKeys: Object.keys(data || {}) });
     try {
       const cleaned = stripUndefined({
         ...sanitizeFirebaseData(data),
         createdAt: data?.createdAt ?? serverTimestamp(),
         updatedAt: data?.updatedAt ?? serverTimestamp(),
       });
-      console.log('🔍 [useFirestore] addDocument cleaned:', { cleanedKeys: Object.keys(cleaned) });
+      debugLog('🔍 [useFirestore] addDocument cleaned:', { cleanedKeys: Object.keys(cleaned) });
       const ref = await addDoc(collection(db, collectionName), cleaned);
-      console.log('✅ [useFirestore] addDocument SUCCESS:', { collectionName, docId: ref.id });
+      debugLog('✅ [useFirestore] addDocument SUCCESS:', { collectionName, docId: ref.id });
       toast.success('Document created successfully');
       return ref.id;
     } catch (error) {
@@ -245,7 +257,7 @@ export const useFirestore = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-      console.log('🔍 [useFirestore] useRealtimeCollection START:', { 
+      debugLog('🔍 [useFirestore] useRealtimeCollection START:', { 
         collectionName, 
         constraintsCount: queryConstraints.length,
         isAuthed: !!currentUser,
@@ -255,7 +267,7 @@ export const useFirestore = () => {
       const authed = !!currentUser;
       let safeConstraints = enforceGuestPolicy(collectionName, authed, queryConstraints);
       
-      console.log('🔍 [useFirestore] Guest policy enforced:', { 
+      debugLog('🔍 [useFirestore] Guest policy enforced:', { 
         collectionName, 
         originalConstraints: queryConstraints.length,
         safeConstraints: safeConstraints.length 
@@ -263,7 +275,7 @@ export const useFirestore = () => {
       
       // Special handling for events collection to ensure proper constraints
       if (collectionName === 'events' && authed) {
-        console.log('🔍 [useFirestore] Processing events collection constraints:', { 
+        debugLog('🔍 [useFirestore] Processing events collection constraints:', { 
           collectionName, 
           userRole: currentUser?.role 
         });
@@ -277,7 +289,7 @@ export const useFirestore = () => {
           c?.type === 'where' && c?.field?.toString?.() === 'createdBy'
         );
         
-        console.log('🔍 [useFirestore] Events constraint check:', { 
+        debugLog('🔍 [useFirestore] Events constraint check:', { 
           hasVisibilityConstraint, 
           hasCreatorConstraint, 
           userRole: currentUser?.role 
@@ -286,10 +298,10 @@ export const useFirestore = () => {
         // If no proper constraints, add simple ones based on user role
         if (!hasVisibilityConstraint && !hasCreatorConstraint) {
           if (currentUser?.role === 'admin') {
-            console.log('🔍 [useFirestore] Admin user - no additional constraints');
+            debugLog('🔍 [useFirestore] Admin user - no additional constraints');
             // Admin can see all events - no additional constraints needed
           } else {
-            console.log('🔍 [useFirestore] Non-admin user - adding public visibility constraint');
+            debugLog('🔍 [useFirestore] Non-admin user - adding public visibility constraint');
             // For non-admin users, only show public events to prevent assertion failures
             safeConstraints = [
               ...safeConstraints,
@@ -301,7 +313,7 @@ export const useFirestore = () => {
       
       // Debug logging for events collection
       if (collectionName === 'events') {
-        console.log('🔍 Events query constraints:', {
+        debugLog('🔍 Events query constraints:', {
           isAuthed: authed,
           originalConstraints: queryConstraints,
           safeConstraints: safeConstraints,
@@ -311,7 +323,7 @@ export const useFirestore = () => {
       }
 
       // Build query safely to prevent Firebase assertion failures
-      console.log('🔍 [useFirestore] Building query:', { 
+      debugLog('🔍 [useFirestore] Building query:', { 
         collectionName, 
         safeConstraintsCount: safeConstraints.length,
         constraints: safeConstraints.map(c => ({ type: c.type, field: c.field?.toString?.() || c._field?.toString?.() }))
@@ -320,11 +332,11 @@ export const useFirestore = () => {
       let q;
       try {
         if (safeConstraints.length > 0) {
-          console.log('🔍 [useFirestore] Validating constraints...');
+          debugLog('🔍 [useFirestore] Validating constraints...');
           
           // Validate constraints before building query
           const validConstraints = safeConstraints.filter(constraint => {
-            console.log('🔍 [useFirestore] Validating constraint:', { 
+            debugLog('🔍 [useFirestore] Validating constraint:', { 
               type: constraint.type, 
               field: constraint.field?.toString?.() || constraint._field?.toString?.() 
             });
@@ -332,7 +344,7 @@ export const useFirestore = () => {
             try {
               // Basic validation - ensure constraint has required properties
               if (!constraint || typeof constraint !== 'object') {
-                console.warn('❌ [useFirestore] Constraint not an object:', constraint);
+                debugWarn('❌ [useFirestore] Constraint not an object:', constraint);
                 return false;
               }
               
@@ -341,7 +353,7 @@ export const useFirestore = () => {
                 const field = constraint.field?.toString?.() || constraint._field?.toString?.();
                 const value = constraint.value || constraint._value;
                 const isValid = field && value !== undefined && value !== null;
-                console.log('🔍 [useFirestore] Where constraint validation:', { field, value, isValid });
+                debugLog('🔍 [useFirestore] Where constraint validation:', { field, value, isValid });
                 return isValid;
               }
               
@@ -349,7 +361,7 @@ export const useFirestore = () => {
               if (constraint.type === 'orderBy') {
                 const field = constraint.field?.toString?.() || constraint._field?.toString?.();
                 const isValid = field && field.length > 0;
-                console.log('🔍 [useFirestore] OrderBy constraint validation:', { field, isValid });
+                debugLog('🔍 [useFirestore] OrderBy constraint validation:', { field, isValid });
                 return isValid;
               }
               
@@ -357,44 +369,44 @@ export const useFirestore = () => {
               if (constraint.type === 'limit') {
                 const limit = constraint.limit || constraint._limit;
                 const isValid = typeof limit === 'number' && limit > 0;
-                console.log('🔍 [useFirestore] Limit constraint validation:', { limit, isValid });
+                debugLog('🔍 [useFirestore] Limit constraint validation:', { limit, isValid });
                 return isValid;
               }
               
-              console.log('✅ [useFirestore] Constraint valid:', constraint.type);
+              debugLog('✅ [useFirestore] Constraint valid:', constraint.type);
               return true;
             } catch (error) {
-              console.warn('❌ [useFirestore] Invalid constraint filtered out:', constraint, error);
+              debugWarn('❌ [useFirestore] Invalid constraint filtered out:', constraint, error);
               return false;
             }
           });
           
-          console.log('🔍 [useFirestore] Constraint validation complete:', { 
+          debugLog('🔍 [useFirestore] Constraint validation complete:', { 
             original: safeConstraints.length, 
             valid: validConstraints.length 
           });
           
           // Limit the number of constraints to prevent complex queries
           const limitedConstraints = validConstraints.slice(0, 5);
-          console.log('🔍 [useFirestore] Limited constraints:', { 
+          debugLog('🔍 [useFirestore] Limited constraints:', { 
             count: limitedConstraints.length,
             constraints: limitedConstraints.map(c => ({ type: c.type, field: c.field?.toString?.() || c._field?.toString?.() }))
           });
           
           q = query(collection(db, collectionName), ...limitedConstraints);
-          console.log('✅ [useFirestore] Query built with constraints:', collectionName);
+          debugLog('✅ [useFirestore] Query built with constraints:', collectionName);
         } else {
           q = query(collection(db, collectionName));
-          console.log('✅ [useFirestore] Query built without constraints:', collectionName);
+          debugLog('✅ [useFirestore] Query built without constraints:', collectionName);
         }
       } catch (error) {
         console.error('❌ [useFirestore] Error building Firestore query:', error, { collectionName });
         // Fallback to simple query without constraints
         q = query(collection(db, collectionName));
-        console.log('🔄 [useFirestore] Using fallback query:', collectionName);
+        debugLog('🔄 [useFirestore] Using fallback query:', collectionName);
       }
 
-      console.log('🔍 [useFirestore] Setting up onSnapshot listener:', collectionName);
+      debugLog('🔍 [useFirestore] Setting up onSnapshot listener:', collectionName);
       
       const unsubscribe = onSnapshot(
         q,
@@ -426,9 +438,9 @@ export const useFirestore = () => {
         }
       );
 
-      console.log('✅ [useFirestore] onSnapshot listener set up:', collectionName);
+      debugLog('✅ [useFirestore] onSnapshot listener set up:', collectionName);
       return () => {
-        console.log('🔄 [useFirestore] Cleaning up listener:', collectionName);
+        debugLog('🔄 [useFirestore] Cleaning up listener:', collectionName);
         unsubscribe();
       };
     }, [collectionName, currentUser?.id, currentUser?.role, JSON.stringify(queryConstraints)]);

@@ -5,14 +5,14 @@ interface HeroCarouselProps {
   duration?: number; // Duration per slide in seconds
 }
 
-const HeroCarousel: React.FC<HeroCarouselProps> = ({ 
-  imagesDirectory, 
-  duration = 4 
+const HeroCarousel: React.FC<HeroCarouselProps> = ({
+  imagesDirectory,
+  duration = 4,
 }) => {
   const [images, setImages] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
-  
-  console.log('HeroCarousel: Component mounted with props:', { imagesDirectory, duration });
+
+  const debug = import.meta.env.DEV;
 
   useEffect(() => {
     // Keep this tiny and deterministic: check a short, sensible list.
@@ -62,7 +62,9 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({
   }, [images, duration]);
 
   if (images.length === 0) {
-    console.log('HeroCarousel: No images loaded, showing fallback');
+    if (debug) {
+      console.log('HeroCarousel: No images loaded, showing fallback');
+    }
     return (
       <div className="aspect-[4/3] rounded-2xl overflow-hidden shadow-lg bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center">
         <div className="text-center text-white">
@@ -77,7 +79,9 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({
     );
   }
 
-  console.log('HeroCarousel: Rendering with', images.length, 'images, current index:', currentIndex);
+  if (debug) {
+    console.log('HeroCarousel: Rendering with', images.length, 'images, current index:', currentIndex);
+  }
 
   return (
     <div className="aspect-[2/1.5] rounded-2xl overflow-hidden shadow-lg bg-gray-100 relative">
@@ -88,7 +92,7 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({
           alt="Moms Fitness Mojo community activities and events"
           className="w-full h-full object-cover"
           onError={(e) => {
-            console.error('Failed to load current image:', images[currentIndex], e);
+            console.error('HeroCarousel: Failed to load image', images[currentIndex], e);
             // Remove the bad image and move on
             setImages((prev) => {
               const next = prev.filter((_, idx) => idx !== currentIndex);
@@ -97,7 +101,9 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({
             });
           }}
           onLoad={() => {
-            console.log('Successfully displayed current image:', images[currentIndex]);
+            if (debug) {
+              console.log('HeroCarousel: Displayed image', images[currentIndex]);
+            }
           }}
         />
       )}

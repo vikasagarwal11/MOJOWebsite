@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight, Quote, Star, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
@@ -11,6 +11,209 @@ interface TestimonialCarouselProps {
 }
 
 const AUTO_ADVANCE_MS = 10000; // Slower carousel - 10 seconds per slide
+const MAX_VISIBLE_LINES = 4;
+
+const DEFAULT_TONE_BADGE =
+  'bg-slate-100 text-slate-700 border border-slate-200';
+
+const TONE_BADGE_STYLES: { matcher: RegExp; className: string }[] = [
+  { matcher: /empower|strong|confiden/i, className: 'bg-emerald-100 text-emerald-700 border border-emerald-200' },
+  { matcher: /motivat|energ/i, className: 'bg-orange-100 text-orange-700 border border-orange-200' },
+  { matcher: /heartfelt|gratitude|thank/i, className: 'bg-rose-100 text-rose-700 border border-rose-200' },
+  { matcher: /celebrat|festiv|party/i, className: 'bg-purple-100 text-purple-700 border border-purple-200' },
+  { matcher: /support|encourag|comfort/i, className: 'bg-sky-100 text-sky-700 border border-sky-200' },
+  { matcher: /transform|journey|growth/i, className: 'bg-amber-100 text-amber-700 border border-amber-200' },
+];
+
+const HEURISTIC_SETS: Array<{ label: string; keywords: string[] }> = [
+  { label: 'Empowering', keywords: ['strong', 'power', 'bold', 'fearless', 'challenge', 'confident'] },
+  { label: 'Motivational', keywords: ['motivat', 'inspir', 'drive', 'energ', 'momentum', 'push'] },
+  { label: 'Heartfelt', keywords: ['grateful', 'thank', 'heart', 'love', 'gratitude', 'appreciat'] },
+  { label: 'Celebratory', keywords: ['celebrat', 'party', 'dance', 'festive', 'gala', 'confetti'] },
+  { label: 'Supportive', keywords: ['support', 'together', 'community', 'encourag', 'sisterhood', 'accountability'] },
+  { label: 'Transformational', keywords: ['transform', 'journey', 'progress', 'growth', 'milestone', 'change'] },
+];
+
+function getToneBadgeClass(label: string): string {
+  for (const entry of TONE_BADGE_STYLES) {
+    if (entry.matcher.test(label)) {
+      return entry.className;
+    }
+  }
+  return DEFAULT_TONE_BADGE;
+}
+
+function heuristicToneFromQuote(quote: string): { label: string; confidence: number | null } {
+  const lower = (quote || '').toLowerCase();
+  if (!lower) return { label: 'Heartfelt', confidence: null };
+
+  let bestEntry = HEURISTIC_SETS[2]; // Heartfelt
+  let bestScore = 0;
+
+  for (const entry of HEURISTIC_SETS) {
+    const matches = entry.keywords.filter((keyword) => lower.includes(keyword));
+    const score = matches.length / Math.max(1, entry.keywords.length);
+    if (score > bestScore) {
+      bestScore = score;
+      bestEntry = entry;
+    }
+  }
+
+  const confidence = bestScore > 0 ? Math.max(0.35, Math.min(0.85, bestScore + 0.35)) : null;
+  return { label: bestEntry.label, confidence };
+}
+
+const TestimonialCard: React.FC<{
+  testimonial: Testimonial;
+  onOpen: (testimonial: Testimonial) => void;
+}> = ({ testimonial, onOpen }) => {
+  const textRef = useRef<HTMLParagraphElement | null>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  useEffect(() => {
+    const element = textRef.current;
+    if (!element) return;
+
+    const checkOverflow = () => {
+      if (!element) return;
+      const hasOverflow = element.scrollHeight - 1 > element.clientHeight;
+      setIsOverflowing(hasOverflow);
+    };
+
+    checkOverflow();
+
+    const resizeObserver = new ResizeObserver(() => checkOverflow());
+    resizeObserver.observe(element);
+
+    let cancelled = false;
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', checkOverflow);
+      const docFonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+      docFonts?.ready
+        .then(() => {
+          if (!cancelled) {
+            checkOverflow();
+          }
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      cancelled = true;
+      resizeObserver.disconnect();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('resize', checkOverflow);
+      }
+    };
+  }, [testimonial.quote]);
+
+  const toneLabelRaw = testimonial.toneLabel?.trim();
+  const toneConfidenceRaw =
+    typeof testimonial.toneConfidence === 'number'
+      ? Math.max(0, Math.min(1, testimonial.toneConfidence))
+      : undefined;
+
+  const derivedTone = useMemo(() => {
+    if (toneLabelRaw) {
+      return {
+        label: toneLabelRaw,
+        confidence: toneConfidenceRaw ?? null,
+      };
+    }
+    return heuristicToneFromQuote(testimonial.quote || '');
+  }, [testimonial.quote, toneLabelRaw, toneConfidenceRaw]);
+
+  const toneLabel = derivedTone.label;
+  const toneConfidence =
+    derivedTone.confidence !== null && derivedTone.confidence !== undefined
+      ? Math.round(derivedTone.confidence * 100)
+      : null;
+  const toneBadgeClass = toneLabel ? getToneBadgeClass(toneLabel) : '';
+
+  return (
+    <article
+      className={`relative h-full overflow-hidden rounded-2xl border border-[#F25129]/20 bg-white/80 p-6 shadow-lg transition-all ${
+        isOverflowing
+          ? 'hover:shadow-xl hover:scale-[1.02] hover:border-[#F25129]/40'
+          : 'hover:shadow-xl'
+      }`}
+    >
+      <div className="relative mb-3 flex items-start justify-between">
+        {toneLabel ? (
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${toneBadgeClass}`}
+          >
+            {toneLabel}
+            {toneConfidence !== null && (
+              <span className="text-[10px] font-medium opacity-80">{toneConfidence}%</span>
+            )}
+          </span>
+        ) : (
+          <span className="text-sm font-semibold uppercase tracking-wide text-gray-400">Testimonial</span>
+        )}
+        <div className="ml-4 flex gap-1 text-[#FFC107]">
+          {Array.from({ length: Math.round(testimonial.rating || 0) }).map((_, index) => (
+            <Star key={index} className="h-4 w-4 fill-current" />
+          ))}
+        </div>
+      </div>
+
+      {testimonial.highlight && (
+        <div className="relative z-10 mb-3 rounded-lg bg-[#F25129]/10 px-3 py-1.5">
+          <p className="text-xs font-semibold text-[#F25129]">{testimonial.highlight}</p>
+        </div>
+      )}
+
+      <div className="relative z-10 mb-3 min-h-[6rem]">
+        <p
+          ref={textRef}
+          className="text-lg font-medium leading-relaxed text-gray-800"
+          style={{
+            display: '-webkit-box',
+            WebkitLineClamp: MAX_VISIBLE_LINES,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            wordBreak: 'break-word',
+          }}
+        >
+          {testimonial.quote}
+        </p>
+        {isOverflowing && (
+          <>
+            <div
+              className="pointer-events-none absolute bottom-0 right-0 h-6 w-28"
+              style={{
+                background:
+                  'linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.85) 30%, rgba(255,255,255,1) 100%)',
+              }}
+            />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onOpen(testimonial);
+              }}
+              className="absolute bottom-0 right-2 text-sm font-semibold text-[#F25129] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F25129]/40 focus-visible:ring-offset-2"
+              aria-label="Read full testimonial"
+            >
+              Read full story →
+            </button>
+          </>
+        )}
+      </div>
+
+      <footer className="relative z-10 mt-4 border-t border-dashed border-[#F25129]/30 pt-4 text-sm text-gray-600">
+        <span className="font-semibold text-gray-900">{testimonial.displayName}</span>
+        {testimonial.publishedAt instanceof Date && (
+          <span className="ml-2 text-xs uppercase tracking-wide text-gray-400">
+            {testimonial.publishedAt.toLocaleDateString()}
+          </span>
+        )}
+      </footer>
+    </article>
+  );
+};
 
 function calculateItemsPerSlide(width: number): number {
   if (width >= 1280) return 3;
@@ -24,11 +227,6 @@ export const TestimonialCarousel: React.FC<TestimonialCarouselProps> = ({ testim
   );
   const [currentSlide, setCurrentSlide] = useState(0);
   const [selectedTestimonial, setSelectedTestimonial] = useState<Testimonial | null>(null);
-
-  // Check if testimonial is truncated (roughly > 200 chars or > 4 lines)
-  const isTruncated = (quote: string) => {
-    return quote.length > 200;
-  };
 
   useEffect(() => {
     const handleResize = () => setItemsPerSlide(calculateItemsPerSlide(window.innerWidth));
@@ -150,89 +348,13 @@ export const TestimonialCarousel: React.FC<TestimonialCarouselProps> = ({ testim
           exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.45 }}
         >
-          {slides[currentSlide]?.map((testimonial) => {
-            const truncated = isTruncated(testimonial.quote);
-            return (
-              <article
-                key={testimonial.id}
-                className={`h-full rounded-2xl border border-[#F25129]/20 bg-white/80 p-6 shadow-lg transition-all ${
-                  truncated 
-                    ? 'hover:shadow-xl hover:scale-[1.02] hover:border-[#F25129]/40' 
-                    : 'hover:shadow-xl'
-                }`}
-              >
-                <div className="mb-3 flex items-center justify-between text-[#F25129]">
-                  <Quote className="h-6 w-6 opacity-70" />
-                  <div className="flex gap-1 text-[#FFC107]">
-                    {Array.from({ length: Math.round(testimonial.rating || 0) }).map((_, index) => (
-                      <Star key={index} className="h-4 w-4 fill-current" />
-                    ))}
-                  </div>
-                </div>
-
-                {/* Highlight at the top */}
-                {testimonial.highlight && (
-                  <div className="mb-3 rounded-lg bg-[#F25129]/10 px-3 py-1.5">
-                    <p className="text-xs font-semibold text-[#F25129]">{testimonial.highlight}</p>
-                  </div>
-                )}
-
-                {/* Quote with inline "read more" - blends at end of truncated text */}
-                <div className="relative mb-3 min-h-[6rem]">
-                  <p 
-                    className="text-lg font-medium text-gray-800 leading-relaxed"
-                    style={{
-                      display: truncated ? '-webkit-box' : 'block',
-                      WebkitLineClamp: truncated ? 4 : 'none',
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      wordBreak: 'break-word',
-                      position: 'relative'
-                    }}
-                  >
-                    "{testimonial.quote}"
-                  </p>
-                  {truncated && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        handleCardClick(testimonial);
-                      }}
-                      className="absolute bottom-0 right-0 inline-block text-[#F25129] font-semibold cursor-pointer hover:underline whitespace-nowrap z-10"
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleCardClick(testimonial);
-                        }
-                      }}
-                      style={{
-                        background: 'linear-gradient(to right, transparent 0%, white 15%, white 100%)',
-                        paddingLeft: '0.5rem',
-                        paddingRight: '0.25rem'
-                      }}
-                    >
-                      ... see more
-                    </button>
-                  )}
-                </div>
-
-                <footer className="mt-4 border-t border-dashed border-[#F25129]/30 pt-4 text-sm text-gray-600">
-                  <span className="font-semibold text-gray-900">{testimonial.displayName}</span>
-                  {testimonial.publishedAt instanceof Date && (
-                    <span className="ml-2 text-xs uppercase tracking-wide text-gray-400">
-                      {testimonial.publishedAt.toLocaleDateString()}
-                    </span>
-                  )}
-                </footer>
-              </article>
-            );
-          })}
+          {slides[currentSlide]?.map((testimonial) => (
+            <TestimonialCard
+              key={testimonial.id}
+              testimonial={testimonial}
+              onOpen={handleCardClick}
+            />
+          ))}
         </motion.div>
       </AnimatePresence>
 
