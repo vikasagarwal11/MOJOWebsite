@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2, RefreshCw, Info, ChevronDown, ChevronUp } from 'lucide-react';
-import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc, getDoc, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
+import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc, getDoc, setDoc, Timestamp, updateDoc, DocumentReference } from 'firebase/firestore';
 import { ref, deleteObject, listAll } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
@@ -494,11 +494,14 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       
       toast.loading(`Checking ${snapshot.docs.length} stuck files...`, { id: 'fix-stuck' });
       
-      const batch = writeBatch(db);
+      type PendingUpdate = { ref: DocumentReference; data: Record<string, any> };
+      const pendingUpdates: PendingUpdate[] = [];
       let fixedCount = 0;
       let readyCount = 0;
       let failedCount = 0;
       const now = new Date();
+      const readyIds: string[] = [];
+      const failedIds: string[] = [];
       
       // Check each file
       for (const doc of snapshot.docs) {
@@ -528,29 +531,50 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         // 2. Stuck for more than 2 hours and no HLS files (mark as failed)
         if (hasHlsFiles || hasHlsInFirestore) {
           // Has HLS - mark as ready
-          batch.update(doc.ref, { 
+          pendingUpdates.push({
+            ref: doc.ref,
+            data: {
             transcodeStatus: 'ready',
             lastManualFix: serverTimestamp(),
             manualFixReason: 'HLS files exist but status was stuck in processing',
             updatedAt: serverTimestamp()
+            },
           });
           fixedCount++;
           readyCount++;
+          readyIds.push(doc.id);
         } else if (hoursStuck > 2) {
           // No HLS and stuck >2 hours - mark as failed
-          batch.update(doc.ref, { 
+          pendingUpdates.push({
+            ref: doc.ref,
+            data: {
             transcodeStatus: 'failed',
             lastManualFix: serverTimestamp(),
             manualFixReason: 'Stuck in processing for more than 2 hours with no HLS files',
             updatedAt: serverTimestamp()
+            },
           });
           fixedCount++;
           failedCount++;
+          failedIds.push(doc.id);
         }
       }
       
       if (fixedCount > 0) {
-        await batch.commit();
+        const CHUNK_SIZE = 400;
+        for (let i = 0; i < pendingUpdates.length; i += CHUNK_SIZE) {
+          const chunk = pendingUpdates.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(db);
+          chunk.forEach(({ ref, data }) => batch.update(ref, data));
+          await batch.commit();
+        }
+
+        if (import.meta.env.DEV) {
+          console.info('[Admin] Fix stuck processing summary', {
+            readyIds,
+            failedIds,
+          });
+        }
         toast.success(
           `Fixed ${fixedCount} stuck files: ${readyCount} marked ready, ${failedCount} marked failed`,
           { id: 'fix-stuck', duration: 5000 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Share2, Download, ChevronLeft, ChevronRight, Play, Pause, Volume2, VolumeX } from 'lucide-react';
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { shareUrl } from '../../utils/share';
 import { useSwipeRaw } from '../../hooks/useSwipeRaw';
 import { getDownloadURL, ref } from 'firebase/storage';
@@ -49,9 +49,11 @@ export default function MediaLightbox({
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const zoomRef = useRef<ReactZoomPanPinchRef | null>(null);
   const { correctImageOrientation } = useImageOrientation();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const isVideo = item?.type === 'video';
+  const fallbackTriggeredRef = useRef(false);
 
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false
@@ -192,6 +194,7 @@ export default function MediaLightbox({
         }
       } catch (error) {
         console.error('❌ HLS attachment failed:', error);
+        fallbackTriggeredRef.current = true;
         v.src = item.url;
         if (!cancelled) {
           await v.play().catch((err) => {
@@ -210,6 +213,21 @@ export default function MediaLightbox({
       try { detachHls(v); } catch {}
     };
   }, [isVideo, item?.sources?.hlsMaster, item?.sources?.hls, item?.url, item?.id]);
+
+  useEffect(() => {
+    if (!isVideo || !videoRef.current) return;
+    const video = videoRef.current;
+    const handleError = () => {
+      if (fallbackTriggeredRef.current) return;
+      fallbackTriggeredRef.current = true;
+      video.src = item.url;
+      video.play().catch(() => {});
+    };
+    video.addEventListener('error', handleError);
+    return () => {
+      video.removeEventListener('error', handleError);
+    };
+  }, [isVideo, item?.url, item?.id]);
 
   useEffect(() => {
     return () => {
@@ -285,7 +303,13 @@ export default function MediaLightbox({
     };
   }, [isVideo, isMuted]);
 
-  useEffect(() => { setScale(1); }, [item?.id]);
+  useEffect(() => {
+    setScale(1);
+    fallbackTriggeredRef.current = false;
+    if (zoomRef.current) {
+      zoomRef.current.resetTransform();
+    }
+  }, [item?.id]);
 
   // Controls visibility + slideshow hover
   useEffect(() => {
@@ -535,6 +559,7 @@ export default function MediaLightbox({
               doubleClick={{ disabled: true }}
               panning={{ velocity: true }}
               onTransformed={({ state }) => setScale(state.scale)}
+              ref={zoomRef}
             >
               <TransformComponent
                 wrapperClass={isMobile ? 'relative w-full h-full' : undefined}
@@ -608,6 +633,19 @@ export default function MediaLightbox({
             >
               {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               <span className="text-sm">{playing ? 'Pause' : 'Play'}</span>
+            </button>
+          )}
+          {item.type === 'image' && scale > 1.01 && (
+            <button
+              data-no-swipe
+              onClick={() => {
+                zoomRef.current?.resetTransform();
+                setScale(1);
+              }}
+              className="px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center gap-2 transition-colors"
+              aria-label="Reset zoom"
+            >
+              <span className="text-sm">Reset zoom</span>
             </button>
           )}
           {isMobile && isVideo && (

@@ -63,10 +63,14 @@ function heuristicToneFromQuote(quote: string): { label: string; confidence: num
   return { label: bestEntry.label, confidence };
 }
 
+const MODAL_ID = 'testimonial-dialog';
+const MODAL_TITLE_ID = 'testimonial-dialog-title';
+
 const TestimonialCard: React.FC<{
   testimonial: Testimonial;
-  onOpen: (testimonial: Testimonial) => void;
-}> = ({ testimonial, onOpen }) => {
+  onOpen: (testimonial: Testimonial, trigger?: HTMLElement | null) => void;
+  isOpen: boolean;
+}> = ({ testimonial, onOpen, isOpen }) => {
   const textRef = useRef<HTMLParagraphElement | null>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
 
@@ -164,7 +168,7 @@ const TestimonialCard: React.FC<{
         </div>
       )}
 
-      <div className="relative z-10 mb-3 min-h-[6rem]">
+      <div className="relative z-10 mb-3 min-h-[6rem] pb-8">
         <p
           ref={textRef}
           className="text-lg font-medium leading-relaxed text-gray-800"
@@ -181,21 +185,29 @@ const TestimonialCard: React.FC<{
         {isOverflowing && (
           <>
             <div
-              className="pointer-events-none absolute bottom-0 right-0 h-6 w-28"
-              style={{
-                background:
-                  'linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.85) 30%, rgba(255,255,255,1) 100%)',
-              }}
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white via-white/80 to-transparent"
+              aria-hidden="true"
             />
             <button
               type="button"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                onOpen(testimonial);
+                onOpen(testimonial, e.currentTarget);
               }}
-              className="absolute bottom-0 right-2 text-sm font-semibold text-[#F25129] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F25129]/40 focus-visible:ring-offset-2"
-              aria-label="Read full testimonial"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onOpen(testimonial, e.currentTarget);
+                }
+              }}
+              className="absolute bottom-2 right-3 z-10 inline-flex items-center rounded-md px-3 py-1 text-[13px] font-semibold text-[#F25129] bg-white/95 ring-1 ring-[#F25129]/20 shadow-sm hover:bg-white hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F25129]/40 focus-visible:ring-offset-2"
+              aria-label={`Read full story by ${testimonial.displayName}`}
+              aria-haspopup="dialog"
+              aria-expanded={isOpen}
+              aria-controls={isOpen ? MODAL_ID : undefined}
+              data-testimonial-trigger
             >
               Read full story →
             </button>
@@ -227,6 +239,7 @@ export const TestimonialCarousel: React.FC<TestimonialCarouselProps> = ({ testim
   );
   const [currentSlide, setCurrentSlide] = useState(0);
   const [selectedTestimonial, setSelectedTestimonial] = useState<Testimonial | null>(null);
+   const lastFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const handleResize = () => setItemsPerSlide(calculateItemsPerSlide(window.innerWidth));
@@ -272,12 +285,22 @@ export const TestimonialCarousel: React.FC<TestimonialCarouselProps> = ({ testim
     setCurrentSlide((prev) => (prev + 1) % Math.max(1, slides.length));
   };
 
-  const handleCardClick = (testimonial: Testimonial) => {
+  const handleCardClick = (testimonial: Testimonial, trigger?: HTMLElement | null) => {
+    if (trigger) {
+      lastFocusRef.current = trigger;
+    }
     setSelectedTestimonial(testimonial);
   };
 
   const handleCloseModal = () => {
     setSelectedTestimonial(null);
+    if (lastFocusRef.current) {
+      const node = lastFocusRef.current;
+      requestAnimationFrame(() => {
+        node.focus();
+        lastFocusRef.current = null;
+      });
+    }
   };
 
   // Close modal on ESC key
@@ -353,6 +376,7 @@ export const TestimonialCarousel: React.FC<TestimonialCarouselProps> = ({ testim
               key={testimonial.id}
               testimonial={testimonial}
               onOpen={handleCardClick}
+              isOpen={selectedTestimonial?.id === testimonial.id}
             />
           ))}
         </motion.div>
@@ -406,6 +430,7 @@ export const TestimonialCarousel: React.FC<TestimonialCarouselProps> = ({ testim
             onClick={handleCloseModal}
           >
             <motion.div
+              id={MODAL_ID}
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -414,7 +439,7 @@ export const TestimonialCarousel: React.FC<TestimonialCarouselProps> = ({ testim
               className="relative w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10"
               role="dialog"
               aria-modal="true"
-              aria-labelledby="testimonial-title"
+              aria-labelledby={MODAL_TITLE_ID}
             >
               {/* Close Button */}
               <button
@@ -427,6 +452,9 @@ export const TestimonialCarousel: React.FC<TestimonialCarouselProps> = ({ testim
 
               {/* Content */}
               <div className="overflow-y-auto max-h-[90vh] p-8">
+                <h2 id={MODAL_TITLE_ID} className="sr-only">
+                  Testimonial from {selectedTestimonial.displayName}
+                </h2>
                 <div className="mb-6 flex items-center justify-between text-[#F25129]">
                   <Quote className="h-8 w-8 opacity-70" />
                   <div className="flex gap-1 text-[#FFC107]">

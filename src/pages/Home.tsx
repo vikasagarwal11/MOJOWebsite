@@ -44,15 +44,48 @@ const LazyImage: React.FC<{ src: string; alt: string; className?: string }> = ({
 };
 // import { ResponsiveLogo } from '../components/common/ResponsiveLogo';
 
+const isBrowser = typeof window !== 'undefined';
+
+const HelmetWrapper: React.FC<React.PropsWithChildren> = ({ children }) => {
+  if (!isBrowser) return <>{children}</>;
+  return <Helmet>{children}</Helmet>;
+};
+
+const stripMotionProps = ({
+  initial,
+  animate,
+  exit,
+  whileInView,
+  variants,
+  transition,
+  viewport,
+  ...rest
+}: Record<string, any>) => rest;
+
+const MotionlessDiv: React.FC<any> = ({ children, ...rest }) => {
+  const clean = stripMotionProps(rest);
+  return <div {...clean}>{children}</div>;
+};
+
+const MotionContainer: any = isBrowser ? motion.div : MotionlessDiv;
+const MotionItem: any = isBrowser ? motion.div : MotionlessDiv;
+
 const Home: React.FC = () => {
   const { currentUser } = useAuth();
   const isAuthed = !!currentUser;
   const { useRealtimeCollection } = useFirestore();
 
   const scrollToSection = useCallback((sectionId: string) => {
+    if (typeof window === 'undefined') return;
     const element = document.getElementById(sectionId);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const focusTarget = element.querySelector<HTMLElement>('[data-section-heading]');
+      if (focusTarget) {
+        window.setTimeout(() => {
+          focusTarget.focus({ preventScroll: true });
+        }, 250);
+      }
     }
   }, []);
 
@@ -139,7 +172,7 @@ const Home: React.FC = () => {
 
   return (
     <div>
-      <Helmet>
+      <HelmetWrapper>
         <title>Moms Fitness Mojo | Millburn & Short Hills NJ Mom Fitness Events</title>
         <meta name="description" content="Moms Fitness Mojo - Fitness, Friendship & Lifestyle for Moms in NJ. Join our supportive community in Short Hills, Millburn, Maplewood, Summit & nearby NJ towns for workouts, events, and wellness." />
         <link rel="canonical" href="https://momsfitnessmojo.web.app/" />
@@ -182,7 +215,7 @@ const Home: React.FC = () => {
             }
           })}
         </script>
-      </Helmet>
+      </HelmetWrapper>
 
       {/* Hero Section */}
       <section id="hero" className="relative overflow-hidden">
@@ -250,7 +283,11 @@ const Home: React.FC = () => {
       <section id="about" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
         <div className="grid gap-6 lg:grid-cols-3 items-start">
           <div className="lg:col-span-2">
-            <h2 className="text-2xl sm:text-3xl font-bold text-[#F25129]">
+            <h2
+              className="text-2xl sm:text-3xl font-bold text-[#F25129]"
+              tabIndex={-1}
+              data-section-heading
+            >
               Your Lifestyle, Your Circle, Your Mojo
             </h2>
             <p className="mt-3 text-gray-700 text-lg leading-relaxed">
@@ -274,7 +311,11 @@ const Home: React.FC = () => {
       {/* Features Section */}
       <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4">
         <div className="text-center mb-8">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+          <h2
+            className="text-3xl md:text-4xl font-bold text-gray-900 mb-4"
+            tabIndex={-1}
+            data-section-heading
+          >
             What We Do
           </h2>
           <p className="text-xl text-gray-600 readable">
@@ -282,23 +323,23 @@ const Home: React.FC = () => {
           </p>
         </div>
 
-          <motion.div 
+          <MotionContainer 
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5"
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true }}
-          variants={{
-            hidden: { opacity: 0 },
-            visible: {
-              opacity: 1,
-              transition: {
-                staggerChildren: 0.1
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            variants={{
+              hidden: { opacity: 0 },
+              visible: {
+                opacity: 1,
+                transition: {
+                  staggerChildren: 0.1
+                }
               }
-            }
-          }}
+            }}
         >
           {features.map((feature, index) => (
-            <motion.div
+            <MotionItem
               key={index}
               variants={{
                 hidden: { opacity: 0, y: 20 },
@@ -315,16 +356,22 @@ const Home: React.FC = () => {
                 <h3 className="text-xl font-semibold text-gray-900 mb-3">{feature.title}</h3>
                 <p className="text-gray-600 leading-relaxed">{feature.description}</p>
               </div>
-            </motion.div>
+            </MotionItem>
           ))}
-        </motion.div>
+        </MotionContainer>
       </section>
 
       {/* Mom Moments Highlight */}
       <section id="moments" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
           <div>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Mom Moments</h2>
+            <h2
+              className="text-3xl md:text-4xl font-bold text-gray-900"
+              tabIndex={-1}
+              data-section-heading
+            >
+              Mom Moments
+            </h2>
             <p className="text-gray-600 readable">
               Real snapshots from our recent workouts, socials, and celebrations—see what the community is up to right now.
             </p>
@@ -398,7 +445,13 @@ const Home: React.FC = () => {
         <section id="community" className="py-8 sm:py-12 -mt-4">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="rounded-2xl border border-gray-100 bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 p-4 sm:p-6 shadow-sm">
-              <h2 className="text-3xl font-bold tracking-tight text-[#F25129]">Stronger Together</h2>
+              <h2
+                className="text-3xl font-bold tracking-tight text-[#F25129]"
+                tabIndex={-1}
+                data-section-heading
+              >
+                Stronger Together
+              </h2>
               <p className="mt-2 text-gray-700 readable">
                 We&apos;re currently active across <strong>Short Hills</strong>, <strong>Millburn</strong>, <strong>Livingston</strong>, <strong>Summit</strong>, <strong>Maplewood</strong>, and <strong>Springfield</strong> and expanding soon! Not in your area? Reach out to start Moms Fitness Mojo near you.
               </p>
@@ -424,7 +477,11 @@ const Home: React.FC = () => {
       <section id="stories" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4 space-y-10">
         <div className="text-center mb-6">
           <div className="flex items-center justify-center gap-4 mb-3 flex-wrap">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
+            <h2
+              className="text-3xl md:text-4xl font-bold text-gray-900"
+              tabIndex={-1}
+              data-section-heading
+            >
               What Moms Are Saying
             </h2>
             <Link
@@ -453,7 +510,11 @@ const Home: React.FC = () => {
          <section id="actions" className="py-8 sm:py-12 -mt-4">
            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 rounded-2xl">
              <div className="text-center space-y-8">
-               <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
+               <h2
+                 className="text-3xl md:text-4xl font-bold text-gray-900"
+                 tabIndex={-1}
+                 data-section-heading
+               >
                  Welcome back{currentUser?.displayName ? `, ${currentUser.displayName}` : ''}!
                </h2>
                <p className="text-xl text-gray-600 max-w-2xl mx-auto readable">
