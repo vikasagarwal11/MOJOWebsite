@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion } from 'framer-motion';
@@ -11,15 +11,50 @@ import {
   Image as ImageIcon,
   MessageSquare,
 } from 'lucide-react';
+import { orderBy, where, limit } from 'firebase/firestore';
+import { useInView } from 'react-intersection-observer';
 import { useAuth } from '../contexts/AuthContext';
 import HeroCarousel from '../components/hero/HeroCarousel';
 import TestimonialCarousel from '../components/home/TestimonialCarousel';
 import { useTestimonials } from '../hooks/useTestimonials';
+import { useFirestore } from '../hooks/useFirestore';
+import { getThumbnailUrl } from '../utils/thumbnailUtils';
+
+const LazyImage: React.FC<{ src: string; alt: string; className?: string }> = ({ src, alt, className }) => {
+  const { ref, inView } = useInView({
+    triggerOnce: true,
+    rootMargin: '0px 0px 200px 0px',
+  });
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  return (
+    <div ref={ref} className="relative h-full w-full">
+      {!isLoaded && <div className="absolute inset-0 h-full w-full bg-gray-200 animate-pulse" />}
+      {inView && (
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          onLoad={() => setIsLoaded(true)}
+          className={`h-full w-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${className ?? ''}`}
+        />
+      )}
+    </div>
+  );
+};
 // import { ResponsiveLogo } from '../components/common/ResponsiveLogo';
 
 const Home: React.FC = () => {
   const { currentUser } = useAuth();
   const isAuthed = !!currentUser;
+  const { useRealtimeCollection } = useFirestore();
+
+  const scrollToSection = useCallback((sectionId: string) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, []);
 
   const features = [
     {
@@ -59,6 +94,48 @@ const Home: React.FC = () => {
     prioritizeFeatured: true,
     limit: 12,
   });
+
+  const momMediaSnapshot = useRealtimeCollection('media', [
+    where('type', '==', 'image'),
+    orderBy('createdAt', 'desc'),
+    limit(6),
+  ]);
+
+  const momMediaRaw = momMediaSnapshot.data ?? [];
+  const loadingMoments = momMediaSnapshot.loading;
+
+  const momMoments = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
+
+    return momMediaRaw
+      .slice(0, 6)
+      .map((media: any) => {
+        const rawUrl = media.url || media.thumbnailUrl || '';
+        const imageUrl = rawUrl ? getThumbnailUrl(rawUrl, 'large') : '';
+        const displayTitle =
+          media.eventTitle ||
+          media.title ||
+          media.description ||
+          'Mojo Moment';
+        const displaySubtitleParts: string[] = [];
+        if (media.location?.city) {
+          displaySubtitleParts.push(media.location.city);
+        } else if (media.eventLocation) {
+          displaySubtitleParts.push(media.eventLocation);
+        }
+        if (media.createdAt instanceof Date) {
+          displaySubtitleParts.push(formatter.format(media.createdAt));
+        }
+
+        return {
+          id: media.id,
+          imageUrl: imageUrl || rawUrl,
+          title: displayTitle,
+          subtitle: displaySubtitleParts.join(' • '),
+        };
+      })
+      .filter((item) => !!item.imageUrl);
+  }, [momMediaRaw]);
 
   return (
     <div>
@@ -108,7 +185,7 @@ const Home: React.FC = () => {
       </Helmet>
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden">
+      <section id="hero" className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10">
           {/* Coral → Peach soft gradient */}
           <div className="absolute inset-0 bg-gradient-to-b from-[#F25129]/10 via-[#FFF3EE] to-white" />
@@ -146,12 +223,13 @@ const Home: React.FC = () => {
                   >
                     Join MOJO
                   </Link>
-                  <Link
-                    to="/about"
+                  <button
+                    type="button"
+                    onClick={() => scrollToSection('about')}
                     className="inline-flex items-center rounded-full px-5 py-3 text-sm font-semibold border border-gray-300 text-gray-800 hover:bg-gray-50 transition-all duration-300"
                   >
                     Learn More
-                  </Link>
+                  </button>
                 </div>
               )}
 
@@ -169,7 +247,7 @@ const Home: React.FC = () => {
       </section>
 
       {/* About / Story */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
+      <section id="about" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
         <div className="grid gap-6 lg:grid-cols-3 items-start">
           <div className="lg:col-span-2">
             <h2 className="text-2xl sm:text-3xl font-bold text-[#F25129]">
@@ -194,7 +272,7 @@ const Home: React.FC = () => {
       </section>
 
       {/* Features Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4">
+      <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4">
         <div className="text-center mb-8">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
             What We Do
@@ -242,8 +320,61 @@ const Home: React.FC = () => {
         </motion.div>
       </section>
 
+      {/* Mom Moments Highlight */}
+      <section id="moments" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
+          <div>
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Mom Moments</h2>
+            <p className="text-gray-600 readable">
+              Real snapshots from our recent workouts, socials, and celebrations—see what the community is up to right now.
+            </p>
+          </div>
+          <Link
+            to="/media"
+            className="inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold text-[#F25129] border border-[#F25129]/40 hover:bg-[#F25129]/10 transition-colors duration-300"
+          >
+            View Gallery
+          </Link>
+        </div>
+
+        {loadingMoments ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-56 rounded-2xl bg-gray-200 animate-pulse"
+              />
+            ))}
+          </div>
+        ) : momMoments.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-[#F25129]/30 bg-white/80 p-6 text-center text-gray-600">
+            Fresh highlights are on the way—check back soon!
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {momMoments.map((moment) => (
+              <div
+                key={moment.id}
+                className="group relative h-56 overflow-hidden rounded-2xl shadow-lg transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl"
+              >
+                <LazyImage src={moment.imageUrl} alt={moment.title} className="rounded-2xl" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent transition-opacity duration-300 group-hover:from-black/60" />
+                <div className="absolute bottom-4 left-4 right-4 text-white">
+                  <h3 className="text-lg font-semibold leading-tight drop-shadow">{moment.title}</h3>
+                  {moment.subtitle && (
+                    <p className="mt-1 text-sm text-white/85 drop-shadow">
+                      {moment.subtitle}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
              {/* Stats Section */}
-       <section className="text-white py-8 sm:py-12 -mt-6">
+      <section id="stats" className="text-white py-8 sm:py-12 -mt-6">
          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 bg-gradient-to-r from-[#F25129] to-[#FFC107] rounded-2xl">
            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
              <div>
@@ -264,7 +395,7 @@ const Home: React.FC = () => {
 
       {/* Stronger Together / Community */}
       {!isAuthed && (
-        <section className="py-8 sm:py-12 -mt-4">
+        <section id="community" className="py-8 sm:py-12 -mt-4">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="rounded-2xl border border-gray-100 bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 p-4 sm:p-6 shadow-sm">
               <h2 className="text-3xl font-bold tracking-tight text-[#F25129]">Stronger Together</h2>
@@ -290,7 +421,7 @@ const Home: React.FC = () => {
       )}
 
       {/* Testimonials */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4 space-y-10">
+      <section id="stories" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4 space-y-10">
         <div className="text-center mb-6">
           <div className="flex items-center justify-center gap-4 mb-3 flex-wrap">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900">
@@ -305,11 +436,8 @@ const Home: React.FC = () => {
             </Link>
           </div>
           <p className="mx-auto max-w-2xl text-base text-gray-600">
-            Real words from the women shaping Moms Fitness Mojo. Scroll through our community stories or{' '}
-            <Link to="/share-your-story" className="text-[#F25129] font-semibold hover:underline">
-              share your own
-            </Link>
-            .
+            Real words from the women shaping Moms Fitness Mojo. Scroll through our community stories. Feeling inspired? Tap{' '}
+            <span className="font-semibold text-gray-800">&ldquo;Share Your Story.&rdquo;</span>
           </p>
         </div>
 
@@ -322,7 +450,7 @@ const Home: React.FC = () => {
 
       {/* CTA / Member Quick Actions */}
        {isAuthed && (
-         <section className="py-8 sm:py-12 -mt-4">
+         <section id="actions" className="py-8 sm:py-12 -mt-4">
            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 rounded-2xl">
              <div className="text-center space-y-8">
                <h2 className="text-3xl md:text-4xl font-bold text-gray-900">

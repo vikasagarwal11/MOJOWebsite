@@ -1,6 +1,7 @@
 import { addDoc, collection, serverTimestamp, updateDoc, doc, deleteDoc, deleteField } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { TestimonialStatus } from '../types';
+import { classifyTestimonialTone } from './testimonialAIService';
 
 export interface SubmitTestimonialInput {
   userId: string;
@@ -33,6 +34,21 @@ export async function submitTestimonial(input: SubmitTestimonialInput) {
 
   if (avatarUrl) {
     payload.avatarUrl = avatarUrl;
+  }
+
+  try {
+    const toneResult = await classifyTestimonialTone(quote);
+    if (toneResult.success && toneResult.label) {
+      payload.toneLabel = toneResult.label;
+      if (typeof toneResult.confidence === 'number') {
+        payload.toneConfidence = Math.max(0, Math.min(1, toneResult.confidence));
+      }
+      if (toneResult.keywords && toneResult.keywords.length > 0) {
+        payload.toneKeywords = toneResult.keywords.slice(0, 5);
+      }
+    }
+  } catch (error) {
+    console.warn('[testimonialsService] Tone classification failed, continuing without tone label.', error);
   }
 
   await addDoc(collection(db, 'testimonials'), payload);

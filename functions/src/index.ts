@@ -2585,7 +2585,7 @@ export const generateTestimonialSuggestions = onCall({
           communityContext: 'Moms Fitness Mojo is a fitness and wellness community for moms in Short Hills, Millburn, and surrounding New Jersey areas. We offer workouts (yoga, pilates, HIIT, strength training), hikes, tennis, dance sessions, fitness challenges, social events (brunches, dinners, cocktail nights), and festival celebrations. The community values friendship, accountability, wellness, and helping moms rediscover themselves beyond their roles as mothers.',
           guidelines: `- Be authentic and heartfelt
 - Mention specific experiences, events, or moments when possible
-- Keep it concise (3-4 lines max)
+- Share a fuller story (aim for 600-1500 characters)
 - Make it personal and relatable
 - Focus on community, fitness, empowerment, and friendship
 - Each testimonial should be unique`,
@@ -2599,7 +2599,7 @@ export const generateTestimonialSuggestions = onCall({
         // Return defaults on error
         return {
           communityContext: 'Moms Fitness Mojo is a fitness and wellness community for moms.',
-          guidelines: '- Be authentic and heartfelt\n- Keep it concise (3-4 lines max)\n- Make it personal and relatable',
+          guidelines: '- Be authentic and heartfelt\n- Share a fuller story (aim for 600-1500 characters)\n- Make it personal and relatable',
           exampleActivities: [],
           exampleEvents: [],
           tone: 'warm and supportive',
@@ -2634,7 +2634,7 @@ ${aiPrompts.tone ? `\nTONE: ${aiPrompts.tone}` : ''}`;
       }
 
       userPrompt += `\n\nUSER'S INPUT/EXPERIENCE: "${prompt}"`;
-      userPrompt += `\n\nGenerate 2-3 testimonials based on the user's input above. Format each on a new line starting with "1.", "2.", "3.". Each should be 150-200 characters. Make them feel authentic and specific to their experience.`;
+      userPrompt += `\n\nGenerate 2-3 testimonials based on the user's input above. Format each on a new line starting with "1.", "2.", "3.". Each should be between 600-1500 characters so the story feels complete while staying focused. Make them feel authentic and specific to their experience.`;
       
       return userPrompt;
     };
@@ -2644,7 +2644,7 @@ ${aiPrompts.tone ? `\nTONE: ${aiPrompts.tone}` : ''}`;
       const testimonials = text
         .split(/\n+/)
         .map((line: string) => line.replace(/^\d+\.\s*/, '').trim().replace(/^["']|["']$/g, ''))
-        .filter((line: string) => line.length >= 40 && line.length <= 250)
+        .filter((line: string) => line.length >= 40 && line.length <= 2000)
         .slice(0, 3);
 
       if (testimonials.length === 0) {
@@ -2775,6 +2775,284 @@ ${aiPrompts.tone ? `\nTONE: ${aiPrompts.tone}` : ''}`;
       error: error?.message || 'Failed to generate suggestions. Please try again or write your own testimonial.'
     };
   }
+});
+
+type ToneClassification = {
+  label: string;
+  confidence?: number;
+  keywords?: string[];
+};
+
+const TONE_LABELS = [
+  'Empowering',
+  'Motivational',
+  'Heartfelt',
+  'Celebratory',
+  'Supportive',
+  'Transformational',
+];
+
+const HEURISTIC_TONES: Array<{ label: string; keywords: string[] }> = [
+  { label: 'Empowering', keywords: ['strong', 'power', 'challenge', 'confident', 'bold', 'fearless', 'resilient', 'unstoppable'] },
+  { label: 'Motivational', keywords: ['motivate', 'inspire', 'drive', 'push', 'energy', 'uplift', 'momentum', 'goal'] },
+  { label: 'Heartfelt', keywords: ['grateful', 'thank', 'love', 'heart', 'emotion', 'touched', 'meaningful', 'gratitude'] },
+  { label: 'Celebratory', keywords: ['celebrat', 'party', 'dance', 'festive', 'joyful', 'gala', 'confetti', 'toast'] },
+  { label: 'Supportive', keywords: ['support', 'together', 'team', 'community', 'encourage', 'accountability', 'sisterhood'] },
+  { label: 'Transformational', keywords: ['transform', 'journey', 'growth', 'progress', 'evolution', 'change', 'milestone'] },
+];
+
+function normalizeToneLabel(raw: string): string {
+  if (!raw) return 'Heartfelt';
+  const lower = raw.toLowerCase();
+  if (lower.includes('empower') || lower.includes('strong')) return 'Empowering';
+  if (lower.includes('motiv')) return 'Motivational';
+  if (lower.includes('celebr') || lower.includes('party') || lower.includes('fest')) return 'Celebratory';
+  if (lower.includes('support') || lower.includes('encourag') || lower.includes('community')) return 'Supportive';
+  if (lower.includes('transform') || lower.includes('journey') || lower.includes('growth')) return 'Transformational';
+  if (lower.includes('heart') || lower.includes('gratitude') || lower.includes('love')) return 'Heartfelt';
+  for (const label of TONE_LABELS) {
+    if (lower.includes(label.toLowerCase())) {
+      return label;
+    }
+  }
+  return 'Heartfelt';
+}
+
+function clampConfidence(value?: number): number | undefined {
+  if (typeof value !== 'number' || Number.isNaN(value)) return undefined;
+  if (value > 1.2) {
+    return Math.min(1, value / 100);
+  }
+  return Math.max(0, Math.min(1, value));
+}
+
+function parseToneResponse(raw: string): ToneClassification | null {
+  if (!raw) return null;
+  const candidates: string[] = [];
+  const jsonMatch = raw.match(/\{[\s\S]*?\}/);
+  if (jsonMatch) {
+    candidates.push(jsonMatch[0]);
+  }
+  candidates.push(raw);
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (typeof parsed !== 'object' || !parsed) continue;
+      const label = normalizeToneLabel(String(parsed.label || parsed.tone || '').trim());
+      if (!label) continue;
+      let confidence: number | undefined = undefined;
+      if (typeof parsed.confidence === 'number') {
+        confidence = clampConfidence(parsed.confidence);
+      } else if (typeof parsed.confidence === 'string') {
+        confidence = clampConfidence(parseFloat(parsed.confidence));
+      }
+      let keywords: string[] | undefined;
+      if (Array.isArray(parsed.keywords)) {
+        keywords = parsed.keywords
+          .map((keyword: any) => (typeof keyword === 'string' ? keyword.trim() : null))
+          .filter(Boolean)
+          .slice(0, 5) as string[];
+      } else if (typeof parsed.highlights === 'string') {
+        keywords = parsed.highlights
+          .split(',')
+          .map((item: string) => item.trim())
+          .filter(Boolean)
+          .slice(0, 5);
+      }
+      return {
+        label,
+        confidence,
+        keywords,
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function heuristicTone(quote: string): ToneClassification {
+  const lower = quote.toLowerCase();
+  let bestScore = 0;
+  let bestEntry = HEURISTIC_TONES[2]; // Heartfelt default
+  let matchedKeywords: string[] = [];
+
+  for (const entry of HEURISTIC_TONES) {
+    const matches = entry.keywords.filter((keyword) => lower.includes(keyword));
+    const score = matches.length / Math.max(1, entry.keywords.length);
+    if (score > bestScore) {
+      bestScore = score;
+      bestEntry = entry;
+      matchedKeywords = matches.slice(0, 5);
+    }
+  }
+
+  const confidence = clampConfidence(0.35 + Math.min(bestScore * 2, 0.5));
+
+  return {
+    label: bestEntry.label,
+    confidence,
+    keywords: matchedKeywords,
+  };
+}
+
+async function classifyToneWithGemini(quote: string, apiKey: string): Promise<ToneClassification | null> {
+  try {
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-flash'];
+    const prompt = `You are classifying the tone of a testimonial written by moms in a supportive fitness and lifestyle community.
+Return ONLY valid JSON with the shape {"label": "...", "confidence": number_between_0_and_1, "keywords": ["..."]}.
+The label MUST be one of: ${TONE_LABELS.join(', ')}.
+Confidence must be 0-1. Provide 1-4 short keywords that justify your choice.
+
+QUOTE:
+"""${quote.trim()}"""`;
+
+    for (const modelName of modelsToTry) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const response = await model.generateContent({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 300,
+          },
+        });
+        const text =
+          response?.response?.text?.() ||
+          response?.response?.candidates?.[0]?.content?.parts?.map((part: any) => part?.text ?? '').join('');
+        const parsed = parseToneResponse(text || '');
+        if (parsed) {
+          return parsed;
+        }
+      } catch (error) {
+        console.warn(`⚠️ [GeminiTone] Model ${modelName} failed:`, (error as Error)?.message);
+        continue;
+      }
+    }
+  } catch (error) {
+    console.error('❌ [GeminiTone] Failed to load Gemini SDK:', (error as Error)?.message);
+  }
+  return null;
+}
+
+async function classifyToneWithOpenAI(quote: string, apiKey: string): Promise<ToneClassification | null> {
+  try {
+    const { default: OpenAI } = await import('openai');
+    const openai = new OpenAI({ apiKey });
+    const prompt = `Classify the tone of this testimonial from a women's fitness community.
+Respond strictly in JSON with keys "label", "confidence", "keywords".
+Label MUST be one of: ${TONE_LABELS.join(', ')}.
+Confidence is a number between 0 and 1. Keywords is an array of 1-4 short strings.
+
+QUOTE:
+"""${quote.trim()}"""`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: 'You analyze tone of testimonials for a supportive moms fitness community. Respond only with JSON.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      temperature: 0.2,
+      max_tokens: 300,
+    });
+
+    const text = completion.choices[0]?.message?.content ?? '';
+    const parsed = parseToneResponse(text);
+    if (parsed) {
+      return parsed;
+    }
+  } catch (error) {
+    console.error('❌ [OpenAITone] Error classifying tone:', (error as Error)?.message);
+  }
+  return null;
+}
+
+export const classifyTestimonialTone = onCall({
+  region: 'us-east1',
+  timeoutSeconds: 120,
+  memory: '1GiB',
+}, async (request) => {
+  const quote = typeof request.data?.quote === 'string' ? request.data.quote.trim() : '';
+
+  if (!quote) {
+    throw new HttpsError('invalid-argument', 'quote is required');
+  }
+
+  if (quote.length < 40) {
+    throw new HttpsError('invalid-argument', 'quote must be at least 40 characters to classify tone.');
+  }
+
+  const sanitizedQuote = quote.replace(/\s+/g, ' ').trim();
+
+  let geminiApiKey = process.env.GEMINI_API_KEY;
+  if (!geminiApiKey) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const functions = require('firebase-functions');
+      const config = functions.config();
+      geminiApiKey = config?.gemini?.api_key;
+    } catch {
+      // ignore
+    }
+  }
+
+  let tone: ToneClassification | null = null;
+
+  if (geminiApiKey) {
+    tone = await classifyToneWithGemini(sanitizedQuote, geminiApiKey);
+  }
+
+  if (!tone) {
+    let openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const functions = require('firebase-functions');
+        const config = functions.config();
+        openaiApiKey = config?.openai?.api_key;
+      } catch {
+        // ignore
+      }
+    }
+    if (openaiApiKey) {
+      tone = await classifyToneWithOpenAI(sanitizedQuote, openaiApiKey);
+    }
+  }
+
+  const heuristic = heuristicTone(sanitizedQuote);
+
+  if (!tone) {
+    tone = heuristic;
+  } else {
+    tone.label = normalizeToneLabel(tone.label);
+    tone.confidence = clampConfidence(tone.confidence ?? heuristic.confidence);
+    if (!tone.keywords || tone.keywords.length === 0) {
+      tone.keywords = heuristic.keywords;
+    }
+  }
+
+  return {
+    success: true,
+    label: tone.label,
+    confidence: tone.confidence,
+    keywords: tone.keywords,
+  };
 });
 
 // ───────────────── WATERMARKED DOWNLOADS ─────────────────

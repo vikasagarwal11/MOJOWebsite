@@ -114,6 +114,9 @@ export interface Testimonial {
   featured?: boolean;
   highlight?: string;
   avatarUrl?: string;
+  toneLabel?: string;
+  toneConfidence?: number;
+  toneKeywords?: string[];
   createdAt: Date;
   updatedAt?: Date;
   reviewedBy?: string;

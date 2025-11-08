@@ -30,7 +30,7 @@ const ShareYourStory: React.FC = () => {
     },
     {
       question: "What makes a great testimonial?",
-      answer: "Be authentic and specific! Share real experiences, moments, or feelings. 200 characters (3-4 lines) is perfect."
+      answer: "Be authentic and specific! Share real experiences, moments, or feelings. You have up to 2,000 characters—plenty of room for a vivid story."
     },
     {
       question: "Will my testimonial definitely be published?",
@@ -191,7 +191,7 @@ const ShareYourStory: React.FC = () => {
               </li>
               <li className="flex items-start gap-2">
                 <Star className="w-4 h-4 text-[#FFC107] mt-0.5 flex-shrink-0" />
-                <span><strong>Keep it concise:</strong> 3-4 lines (200 characters) works best</span>
+                <span><strong>Share a full story:</strong> You can write up to 2,000 characters—enough for vivid detail</span>
               </li>
               <li className="flex items-start gap-2">
                 <Star className="w-4 h-4 text-[#FFC107] mt-0.5 flex-shrink-0" />

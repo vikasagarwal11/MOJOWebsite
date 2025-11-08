@@ -16,6 +16,14 @@ export interface GenerateSuggestionsResult {
   error?: string;
 }
 
+export interface ToneClassificationResult {
+  success: boolean;
+  label?: string;
+  confidence?: number;
+  keywords?: string[];
+  error?: string;
+}
+
 /**
  * Generate AI-powered testimonial suggestions using Google Gemini
  * 
@@ -50,6 +58,34 @@ export async function generateTestimonialSuggestions(
     return {
       success: false,
       error: error?.message || 'Failed to connect to AI service. Please try again.'
+    };
+  }
+}
+
+export async function classifyTestimonialTone(
+  quote: string
+): Promise<ToneClassificationResult> {
+  if (!quote || typeof quote !== 'string') {
+    return {
+      success: false,
+      error: 'A testimonial quote is required for tone analysis.',
+    };
+  }
+
+  try {
+    const functions = getFunctions(undefined, 'us-east1');
+    const classifyTone = httpsCallable<{ quote: string }, ToneClassificationResult>(
+      functions,
+      'classifyTestimonialTone'
+    );
+
+    const result = await classifyTone({ quote });
+    return result.data;
+  } catch (error: any) {
+    console.error('[testimonialAIService] classifyTestimonialTone error:', error);
+    return {
+      success: false,
+      error: error?.message || 'Unable to classify testimonial tone at the moment.',
     };
   }
 }
