@@ -26,6 +26,7 @@ export const TestimonialSubmissionForm: React.FC<TestimonialSubmissionFormProps>
   const [isGenerating, setIsGenerating] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const userId = currentUser?.id;
 
@@ -68,6 +69,7 @@ export const TestimonialSubmissionForm: React.FC<TestimonialSubmissionFormProps>
       return;
     }
 
+    setAiError(null);
     setIsGenerating(true);
     setSuggestions([]);
     setShowSuggestions(true);
@@ -89,14 +91,19 @@ export const TestimonialSubmissionForm: React.FC<TestimonialSubmissionFormProps>
 
       if (result.success && result.suggestions && result.suggestions.length > 0) {
         setSuggestions(result.suggestions);
+        setAiError(null);
         toast.success(`Generated ${result.suggestions.length} suggestions!`);
       } else {
-        toast.error(result.error || 'Failed to generate suggestions. Please try writing your own.');
+        const message = result.error || 'Failed to generate suggestions. Please try writing your own.';
+        setAiError(message);
+        toast.error(message);
         setShowSuggestions(false);
       }
     } catch (error: any) {
       console.error('[TestimonialSubmissionForm] Error generating suggestions:', error);
-      toast.error('Something went wrong. Please try again or write your own testimonial.');
+      const message = error?.message || 'Something went wrong. Please try again or write your own testimonial.';
+      setAiError(message);
+      toast.error(message);
       setShowSuggestions(false);
     } finally {
       setIsGenerating(false);
@@ -107,6 +114,7 @@ export const TestimonialSubmissionForm: React.FC<TestimonialSubmissionFormProps>
     setQuote(suggestion);
     setShowSuggestions(false);
     setSuggestions([]);
+    setAiError(null);
     toast.success('Suggestion applied! You can edit it before submitting.');
   };
 
@@ -183,7 +191,7 @@ export const TestimonialSubmissionForm: React.FC<TestimonialSubmissionFormProps>
                 console.log('[TestimonialSubmissionForm] Help me write button clicked');
                 handleGenerateSuggestions();
               }}
-              disabled={isGenerating}
+              disabled={isGenerating || isSubmitting}
               className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#F25129] to-[#FFC107] px-5 py-2 text-sm font-semibold text-white shadow-md transition-all duration-300 hover:from-[#E0451F] hover:to-[#E55A2B] hover:shadow-lg hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 z-10"
               style={{ minWidth: '140px', minHeight: '36px' }}
               data-testid="ai-help-button"
@@ -200,6 +208,11 @@ export const TestimonialSubmissionForm: React.FC<TestimonialSubmissionFormProps>
                 </>
               )}
             </button>
+            {aiError && (
+              <p className="mt-2 text-sm text-red-600" role="alert">
+                {aiError}
+              </p>
+            )}
           </div>
           <textarea
             id="testimonial-quote"
@@ -230,6 +243,7 @@ export const TestimonialSubmissionForm: React.FC<TestimonialSubmissionFormProps>
                   onClick={() => {
                     setShowSuggestions(false);
                     setSuggestions([]);
+                    setAiError(null);
                   }}
                   className="rounded-full p-1 text-purple-400 hover:bg-purple-100 hover:text-purple-600 transition"
                   aria-label="Close suggestions"

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion } from 'framer-motion';
@@ -7,6 +7,22 @@ import { useAuth } from '../contexts/AuthContext';
 import { TestimonialSubmissionForm } from '../components/home/TestimonialSubmissionForm';
 
 const ShareYourStory: React.FC = () => {
+  const isBrowser = typeof window !== 'undefined';
+  const HelmetWrapper = useMemo(() => {
+    return ({ children }: { children?: React.ReactNode }) =>
+      isBrowser ? <Helmet>{children}</Helmet> : <>{children}</>;
+  }, [isBrowser]);
+
+  const MotionlessDiv = useMemo(
+    () =>
+      ({ children, ...rest }: any) => {
+        const { initial, animate, exit, transition, variants, whileInView, viewport, ...clean } = rest;
+        return <div {...clean}>{children}</div>;
+      },
+    []
+  );
+  const Motion = isBrowser ? motion : { div: MotionlessDiv };
+
   const { currentUser } = useAuth();
   const [submitted, setSubmitted] = useState(false);
   const navigate = useNavigate();
@@ -41,9 +57,9 @@ const ShareYourStory: React.FC = () => {
   if (!currentUser) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-12">
-        <Helmet>
+        <HelmetWrapper>
           <title>Share Your Story · Moms Fitness Mojo</title>
-        </Helmet>
+        </HelmetWrapper>
 
         <div className="text-center mb-8">
           <Link
@@ -87,11 +103,11 @@ const ShareYourStory: React.FC = () => {
   if (submitted) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-12">
-        <Helmet>
+        <HelmetWrapper>
           <title>Thank You! · Moms Fitness Mojo</title>
-        </Helmet>
+        </HelmetWrapper>
 
-        <motion.div
+        <Motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center"
@@ -130,17 +146,17 @@ const ShareYourStory: React.FC = () => {
               Share Another Story
             </button>
           </div>
-        </motion.div>
+        </Motion.div>
       </div>
     );
   }
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 sm:py-12">
-      <Helmet>
+      <HelmetWrapper>
         <title>Share Your Story · Moms Fitness Mojo</title>
         <meta name="description" content="Share your experience with Moms Fitness Mojo. Tell other moms how our community has impacted your fitness journey." />
-      </Helmet>
+      </HelmetWrapper>
 
       {/* Header */}
       <div className="mb-8">
@@ -162,19 +178,19 @@ const ShareYourStory: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Form Column */}
         <div className="lg:col-span-2">
-          <motion.div
+          <Motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 md:p-8"
           >
             <TestimonialSubmissionForm onSubmitted={() => setSubmitted(true)} />
-          </motion.div>
+          </Motion.div>
         </div>
 
         {/* Sidebar with Guidelines */}
         <div className="space-y-6">
           {/* Writing Tips */}
-          <motion.div
+          <Motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
@@ -202,10 +218,10 @@ const ShareYourStory: React.FC = () => {
                 <span><strong>Share impact:</strong> How has it changed your life?</span>
               </li>
             </ul>
-          </motion.div>
+          </Motion.div>
 
           {/* Prompt Suggestions */}
-          <motion.div
+          <Motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
@@ -225,10 +241,10 @@ const ShareYourStory: React.FC = () => {
                 </li>
               ))}
             </ul>
-          </motion.div>
+          </Motion.div>
 
           {/* FAQ */}
-          <motion.div
+          <Motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
@@ -246,10 +262,10 @@ const ShareYourStory: React.FC = () => {
                 </div>
               ))}
             </div>
-          </motion.div>
+          </Motion.div>
 
           {/* Quick Stats */}
-          <motion.div
+          <Motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
@@ -259,7 +275,7 @@ const ShareYourStory: React.FC = () => {
             <p className="text-sm opacity-90">
               Your story helps other moms discover the community and feel inspired to join. Every testimonial makes a difference!
             </p>
-          </motion.div>
+          </Motion.div>
         </div>
       </div>
     </div>
