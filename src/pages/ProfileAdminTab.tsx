@@ -1,15 +1,19 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2, RefreshCw, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, Dumbbell } from 'lucide-react';
 import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc, getDoc, setDoc, Timestamp, updateDoc, DocumentReference } from 'firebase/firestore';
-import { ref, deleteObject, listAll } from 'firebase/storage';
+import { ref, listAll } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
 import EventCardNew from '../components/events/EventCardNew';
 import ContactMessagesAdmin from '../components/admin/ContactMessagesAdmin';
+import BulkAttendeesPanel from '../components/admin/BulkAttendeesPanel';
+import CleanupToolPanel from '../components/admin/CleanupToolPanel';
 import { useTestimonials } from '../hooks/useTestimonials';
 import { adminUpdateTestimonial, deleteTestimonial } from '../services/testimonialsService';
 import type { Testimonial, TestimonialStatus, TestimonialAIPrompts, PostAIPrompts } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+
+const ExercisesAdminLazy = React.lazy(() => import('./admin/ExercisesAdmin'));
 
 interface Event {
   id: string;
@@ -72,7 +76,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
-  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts'>('events');
+  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts'>('events');
   const { currentUser } = useAuth();
   
   // Media management state
@@ -627,6 +631,28 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           Event Management
         </button>
         <button
+          onClick={() => setActiveAdminSection('bulkAttendance')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'bulkAttendance'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Users className="w-4 h-4 inline mr-2" />
+          Bulk Attendees
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('workouts')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'workouts'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Dumbbell className="w-4 h-4 inline mr-2" />
+          Workout Library
+        </button>
+        <button
           onClick={() => setActiveAdminSection('messages')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeAdminSection === 'messages'
@@ -711,7 +737,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
               Create New Event
             </button>
             <button
-              onClick={() => window.open('/admin/bulk-attendees', '_blank')}
+              onClick={() => setActiveAdminSection('bulkAttendance')}
               className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-full hover:from-blue-700 hover:to-blue-800"
               aria-label="Bulk add attendees"
             >
@@ -821,6 +847,33 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
             </div>
           </div>
         </>
+      )}
+
+      {activeAdminSection === 'bulkAttendance' && (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-4 text-sm text-blue-800">
+            Bulk add members to sold-out events, manage waitlists, and reconcile headcounts without leaving the profile.
+          </div>
+          <BulkAttendeesPanel />
+        </div>
+      )}
+
+      {activeAdminSection === 'workouts' && (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-700">
+            Upload exercise loops, posters, and manage library access for trainers directly from here.
+          </div>
+          <Suspense
+            fallback={
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white/70 p-8 text-sm text-gray-500">
+                <Loader2 className="mb-3 h-6 w-6 animate-spin text-[#F25129]" />
+                Loading workout library tools…
+              </div>
+            }
+          >
+            <ExercisesAdminLazy />
+          </Suspense>
+        </div>
       )}
 
       {/* Contact Messages Section */}
@@ -1202,6 +1255,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">System Maintenance</h2>
           <div className="space-y-4">
+            <CleanupToolPanel />
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <h4 className="font-medium text-yellow-800 mb-2">FFmpeg Pipeline Fix</h4>
               <p className="text-sm text-yellow-700 mb-3">

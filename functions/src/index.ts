@@ -1,11 +1,13 @@
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onDocumentWritten, onDocumentDeleted, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
-import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
+import { onCall, onRequest, HttpsError, type CallableRequest, type CallableOptions } from "firebase-functions/v2/https";
+import type { Request, Response } from "express";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp, DocumentData } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { CloudTasksClient } from "@google-cloud/tasks";
+import { SpeechClient } from '@google-cloud/speech';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs';
@@ -18,17 +20,87 @@ const fsp = fs.promises;
 
 // Set global options for all functions - set to us-east1 to match prod bucket
 setGlobalOptions({ region: 'us-east1' });
+
+// Central CORS allowlist for all callable/HTTP functions invoked from the web app
+const ALLOWED_CORS_ORIGINS = [
+  'https://momsfitnessmojo.com',
+  'https://www.momsfitnessmojo.com',
+  // Primary Firebase Hosting domains (project-specific)
+  'https://momsfitnessmojo-65d00.web.app',
+  'https://momsfitnessmojo-65d00.firebaseapp.com',
+  // Historical/typo variants kept for backward compatibility with older clients
+  'https://momfitnessmojo.web.app',
+  'https://momfitnessmojo.firebaseapp.com',
+  // Local development
+  'http://localhost:5173',
+  'http://localhost:3000',
+];
+
+function wrapWithOriginGuard<T, R>(fn: (request: CallableRequest<T>) => R | Promise<R>) {
+  return async (request: CallableRequest<T>): Promise<R> => {
+    try {
+      const origin = request?.rawRequest?.headers?.origin;
+      if (origin && !ALLOWED_CORS_ORIGINS.includes(origin)) {
+        console.warn('⚠️ [CORS] Blocked request from disallowed origin:', origin);
+        throw new HttpsError('permission-denied', 'Origin not allowed');
+      }
+    } catch (originCheckError) {
+      console.warn('⚠️ [CORS] Origin guard encountered an error:', (originCheckError as Error).message);
+      // If we cannot determine origin, fall through to handler (Cloud Functions will still enforce auth)
+    }
+    return fn(request);
+  };
+}
+
+// Helper wrappers so future functions automatically include origin allowlist checks
+export function onCallWithCors<T = any, R = any>(
+  optsOrHandler: CallableOptions | ((request: CallableRequest<T>) => R | Promise<R>),
+  handler?: (request: CallableRequest<T>) => R | Promise<R>
+) {
+  if (typeof optsOrHandler === 'function') {
+    return onCall({}, wrapWithOriginGuard(optsOrHandler));
+  }
+  const opts: CallableOptions = optsOrHandler || {};
+  if (!handler) {
+    throw new Error('Handler is required for onCallWithCors');
+  }
+  const merged: CallableOptions = {
+    ...opts,
+    cors: opts.cors ?? ALLOWED_CORS_ORIGINS,
+  };
+  return onCall(merged, wrapWithOriginGuard(handler));
+}
+
+export function onRequestWithCors(
+  optsOrHandler: any,
+  handler?: (req: Request, res: Response) => any
+) {
+  if (typeof optsOrHandler === 'function') {
+    return onRequest({ cors: ALLOWED_CORS_ORIGINS }, optsOrHandler);
+  }
+  const opts = optsOrHandler || {};
+  if (!handler) {
+    throw new Error('Handler is required for onRequestWithCors');
+  }
+  return onRequest({ ...opts, cors: opts.cors ?? ALLOWED_CORS_ORIGINS }, handler);
+}
 // Initialize Firebase Admin BEFORE importing modules that use it
 initializeApp();
 
 // Initialize Cloud Tasks client
 const tasksClient = new CloudTasksClient();
+const speechClient = new SpeechClient();
 
 import { onAttendeeChange, manualRecalculateCount, bulkAttendeeOperation } from './attendeeCounts';
 import { manualRecalculateWaitlistPositions as _manualRecalcWaitlist } from './autoPromotionService';
+import { manualUpsertKnowledgeSource, manualDeleteKnowledgeSource, type KnowledgeVisibilityLevel } from './knowledgeBase';
+import { ensureAdmin } from './utils/admin';
+import { ensureChunkEmbedding, backfillKnowledgeBaseEmbeddings, getKnowledgeEmbeddingStatus, retryFailedKnowledgeEmbeddings } from './kbEmbeddingWorker';
+import { syncStaticKnowledgeEntries } from './staticContent';
 
 // Export the new attendee count management functions
 export { onAttendeeChange, manualRecalculateCount, bulkAttendeeOperation };
+export { ensureChunkEmbedding, backfillKnowledgeBaseEmbeddings, getKnowledgeEmbeddingStatus, retryFailedKnowledgeEmbeddings };
 
 // Auto-Promotion Cloud Function - triggers when someone cancels RSVP
 export const onAttendeeCancellation = onDocumentWritten(
@@ -104,7 +176,7 @@ export const onAttendeeCancellation = onDocumentWritten(
 );
 
 // Callable: Manually recalc waitlist positions (admin only)
-export const recalcWaitlistPositions = onCall({ region: 'us-central1' }, async (request) => {
+export const recalcWaitlistPositions = onCallWithCors({ region: 'us-central1' }, async (request) => {
   const { data, auth } = request;
   const eventId = data?.eventId as string | undefined;
   if (!auth) throw new Error('Unauthenticated');
@@ -113,6 +185,81 @@ export const recalcWaitlistPositions = onCall({ region: 'us-central1' }, async (
   if (!isAdmin) throw new Error('Admin only');
   await _manualRecalcWaitlist(eventId);
   return { success: true, eventId };
+});
+
+const ALLOWED_KB_VISIBILITY: KnowledgeVisibilityLevel[] = ['public', 'members', 'private'];
+
+export const saveManualKnowledgeEntry = onCallWithCors({ region: 'us-central1' }, async request => {
+  await ensureAdmin(request.auth);
+
+  const rawData = request.data || {};
+  const title = (rawData.title ?? '').toString().trim();
+  if (!title) {
+    throw new HttpsError('invalid-argument', 'title is required');
+  }
+
+  const summary = (rawData.summary ?? '').toString();
+  const body = (rawData.body ?? '').toString();
+  const rawVisibility = (rawData.visibility ?? 'members').toString().toLowerCase();
+  const visibility: KnowledgeVisibilityLevel = ALLOWED_KB_VISIBILITY.includes(rawVisibility as KnowledgeVisibilityLevel)
+    ? (rawVisibility as KnowledgeVisibilityLevel)
+    : 'members';
+
+  const tags: string[] = Array.isArray(rawData.tags)
+    ? (rawData.tags as any[]).map(tag => (typeof tag === 'string' ? tag.trim() : '')).filter(Boolean)
+    : typeof rawData.tags === 'string'
+      ? rawData.tags.split(',').map((t: string) => t.trim()).filter(Boolean)
+      : [];
+
+  const url = rawData.url ? rawData.url.toString() : undefined;
+  const metadata = typeof rawData.metadata === 'object' && rawData.metadata !== null ? rawData.metadata : {};
+
+  const db = getFirestore();
+  const providedId = rawData.id ? rawData.id.toString().trim() : '';
+  const sourceId = providedId || db.collection('kb_sources').doc().id;
+  const sourceKey = `manual_${sourceId}`;
+
+  await manualUpsertKnowledgeSource(sourceKey, {
+    sourceId,
+    sourceType: 'manual',
+    title,
+    summary,
+    body,
+    visibility,
+    tags,
+    url,
+    metadata: {
+      ...metadata,
+      lastEditedBy: request.auth?.uid ?? null,
+      lastEditedAt: new Date().toISOString(),
+    },
+  });
+
+  return {
+    success: true,
+    id: sourceId,
+    sourceKey,
+  };
+});
+
+export const deleteManualKnowledgeEntry = onCallWithCors({ region: 'us-central1' }, async request => {
+  await ensureAdmin(request.auth);
+  const id = (request.data?.id ?? '').toString().trim();
+  if (!id) {
+    throw new HttpsError('invalid-argument', 'id is required');
+  }
+  const sourceKey = `manual_${id}`;
+  await manualDeleteKnowledgeSource(sourceKey);
+  return { success: true, id };
+});
+
+export const syncSiteCopyToKnowledgeBase = onCallWithCors({ region: 'us-central1' }, async request => {
+  await ensureAdmin(request.auth);
+  const result = await syncStaticKnowledgeEntries();
+  return {
+    success: true,
+    ...result,
+  };
 });
 
 // Send notifications to promoted users
@@ -1913,6 +2060,150 @@ export const onFamilyMemberDeleted = onDocumentDeleted("users/{userId}/familyMem
   }
 });
 
+// Lightweight handler for exercise media uploads. This does not transcode; it records
+// the upload against the exercise document so an admin pipeline can process it.
+export const onExerciseMediaUpload = onObjectFinalized({
+  region: 'us-east1',
+  timeoutSeconds: 540,
+  memory: '2GiB',
+}, async (event) => {
+  const object = event.data;
+  const name = object.name || '';
+  const contentType = object.contentType || '';
+  if (!name.startsWith('exercise-media/uploads/')) return;
+  const parts = name.split('/');
+  // expected: exercise-media/uploads/{slug}/{filename}
+  const slug = parts[2];
+  if (!slug) return;
+
+  const bucketName = object.bucket; // use event bucket
+  const bucket = getStorage().bucket(bucketName);
+
+  // Ensure doc exists and record raw upload path
+  await db.collection('exercises').doc(slug).set({
+    slug,
+    status: 'draft',
+    media: { rawUploadPath: name },
+    lastReviewedAt: new Date(),
+  }, { merge: true });
+
+  // Prepare local tmp paths
+  const base = path.parse(name).name.replace(/[^a-zA-Z0-9_-]/g, '') || `ex_${Date.now()}`;
+  const tmpSrc = path.join(os.tmpdir(), `ex-src-${base}-${Date.now()}`);
+  const tmpPoster = path.join(os.tmpdir(), `ex-poster-${base}.jpg`);
+  const tmpLoop = path.join(os.tmpdir(), `ex-loop-${base}.mp4`);
+  const outPoster = `exercise-media/processed/${slug}/poster.jpg`;
+  const outLoop = `exercise-media/processed/${slug}/loop.mp4`;
+  const outHlsDir = `exercise-media/processed/${slug}/hls/`;
+  const outHlsIndex = `${outHlsDir}index.m3u8`;
+
+  try {
+    // Download source
+    await bucket.file(name).download({ destination: tmpSrc });
+
+    // Generate poster and loop if video
+    if (contentType.startsWith('video/')) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const command = ffmpeg(tmpSrc).inputOptions(['-ss 1']).output(tmpPoster);
+          if (typeof (command as any).frames === 'function') {
+            (command as any).frames(1);
+          }
+          command
+            .on('end', () => resolve())
+            .on('error', (err: Error) => reject(err))
+            .run();
+        });
+        await bucket.upload(tmpPoster, { destination: outPoster, metadata: { contentType: 'image/jpeg', cacheControl: 'public, max-age=31536000' } });
+      } catch (e) {
+        console.warn('[ExerciseMedia] Poster generation failed', (e as any)?.message);
+      }
+      try {
+        await new Promise<void>((resolve, reject) => {
+          ffmpeg(tmpSrc)
+            .inputOptions(['-ss 1'])
+            .outputOptions(['-t 3', '-an', '-movflags +faststart'])
+            .videoCodec('libx264')
+            .output(tmpLoop)
+            .on('end', () => resolve())
+            .on('error', (err) => reject(err))
+            .run();
+        });
+        await bucket.upload(tmpLoop, { destination: outLoop, metadata: { contentType: 'video/mp4', cacheControl: 'public, max-age=31536000' } });
+      } catch (e) {
+        console.warn('[ExerciseMedia] Loop generation failed', (e as any)?.message);
+      }
+
+      // Minimal HLS (single rendition 720p)
+      try {
+        const hlsLocalDir = path.join(os.tmpdir(), `ex-hls-${base}-${Date.now()}`);
+        fs.mkdirSync(hlsLocalDir, { recursive: true });
+        const hlsLocalIndex = path.join(hlsLocalDir, 'index.m3u8');
+        await new Promise<void>((resolve, reject) => {
+          ffmpeg(tmpSrc)
+            .size('?x720')
+            .videoCodec('libx264')
+            .outputOptions([
+              '-preset veryfast',
+              '-profile:v main',
+              '-crf 23',
+              '-sc_threshold 0',
+              '-g 48',
+              '-keyint_min 48',
+              '-hls_time 4',
+              '-hls_playlist_type vod',
+              '-hls_segment_filename', path.join(hlsLocalDir, 'seg_%03d.ts'),
+            ])
+            .audioCodec('aac')
+            .audioBitrate('128k')
+            .output(hlsLocalIndex)
+            .on('end', () => resolve())
+            .on('error', (err) => reject(err))
+            .run();
+        });
+        // Upload HLS files
+        const files = fs.readdirSync(hlsLocalDir);
+        for (const f of files) {
+          const full = path.join(hlsLocalDir, f);
+          const dest = `${outHlsDir}${f}`;
+          const ct = f.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp2t';
+          await bucket.upload(full, { destination: dest, metadata: { contentType: ct, cacheControl: 'public, max-age=3600' } });
+        }
+      } catch (e) {
+        console.warn('[ExerciseMedia] HLS generation failed', (e as any)?.message);
+      }
+    } else if (contentType.startsWith('image/')) {
+      // Normalize poster using sharp
+      try {
+        const posterLocal = tmpPoster;
+        await sharp(tmpSrc).resize({ width: 1280, withoutEnlargement: true }).jpeg({ quality: 80 }).toFile(posterLocal);
+        await bucket.upload(posterLocal, { destination: outPoster, metadata: { contentType: 'image/jpeg', cacheControl: 'public, max-age=31536000' } });
+      } catch (e) {
+        console.warn('[ExerciseMedia] Poster normalize failed', (e as any)?.message);
+      }
+    }
+
+    // Store storage paths (client resolves to download URLs at render time)
+    await db.collection('exercises').doc(slug).set({
+      media: {
+        posterPath: outPoster,
+        loopPath: outLoop,
+        hlsPath: outHlsIndex,
+        rawUploadPath: name,
+      },
+      lastReviewedAt: new Date(),
+    }, { merge: true });
+
+    console.log('[ExerciseMedia] Processed upload for', slug, name);
+  } catch (error) {
+    console.error('[ExerciseMedia] Failed to process upload', { slug, name, error: (error as any)?.message });
+  } finally {
+    try { fs.existsSync(tmpSrc) && fs.unlinkSync(tmpSrc); } catch {}
+    try { fs.existsSync(tmpPoster) && fs.unlinkSync(tmpPoster); } catch {}
+    try { fs.existsSync(tmpLoop) && fs.unlinkSync(tmpLoop); } catch {}
+  }
+});
+
 // ───────────────── MANUAL FIX: Reset Stuck Processing Videos ─────────────────
 export const resetStuckProcessing = onDocumentCreated("manual_fixes/{fixId}", async (event) => {
   const data = event.data?.data();
@@ -1968,13 +2259,12 @@ export const resetStuckProcessing = onDocumentCreated("manual_fixes/{fixId}", as
  * Worker function that processes a single quality level
  * Triggered by Cloud Tasks via HTTP POST
  */
-export const processQualityLevel = onRequest({
+export const processQualityLevel = onRequestWithCors({
   region: 'us-east1',
   memory: '8GiB',
   timeoutSeconds: 900, // 15 minutes - increased to support 4K processing (2160p needs up to 14 minutes)
   cpu: 2,
   maxInstances: 15, // Increased from 10 to handle bulk uploads (102+ files) with better throughput
-  cors: true,
 }, async (request, response) => {
   // Only allow POST requests
   if (request.method !== 'POST') {
@@ -2391,17 +2681,78 @@ export const processQualityLevel = onRequest({
   }
 });
 
+// Long-running transcription for multi-minute audio (GCS URI or base64 -> upload then transcribe)
+export const transcribeLongAudio = onCallWithCors({ region: 'us-central1', timeoutSeconds: 540, memory: '1GiB' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const { gcsUri, audioContent, encoding, sampleRateHertz, languageCode } = request.data as {
+    gcsUri?: string;
+    audioContent?: string; // base64
+    encoding?: string;
+    sampleRateHertz?: number;
+    languageCode?: string;
+  };
+  let uri = gcsUri;
+  const bucketName = process.env.STORAGE_BUCKET;
+  if (!uri && !audioContent) throw new HttpsError('invalid-argument', 'Provide gcsUri or audioContent');
+  try {
+    if (!uri && audioContent) {
+      if (!bucketName) throw new HttpsError('failed-precondition', 'STORAGE_BUCKET env not set');
+      const b = getStorage().bucket(bucketName);
+      const id = `temp/voice-notes/${request.auth.uid}/${Date.now()}-${Math.random().toString(36).slice(2)}.webm`;
+      const buf = Buffer.from(audioContent, 'base64');
+      await b.file(id).save(buf, { contentType: 'audio/webm', resumable: false, metadata: { cacheControl: 'no-cache' } });
+      uri = `gs://${bucketName}/${id}`;
+    }
+
+    const config: any = {
+      languageCode: languageCode || 'en-US',
+      enableAutomaticPunctuation: true,
+    };
+    if (encoding) config.encoding = encoding;
+    if (sampleRateHertz) config.sampleRateHertz = sampleRateHertz;
+
+    const [operation] = await speechClient.longRunningRecognize({
+      config,
+      audio: { uri },
+    } as any);
+    const [response] = await operation.promise();
+    const transcript = (response.results || [])
+      .map((r: any) => (r.alternatives && r.alternatives[0] ? r.alternatives[0].transcript : ''))
+      .join(' ')
+      .trim();
+    return { transcript };
+  } catch (err: any) {
+    console.error('[transcribeLongAudio] failed', err);
+    throw new HttpsError('internal', err?.message || 'Failed to transcribe');
+  }
+});
+
+// Mirror attendees into per-user attendances for faster profile queries
+export const onAttendeeMirror = onDocumentWritten('events/{eventId}/attendees/{userId}', async (event) => {
+  const eventId = event.params.eventId;
+  const userId = event.params.userId;
+  const after = event.data?.after?.data();
+  const before = event.data?.before?.data();
+  const userRef = db.collection('users').doc(userId).collection('attendances').doc(eventId);
+  try {
+    if (after && event.data?.after?.exists) {
+      await userRef.set({
+        eventId,
+        userId,
+        rsvpStatus: after.rsvpStatus || after.status || 'going',
+        createdAt: after.createdAt || new Date(),
+        updatedAt: new Date(),
+      }, { merge: true });
+    } else if (before && event.data?.before?.exists) {
+      await userRef.delete();
+    }
+  } catch (error) {
+    console.error('[onAttendeeMirror] error', { eventId, userId, error: (error as any)?.message });
+  }
+});
+
 // ───────────────── PHONE NUMBER VALIDATION ─────────────────
-export const checkPhoneNumberExists = onCall({
-  cors: [
-    'https://momsfitnessmojo.com',
-    'https://www.momsfitnessmojo.com',
-    'https://momfitnessmojo.web.app',
-    'https://momfitnessmojo.firebaseapp.com',
-    'http://localhost:5173',
-    'http://localhost:3000',
-  ],
-}, async (request) => {
+export const checkPhoneNumberExists = onCallWithCors({}, async (request) => {
   console.log('🔍 checkPhoneNumberExists called with:', request.data);
   
   const { phoneNumber } = request.data;
@@ -2542,16 +2893,7 @@ export const checkSMSDeliveryStatus = onCall(async (request) => {
 });
 
 // Generate testimonial suggestions using AI (tries Gemini first, falls back to OpenAI)
-export const generateTestimonialSuggestions = onCall({
-  cors: [
-    'https://momsfitnessmojo.com',
-    'https://www.momsfitnessmojo.com',
-    'https://momfitnessmojo.web.app',
-    'https://momfitnessmojo.firebaseapp.com',
-    'http://localhost:5173',
-    'http://localhost:3000',
-  ],
-}, async (request) => {
+export const generateTestimonialSuggestions = onCallWithCors({}, async (request) => {
   try {
     const { prompt, userContext, highlight } = request.data;
     
@@ -2983,7 +3325,7 @@ QUOTE:
   return null;
 }
 
-export const classifyTestimonialTone = onCall({
+export const classifyTestimonialTone = onCallWithCors({
   region: 'us-east1',
   timeoutSeconds: 120,
   memory: '1GiB',
@@ -3228,7 +3570,7 @@ const tryReuseCachedWatermark = async (bucket: StorageBucket, pathToFile?: strin
   return { url, expiresAt };
 };
 
-export const getWatermarkedMedia = onCall({
+export const getWatermarkedMedia = onCallWithCors({
   region: 'us-east1',
   memory: '4GiB',
   timeoutSeconds: 540,
@@ -3363,3 +3705,691 @@ export const getWatermarkedMedia = onCall({
 });
 
 export { generatePostSuggestionsV2 } from './postAI';
+
+// ───────────────── AI WORKOUTS: Plan + Daily Suggestion (MVP) ─────────────────
+
+type PlanIntake = {
+  goal: 'fat_loss' | 'strength' | 'mobility' | 'general';
+  daysPerWeek: 2 | 3 | 4 | 5;
+  minutesPerSession: 10 | 20 | 30 | 45;
+  level: 'beginner' | 'intermediate' | 'advanced';
+  equipment: string[];
+  postpartum?: boolean;
+  environment?: 'home'|'gym'|'outdoors';
+  restrictions?: string[];
+};
+
+type ReadinessInput = {
+  sleep: 1 | 2 | 3 | 4 | 5; // 1=poor, 5=great
+  stress: 1 | 2 | 3 | 4 | 5; // 1=high, 5=low
+  timeAvailable: 5 | 10 | 20 | 30 | 45;
+  soreness?: 0 | 1 | 2 | 3;  // 0=none
+};
+
+// Simple library of blocks
+const BLOCK_LIBRARY = {
+  warmup: { name: 'Warm-up Mobility', items: ['Cat-Cow 30s', 'World’s Greatest Stretch 2/side', 'Glute Bridge 10'] },
+  core: { name: 'Core Stability', items: ['Dead Bug 10/side', 'Side Plank 20s/side'] },
+  hiit: { name: 'HIIT Circuit', items: ['Air Squats 40s', 'Down-Ups 30s', 'Marching Plank 30s'] },
+  strengthA: { name: 'Strength A', items: ['Goblet Squat 3x10', 'DB Row 3x10/side', 'Hip Hinge 3x12'] },
+  strengthB: { name: 'Strength B', items: ['Reverse Lunge 3x10/side', 'Push-up 3x8', 'Glute Bridge 3x12'] },
+  mobility: { name: 'Full-Body Mobility', items: ['90/90 30s/side', 'Couch Stretch 30s/side', 'T-Spine Opener 10'] },
+  walk: { name: 'Brisk Walk', items: ['Outdoor/Stepper 15–30 min'] },
+  cooldown: { name: 'Cool Down', items: ['Box Breathing 2 min', 'Calf/Hamstring Stretch 30s'] },
+};
+
+const buildSession = (type: 'strength'|'hiit'|'mobility'|'walk', minutes: number, ctx?: { environment?: string; equipment?: string[]; restrictions?: string[]; postpartum?: boolean }) => {
+  const base = [BLOCK_LIBRARY.warmup];
+  const env = (ctx?.environment||'home').toLowerCase();
+  const restrict = (ctx?.restrictions||[]).map(x=>String(x||'').toLowerCase());
+  const lowImpact = !!ctx?.postpartum || restrict.includes('knee') || restrict.includes('low back') || restrict.includes('back');
+  if (type === 'strength') base.push(BLOCK_LIBRARY.strengthA, BLOCK_LIBRARY.core);
+  if (type === 'hiit') base.push(lowImpact ? (BLOCK_LIBRARY as any).hiitLow || BLOCK_LIBRARY.core : BLOCK_LIBRARY.hiit);
+  if (type === 'mobility') base.push(BLOCK_LIBRARY.mobility);
+  if (type === 'walk') base.push(BLOCK_LIBRARY.walk);
+  if (env === 'gym' && type === 'walk') {
+    base.splice(1, 1, { name: 'Treadmill Walk', items: ['Treadmill 15-30 min'] } as any);
+  }
+  // Environment hint (light nudge): replace walk with mobility when indoors/home and lowImpact
+  if (env === 'home' && type === 'walk' && lowImpact) {
+    base.splice(1, 1, BLOCK_LIBRARY.mobility);
+  }
+  base.push(BLOCK_LIBRARY.cooldown);
+  return {
+    type,
+    minutes,
+    title: type === 'walk' ? 'Brisk Walk' : type.charAt(0).toUpperCase()+type.slice(1),
+    blocks: base,
+  };
+};
+
+export const generateWorkoutPlan = onCallWithCors({ region: 'us-east1' }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const uid = auth.uid;
+  const intake = request.data as PlanIntake;
+  if (!intake || !intake.daysPerWeek || !intake.minutesPerSession) throw new HttpsError('invalid-argument', 'Missing fields');
+
+  const weeks = 6;
+  const sessionsPerWeek = intake.daysPerWeek;
+  const minutes = intake.minutesPerSession;
+
+  const sessions: any[] = [];
+  for (let w=1; w<=weeks; w++) {
+    for (let d=1; d<=sessionsPerWeek; d++) {
+      // Simple rotation: Strength / HIIT / Mobility / Walk
+      const idx = (d-1) % 4;
+      const map: Array<'strength'|'hiit'|'mobility'|'walk'> = ['strength', 'hiit', 'mobility', 'walk'];
+      const t = intake.postpartum ? (idx===1 ? 'mobility' : (idx===0 ? 'strength' : 'walk')) : map[idx];
+      sessions.push(buildSession(t as any, minutes, { environment: intake.environment, equipment: intake.equipment, restrictions: intake.restrictions, postpartum: intake.postpartum }));
+    }
+  }
+
+  const planDoc = {
+    title: `${intake.level.replace(/\b\w/g, c=>c.toUpperCase())} ${intake.goal.replace('_',' ')} Plan`,
+    goal: intake.goal,
+    level: intake.level,
+    daysPerWeek: intake.daysPerWeek,
+    minutesPerSession: intake.minutesPerSession,
+    equipment: intake.equipment,
+    environment: intake.environment || 'home',
+    restrictions: intake.restrictions || [],
+    postpartum: !!intake.postpartum,
+    weeks,
+    sessions,
+    createdAt: new Date(),
+  };
+
+  const ref = await db.collection('users').doc(uid).collection('plans').add(planDoc);
+  return { planId: ref.id };
+});
+
+export const getDailyWorkoutSuggestion = onCallWithCors({ region: 'us-east1' }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const data = request.data as ReadinessInput;
+  if (!data || !data.sleep || !data.stress || !data.timeAvailable) throw new HttpsError('invalid-argument', 'Missing fields');
+
+  // Very simple readiness logic
+  const energy = (data.sleep + (6 - data.stress)) / 2; // higher is better
+  const sore = data.soreness ?? 0;
+  let type: 'strength'|'hiit'|'mobility'|'walk' = 'strength';
+
+  if (energy <= 2 || sore >= 3) type = 'mobility';
+  else if (energy < 3) type = 'walk';
+  else if (energy >= 4 && data.timeAvailable >= 20) type = 'hiit';
+  else type = 'strength';
+
+  const minutes = Math.min(Math.max(data.timeAvailable, 5), 45);
+  const session = buildSession(type, minutes);
+  return { suggestion: { ...session, note: type==='mobility' && energy<=2 ? 'Keep it gentle today' : undefined } };
+});
+
+// ───────────────── CHALLENGES MVP ─────────────────
+
+export const createChallenge = onCallWithCors({ region: 'us-east1' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const data = request.data as {
+    title: string; goal: 'sessions'|'minutes'; target: number; startAt: number; endAt: number; visibility?: string;
+  };
+  if (!data?.title || !data.goal || !data.target || !data.startAt || !data.endAt) throw new HttpsError('invalid-argument', 'Missing fields');
+  const challenge = {
+    title: data.title.trim(),
+    goal: data.goal,
+    target: Math.max(1, Number(data.target) || 1),
+    startAt: new Date(data.startAt),
+    endAt: new Date(data.endAt),
+    visibility: data.visibility || 'members',
+    createdBy: request.auth.uid,
+    createdAt: new Date(),
+  };
+  const ref = await db.collection('challenges').add(challenge);
+  return { id: ref.id };
+});
+
+export const joinChallenge = onCallWithCors({ region: 'us-east1' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const { challengeId } = request.data as { challengeId: string };
+  if (!challengeId) throw new HttpsError('invalid-argument', 'challengeId required');
+
+  const challengeRef = db.collection('challenges').doc(challengeId);
+  const challengeSnap = await challengeRef.get();
+  if (!challengeSnap.exists) {
+    throw new HttpsError('not-found', 'Challenge not found');
+  }
+  const challengeData = challengeSnap.data() || {};
+
+  const user = await db.collection('users').doc(request.auth.uid).get();
+  const displayName = user.data()?.displayName || 'Member';
+
+  await challengeRef.collection('participants').doc(request.auth.uid).set(
+    {
+      userId: request.auth.uid,
+      displayName,
+      progressCount: 0,
+      minutesSum: 0,
+      joinedAt: new Date(),
+      updatedAt: new Date(),
+    },
+    { merge: true }
+  );
+
+  await db
+    .collection('users')
+    .doc(request.auth.uid)
+    .collection('challengeMemberships')
+    .doc(challengeId)
+    .set(
+      {
+        challengeId,
+        title: challengeData.title || '',
+        goal: challengeData.goal || 'sessions',
+        target: challengeData.target || 1,
+        startAt: challengeData.startAt || null,
+        endAt: challengeData.endAt || null,
+        visibility: challengeData.visibility || 'members',
+        progressCount: 0,
+        minutesSum: 0,
+        joinedAt: new Date(),
+        updatedAt: new Date(),
+      },
+      { merge: true }
+    );
+
+  return { ok: true };
+});
+
+async function applyChallengeProgressInternal(params: { userId: string; challengeId: string; sessions?: number; minutes?: number }) {
+  const { userId, challengeId } = params;
+  const sessions = Math.max(0, Number(params.sessions || 0));
+  const minutes = Math.max(0, Number(params.minutes || 0));
+  if (!sessions && !minutes) {
+    return;
+  }
+
+  const partRef = db.collection('challenges').doc(challengeId).collection('participants').doc(userId);
+  const membershipRef = db.collection('users').doc(userId).collection('challengeMemberships').doc(challengeId);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(partRef);
+    if (!snap.exists) throw new HttpsError('failed-precondition', 'Not a participant');
+    const data = snap.data() || {};
+    const next = {
+      progressCount: (data.progressCount || 0) + sessions,
+      minutesSum: (data.minutesSum || 0) + minutes,
+      updatedAt: new Date(),
+    };
+    tx.update(partRef, next);
+
+    const membershipSnap = await tx.get(membershipRef);
+    if (membershipSnap.exists) {
+      const membershipData = membershipSnap.data() || {};
+      tx.update(membershipRef, {
+        progressCount: (membershipData.progressCount || 0) + sessions,
+        minutesSum: (membershipData.minutesSum || 0) + minutes,
+        updatedAt: new Date(),
+      });
+    } else {
+      tx.set(
+        membershipRef,
+        {
+          challengeId,
+          progressCount: sessions,
+          minutesSum: minutes,
+          joinedAt: new Date(),
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      );
+    }
+  });
+}
+
+export const incrementChallengeProgress = onCallWithCors({ region: 'us-east1' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const { challengeId, sessions, minutes } = request.data as { challengeId: string; sessions?: number; minutes?: number };
+  if (!challengeId) throw new HttpsError('invalid-argument', 'challengeId required');
+
+  await applyChallengeProgressInternal({
+    userId: request.auth.uid,
+    challengeId,
+    sessions,
+    minutes,
+  });
+
+  return { ok: true };
+});
+
+const toDateOrNull = (value: any): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (value instanceof Timestamp) return value.toDate();
+  if (typeof value.toDate === 'function') {
+    try {
+      return value.toDate();
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value === 'number') {
+    return new Date(value);
+  }
+  return null;
+};
+
+export const onSessionCreatedUpdateChallenges = onDocumentCreated('users/{userId}/sessions/{sessionId}', async (event) => {
+  const userId = event.params.userId;
+  const data = event.data?.data();
+  if (!data) return;
+
+  const minutes = Math.max(0, Number(data.minutes || 0));
+  const completedAt = toDateOrNull(data.completedAt) ?? new Date();
+
+  try {
+    const membershipsSnap = await db.collection('users').doc(userId).collection('challengeMemberships').get();
+    if (membershipsSnap.empty) {
+      return;
+    }
+
+    const tasks: Array<Promise<void>> = [];
+    membershipsSnap.forEach((docSnap) => {
+      const membership = docSnap.data() || {};
+      const startAt = toDateOrNull(membership.startAt);
+      const endAt = toDateOrNull(membership.endAt);
+      if (startAt && completedAt < startAt) return;
+      if (endAt && completedAt > endAt) return;
+
+      const goal: 'sessions' | 'minutes' = membership.goal || 'sessions';
+      const payload: { sessions?: number; minutes?: number } = {};
+      if (goal === 'minutes') {
+        if (minutes <= 0) return;
+        payload.minutes = minutes;
+      } else {
+        payload.sessions = 1;
+      }
+
+      tasks.push(
+        applyChallengeProgressInternal({
+          userId,
+          challengeId: docSnap.id,
+          ...payload,
+        }).catch((error) => {
+          console.error('❌ [ChallengeProgress] Auto-update failed', {
+            userId,
+            challengeId: docSnap.id,
+            goal,
+            error: (error as Error)?.message,
+          });
+        })
+      );
+    });
+
+    if (tasks.length) {
+      await Promise.all(tasks);
+    }
+  } catch (error) {
+    console.error('❌ [ChallengeProgress] Failed to process session trigger', {
+      userId,
+      sessionId: event.params.sessionId,
+      error: (error as Error)?.message,
+    });
+  }
+});
+
+export const generateChallengeShareCard = onCallWithCors({
+  region: 'us-east1',
+}, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const { challengeId } = request.data as { challengeId: string };
+  if (!challengeId) throw new HttpsError('invalid-argument', 'challengeId required');
+
+  const uid = request.auth.uid;
+  const challengeRef = db.collection('challenges').doc(challengeId);
+  const challengeSnap = await challengeRef.get();
+  if (!challengeSnap.exists) throw new HttpsError('not-found', 'Challenge not found');
+  const challenge = challengeSnap.data() || {};
+
+  const participantSnap = await challengeRef.collection('participants').doc(uid).get();
+  if (!participantSnap.exists) throw new HttpsError('failed-precondition', 'Join the challenge to share progress.');
+  const participant = participantSnap.data() || {};
+
+  const membershipSnap = await db.collection('users').doc(uid).collection('challengeMemberships').doc(challengeId).get();
+  const membership = membershipSnap.exists ? (membershipSnap.data() || {}) : {};
+
+  const goal: 'sessions' | 'minutes' = challenge.goal || 'sessions';
+  const target = Math.max(1, Number(challenge.target) || 1);
+  const progressValue =
+    goal === 'minutes' ? Number(participant.minutesSum || membership.minutesSum || 0) : Number(participant.progressCount || membership.progressCount || 0);
+  const percentComplete = Math.min(100, Math.max(0, Math.round((progressValue / target) * 100)));
+  const remaining = Math.max(0, target - progressValue);
+
+  const userName = (participant.displayName || membership.displayName || 'Member').toString();
+  const title = (challenge.title || 'Challenge').toString();
+  const progressLabel =
+    goal === 'minutes'
+      ? `${progressValue} / ${target} minutes`
+      : `${progressValue} / ${target} sessions`;
+  const remainingLabel =
+    goal === 'minutes'
+      ? `${remaining} minutes to go`
+      : `${remaining} sessions to go`;
+
+  const now = new Date();
+  const startAt = challenge.startAt?.toDate?.() || (challenge.startAt instanceof Date ? challenge.startAt : null);
+  const endAt = challenge.endAt?.toDate?.() || (challenge.endAt instanceof Date ? challenge.endAt : null);
+
+  const timeWindow = [
+    startAt ? startAt.toLocaleDateString() : 'Start TBD',
+    endAt ? endAt.toLocaleDateString() : 'End TBD',
+  ].join(' → ');
+
+  const width = 1080;
+  const height = 1350;
+
+  const gradientId = `grad-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const svg = `
+<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="${gradientId}" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE68A"/>
+      <stop offset="100%" stop-color="#F25129"/>
+    </linearGradient>
+  </defs>
+  <rect width="${width}" height="${height}" fill="#F8F5FF"/>
+  <rect x="60" y="140" width="${width - 120}" height="${height - 240}" rx="48" fill="url(#${gradientId})" opacity="0.85"/>
+  <text x="90" y="230" font-size="36" font-family="Inter, Arial" fill="#442A12" font-weight="600">Moms Fitness Mojo</text>
+  <text x="90" y="300" font-size="54" font-family="Inter, Arial" fill="#1F2937" font-weight="700">${escapeSvgText(title)}</text>
+  <text x="90" y="360" font-size="34" font-family="Inter, Arial" fill="#1F2937">${escapeSvgText(userName)} • ${percentComplete}% complete</text>
+  <text x="90" y="440" font-size="80" font-family="Inter, Arial" fill="#111827" font-weight="800">${escapeSvgText(progressLabel)}</text>
+  <text x="90" y="510" font-size="32" font-family="Inter, Arial" fill="#111827">${escapeSvgText(remainingLabel)}</text>
+  <text x="90" y="570" font-size="26" font-family="Inter, Arial" fill="#4B5563">Window: ${escapeSvgText(timeWindow)}</text>
+  <rect x="90" y="620" width="${width - 180}" height="40" rx="20" fill="#F9FAFB" opacity="0.65"/>
+  <rect x="90" y="620" width="${Math.max(12, Math.round((width - 180) * (percentComplete / 100)))}" height="40" rx="20" fill="#1F2937" opacity="0.9"/>
+  <text x="90" y="710" font-size="28" font-family="Inter, Arial" fill="#1F2937">Keep going—your community is cheering you on!</text>
+  <text x="90" y="${height - 140}" font-size="24" font-family="Inter, Arial" fill="#4B5563">Generated ${now.toLocaleDateString()}</text>
+</svg>
+  `.trim();
+
+  const baseBuffer = await sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background: { r: 249, g: 250, b: 251, alpha: 1 },
+    },
+  })
+    .png()
+    .toBuffer();
+
+  const cardBuffer = await sharp(baseBuffer)
+    .composite([{ input: Buffer.from(svg) }])
+    .png()
+    .toBuffer();
+
+  const tmpCardPath = path.join(os.tmpdir(), `challenge-card-${uid}-${Date.now()}.png`);
+  const tmpWatermarked = path.join(os.tmpdir(), `challenge-card-wm-${uid}-${Date.now()}.png`);
+  await fsp.writeFile(tmpCardPath, cardBuffer);
+
+  try {
+    await applyImageWatermark(tmpCardPath, tmpWatermarked);
+
+    const bucketName = process.env.STORAGE_BUCKET || `${process.env.GCLOUD_PROJECT}.firebasestorage.app`;
+    const bucket = getStorage().bucket(bucketName);
+    const storagePath = `share/cards/${uid}/${challengeId}-${Date.now()}.png`;
+    const downloadToken = uuidv4();
+
+    await bucket.upload(tmpWatermarked, {
+      destination: storagePath,
+      metadata: {
+        contentType: 'image/png',
+        cacheControl: 'private, max-age=3600',
+        metadata: {
+          firebaseStorageDownloadTokens: downloadToken,
+          watermark: 'true',
+          generatedBy: uid,
+          challengeId,
+        },
+      },
+    });
+
+    const encodedPath = encodeURIComponent(storagePath);
+    const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedPath}?alt=media&token=${downloadToken}`;
+
+    const storageFolder = storagePath.substring(0, storagePath.lastIndexOf('/') + 1);
+    const titleForCard = `${userName} • ${percentComplete}% ${goal === 'minutes' ? 'minutes' : 'sessions'}`;
+
+    const mediaDoc: Record<string, any> = {
+      title: titleForCard,
+      type: 'image',
+      url: downloadUrl,
+      filePath: storagePath,
+      storageFolder,
+      thumbnailPath: storagePath,
+      thumbnails: {
+        originalPath: storagePath,
+        originalReady: true,
+        largePath: storagePath,
+        largeReady: true,
+        mediumPath: storagePath,
+        mediumReady: true,
+        smallPath: storagePath,
+        smallReady: true,
+      },
+      width,
+      height,
+      sizeBytes: cardBuffer.length,
+      uploadedBy: uid,
+      uploadedByName: userName,
+      isPublic: true,
+      visibility: 'community',
+      allowDownload: true,
+      allowComments: true,
+      allowReactions: true,
+      description: `Challenge progress for ${challenge.title || 'Challenge'}`,
+      tags: ['challenge', 'share-card', goal],
+      challengeId,
+      challengeTitle: challenge.title || '',
+      challengeGoal: goal,
+      challengeTarget: target,
+      challengePercentComplete: percentComplete,
+      challengeProgressValue: progressValue,
+      challengeRemaining: remaining,
+      challengeShare: {
+        generatedAt: new Date(),
+        percentComplete,
+        progressLabel,
+        remainingLabel,
+        timeWindow,
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      likesCount: 0,
+      commentsCount: 0,
+      viewCount: 0,
+      source: 'challengeShareCard',
+      transcodeStatus: 'ready',
+      isGenerated: true,
+      shareCard: true,
+    };
+
+    const mediaRef = await db.collection('media').add(mediaDoc);
+
+    console.log('✅ [ChallengeShareCard] Generated card', { challengeId, userId: uid, storagePath, mediaId: mediaRef.id });
+    return { url: downloadUrl, mediaId: mediaRef.id };
+  } catch (error) {
+    console.error('❌ [ChallengeShareCard] Failed to generate card', { challengeId, userId: uid, error });
+    throw new HttpsError('internal', 'Failed to generate share card.');
+  } finally {
+    await cleanupTempFiles(tmpCardPath, tmpWatermarked);
+  }
+});
+
+// ───────────────── Adaptive Progression (rule-based) ─────────────────
+
+export const applyAdaptiveProgression = onCallWithCors({ region: 'us-east1' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const uid = request.auth.uid;
+  const planId = (request.data as any)?.planId as string | undefined;
+
+  // Fetch last 4 sessions
+  const last = await db.collection('users').doc(uid).collection('sessions').orderBy('completedAt', 'desc').limit(4).get();
+  const items = last.docs.map(d => d.data());
+  const rpes = items.map(s => Number(s.rpe)).filter(v => !isNaN(v)) as number[];
+  const avgRpe = rpes.length ? (rpes.reduce((a,b)=>a+b,0)/rpes.length) : 7;
+
+  let minutesDelta = 0;
+  let suggestion: 'increase'|'hold'|'decrease'|'swap_mobility' = 'hold';
+  if (avgRpe <= 6) { minutesDelta = 5; suggestion = 'increase'; }
+  if (avgRpe >= 8) { minutesDelta = -5; suggestion = 'decrease'; }
+
+  const adjustment = {
+    avgRpe: Math.round(avgRpe*10)/10,
+    minutesDelta,
+    suggestion,
+    evaluatedAt: new Date(),
+  };
+
+  try {
+    const coachNote = await generateAdaptiveCoachNote(
+      {
+        avgRpe: adjustment.avgRpe,
+        minutesDelta,
+        suggestion,
+      },
+      items
+    );
+    if (coachNote) {
+      (adjustment as any).coachNote = coachNote;
+    }
+  } catch (error) {
+    console.error('⚠️ [AdaptiveProgression] Coach note generation failed:', (error as Error)?.message);
+  }
+
+  if (planId) {
+    await db.collection('users').doc(uid).collection('plans').doc(planId).set({ nextAdjustment: adjustment }, { merge: true });
+  }
+  return { adjustment };
+});
+
+const buildFallbackCoachNote = (suggestion: 'increase'|'hold'|'decrease'|'swap_mobility', minutesDelta: number): string => {
+  switch (suggestion) {
+    case 'increase':
+      return `Great work staying consistent! Let's gently add ${minutesDelta} more minutes next session—keep breathing and stay mindful of form.`;
+    case 'decrease':
+      return `You’ve been pushing hard. Ease back ${Math.abs(minutesDelta)} minutes, focus on quality movement, and let recovery lead the way.`;
+    case 'swap_mobility':
+      return 'Body needs a mobility reset today. Lean into slower flows, deep breathing, and restorative moves to keep momentum gentle.';
+    default:
+      return 'Keep your current rhythm—consistency is winning. Stay present, hydrate, and celebrate every rep you show up for.';
+  }
+};
+
+async function generateAdaptiveCoachNote(
+  adjustment: { avgRpe: number; minutesDelta: number; suggestion: 'increase'|'hold'|'decrease'|'swap_mobility' },
+  recentSessions: any[]
+): Promise<string | null> {
+  const sessionSummary = recentSessions
+    .map((session: any, idx: number) => {
+      const type = session?.type || 'Workout';
+      const minutes = session?.minutes ?? session?.duration ?? '?';
+      const rpe = session?.rpe !== undefined ? session.rpe : 'n/a';
+      return `Session ${idx + 1}: ${type} • ${minutes} min • RPE ${rpe}`;
+    })
+    .join('\n');
+
+  const basePrompt = `
+You are an encouraging fitness coach for Moms Fitness Mojo—a supportive community for moms balancing energy, recovery, and family life.
+
+User data:
+- Average RPE: ${adjustment.avgRpe}
+- Suggested change: ${adjustment.suggestion} (${adjustment.minutesDelta >= 0 ? '+' : ''}${adjustment.minutesDelta} minutes)
+- Recent sessions:
+${sessionSummary || 'None logged yet.'}
+
+Write 2 short supportive sentences (max 280 characters total) that celebrate progress and give a next-step tip. 
+If suggestion is "increase", encourage confidence and mindful pacing. 
+If "decrease", emphasize recovery and tuning into the body. 
+If "swap_mobility", invite restorative movement. 
+If "hold", celebrate consistency.
+Keep tone warm, empowering, and mom-to-mom. Respond with plain text only.
+`.trim();
+
+  let note: string | null = null;
+
+  let geminiApiKey = process.env.GEMINI_API_KEY || null;
+  if (!geminiApiKey) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const functions = require('firebase-functions');
+      geminiApiKey = functions.config()?.gemini?.api_key || null;
+    } catch (error) {
+      // ignore config lookup failure
+    }
+  }
+
+  if (geminiApiKey) {
+    try {
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(geminiApiKey);
+      const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash-exp', 'gemini-pro', 'gemini-1.0-pro'];
+      for (const modelName of modelsToTry) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent(basePrompt);
+          const response = await result.response;
+          note = response.text().trim();
+          if (note) break;
+        } catch (modelError) {
+          console.warn(`⚠️ [AdaptiveCoach] Gemini model ${modelName} failed:`, (modelError as Error)?.message);
+        }
+      }
+    } catch (error) {
+      console.error('❌ [AdaptiveCoach] Gemini invocation failed:', (error as Error)?.message);
+    }
+  }
+
+  if (!note) {
+    let openaiApiKey = process.env.OPENAI_API_KEY || null;
+    if (!openaiApiKey) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const functions = require('firebase-functions');
+        openaiApiKey = functions.config()?.openai?.api_key || null;
+      } catch (error) {
+        // ignore config lookup failure
+      }
+    }
+
+    if (openaiApiKey) {
+      try {
+        const { default: OpenAI } = await import('openai');
+        const openai = new OpenAI({ apiKey: openaiApiKey });
+        const response = await openai.responses.create({
+          model: 'gpt-4o-mini',
+          input: basePrompt,
+          max_output_tokens: 200,
+        });
+        note = response?.output_text?.trim() || null;
+      } catch (error) {
+        console.error('❌ [AdaptiveCoach] OpenAI invocation failed:', (error as Error)?.message);
+      }
+    }
+  }
+
+  if (!note) {
+    note = buildFallbackCoachNote(adjustment.suggestion, adjustment.minutesDelta);
+  }
+
+  if (!note) return null;
+  const sanitized = note.replace(/\s+/g, ' ').trim();
+  if (sanitized.length <= 320) return sanitized;
+  return `${sanitized.slice(0, 317).trim()}…`;
+}
+
+export { chatAsk, transcribeAudio, synthesizeSpeech } from './assistant';
+export {
+  syncPostToKnowledgeBase,
+  syncEventToKnowledgeBase,
+  syncChallengeToKnowledgeBase,
+  removeKnowledgeChunksOnDelete,
+} from './knowledgeBase';

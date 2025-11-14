@@ -6,7 +6,8 @@ export interface User {
   displayName: string;
   phoneNumber?: string;
   photoURL?: string;
-  role: 'admin' | 'member';
+  role: 'admin' | 'trainer' | 'member';
+  canEditExercises?: boolean;
   createdAt: Date;
   updatedAt: Date;
   // VIP Tier System

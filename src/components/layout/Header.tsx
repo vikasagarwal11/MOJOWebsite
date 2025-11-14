@@ -55,6 +55,8 @@ const Header: React.FC = () => {
     { name: 'Events', href: '/events' },
     // { name: 'Events (Read-Only)', href: '/events-readonly' }, // Hidden for now
     { name: 'Media', href: '/media' },
+    { name: 'Workouts', href: '/workouts' },
+    { name: 'Challenges', href: '/challenges' },
     { name: 'Posts', href: '/posts' },
     { name: 'About Us', href: '/about' },
     { name: 'Founder', href: '/founder' },
@@ -177,6 +179,16 @@ const Header: React.FC = () => {
                         </div>
                       )}
                     </div>
+                    {currentUser.role === 'admin' && (
+                      <Link
+                        to="/admin"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="block px-4 py-2.5 text-sm hover:bg-[#F25129]/10"
+                        role="menuitem"
+                      >
+                        Admin Console
+                      </Link>
+                    )}
                     <Link
                       to="/profile"
                       onClick={() => setUserMenuOpen(false)}
@@ -276,6 +288,15 @@ const Header: React.FC = () => {
                   >
                     My Profile
                   </Link>
+                  {currentUser.role === 'admin' && (
+                    <Link
+                      to="/admin"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="block w-full mt-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-[#F25129]/10 rounded-lg transition-colors"
+                    >
+                      Admin Console
+                    </Link>
+                  )}
                   <button
                     onClick={async () => {
                       await handleLogout();

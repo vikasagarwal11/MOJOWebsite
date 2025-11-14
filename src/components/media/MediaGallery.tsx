@@ -34,12 +34,14 @@ const MediaGallery: React.FC = () => {
     hoverDelayMs: 120
   });
 
-  const { data: mediaFiles } = useRealtimeCollection('media', [orderBy('createdAt','desc')]);
-  const { data: events } = useRealtimeCollection('events', []);
+  const { data: rawMediaFiles } = useRealtimeCollection('media', [orderBy('createdAt','desc')]);
+  const mediaFiles = useMemo(() => (Array.isArray(rawMediaFiles) ? rawMediaFiles : []), [rawMediaFiles]);
+  const { data: rawEvents } = useRealtimeCollection('events', []);
+  const events = useMemo(() => (Array.isArray(rawEvents) ? rawEvents : []), [rawEvents]);
 
   const eventsForFilter = useMemo(() => {
     const toMs = (v:any)=> v instanceof Date ? +v : (typeof v?.toDate === 'function' ? +v.toDate() : 0);
-    return [...events].sort((a:any,b:any)=> (toMs(b.startAt||b.date)-toMs(a.startAt||b.date)));
+    return [...events].sort((a:any,b:any)=> (toMs(b.startAt||b.date)-toMs(a.startAt||a.date)));
   }, [events]);
 
   const filters = useMediaFilters(mediaFiles);
