@@ -101,7 +101,7 @@ function normalizeDoc(docData: any) {
     const reconstructed = reconstructNestedObjects(sanitized);
     
     const out = { id: reconstructed.id, ...reconstructed };
-    const tsFields = ['createdAt', 'updatedAt', 'date', 'validUntil', 'startAt'];
+    const tsFields = ['createdAt', 'updatedAt', 'date', 'validUntil', 'startAt', 'endAt', 'joinedAt'];
     for (const f of tsFields) {
       const v = (out as any)[f];
       (out as any)[f] = v?.toDate?.() ? v.toDate() : v instanceof Date ? v : v;
@@ -249,6 +249,65 @@ export const useFirestore = () => {
     }
   };
 
+  const useRealtimeDoc = (docPath: string | undefined) => {
+    const [data, setData] = useState<any | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<Error | null>(null);
+
+    useEffect(() => {
+      if (!docPath) {
+        setData(null);
+        setLoading(false);
+        setError(null);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      let unsubscribe = () => {};
+      try {
+        const ref = doc(db, docPath);
+        unsubscribe = onSnapshot(
+          ref,
+          (snapshot) => {
+            if (!snapshot.exists()) {
+              setData(null);
+            } else {
+              const normalized = normalizeDoc({ id: snapshot.id, ...snapshot.data() });
+              setData(normalized);
+            }
+            setLoading(false);
+          },
+          (err: any) => {
+            console.error('❌ [useFirestore] useRealtimeDoc error:', { docPath, err });
+            setError(err);
+            setLoading(false);
+            if (err?.code === 'permission-denied') {
+              toast.error('You do not have permission to view this item.');
+            } else {
+              toast.error('Failed to load item.');
+            }
+          }
+        );
+      } catch (err: any) {
+        console.error('❌ [useFirestore] useRealtimeDoc setup failed:', { docPath, err });
+        setError(err);
+        setLoading(false);
+      }
+
+      return () => {
+        try {
+          unsubscribe();
+        } catch (cleanupError) {
+          console.warn('⚠️ [useFirestore] Failed to cleanup doc listener:', cleanupError);
+        }
+      };
+    }, [docPath]);
+
+    return { data, loading, error };
+  };
+
   const useRealtimeCollection = (
     collectionName: string,
     queryConstraints: QueryConstraint[] = []
@@ -257,6 +316,12 @@ export const useFirestore = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+      if (!collectionName) {
+        setData([]);
+        setLoading(false);
+        return;
+      }
+
       debugLog('🔍 [useFirestore] useRealtimeCollection START:', { 
         collectionName, 
         constraintsCount: queryConstraints.length,
@@ -453,6 +518,7 @@ export const useFirestore = () => {
     addDocument,
     updateDocument,
     deleteDocument,
+    useRealtimeDoc,
     useRealtimeCollection,
   };
 };

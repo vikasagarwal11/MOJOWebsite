@@ -1,0 +1,14 @@
+{
+  "name": "streaming-transcriber",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@google-cloud/speech": "^7.2.1",
+    "firebase-admin": "^12.5.0",
+    "express": "^5.1.0",
+    "ws": "^8.18.0"
+  }
+}

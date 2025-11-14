@@ -3,10 +3,18 @@ service firebase.storage {
   match /b/{bucket}/o {
     // Helpers
     function isSignedIn() { return request.auth != null; }
-    // Reads the caller's user doc to check role (incurs a Firestore read)
+    function userDoc() {
+      return isSignedIn() ? firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data : null;
+    }
     function isAdmin() {
+      return isSignedIn() && userDoc() != null && userDoc().role == 'admin';
+    }
+    function canEditExercises() {
       return isSignedIn() &&
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+        userDoc() != null &&
+        (userDoc().role == 'admin' ||
+         userDoc().role == 'trainer' ||
+         userDoc().canEditExercises == true);
     }
     function isImage() {
       return request.resource.contentType.matches('image/.*')
@@ -95,6 +103,18 @@ service firebase.storage {
                        || request.resource.contentType.matches('video/.*'));
       allow delete: if isSignedIn()
                     && (isAdmin() || request.auth.uid == userId);
+    }
+
+    // =========================
+    // Exercise media uploads (admins/trainers/editors): exercise-media/{...}
+    // =========================
+    match /exercise-media/{folder}/{rest=**} {
+      allow read: if true;
+      allow write: if canEditExercises()
+                   && request.resource.size < 200 * 1024 * 1024
+                   && (request.resource.contentType.matches('image/.*')
+                       || request.resource.contentType.matches('video/.*'));
+      allow delete: if canEditExercises();
     }
 
     // Legacy flat comment attachments without user folders

@@ -18,6 +18,18 @@ service cloud.firestore {
     function isMember() {
       return userDoc() != null && userDoc().role == 'member';
     }
+
+    function isTrainer() {
+      return userDoc() != null && userDoc().role == 'trainer';
+    }
+
+    function isEventOrganizer(eventId) {
+      return isSignedIn() && exists(/databases/$(database)/documents/events/$(eventId)) && (
+        get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
+        (('organizers' in get(/databases/$(database)/documents/events/$(eventId)).data) &&
+         (get(/databases/$(database)/documents/events/$(eventId)).data.organizers[request.auth.uid] == true))
+      );
+    }
     
     // Enhanced user blocking functions
     function isUserBlockedFromRsvp(userId) { 
@@ -117,6 +129,21 @@ service cloud.firestore {
         (!('visibility' in newData) || newData.visibility in ['public', 'members', 'private']) &&
         (!('status' in newData) || newData.status in ['scheduled', 'canceled', 'postponed', 'draft']) &&
         (!('isReadOnly' in newData) || newData.isReadOnly is bool);
+    }
+
+    // =========================
+    // Event attendees (row-level): events/{eventId}/attendees/{userId}
+    // =========================
+    match /events/{eventId}/attendees/{userId} {
+      allow read: if isAdmin() || isEventOrganizer(eventId) || (isSignedIn() && request.auth.uid == userId);
+      // Writes can be stricter; for now allow user to write their own RSVP, organizer/admin full control
+      allow write: if (isSignedIn() && request.auth.uid == userId) || isAdmin() || isEventOrganizer(eventId);
+    }
+
+    // Optional per-user mirror of attendances
+    match /users/{uid}/attendances/{eventId} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow write: if false; // maintained by backend only
     }
     
     // Check if user is event creator
@@ -244,6 +271,21 @@ service cloud.firestore {
       
       // --- FAMILY MEMBERS ---
       match /familyMembers/{memberId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      // --- WORKOUT PLANS ---
+      match /plans/{planId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      // --- WORKOUT SESSIONS (COMPLETIONS) ---
+      match /sessions/{sessionId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      // --- CHALLENGE MEMBERSHIPS ---
+      match /challengeMemberships/{challengeId} {
         allow read, write: if isSignedIn() && request.auth.uid == userId;
       }
     }
@@ -464,6 +506,23 @@ service cloud.firestore {
           get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
           isAdmin()
         );
+      }
+    }
+
+    // --- CHALLENGES ---
+    match /challenges/{challengeId} {
+      allow read: if true; // public listing for now
+      // Restrict creation to admins in production; allow members for beta
+      allow create: if isSignedIn() && (isAdmin() || isMember());
+      allow update, delete: if isAdmin();
+
+      // Participants subcollection
+      match /participants/{userId} {
+        allow read: if true;
+        allow create: if isSignedIn() && request.auth.uid == userId; // join
+        // Progress updates should be via Cloud Functions; lock direct writes to own doc minimal fields
+        allow update: if isSignedIn() && request.auth.uid == userId;
+        allow delete: if isSignedIn() && request.auth.uid == userId;
       }
     }
     
@@ -744,6 +803,15 @@ service cloud.firestore {
       
       // Only admins can create, update, or delete popup alerts
       allow create, update, delete: if isAdmin();
+    }
+    
+    // --- Knowledge Base (admin managed) ---
+    match /kb_sources/{sourceId} {
+      allow read, write: if isAdmin();
+    }
+    
+    match /kb_chunks/{chunkId} {
+      allow read, write: if isAdmin();
     }
     
     // --- PUSH NOTIFICATION QUEUE ---

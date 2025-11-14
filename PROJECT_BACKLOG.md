@@ -145,6 +145,56 @@ Server poster ready → Replace client thumbnail → Delete IndexedDB entry
   - *Dependencies*: None
   - *Description*: Currently using hardcoded production bucket 'momsfitnessmojo-65d00.firebasestorage.app' that breaks in non-prod environments
 
+### 🧠 AI Workout Roadmap
+- [ ] **Adaptive Planner MVP** - Personalized 8-week plans with readiness inputs
+  - *Status*: Planned
+  - *Impact*: High - Core differentiator for moms-first training experience
+  - *Effort*: 20 hours
+  - *Dependencies*: `generateWorkoutPlan` callable, `/workouts` intake UI
+  - *Description*: Intake survey (goal, schedule, equipment, postpartum flag) feeds Firestore plan (`users/{uid}/plans`). Includes progressive phases, auto-reschedules for missed days, and micro-workout substitutes when time is short.
+
+- [ ] **Session Player Enhancements** - EMOM/AMRAP presets & history
+  - *Status*: Planned
+  - *Impact*: Medium - Increases session completion quality
+  - *Effort*: 10 hours
+  - *Dependencies*: `SessionPlayer` component, Firestore session logging
+  - *Description*: Add EMOM/AMRAP timers, configurable intervals, chime library, and a “Session History” panel (reads `users/{uid}/sessions` with RPE trend and last-notes recap).
+
+- [ ] **On-Device Camera Coach (Beta)** - Pose estimation & form cues
+  - *Status*: Future Pilot
+  - *Impact*: High - Differentiates vs. Peloton/Tonal without hardware
+  - *Effort*: 35 hours
+  - *Dependencies*: Adaptive Planner MVP, workout content library
+  - *Description*: Use MediaPipe MoveNet (TF.js/WebGL) for squat/lunge/hinge/push-up detection. Provide live “green/yellow/red” overlays, rep counts, depth checks, and privacy-safe on-device processing (only derived metrics stored).
+
+- [ ] **AI Coach Chat & Readiness Scoring** - Context-aware guidance
+  - *Status*: Planned
+  - *Impact*: High - Keeps members engaged between sessions
+  - *Effort*: 18 hours
+  - *Dependencies*: Adaptive Planner MVP, Tone badge infrastructure
+  - *Description*: Callable function ingests last 7 sessions, readiness survey, and tone preference to generate daily tips, deload suggestions, and 2-minute “energy ramp” options. Includes nutrition nudges aligned with upcoming intensity.
+
+- [ ] **Community Challenges & Progress Cards** - Social momentum layer
+  - *Status*: Planned
+  - *Impact*: Medium - Leverages existing media pipeline & badges
+  - *Effort*: 16 hours
+  - *Dependencies*: Session logging, watermark service
+  - *Description*: Monthly small-squad challenges (steps, streaks, “30-day core”). Auto-generate shareable clips/cards with background blur + watermark. Privacy presets (solo, squad, public).
+
+- [ ] **Wearable & Recovery Integration** - Optional sync for readiness
+  - *Status*: Future Enhancement
+  - *Impact*: Medium - Holistic wellness view
+  - *Effort*: 18 hours
+  - *Dependencies*: AI Coach Chat, readiness UI
+  - *Description*: Import Apple Health / Google Fit / Strava metrics (sleep, HRV, strain). Compute “Today’s Mojo” readiness score and shift plan intensity or recommend recovery blocks (mobility, breathwork, 8-minute reset).
+
+- [ ] **Privacy & Safety Guardrails** - Camera + workload safeguards
+  - *Status*: Planned
+  - *Impact*: High - Trust & compliance
+  - *Effort*: 6 hours
+  - *Dependencies*: Camera Coach beta
+  - *Description*: Opt-in consent flows, local-only processing toggle, posture degradation stop cues, postpartum/pelvic floor alternatives, and clear disclaimers surfaced in the player.
+
 #### 📋 **Storage Bucket Hardcoding Issue - Technical Analysis**
 
 **Current Problem:**

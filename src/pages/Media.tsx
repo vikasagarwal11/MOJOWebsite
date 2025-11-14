@@ -97,6 +97,11 @@ const Media: React.FC = () => {
   // Apply UI filters to media
   const filteredMedia = useMemo(() => {
     return mediaFiles.filter((m: any) => {
+      // Hotfix: skip share-card documents until payload includes required gallery fields
+      if (m?.shareCard) {
+        return false;
+      }
+
       const typeOk = filterType === 'all' || m.type === filterType;
       const eventOk =
         selectedEvent === 'all' ||

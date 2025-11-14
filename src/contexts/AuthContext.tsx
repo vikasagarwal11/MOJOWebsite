@@ -245,7 +245,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               displayName: d.displayName || fbUser.displayName || 'Member',
               phoneNumber: d.phoneNumber || fbUser.phoneNumber || '',
               photoURL: d.photoURL || fbUser.photoURL || undefined,
-              role: (d.role || 'member') as 'member' | 'admin',
+              role: (d.role || 'member') as 'member' | 'admin' | 'trainer',
+              canEditExercises: !!d.canEditExercises,
               createdAt: d.createdAt?.toDate ? d.createdAt.toDate() : new Date(),
               updatedAt: d.updatedAt?.toDate ? d.updatedAt.toDate() : new Date(),
             };

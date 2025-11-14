@@ -14,31 +14,23 @@ import { getPerformance } from 'firebase/performance';
 
 const normalizeStorageBucket = (rawBucket: string | undefined, fallbackProjectId: string): string => {
   const trimmed = rawBucket?.trim();
+
+  const ensureModernDomain = (value: string) => {
+    const bucketOnly = value.replace(/\/.*$/, ''); // strip any accidental path segments
+    return bucketOnly.replace(/\.appspot\.com$/i, '.firebasestorage.app');
+  };
+
   if (!trimmed) {
     return `${fallbackProjectId}.firebasestorage.app`;
   }
 
-  // Remove gs:// prefix if provided
   const withoutScheme = trimmed.replace(/^gs:\/\//i, '');
-  let normalized = withoutScheme;
 
-  // Convert legacy .appspot.com domains to modern .firebasestorage.app for proper CORS support
-  if (normalized.endsWith('.appspot.com')) {
-    normalized = normalized.replace(/\.appspot\.com$/i, '.firebasestorage.app');
+  if (!withoutScheme.includes('.')) {
+    return `${withoutScheme}.firebasestorage.app`;
   }
 
-  // If value is just the project id, append the modern domain suffix.
-  if (!normalized.includes('.')) {
-    normalized = `${normalized}.firebasestorage.app`;
-  }
-
-  // Ensure we always use .firebasestorage.app (don't change if already correct)
-  if (!normalized.endsWith('.firebasestorage.app')) {
-    // If it doesn't end with either domain, assume it's a project ID and add the modern domain
-    normalized = `${normalized}.firebasestorage.app`;
-  }
-
-  return normalized;
+  return ensureModernDomain(withoutScheme);
 };
 
 const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'demo-project';
@@ -64,15 +56,21 @@ const firebaseConfig = {
 };
 
 // 🚨 CRITICAL DEBUG: Always log the project ID being used
-console.log(`🚨 [CRITICAL] Firebase Project ID: ${firebaseConfig.projectId}`);
-console.log(`🚨 [CRITICAL] Firebase Auth Domain: ${firebaseConfig.authDomain}`);
-console.log(`🚨 [CRITICAL] Firebase Storage Bucket: ${firebaseConfig.storageBucket}`);
-console.log(`🚨 [CRITICAL] Environment Variables:`, {
-  VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  VITE_FIREBASE_STORAGE_BUCKET: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  VITE_ENVIRONMENT: import.meta.env.VITE_ENVIRONMENT,
-  MODE: import.meta.env.MODE
-});
+const shouldLogFirebaseConfig =
+  (import.meta as any).env?.DEV ||
+  ((import.meta as any).env?.VITE_DEBUG_FIREBASE === 'true');
+
+if (shouldLogFirebaseConfig) {
+  console.log(`🚨 [CRITICAL] Firebase Project ID: ${firebaseConfig.projectId}`);
+  console.log(`🚨 [CRITICAL] Firebase Auth Domain: ${firebaseConfig.authDomain}`);
+  console.log(`🚨 [CRITICAL] Firebase Storage Bucket: ${firebaseConfig.storageBucket}`);
+  console.log(`🚨 [CRITICAL] Environment Variables:`, {
+    VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    VITE_FIREBASE_STORAGE_BUCKET: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    VITE_ENVIRONMENT: import.meta.env.VITE_ENVIRONMENT,
+    MODE: import.meta.env.MODE
+  });
+}
 
 // Flag to control local emulators (set VITE_USE_EMULATORS=true in .env.local)
 export const USING_EMULATORS = import.meta.env.VITE_USE_EMULATORS === 'true';
@@ -94,16 +92,17 @@ if (import.meta.env.DEV) {
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-// 🚨 CRITICAL DEBUG: Always log the project ID being used
-console.log(`🚨 [CRITICAL] Firebase Project ID: ${firebaseConfig.projectId}`);
-console.log(`🚨 [CRITICAL] Firebase Auth Domain: ${firebaseConfig.authDomain}`);
-console.log(`🚨 [CRITICAL] Firebase Storage Bucket: ${firebaseConfig.storageBucket}`);
-console.log(`🚨 [CRITICAL] Environment Variables:`, {
-  VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  VITE_FIREBASE_STORAGE_BUCKET: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  VITE_ENVIRONMENT: import.meta.env.VITE_ENVIRONMENT,
-  MODE: import.meta.env.MODE
-});
+if (shouldLogFirebaseConfig) {
+  console.log(`🚨 [CRITICAL] Firebase Project ID: ${firebaseConfig.projectId}`);
+  console.log(`🚨 [CRITICAL] Firebase Auth Domain: ${firebaseConfig.authDomain}`);
+  console.log(`🚨 [CRITICAL] Firebase Storage Bucket: ${firebaseConfig.storageBucket}`);
+  console.log(`🚨 [CRITICAL] Environment Variables:`, {
+    VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    VITE_FIREBASE_STORAGE_BUCKET: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    VITE_ENVIRONMENT: import.meta.env.VITE_ENVIRONMENT,
+    MODE: import.meta.env.MODE
+  });
+}
 
 // ✅ Firestore with persistent local cache (multi-tab)
 // Use different database based on environment
@@ -120,10 +119,13 @@ export const db = initializeFirestore(app, {
 
 export const auth = getAuth(app);
 export const storage = getStorage(app);
-export const functions = getFunctions(
-  app,
-  (import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-east1'
-);
+
+const defaultFunctionsRegion =
+  (import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-east1';
+
+export const functions = getFunctions(app, defaultFunctionsRegion);
+export const functionsUsCentral1 =
+  defaultFunctionsRegion === 'us-central1' ? functions : getFunctions(app, 'us-central1');
 
 // Note: reCAPTCHA v2 configuration is now handled in src/utils/recaptcha.ts
 // and initialized early in main.tsx to prevent Enterprise probing
@@ -134,6 +136,9 @@ if (USING_EMULATORS) {
   try { connectFirestoreEmulator(db, '127.0.0.1', 8080); } catch {}
   try { connectStorageEmulator(storage, '127.0.0.1', 9199); } catch {}
   try { connectFunctionsEmulator(functions, '127.0.0.1', 5001); } catch {}
+  if (functionsUsCentral1 !== functions) {
+    try { connectFunctionsEmulator(functionsUsCentral1, '127.0.0.1', 5001); } catch {}
+  }
 }
 
 export let analytics: Analytics | undefined;

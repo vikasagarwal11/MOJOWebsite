@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -10,7 +10,6 @@ import PopupAlertHandler from './components/notifications/PopupAlertHandler';
 import Home from './pages/Home';
 import Events from './pages/Events';
 import Media from './pages/Media';
-import MediaGallery from './components/media/MediaGallery';  // NEW VERSION
 import Posts from './pages/Posts';
 import Sponsors from './pages/Sponsors';
 import Login from './components/auth/Login';
@@ -23,13 +22,14 @@ import About from './pages/About';
 import Reset from './pages/Reset';
 import Press from './pages/Press';
 import CommunityGuidelines from './pages/CommunityGuidelines';
-import AdminBulkAttendees from './pages/AdminBulkAttendees';
-import AdminCleanup from './pages/AdminCleanup';
 import EventsReadOnly from './pages/EventsReadOnly';
 import EventDetailsPage from './pages/EventDetailsPage';
 import RSVPPage from './pages/RSVPPage';
-import AdminTestimonials from './pages/AdminTestimonials';
 import ShareYourStory from './pages/ShareYourStory';
+import Workouts from './pages/Workouts';
+import Challenges from './pages/Challenges';
+import ChallengeDetail from './pages/ChallengeDetail';
+import AdminConsole from './pages/AdminConsole';
 
 function AppContent() {
   const { currentUser } = useAuth();
@@ -76,9 +76,6 @@ function AppContent() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          <Route path="/admin/bulk-attendees" element={<AdminBulkAttendees />} />
-          <Route path="/admin/cleanup" element={<AdminCleanup />} />
-          <Route path="/admin/testimonials" element={<AdminTestimonials />} />
           <Route path="/" element={<Layout />}>
             <Route index element={<Home />} />
             <Route path="events" element={<Events />} />
@@ -87,10 +84,11 @@ function AppContent() {
             <Route path="events-readonly" element={<EventsReadOnly />} />
             <Route path="events-readonly/:eventId" element={<EventDetailsPage />} />
             <Route path="media" element={<Media />} />  {/* UPDATED VERSION WITH LIVE UPLOAD */}
-            {/* <Route path="media" element={<MediaGallery />} />  OLD VERSION - COMMENTED OUT */}
+          {/* <Route path="media" element={<MediaGallery />} />  OLD VERSION - COMMENTED OUT */}
             <Route path="posts" element={<Posts />} />
             <Route path="sponsors" element={<Sponsors />} />
-            <Route path="profile" element={<Profile />} />
+            <Route path="profile" element={<Profile mode="profile" />} />
+            <Route path="admin" element={<AdminConsole />} />
             <Route path="family-management" element={<FamilyManagement />} />
             <Route path="founder" element={<Founder />} />
             <Route path="contact" element={<Contact />} />
@@ -99,6 +97,9 @@ function AppContent() {
             <Route path="press" element={<Press />} />
             <Route path="community-guidelines" element={<CommunityGuidelines />} />
             <Route path="share-your-story" element={<ShareYourStory />} />
+            <Route path="workouts" element={<Workouts />} />
+            <Route path="challenges" element={<Challenges />} />
+            <Route path="challenges/:id" element={<ChallengeDetail />} />
           </Route>
         </Routes>
       </div>
@@ -113,11 +114,7 @@ function App() {
   }, [])
 
   return (
-    <ErrorBoundary
-      onError={(error, errorInfo) => {
-        console.error('App Error Boundary caught error:', error, errorInfo)
-      }}
-    >
+    <ErrorBoundary>
       <AuthProvider>
         <AppContent />
       </AuthProvider>

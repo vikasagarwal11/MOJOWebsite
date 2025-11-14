@@ -3,10 +3,18 @@
 
 importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
 
-const CACHE_NAME = 'moms-fitness-mojo-v8';
-const STATIC_CACHE = 'moms-fitness-mojo-static-v8';
-const DYNAMIC_CACHE = 'moms-fitness-mojo-dynamic-v8';
-const IMAGE_CACHE = 'moms-fitness-mojo-images-v8';
+const CACHE_NAME = 'moms-fitness-mojo-v9';
+const STATIC_CACHE = 'moms-fitness-mojo-static-v9';
+const DYNAMIC_CACHE = 'moms-fitness-mojo-dynamic-v9';
+const IMAGE_CACHE = 'moms-fitness-mojo-images-v9';
+const CACHE_WHITELIST = [
+  CACHE_NAME,
+  STATIC_CACHE,
+  DYNAMIC_CACHE,
+  IMAGE_CACHE,
+  'thumbnail-cache-v1',
+  'hls-manifest-cache-v1',
+];
 
 // Static assets to cache immediately
 const urlsToCache = [
@@ -63,7 +71,7 @@ self.addEventListener('activate', (event) => {
       caches.keys().then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-            if (!cacheName.includes('moms-fitness-mojo-v8')) {
+            if (!CACHE_WHITELIST.includes(cacheName)) {
               console.log('Service Worker: Deleting old cache', cacheName);
               return caches.delete(cacheName);
             }
@@ -119,6 +127,10 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return;
+  }
+
   if (thumbnailStrategy && url.pathname.includes('/thumbnails/')) {
     event.respondWith(thumbnailStrategy.handle({ event, request: event.request }));
     return;
@@ -152,6 +164,10 @@ self.addEventListener('fetch', (event) => {
 // Advanced caching strategies
 async function getCachedResponse(request, isImage, isAPI, isStatic) {
   const url = new URL(request.url);
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return fetch(request);
+  }
   
   try {
     if (isImage) {
@@ -186,6 +202,11 @@ async function getCachedResponse(request, isImage, isAPI, isStatic) {
 async function cacheFirstStrategy(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cachedResponse = await cache.match(request);
+
+  const url = new URL(request.url);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return fetch(request);
+  }
   
   if (cachedResponse) {
     return cachedResponse;
@@ -193,7 +214,6 @@ async function cacheFirstStrategy(request, cacheName) {
   
   const networkResponse = await fetch(request);
   // Only cache successful responses that are not partial (206) and not HLS segments
-  const url = new URL(request.url);
   const isHLSSegment = url.pathname.endsWith('.ts') || url.pathname.endsWith('.m3u8') || url.pathname.includes('/hls/');
   
   if (networkResponse.ok && networkResponse.status !== 206 && !isHLSSegment) {
@@ -212,10 +232,14 @@ async function cacheFirstStrategy(request, cacheName) {
 async function networkFirstStrategy(request, cacheName) {
   const cache = await caches.open(cacheName);
   
+  const url = new URL(request.url);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return fetch(request);
+  }
+
   try {
     const networkResponse = await fetch(request);
     // Only cache successful responses that are not partial (206) and not HLS segments
-    const url = new URL(request.url);
     const isHLSSegment = url.pathname.endsWith('.ts') || url.pathname.endsWith('.m3u8') || url.pathname.includes('/hls/');
     
     if (networkResponse.ok && networkResponse.status !== 206 && !isHLSSegment) {
@@ -321,5 +345,18 @@ async function doBackgroundSync() {
 
 async function cacheUrls(urls) {
   const cache = await caches.open(STATIC_CACHE);
-  return cache.addAll(urls);
+  await Promise.all(
+    urls.map(async (url) => {
+      try {
+        const response = await fetch(url, { cache: 'no-store' });
+        if (!response.ok) {
+          console.warn(`Service Worker: Skipping cache for ${url} – status ${response.status}`);
+          return;
+        }
+        await cache.put(url, response.clone());
+      } catch (error) {
+        console.warn(`Service Worker: Network error caching ${url}`, error);
+      }
+    })
+  );
 }

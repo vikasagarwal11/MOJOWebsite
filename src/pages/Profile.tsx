@@ -8,8 +8,8 @@ import { NJ_CITIES } from '../data/nj-cities';
 import { ProfilePersonalTab } from './ProfilePersonalTab';
 import { ProfileEventsTab } from './ProfileEventsTab';
 import { ProfileRSVPAdminTab } from './ProfileRSVPAdminTab';
-import { ProfileRSVPPersonalTab } from './ProfileRSVPPersonalTab';
 import { ProfileAdminTab } from './ProfileAdminTab';
+import { AdminKnowledgeBaseTab } from './AdminKnowledgeBaseTab';
 import CreateEventModal from '../components/events/CreateEventModal';
 import { useUserBlocking } from '../hooks/useUserBlocking';
 import { UserBlockModal } from '../components/user/UserBlockModal';
@@ -63,9 +63,21 @@ function normalizeTag(input: string): string | null {
   return t.length > 1 ? t : null;
 }
 
-const Profile: React.FC = () => {
+type ProfileMode = 'profile' | 'admin';
+type TabKey = 'personal' | 'events' | 'rsvp' | 'admin' | 'family' | 'knowledge';
+
+interface ProfileProps {
+  mode?: ProfileMode;
+}
+
+const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
   const { currentUser, listenersReady } = useAuth();
-  const [activeTab, setActiveTab] = useState<'personal' | 'events' | 'rsvp' | 'admin' | 'family'>('personal');
+  const defaultTab: TabKey = mode === 'admin' ? 'rsvp' : 'personal';
+  const [activeTab, setActiveTab] = useState<TabKey>(defaultTab);
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -106,6 +118,34 @@ const Profile: React.FC = () => {
   const [userToBlock, setUserToBlock] = useState<any>(null);
   const PAGE_SIZE = 10;
 
+  const isAdmin = currentUser?.role === 'admin';
+
+  const tabConfigs = useMemo(
+    () => [
+      { key: 'personal' as TabKey, label: 'Personal', show: mode === 'profile' },
+      {
+        key: 'events' as TabKey,
+        label: isAdmin ? 'My Events' : "Events I'm Attending",
+        show: mode === 'profile',
+      },
+      { key: 'rsvp' as TabKey, label: 'RSVP Management', show: isAdmin && mode === 'admin' },
+      { key: 'family' as TabKey, label: 'Family Management', show: mode === 'profile' },
+      { key: 'admin' as TabKey, label: 'Admin Tools', show: isAdmin && mode === 'admin' },
+      { key: 'knowledge' as TabKey, label: 'Knowledge Base', show: isAdmin && mode === 'admin' },
+    ],
+    [isAdmin, mode]
+  );
+
+  const availableTabs = useMemo(() => tabConfigs.filter(tab => tab.show), [tabConfigs]);
+
+  useEffect(() => {
+    if (!availableTabs.some(tab => tab.key === activeTab)) {
+      if (availableTabs.length > 0) {
+        setActiveTab(availableTabs[0].key);
+      }
+    }
+  }, [availableTabs, activeTab]);
+
   // Enhanced user blocking system
   const {
     blockUser,
@@ -114,345 +154,102 @@ const Profile: React.FC = () => {
     canInteractWith
   } = useUserBlocking();
 
-  // Load user profile
+  // Load user profile and RSVPs
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !listenersReady) return;
+
+    let active = true;
+
     setDisplayName(currentUser.displayName || '');
     setEmail(currentUser.email || '');
     setPhotoURL(currentUser.photoURL);
-    (async () => {
+    setLoadingEvents(true);
+
+    const applyEvents = (events: Event[]) => {
+      if (!active) return;
+      setRsvpedEvents(events);
+      fetchUserNames(events.map(e => ({ id: e.createdBy })));
+      setLoadingEvents(false);
+    };
+
+    const loadFallback = async () => {
       try {
-        const snap = await getDoc(doc(db, 'users', currentUser.id));
-        if (snap.exists()) {
-          const rawData = snap.data() as any;
-          const d = sanitizeFirebaseData(rawData);
-          setFirstName(d.firstName || '');
-          setLastName(d.lastName || '');
-          setDisplayName(d.displayName || currentUser.displayName || '');
-          setEmail(d.email || currentUser.email || '');
-          setPhoneNumber(d.phoneNumber || currentUser.phoneNumber || '');
-          setPhotoURL(d.photoURL || currentUser.photoURL);
-          setAbout(d.about || '');
-          setAddress({
-            street: d.address?.street || '',
-            city: d.address?.city || '',
-            state: d.address?.state || '',
-            postalCode: d.address?.postalCode || '',
-          });
-          setInterests(Array.isArray(d.interests) ? d.interests : []);
-          setSocial({
-            instagram: d.social?.instagram || '',
-            facebook: d.social?.facebook || '',
-            twitter: d.social?.twitter || '',
-            tiktok: d.social?.tiktok || '',
-            youtube: d.social?.youtube || '',
-            website: d.social?.website || '',
-          });
+        const userAttendeeQuery = query(
+          collection(db, 'users', currentUser.id, 'attendances'),
+          where('rsvpStatus', '==', 'going'),
+          orderBy('updatedAt', 'desc')
+        );
+        const userAttendeeSnap = await getDocs(userAttendeeQuery);
+        if (userAttendeeSnap.docs.length > 0) {
+          const eventIds = userAttendeeSnap.docs
+            .map(doc => doc.data().eventId)
+            .filter(Boolean) as string[];
+          if (eventIds.length) {
+            const events: Event[] = [];
+            const chunkSize = 10;
+            for (let i = 0; i < eventIds.length; i += chunkSize) {
+              const chunk = eventIds.slice(i, i + chunkSize);
+              const eventsQuery = query(collection(db, 'events'), where('__name__', 'in', chunk));
+              const eventsSnap = await getDocs(eventsQuery);
+              const chunkEvents = eventsSnap.docs.map(d =>
+                normalizeEvent({ id: d.id, ...sanitizeFirebaseData(d.data()) })
+              );
+              events.push(...chunkEvents);
+            }
+            events.sort((a, b) => {
+              const aTime = a.startAt instanceof Date ? a.startAt.getTime() : 0;
+              const bTime = b.startAt instanceof Date ? b.startAt.getTime() : 0;
+              return bTime - aTime;
+            });
+            applyEvents(events);
+            return;
+          }
         }
-      } catch (e) {
-        console.error('Failed to load user profile:', e);
-        toast.error('Failed to load profile');
+      } catch (userAttendeeError) {
+        console.log('⚠️ Profile: User attendee collection approach failed:', userAttendeeError);
       }
-    })();
-  }, [currentUser]);
 
-  // Load notifications
-  useEffect(() => {
-    if (!currentUser || !listenersReady) return; // Wait for listeners to be ready
-    
-    // Add a small delay to prevent race conditions
-    const timer = setTimeout(() => {
-      setLoadingNotifications(true);
-      const q = query(
-        collection(db, 'notifications'),
-        where('userId', '==', currentUser.id),
-        orderBy('createdAt', 'desc'),
-        limit(PAGE_SIZE * notificationsPage)
-      );
-      const controller = new AbortController();
-      console.log('🔍 Profile: Setting up notifications onSnapshot listener');
-      const unsubscribe = onSnapshot(q, (snap) => {
-        console.log('🔍 Profile: Notifications onSnapshot callback fired', {
-          docCount: snap.docs.length,
-          hasData: snap.docs.length > 0
-        });
-        if (!controller.signal.aborted) {
-          const sanitizedNotifications = snap.docs.map(d => {
-            const rawData = d.data();
-            const sanitizedData = sanitizeFirebaseData(rawData);
-            return { id: d.id, ...sanitizedData };
-          });
-          setNotifications(sanitizedNotifications);
-          setLoadingNotifications(false);
-        }
-      }, (e) => {
-        console.error('🚨 Profile: Notifications onSnapshot error:', {
-          error: e,
-          errorCode: e?.code,
-          errorMessage: e?.message,
-          errorStack: e?.stack
-        });
-        setLoadingNotifications(false);
-        toast.error(e?.code === 'permission-denied' ? 'Notifications access denied' : 'Failed to load notifications');
-      });
-      return () => {
-        controller.abort();
-        unsubscribe();
-      };
-    }, 200); // 200ms delay to prevent race conditions
+      console.log('ℹ️ Profile: No mirrored RSVPs available; skipping public event queries.');
+      applyEvents([]);
+    };
 
-    return () => clearTimeout(timer);
-  }, [currentUser, listenersReady, notificationsPage]); // Add listenersReady dependency
+    const loadPrimary = async () => {
+      try {
+        const cg = query(
+          collectionGroup(db, 'attendees'),
+          where('userId', '==', currentUser.id),
+          where('rsvpStatus', '==', 'going')
+        );
+        const cgSnap = await getDocs(cg);
+        const eventIds = cgSnap.docs
+          .map(d => d.ref.parent.parent?.id)
+          .filter(Boolean) as string[];
 
-  // Load RSVPed events
-  useEffect(() => {
-    if (!currentUser || !listenersReady) return; // Wait for listeners to be ready
-    
-    // Add a small delay to prevent race conditions
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      setLoadingEvents(true);
-      
-            // Since collection group queries on attendees require special permissions,
-      // we'll use a different approach that works with current security rules
-      const loadRSVPedEvents = async () => {
-        try {
-          console.log('🔍 Profile: Using alternative approach for loading RSVPed events');
-          
-          // Instead of collection group query, we'll use the fallback approach directly
-          // This works with current security rules and doesn't require special permissions
-          await loadRSVPedEventsFallback();
-        } catch (error) {
-          if (controller.signal.aborted) return; // Don't process if aborted
-          console.error('🚨 Profile: Error in alternative approach:', error);
-          setLoadingEvents(false);
-          toast.error('Failed to load RSVPed events');
-        }
-      };
-      
-             // Fallback approach: manually check events for user RSVPs
-       const loadRSVPedEventsFallback = async () => {
-         try {
-           console.log('🔄 Profile: Using fallback approach to load RSVPed events');
-           
-           // For non-admin users, we can't read all events due to security rules
-           // Instead, let's try to get events from the user's RSVP collection if it exists
-           // or check if we can find any events the user has interacted with
-           
-           console.log('🔄 Profile: Non-admin user detected, using limited fallback approach');
-           
-                                   // Try to get events from user's attendee collection (if it exists)
-             // This is a workaround for permission restrictions
-             try {
-               const userAttendeeQuery = query(
-                 collection(db, 'users', currentUser.id, 'attendees'),
-                 where('rsvpStatus', '==', 'going'),
-                 orderBy('updatedAt', 'desc')
-               );
-               
-               const userAttendeeSnap = await getDocs(userAttendeeQuery);
-               console.log('🔍 Profile: User attendee collection query result:', {
-                 docCount: userAttendeeSnap.docs.length,
-                 hasData: userAttendeeSnap.docs.length > 0
-               });
-               
-               if (userAttendeeSnap.docs.length > 0) {
-                 // Extract event IDs from user's attendee collection
-                 const eventIds = userAttendeeSnap.docs.map(doc => doc.data().eventId).filter(Boolean);
-                 console.log('🔍 Profile: Found event IDs in user attendee collection:', eventIds);
-                 
-                 if (eventIds.length > 0) {
-                   // Fetch these specific events - chunk into groups of 10 to avoid Firestore limit
-                   const events = [];
-                   const chunkSize = 10;
-                   
-                   for (let i = 0; i < eventIds.length; i += chunkSize) {
-                     const chunk = eventIds.slice(i, i + chunkSize);
-                     const eventsQuery = query(
-                       collection(db, 'events'),
-                       where('__name__', 'in', chunk)
-                       // Remove orderBy to avoid index requirements - we'll sort client-side
-                     );
-                     
-                     const eventsSnap = await getDocs(eventsQuery);
-                     const chunkEvents = eventsSnap.docs.map(d => {
-                       const rawData = d.data();
-                       const sanitizedData = sanitizeFirebaseData(rawData);
-                       return normalizeEvent({ id: d.id, ...sanitizedData });
-                     });
-                     events.push(...chunkEvents);
-                   }
-                   
-                   // Sort client-side by startAt
-                   events.sort((a, b) => {
-                     const aTime = a.startAt instanceof Date ? a.startAt.getTime() : new Date().getTime();
-                     const bTime = b.startAt instanceof Date ? b.startAt.getTime() : new Date().getTime();
-                     return bTime - aTime; // Descending order
-                   });
-                   
-                   console.log('🔍 Profile: Successfully fetched events from user attendee collection:', {
-                     eventCount: events.length,
-                     eventIds: events.map(e => e.id)
-                   });
-                   
-                   setRsvpedEvents(events);
-                   fetchUserNames(events.map(e => ({ id: e.createdBy })));
-                   setLoadingEvents(false);
-                   return;
-                 }
-               }
-             } catch (userAttendeeError) {
-               console.log('⚠️ Profile: User attendee collection approach failed:', userAttendeeError);
-               console.log('🔍 Profile: This is expected if the subcollection doesn\'t exist yet');
-             }
-           
-           // If user RSVP collection approach fails, try to get events the user has permission to read
-           // For non-admin users, this might be limited to events they're invited to or have RSVPed to
-           console.log('🔄 Profile: Trying alternative approach - checking for events user can access');
-           
-                                               // Since the user attendee collection approach failed, let's try a different strategy
-             // We'll query for events that the user might have access to and then check their attendees
-             console.log('🔄 Profile: Trying to find events user can access...');
-             
-             let events: any[] = [];
-             
-             // Try multiple approaches to find events
-             try {
-               // Approach 1: Try public events first (this should work with current security rules)
-               const publicEventsQuery = query(
-                 collection(db, 'events'),
-                 where('visibility', '==', 'public'),
-                 orderBy('startAt', 'desc'),
-                 limit(50)
-               );
-               const publicEventsSnap = await getDocs(publicEventsQuery);
-               events = publicEventsSnap.docs.map(d => {
-                 const rawData = d.data();
-                 const sanitizedData = sanitizeFirebaseData(rawData);
-                 return normalizeEvent({ id: d.id, ...sanitizedData });
-               });
-               console.log('🔍 Profile: Found events with public events query:', events.length);
-             } catch (publicEventsError) {
-               console.log('⚠️ Profile: Public events query failed:', publicEventsError);
-               
-               // Approach 2: Try legacy 'public' field (for backward compatibility)
-               try {
-                 const legacyPublicQuery = query(
-                   collection(db, 'events'),
-                   where('public', '==', true),
-                   orderBy('startAt', 'desc'),
-                   limit(50)
-                 );
-                 const legacyPublicSnap = await getDocs(legacyPublicQuery);
-                 events = legacyPublicSnap.docs.map(d => {
-                   const rawData = d.data();
-                   const sanitizedData = sanitizeFirebaseData(rawData);
-                   return normalizeEvent({ id: d.id, ...sanitizedData });
-                 });
-                 console.log('🔍 Profile: Found events with legacy public query:', events.length);
-               } catch (legacyPublicError) {
-                 console.log('⚠️ Profile: Legacy public query failed:', legacyPublicError);
-                 
-                 // Approach 3: Try events created by the user
-                 try {
-                   const userEventsQuery = query(
-                     collection(db, 'events'),
-                     where('createdBy', '==', currentUser.id),
-                     orderBy('startAt', 'desc'),
-                     limit(20)
-                   );
-                   const userEventsSnap = await getDocs(userEventsQuery);
-                   events = userEventsSnap.docs.map(d => {
-                     const rawData = d.data();
-                     const sanitizedData = sanitizeFirebaseData(rawData);
-                     return normalizeEvent({ id: d.id, ...sanitizedData });
-                   });
-                   console.log('🔍 Profile: Found events with user events query:', events.length);
-                 } catch (userEventsError) {
-                   console.log('⚠️ Profile: User events query failed:', userEventsError);
-                   
-                   // Approach 4: Try events where user is invited
-                   try {
-                     const invitedEventsQuery = query(
-                       collection(db, 'events'),
-                       where('invitedUserIds', 'array-contains', currentUser.id),
-                       orderBy('startAt', 'desc'),
-                       limit(20)
-                     );
-                     const invitedEventsSnap = await getDocs(invitedEventsQuery);
-                     events = invitedEventsSnap.docs.map(d => {
-                       const rawData = d.data();
-                       const sanitizedData = sanitizeFirebaseData(rawData);
-                       return normalizeEvent({ id: d.id, ...sanitizedData });
-                     });
-                     console.log('🔍 Profile: Found events with invited events query:', events.length);
-                   } catch (invitedEventsError) {
-                     console.log('⚠️ Profile: Invited events query failed:', invitedEventsError);
-                     events = [];
-                   }
-                 }
-               }
-             }
-            
-            if (events.length === 0) {
-              console.log('⚠️ Profile: No events found with any approach');
-              setRsvpedEvents([]);
-              setLoadingEvents(false);
-              return;
+        if (eventIds.length) {
+          const events: Event[] = [];
+          for (const id of eventIds) {
+            const snap = await getDoc(doc(db, 'events', id));
+            if (snap.exists()) {
+              const sanitizedData = sanitizeFirebaseData(snap.data());
+              events.push(normalizeEvent({ id: snap.id, ...sanitizedData }));
             }
-            
-            // Check each event for user's attendees
-            const rsvpedEventIds: string[] = [];
-            console.log(`🔍 Profile: Checking ${events.length} events for attendees...`);
-            
-            for (const event of events) {
-              try {
-                // Check if user has any attendees with 'going' status for this event
-                const attendeesQuery = query(
-                  collection(db, 'events', event.id, 'attendees'),
-                  where('userId', '==', currentUser.id),
-                  where('rsvpStatus', '==', 'going')
-                );
-                const attendeesSnap = await getDocs(attendeesQuery);
-                
-                console.log(`🔍 Profile: Checking attendees for event ${event.id} (${event.title}):`, {
-                  attendeeCount: attendeesSnap.docs.length,
-                  hasGoingAttendees: attendeesSnap.docs.length > 0
-                });
-                
-                if (attendeesSnap.docs.length > 0) {
-                  rsvpedEventIds.push(event.id);
-                  console.log(`✅ Profile: Found going attendees for event ${event.id}`);
-                }
-              } catch (attendeeError) {
-                console.log(`⚠️ Profile: Could not check attendees for event ${event.id}:`, attendeeError);
-              }
-            }
-            
-            console.log('🔍 Profile: Fallback found events with going attendees:', rsvpedEventIds);
-            
-            // Filter events to only show ones with going attendees
-            const rsvpedEvents = events.filter(event => rsvpedEventIds.includes(event.id));
-            setRsvpedEvents(rsvpedEvents);
-            fetchUserNames(rsvpedEvents.map(e => ({ id: e.createdBy })));
-            setLoadingEvents(false);
-          
-        } catch (error) {
-          console.error('🚨 Profile: Fallback approach also failed:', error);
-          setRsvpedEvents([]);
-          setLoadingEvents(false);
-          toast.error('Failed to load RSVPed events');
+          }
+          applyEvents(events);
+          return;
         }
-      };
-      
-      loadRSVPedEvents();
-    }, 300); // 300ms delay (slightly more than notifications)
+      } catch (error) {
+        console.log('Profile: collectionGroup attendees failed, falling back', error);
+      }
+
+      await loadFallback();
+    };
+
+    loadPrimary();
 
     return () => {
-      controller.abort();
-      clearTimeout(timer);
+      active = false;
     };
-  }, [currentUser, listenersReady, eventsPage]); // Add listenersReady dependency
+  }, [currentUser, listenersReady]);
 
   // Load user-created and all events (for admins)
   useEffect(() => {
@@ -578,10 +375,10 @@ const Profile: React.FC = () => {
 
   // Redirect non-admin users from RSVP tab to events tab
   useEffect(() => {
-    if (currentUser && currentUser.role !== 'admin' && activeTab === 'rsvp') {
+    if (mode === 'profile' && currentUser && currentUser.role !== 'admin' && activeTab === 'rsvp') {
       setActiveTab('events');
     }
-  }, [currentUser, activeTab]);
+  }, [currentUser, activeTab, mode]);
 
   // Listen for enhanced blocking modal requests
   useEffect(() => {
@@ -1181,6 +978,9 @@ const Profile: React.FC = () => {
 
   const cityOptions = useMemo(() => NJ_CITIES, []);
 
+  const containerWidthClass = mode === 'admin' ? 'max-w-6xl' : 'max-w-3xl';
+  const headingText = mode === 'admin' ? 'Admin Console' : 'My Profile';
+
   if (!isAuthed) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-12">
@@ -1193,50 +993,24 @@ const Profile: React.FC = () => {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-12">
+    <div className={`${containerWidthClass} mx-auto px-4 py-12`}>
       <div className="rounded-2xl border bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold mb-6">My Profile</h1>
+        <h1 className="text-2xl font-semibold mb-6">{headingText}</h1>
         {/* Tabs */}
-        <div className="flex space-x-1 mb-8 bg-gray-100 p-1 rounded-lg">
-          <button
-            onClick={() => setActiveTab('personal')}
-            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'personal' ? 'bg-white text-[#F25129] shadow-sm' : 'text-gray-600 hover:text-[#F25129]'}`}
-            aria-selected={activeTab === 'personal'}
-          >
-            Personal
-          </button>
-          <button
-            onClick={() => setActiveTab('events')}
-            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'events' ? 'bg-white text-[#F25129] shadow-sm' : 'text-gray-600 hover:text-[#F25129]'}`}
-            aria-selected={activeTab === 'events'}
-          >
-            {currentUser?.role === 'admin' ? 'My Events' : 'Events I\'m Attending'}
-          </button>
-          {currentUser?.role === 'admin' && (
+        <div className="flex flex-wrap gap-1 mb-8 bg-gray-100 p-1 rounded-lg">
+          {availableTabs.map(tab => (
             <button
-              onClick={() => setActiveTab('rsvp')}
-              className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'rsvp' ? 'bg-white text-[#F25129] shadow-sm' : 'text-gray-600 hover:text-[#F25129]'}`}
-              aria-selected={activeTab === 'rsvp'}
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${
+                activeTab === tab.key ? 'bg-white text-[#F25129] shadow-sm' : 'text-gray-600 hover:text-[#F25129]'
+              }`}
+              aria-selected={activeTab === tab.key}
             >
-              RSVP Management
+              {tab.label}
             </button>
-          )}
-          <button
-            onClick={() => setActiveTab('family')}
-            className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'family' ? 'bg-white text-[#F25129] shadow-sm' : 'text-gray-600 hover:text-[#F25129]'}`}
-            aria-selected={activeTab === 'family'}
-          >
-            Family Management
-          </button>
-          {currentUser?.role === 'admin' && (
-            <button
-              onClick={() => setActiveTab('admin')}
-              className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${activeTab === 'admin' ? 'bg-white text-[#F25129] shadow-sm' : 'text-gray-600 hover:text-[#F25129]'}`}
-              aria-selected={activeTab === 'admin'}
-            >
-              Admin
-            </button>
-          )}
+          ))}
         </div>
         {/* Content */}
         {activeTab === 'personal' && (
@@ -1325,7 +1099,7 @@ const Profile: React.FC = () => {
             toggleReadOnlyStatus={toggleReadOnlyStatus}
           />
         )}
-        {activeTab === 'admin' && currentUser?.role === 'admin' && (
+        {activeTab === 'admin' && mode === 'admin' && currentUser?.role === 'admin' && (
           <ProfileAdminTab
             allEvents={allEvents}
             userNames={userNames}
@@ -1341,6 +1115,9 @@ const Profile: React.FC = () => {
             blockedUsers={blockedUsers}
             loadingBlockedUsers={loadingBlockedUsers}
           />
+        )}
+        {activeTab === 'knowledge' && mode === 'admin' && currentUser?.role === 'admin' && (
+          <AdminKnowledgeBaseTab />
         )}
         {activeTab === 'family' && (
           <div className="space-y-6">
@@ -1394,4 +1171,5 @@ const Profile: React.FC = () => {
 };
 
 export default Profile;
+
 
