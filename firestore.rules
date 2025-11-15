@@ -814,6 +814,12 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
     
+    // --- Assistant Configuration (admin managed) ---
+    match /assistant_config/{configId} {
+      allow read: if isSignedIn(); // Any authenticated user can read (for function calls)
+      allow write: if isAdmin(); // Only admins can update configuration
+    }
+    
     // --- PUSH NOTIFICATION QUEUE ---
     match /push_notification_queue/{messageId} {
       // Allow authenticated users to read their own queued messages

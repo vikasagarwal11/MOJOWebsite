@@ -7,6 +7,7 @@ import {
   AssistantMessage,
   synthesizeSpeech,
   transcribeAudioAuto,
+  transcribeLongAudio,
   openStreamingTranscriberAuthed,
 } from '../../services/assistantService';
 
@@ -19,21 +20,72 @@ interface AssistantThreadItem {
 
 const createId = () => crypto.randomUUID();
 const MAX_RECORDING_MS = 45000;
-const SILENCE_THRESHOLD = 0.01; // Audio level threshold for silence detection
-const SILENCE_DURATION_MS = 2000; // Stop after 2 seconds of silence
+const SILENCE_THRESHOLD = 0.05; // Audio level threshold for silence detection (higher = less sensitive to background noise)
+const SILENCE_DURATION_MS = 1200; // Stop after 1.2 seconds of silence (balanced response)
+const MAX_SYNC_AUDIO_DURATION_MS = 55000; // Use long-running API for recordings >55 seconds
 
-// Strip markdown formatting for TTS (removes **bold**, *italic*, etc.)
+// Strip markdown formatting for TTS (removes **bold**, *italic*, citations, etc.)
+// Preserves sentence structure and ensures complete text is not truncated
 function stripMarkdownForTTS(text: string): string {
-  return text
+  if (!text) return '';
+  
+  // Step 1: Remove the "Sources:" section and everything after it (UI handles sources separately)
+  // This section should not be read aloud as it's just metadata
+  let processed = text;
+  const sourcesMatch = processed.match(/\n\s*Sources?\s*:/i);
+  if (sourcesMatch) {
+    processed = processed.substring(0, sourcesMatch.index).trim();
+  }
+  
+  // Also remove any "Sources:" at the end without newlines (edge case)
+  processed = processed.replace(/\s+Sources?\s*:\s*$/i, '');
+  
+  // Step 2: Remove citations and format text for TTS
+  let cleaned = processed
+    // Remove citation markers completely (they're usually at word boundaries)
+    .replace(/\[#\d+(?:\s*,\s*#\d+)*\]/g, '') // Remove [#1], [#1, #2, #3], etc.
+    .replace(/\[\d+(?:\s*,\s*\d+)*\]/g, '') // Remove [1], [1, 2, 3], etc.
+    .replace(/\[#\d+\]/g, '') // Remove single [#n] (fallback)
+    .replace(/\[\d+\]/g, '') // Remove single [n] (fallback)
+    // Handle actual links (format: [text](url)) - extract text only
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [link](url) -> link
+    // Remove markdown formatting
     .replace(/\*\*([^*]+)\*\*/g, '$1') // **bold** -> bold
-    .replace(/\*([^*]+)\*/g, '$1') // *italic* -> italic
+    .replace(/\*([^*]+)\*/g, '$1') // *italic* -> italic (but preserve citations already removed)
     .replace(/__([^_]+)__/g, '$1') // __bold__ -> bold
     .replace(/_([^_]+)_/g, '$1') // _italic_ -> italic
     .replace(/`([^`]+)`/g, '$1') // `code` -> code
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [link](url) -> link
     .replace(/#{1,6}\s+/g, '') // Headers
-    .replace(/\n{3,}/g, '\n\n') // Multiple newlines
+    // Convert newlines to spaces (preserve sentence breaks)
+    .replace(/\n{3,}/g, ' ') // Multiple newlines -> single space
+    .replace(/\n/g, ' ') // Single newlines -> space
+    // Clean up whitespace
+    .replace(/[ \t]+/g, ' ') // Collapse multiple spaces/tabs to single space
+    // Normalize spacing around punctuation
+    .replace(/\s+([.!?,;:])/g, '$1') // Remove spaces before punctuation
+    .replace(/([.!?])\s+/g, '$1 ') // Ensure space after sentence-ending punctuation
     .trim();
+  
+  // Step 3: Ensure text flows naturally and ends properly
+  // Don't add punctuation if text already ends with it
+  if (cleaned && cleaned.length > 0) {
+    const trimmed = cleaned.trim();
+    // Verify text ends with proper punctuation for natural TTS flow
+    if (!/[.!?]$/.test(trimmed) && trimmed.length > 5) {
+      // Text appears complete but lacks final punctuation - add period
+      // Only if it ends with a letter (not cut off mid-word)
+      const lastChar = trimmed.slice(-1);
+      if (/[a-zA-Z]/.test(lastChar)) {
+        cleaned = trimmed + '.';
+      } else {
+        cleaned = trimmed;
+      }
+    } else {
+      cleaned = trimmed;
+    }
+  }
+  
+  return cleaned;
 }
 
 function base64Encode(arrayBuffer: ArrayBuffer) {
@@ -71,8 +123,23 @@ const AssistantWidget: React.FC = () => {
   const lastSoundTimeRef = useRef<number>(Date.now());
   const hasActivityRef = useRef<boolean>(false);
   const selectedEncodingRef = useRef<'WEBM_OPUS' | 'OGG_OPUS' | undefined>('WEBM_OPUS');
+  const playingAudioRef = useRef<HTMLAudioElement | null>(null);
+  const timelineRef = useRef<Record<string, number>>({});
+  const voiceSessionActiveRef = useRef(false);
 
   const hasConversation = messages.length > 0;
+
+  const logTimelineEvent = useCallback((label: string) => {
+    const now = Date.now();
+    if (!timelineRef.current.start) {
+      timelineRef.current.start = now;
+    }
+    const elapsed = now - timelineRef.current.start;
+    const key = label.replace(/\s+/g, '_');
+    timelineRef.current[key] = now;
+    console.info(`[AssistantWidget] ${label} (+${elapsed}ms) @ ${new Date(now).toISOString()}`);
+    return elapsed;
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -85,21 +152,105 @@ const AssistantWidget: React.FC = () => {
     }
   }, [messages]);
 
+  // Stop any currently playing audio immediately
+  const stopAudioPlayback = useCallback(() => {
+    if (playingAudioRef.current) {
+      try {
+        playingAudioRef.current.pause();
+        playingAudioRef.current.currentTime = 0;
+        playingAudioRef.current.src = '';
+        playingAudioRef.current.load();
+      } catch (e) {
+        // Ignore errors when stopping audio
+      }
+      playingAudioRef.current = null;
+    }
+  }, []);
+
   const stopPlaybackAndSpeak = useCallback(async (text: string) => {
     try {
+      // Stop any currently playing audio before starting new one
+      stopAudioPlayback();
+      
+      // Log original text for debugging
+      console.log(`[AssistantWidget] TTS original text length: ${text.length} chars`);
+      console.log(`[AssistantWidget] TTS original text (last 200 chars): ${text.slice(-200)}`);
+      
       // Strip markdown formatting before TTS so it doesn't read "asterisk asterisk"
       const cleanText = stripMarkdownForTTS(text);
+      
+      // Log cleaned text for debugging
+      console.log(`[AssistantWidget] TTS cleaned text length: ${cleanText.length} chars`);
+      console.log(`[AssistantWidget] TTS cleaned text (first 200 chars): ${cleanText.slice(0, 200)}`);
+      console.log(`[AssistantWidget] TTS cleaned text (last 200 chars): ${cleanText.slice(-200)}`);
+      
+      // Log text length for debugging (Google TTS limit is 5000 characters)
+      if (cleanText.length > 4500) {
+        console.warn(`[AssistantWidget] TTS text is long (${cleanText.length} chars), may need splitting`);
+      }
+      
+      // Ensure text is not empty and has content
+      if (!cleanText || cleanText.trim().length === 0) {
+        console.warn('[AssistantWidget] TTS text is empty after cleaning');
+        return;
+      }
+      
+      // Verify text ends properly
+      if (!/[.!?]$/.test(cleanText.trim())) {
+        console.warn(`[AssistantWidget] TTS text doesn't end with punctuation: "${cleanText.slice(-50)}"`);
+      }
+      
       const audioBase64 = await synthesizeSpeech(cleanText);
       if (audioBase64) {
         const audio = new Audio(`data:audio/mp3;base64,${audioBase64}`);
-        audio.play().catch(() => {
-          // ignore autoplay failure
+        playingAudioRef.current = audio;
+        
+        // Log audio events for debugging
+        audio.onloadeddata = () => {
+          console.log(`[AssistantWidget] TTS audio loaded, duration: ${audio.duration}s, text length: ${cleanText.length} chars`);
+          console.log(`[AssistantWidget] TTS estimated speaking time: ${(cleanText.length / 150).toFixed(1)}s (assuming ~150 chars/sec)`);
+        };
+        
+        audio.onended = () => {
+          console.log('[AssistantWidget] TTS audio playback ended normally');
+          if (playingAudioRef.current === audio) {
+            playingAudioRef.current = null;
+          }
+        };
+        
+        audio.onerror = (e) => {
+          console.error('[AssistantWidget] TTS audio playback error', e, audio.error);
+        };
+        
+        audio.onpause = () => {
+          console.log(`[AssistantWidget] TTS audio paused at ${audio.currentTime.toFixed(1)}s / ${audio.duration.toFixed(1)}s`);
+        };
+        
+        audio.onstalled = () => {
+          console.warn('[AssistantWidget] TTS audio stalled');
+        };
+        
+        // Track playback progress
+        let lastProgress = 0;
+        audio.addEventListener('timeupdate', () => {
+          if (!audio.duration || audio.duration === 0) return;
+          const progress = audio.currentTime / audio.duration;
+          // Log progress every 25%
+          if (Math.floor(progress * 4) > Math.floor(lastProgress * 4)) {
+            console.log(`[AssistantWidget] TTS playback: ${(progress * 100).toFixed(1)}% (${audio.currentTime.toFixed(1)}s / ${audio.duration.toFixed(1)}s)`);
+          }
+          lastProgress = progress;
         });
+        
+        await audio.play();
+        console.log('[AssistantWidget] TTS audio playback started');
+      } else {
+        console.error('[AssistantWidget] TTS returned empty audio');
       }
     } catch (error: any) {
-      console.warn('[AssistantWidget] TTS error', error?.message);
+      console.error('[AssistantWidget] TTS error', error?.message, error);
     }
-  }, []);
+  }, [stopAudioPlayback]);
 
   const sendQuestion = useCallback(
     async (question: string) => {
@@ -115,6 +266,10 @@ const AssistantWidget: React.FC = () => {
       setMessages(prev => [...prev, userMessage]);
       setInput('');
       setIsSending(true);
+      const isVoiceFlow = voiceSessionActiveRef.current;
+      if (isVoiceFlow) {
+        logTimelineEvent('Sending question to assistant');
+      }
 
       try {
         const history: AssistantMessage[] = messages
@@ -132,6 +287,10 @@ const AssistantWidget: React.FC = () => {
         };
 
         setMessages(prev => [...prev, assistantMessage]);
+        if (isVoiceFlow) {
+          logTimelineEvent('Assistant response received');
+          voiceSessionActiveRef.current = false;
+        }
 
         // Auto-play response audio if enabled
         if (autoSpeak) {
@@ -143,9 +302,12 @@ const AssistantWidget: React.FC = () => {
         setMessages(prev => prev.filter(m => m.id !== userMessage.id));
       } finally {
         setIsSending(false);
+        if (voiceSessionActiveRef.current && isVoiceFlow) {
+          voiceSessionActiveRef.current = false;
+        }
       }
     },
-    [messages, sessionId, stopPlaybackAndSpeak, autoSpeak]
+    [messages, sessionId, stopPlaybackAndSpeak, autoSpeak, logTimelineEvent]
   );
 
   const handleSubmit = useCallback(
@@ -165,9 +327,16 @@ const AssistantWidget: React.FC = () => {
   }, []);
 
   const stopRecording = useCallback(() => {
+    // Stop any audio playback when stopping recording
+    stopAudioPlayback();
+    
     const recorder = mediaRecorderRef.current;
     if (!recorder) return;
     clearRecordTimeout();
+    
+    if (voiceSessionActiveRef.current && recorder.state !== 'inactive') {
+      logTimelineEvent('Stop recording (manual)');
+    }
     
     // Clean up silence detection
     if (silenceCheckIntervalRef.current) {
@@ -185,7 +354,7 @@ const AssistantWidget: React.FC = () => {
     }
     recorder.stream.getTracks().forEach(track => track.stop());
     mediaRecorderRef.current = null;
-  }, [clearRecordTimeout]);
+  }, [clearRecordTimeout, logTimelineEvent, stopAudioPlayback]);
 
   const beginRecording = useCallback(async () => {
     if (isRecording) return;
@@ -236,17 +405,22 @@ const AssistantWidget: React.FC = () => {
             // Sound detected - update last sound time
             lastSoundTimeRef.current = Date.now();
             hasActivityRef.current = true;
+            if (!timelineRef.current.soundDetected) {
+              logTimelineEvent('Sound detected');
+            }
           } else {
             // Silence detected - check if we've been silent long enough
             const silenceDuration = Date.now() - lastSoundTimeRef.current;
             if (silenceDuration >= SILENCE_DURATION_MS) {
               const finalText = lastFinalTextRef.current.trim();
               if (finalText) {
-                toast('Auto-stopped after silence', { icon: '🔇', duration: 1500 });
+                logTimelineEvent('Auto-stop triggered (silence detected)');
+                toast('Auto-stopped after silence', { icon: '🔇', duration: 1000 });
                 stopRecording();
-                setTimeout(() => { sendQuestion(finalText); }, 300);
+                // onstop handler will auto-send the message
               } else if (hasActivityRef.current) {
-                toast('Auto-stopped after silence', { icon: '🔇', duration: 1200 });
+                logTimelineEvent('Auto-stop triggered (no transcript yet)');
+                toast('Auto-stopped after silence', { icon: '🔇', duration: 1000 });
                 stopRecording();
               }
             }
@@ -265,6 +439,7 @@ const AssistantWidget: React.FC = () => {
           new Promise<null>((_, reject) => setTimeout(() => reject(new Error('WS timeout')), 2000)),
         ]) as WebSocket | null;
         if (ws && ws.readyState === WebSocket.OPEN) {
+          logTimelineEvent('WebSocket connected (streaming)');
           wsRef.current = ws;
           ws.onmessage = (ev) => {
             try {
@@ -276,20 +451,31 @@ const AssistantWidget: React.FC = () => {
               } else if (msg.type === 'final' && msg.text) {
                 lastFinalTextRef.current = msg.text;
                 setInput(msg.text);
+                logTimelineEvent('Transcript displayed (stream)');
               }
             } catch {}
           };
           ws.onerror = (e) => {
             console.warn('[AssistantWidget] WebSocket error', e);
+            if (voiceSessionActiveRef.current) {
+              logTimelineEvent('WebSocket error (falling back to callable)');
+            }
             try { ws.close(); } catch {}
             wsRef.current = null;
           };
           ws.onclose = () => {
             wsRef.current = null;
           };
+        } else {
+          if (voiceSessionActiveRef.current) {
+            logTimelineEvent('WebSocket unavailable (using callable fallback)');
+          }
         }
       } catch (wsError) {
         // If WS connection fails, we still fall back to callable
+        if (voiceSessionActiveRef.current) {
+          logTimelineEvent('WebSocket connection failed (using callable fallback)');
+        }
         console.warn('[AssistantWidget] WebSocket unavailable, using fallback', wsError);
       }
 
@@ -310,30 +496,92 @@ const AssistantWidget: React.FC = () => {
       recorder.onstop = async () => {
         clearRecordTimeout();
         setIsRecording(false);
+        if (voiceSessionActiveRef.current) {
+          logTimelineEvent('Recording stopped (onstop handler)');
+        }
         try {
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             try { wsRef.current.send(JSON.stringify({ event: 'end' })); } catch {}
-            // Reduced wait time - server should process final transcript quickly
-            await new Promise(r => setTimeout(r, 500));
-            try { wsRef.current.close(); } catch {}
-            wsRef.current = null;
-            if (lastFinalTextRef.current) {
+            // Wait for final transcript with timeout - check if we already have it, or wait up to 1.5s
+            const initialFinal = lastFinalTextRef.current;
+            if (initialFinal && initialFinal.trim()) {
+              // We already have a final transcript from streaming - auto-send it
+              try { wsRef.current.close(); } catch {}
+              wsRef.current = null;
               toast.success('Voice captured');
+              // Auto-send the message
+              setTimeout(() => {
+                logTimelineEvent('Auto send triggered (stream final)');
+                sendQuestion(initialFinal);
+              }, 100);
               return;
             }
+            // Wait for final transcript with timeout
+            let finalReceived = false;
+            const finalPromise = new Promise<string | null>((resolve) => {
+              const checkInterval = setInterval(() => {
+                if (lastFinalTextRef.current && lastFinalTextRef.current !== initialFinal && lastFinalTextRef.current.trim()) {
+                  clearInterval(checkInterval);
+                  finalReceived = true;
+                  resolve(lastFinalTextRef.current);
+                }
+              }, 100);
+              setTimeout(() => {
+                clearInterval(checkInterval);
+                if (!finalReceived) {
+                  resolve(null);
+                }
+              }, 1500); // Wait up to 1.5 seconds for final transcript
+            });
+            const finalText = await finalPromise;
+            try { wsRef.current.close(); } catch {}
+            wsRef.current = null;
+            if (finalText && finalText.trim()) {
+              logTimelineEvent('Transcript displayed (stream wait)');
+              toast.success('Voice captured');
+              // Auto-send the message
+              setTimeout(() => {
+                logTimelineEvent('Auto send triggered (stream wait)');
+                sendQuestion(finalText);
+              }, 100);
+              return;
+            }
+            // If WebSocket didn't provide final, fall through to callable
           }
           // Fallback: callable (auto-switch to long-running for big audio)
           const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           const arrayBuffer = await blob.arrayBuffer();
           const base64 = base64Encode(arrayBuffer);
           const sr = audioContextRef.current?.sampleRate;
-          const transcript = await transcribeAudioAuto(base64, {
-            encoding: selectedEncodingRef.current,
-            sampleRateHertz: typeof sr === 'number' ? Math.round(sr) : 48000,
-          });
-          if (transcript) {
+          
+          // Check recording duration - use long-running API for recordings >55 seconds
+          // Google's sync API has a 1-minute limit, so we use long-running for anything close
+          const recordingDuration = timelineRef.current.start ? Date.now() - timelineRef.current.start : 0;
+          const useLongRunning = recordingDuration > MAX_SYNC_AUDIO_DURATION_MS;
+          
+          let transcript: string;
+          if (useLongRunning) {
+            logTimelineEvent(`Recording too long (${Math.round(recordingDuration / 1000)}s), using long-running API`);
+            transcript = await transcribeLongAudio(base64, {
+              encoding: selectedEncodingRef.current,
+              sampleRateHertz: typeof sr === 'number' ? Math.round(sr) : 48000,
+              languageCode: 'en-US',
+            });
+          } else {
+            transcript = await transcribeAudioAuto(base64, {
+              encoding: selectedEncodingRef.current,
+              sampleRateHertz: typeof sr === 'number' ? Math.round(sr) : 48000,
+            });
+          }
+          if (transcript && transcript.trim()) {
             setInput(transcript);
+            logTimelineEvent('Transcript displayed (fallback)');
             toast.success('Voice captured');
+            // Auto-send the message
+            setTimeout(() => {
+              logTimelineEvent('Auto send triggered (fallback transcription)');
+              sendQuestion(transcript);
+            }, 100);
           } else {
             toast.error('Sorry, I could not understand that.');
           }
@@ -347,6 +595,7 @@ const AssistantWidget: React.FC = () => {
       // Smaller timeslice = more frequent partials = faster feedback
       const usingStreaming = wsRef.current && wsRef.current.readyState === WebSocket.OPEN;
       const timeslice = usingStreaming ? 100 : undefined;
+      logTimelineEvent(`Recording started (${usingStreaming ? 'streaming' : 'callable'} mode)`);
       recorder.start(timeslice as any);
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
@@ -359,15 +608,21 @@ const AssistantWidget: React.FC = () => {
       console.error('[AssistantWidget] Microphone error', error);
       toast.error('Unable to access microphone.');
     }
-  }, [isRecording, stopRecording, sendQuestion]);
+  }, [isRecording, stopRecording, sendQuestion, logTimelineEvent]);
 
   const handleToggleRecording = useCallback(() => {
     if (isRecording) {
       stopRecording();
     } else {
+      // Stop any audio playback immediately (synchronously) before starting recording
+      stopAudioPlayback();
+      
+      voiceSessionActiveRef.current = true;
+      timelineRef.current = { start: Date.now() };
+      logTimelineEvent('Mic clicked');
       beginRecording();
     }
-  }, [beginRecording, isRecording, stopRecording]);
+  }, [beginRecording, isRecording, stopRecording, logTimelineEvent, stopAudioPlayback]);
 
   const toggleOpen = useCallback(() => {
     setIsOpen(prev => !prev);

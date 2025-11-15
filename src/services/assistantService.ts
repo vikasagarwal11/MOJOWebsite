@@ -76,8 +76,9 @@ export async function transcribeAudioAuto(
   opts?: { encoding?: string; sampleRateHertz?: number; languageCode?: string }
 ): Promise<string> {
   const approxBytes = Math.floor(base64Audio.length * 0.75);
-  // If > 1MB or caller expects long note, use long-running
-  if (approxBytes > 1_000_000) {
+  // Keep the fast path for typical microphone snippets (<= ~3MB); use long-running only for
+  // truly large files so the UI can show transcription sooner after stop.
+  if (approxBytes > 3_000_000) {
     return transcribeLongAudio(base64Audio, {
       encoding: opts?.encoding,
       sampleRateHertz: opts?.sampleRateHertz,
