@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
-import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, Dumbbell } from 'lucide-react';
+import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, Dumbbell, Settings } from 'lucide-react';
 import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc, getDoc, setDoc, Timestamp, updateDoc, DocumentReference } from 'firebase/firestore';
 import { ref, listAll } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
@@ -8,6 +8,7 @@ import EventCardNew from '../components/events/EventCardNew';
 import ContactMessagesAdmin from '../components/admin/ContactMessagesAdmin';
 import BulkAttendeesPanel from '../components/admin/BulkAttendeesPanel';
 import CleanupToolPanel from '../components/admin/CleanupToolPanel';
+import { AssistantConfigPanel } from '../components/admin/AssistantConfigPanel';
 import { useTestimonials } from '../hooks/useTestimonials';
 import { adminUpdateTestimonial, deleteTestimonial } from '../services/testimonialsService';
 import type { Testimonial, TestimonialStatus, TestimonialAIPrompts, PostAIPrompts } from '../types';
@@ -76,7 +77,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
-  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts'>('events');
+  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig'>('events');
   const { currentUser } = useAuth();
   
   // Media management state
@@ -717,6 +718,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         >
           <MessageSquare className="w-4 h-4 inline mr-2" />
           Posts
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('assistantConfig')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'assistantConfig'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Settings className="w-4 h-4 inline mr-2" />
+          Assistant Config
         </button>
       </div>
 
@@ -1712,6 +1724,11 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
             </form>
           )}
         </div>
+      )}
+
+      {/* Assistant Configuration Section */}
+      {activeAdminSection === 'assistantConfig' && (
+        <AssistantConfigPanel />
       )}
     </div>
   );
