@@ -312,7 +312,7 @@ const Home: React.FC = () => {
       <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4">
         <div className="text-center mb-8">
           <h2
-            className="text-3xl md:text-4xl font-bold text-gray-900 mb-4"
+            className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent mb-4"
             tabIndex={-1}
             data-section-heading
           >
@@ -363,19 +363,17 @@ const Home: React.FC = () => {
 
       {/* Mom Moments Highlight */}
       <section id="moments" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
-          <div>
-            <h2
-              className="text-3xl md:text-4xl font-bold text-gray-900"
-              tabIndex={-1}
-              data-section-heading
-            >
-              Mom Moments
-            </h2>
-            <p className="text-gray-600 readable">
-              Real snapshots from our recent workouts, socials, and celebrations—see what the community is up to right now.
-            </p>
-          </div>
+        <div className="text-center mb-8">
+          <h2
+            className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent mb-4"
+            tabIndex={-1}
+            data-section-heading
+          >
+            Mom Moments
+          </h2>
+          <p className="text-xl text-gray-600 readable mb-4">
+            Real snapshots from our recent workouts, socials, and celebrations—see what the community is up to right now.
+          </p>
           <Link
             to="/media"
             className="inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold text-[#F25129] border border-[#F25129]/40 hover:bg-[#F25129]/10 transition-colors duration-300"
