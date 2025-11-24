@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { MessageCircle, X, Mic, Square, Send, Loader2, Volume2, VolumeX, BookOpen, Copy, Share2 } from 'lucide-react';
+import { MessageCircle, X, Mic, Square, Send, Loader2, Volume2, VolumeX, BookOpen, Copy, Share2, Minimize2, Maximize2, GripVertical } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import {
   askAssistant,
@@ -110,6 +110,16 @@ const AssistantWidget: React.FC = () => {
     if (stored === null) return true;
     return stored === 'true';
   });
+  const [conversationMode, setConversationMode] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [widgetSize, setWidgetSize] = useState({ width: 380, height: 600 });
+  const [widgetPosition, setWidgetPosition] = useState({ x: 0, y: 0 }); // x = right offset, y = bottom offset
+  const [dragPosition, setDragPosition] = useState<{ left: number; top: number } | null>(null); // Track left/top when dragging
+  const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const widgetRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const recordTimeoutRef = useRef<number | null>(null);
@@ -126,6 +136,10 @@ const AssistantWidget: React.FC = () => {
   const playingAudioRef = useRef<HTMLAudioElement | null>(null);
   const timelineRef = useRef<Record<string, number>>({});
   const voiceSessionActiveRef = useRef(false);
+  const conversationModeRef = useRef(false);
+  const turnCountRef = useRef(0);
+  const maxConversationTurns = 10;
+  const conversationTimeoutRef = useRef<number | null>(null);
 
   const hasConversation = messages.length > 0;
 
@@ -215,6 +229,28 @@ const AssistantWidget: React.FC = () => {
           console.log('[AssistantWidget] TTS audio playback ended normally');
           if (playingAudioRef.current === audio) {
             playingAudioRef.current = null;
+          }
+          
+          // Continuous conversation mode: auto-restart recording if enabled
+          if (conversationModeRef.current && autoSpeak && turnCountRef.current < maxConversationTurns) {
+            turnCountRef.current++;
+            console.log(`[AssistantWidget] Conversation mode active (turn ${turnCountRef.current}/${maxConversationTurns}), auto-starting recording...`);
+            
+            // Small delay for natural flow before restarting
+            setTimeout(() => {
+              if (conversationModeRef.current && !isRecording && !isSending) {
+                beginRecording();
+              }
+            }, 600); // 600ms delay for natural conversation flow
+          } else if (conversationModeRef.current && turnCountRef.current >= maxConversationTurns) {
+            console.log('[AssistantWidget] Max conversation turns reached, stopping conversation mode');
+            conversationModeRef.current = false;
+            setConversationMode(false);
+            turnCountRef.current = 0;
+            if (conversationTimeoutRef.current) {
+              clearTimeout(conversationTimeoutRef.current);
+              conversationTimeoutRef.current = null;
+            }
           }
         };
         
@@ -361,6 +397,22 @@ const AssistantWidget: React.FC = () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       toast.error('Voice capture is not supported in this browser.');
       return;
+    }
+
+    // Reset conversation timeout when starting new recording
+    if (conversationTimeoutRef.current) {
+      clearTimeout(conversationTimeoutRef.current);
+      conversationTimeoutRef.current = null;
+    }
+
+    // Set silence timeout for conversation mode (if no sound detected after TTS ends)
+    if (conversationModeRef.current) {
+      conversationTimeoutRef.current = window.setTimeout(() => {
+        console.log('[AssistantWidget] Conversation mode timeout - no input detected, stopping');
+        conversationModeRef.current = false;
+        setConversationMode(false);
+        turnCountRef.current = 0;
+      }, 15000); // 15 seconds of silence = stop conversation
     }
 
     try {
@@ -612,6 +664,18 @@ const AssistantWidget: React.FC = () => {
 
   const handleToggleRecording = useCallback(() => {
     if (isRecording) {
+      // If in conversation mode and clicking mic, stop conversation mode
+      if (conversationModeRef.current) {
+        console.log('[AssistantWidget] Stopping conversation mode (mic clicked)');
+        conversationModeRef.current = false;
+        setConversationMode(false);
+        turnCountRef.current = 0;
+        if (conversationTimeoutRef.current) {
+          clearTimeout(conversationTimeoutRef.current);
+          conversationTimeoutRef.current = null;
+        }
+        toast.success('Conversation mode stopped');
+      }
       stopRecording();
     } else {
       // Stop any audio playback immediately (synchronously) before starting recording
@@ -620,13 +684,136 @@ const AssistantWidget: React.FC = () => {
       voiceSessionActiveRef.current = true;
       timelineRef.current = { start: Date.now() };
       logTimelineEvent('Mic clicked');
+      
+      // If auto-speak is enabled, automatically enable conversation mode
+      if (autoSpeak) {
+        conversationModeRef.current = true;
+        setConversationMode(true);
+        turnCountRef.current = 0;
+        console.log('[AssistantWidget] Auto-enabled conversation mode (autoSpeak is on)');
+      }
+      
       beginRecording();
     }
-  }, [beginRecording, isRecording, stopRecording, logTimelineEvent, stopAudioPlayback]);
+  }, [beginRecording, isRecording, stopRecording, logTimelineEvent, stopAudioPlayback, autoSpeak]);
 
   const toggleOpen = useCallback(() => {
     setIsOpen(prev => !prev);
+    if (!isOpen) {
+      setIsMinimized(false); // Reset minimized state when opening
+    }
+  }, [isOpen]);
+
+  const toggleMinimize = useCallback(() => {
+    setIsMinimized(prev => !prev);
   }, []);
+
+  // Drag handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, input, textarea, a')) return;
+    const header = (e.target as HTMLElement).closest('[data-drag-handle]');
+    if (!header || !widgetRef.current) return;
+    
+    e.preventDefault();
+    
+    // Get current widget position from DOM
+    const rect = widgetRef.current.getBoundingClientRect();
+    const currentLeft = rect.left;
+    const currentTop = rect.top;
+    
+    setIsDragging(true);
+    // Store initial drag position in left/top coordinates
+    setDragPosition({ left: currentLeft, top: currentTop });
+    // Store mouse offset from widget edge
+    setDragStart({
+      x: e.clientX - currentLeft, // Offset from mouse to widget left edge
+      y: e.clientY - currentTop,  // Offset from mouse to widget top edge
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Calculate new widget position directly in left/top coordinates
+      const newLeft = e.clientX - dragStart.x;
+      const newTop = e.clientY - dragStart.y;
+      
+      // Constrain to viewport (ensure widget stays within bounds)
+      const minLeft = 0;
+      const minTop = 0;
+      const maxLeft = window.innerWidth - widgetSize.width - 24;
+      const maxTop = window.innerHeight - widgetSize.height - 100; // Leave space for button
+      
+      const constrainedLeft = Math.max(minLeft, Math.min(newLeft, maxLeft));
+      const constrainedTop = Math.max(minTop, Math.min(newTop, maxTop));
+      
+      // Update drag position for immediate rendering
+      setDragPosition({ left: constrainedLeft, top: constrainedTop });
+      
+      // Also update stored position (convert to right/bottom for when dragging stops)
+      setWidgetPosition({
+        x: window.innerWidth - constrainedLeft - widgetSize.width - 24, // right offset
+        y: window.innerHeight - constrainedTop - widgetSize.height - 100, // bottom offset
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      // Clear drag position - will use stored right/bottom position
+      setDragPosition(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, dragStart, widgetSize]);
+
+  // Resize handlers
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsResizing(true);
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      width: widgetSize.width,
+      height: widgetSize.height,
+    });
+  }, [widgetSize]);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - resizeStart.x;
+      const deltaY = e.clientY - resizeStart.y;
+      
+      const minWidth = 300;
+      const maxWidth = Math.min(800, window.innerWidth - widgetPosition.x - 24);
+      const minHeight = 400;
+      const maxHeight = Math.min(window.innerHeight - widgetPosition.y - 100, window.innerHeight * 0.9);
+      
+      setWidgetSize({
+        width: Math.max(minWidth, Math.min(resizeStart.width + deltaX, maxWidth)),
+        height: Math.max(minHeight, Math.min(resizeStart.height + deltaY, maxHeight)),
+      });
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, resizeStart, widgetPosition]);
 
   const [expandedCitations, setExpandedCitations] = useState<Record<string, boolean>>({});
 
@@ -659,9 +846,18 @@ const AssistantWidget: React.FC = () => {
                   {c.title}
                 </a>
               ) : (
-                <span className="text-gray-700">{c.title}</span>
+                <span className="text-gray-700">
+                  {c.sourceType === 'general_knowledge' ? (
+                    <>
+                      <span className="italic">{c.title}</span>
+                      <span className="text-gray-500 text-[10px] ml-1">(general knowledge)</span>
+                    </>
+                  ) : (
+                    c.title
+                  )}
+                </span>
               )}
-              {c.snippet ? <span className="text-gray-500"> – {c.snippet.slice(0, 120)}…</span> : null}
+              {c.snippet && c.sourceType !== 'general_knowledge' ? <span className="text-gray-500"> – {c.snippet.slice(0, 120)}…</span> : null}
             </li>
           ))}
         </ul>
@@ -736,22 +932,65 @@ const AssistantWidget: React.FC = () => {
       </button>
 
       {isOpen && (
-        <div className="fixed bottom-24 right-6 z-40 w-[320px] md:w-[380px] bg-white rounded-2xl shadow-2xl border border-orange-100 overflow-hidden flex flex-col max-h-[70vh]">
-          <header className="bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white px-4 py-3 flex items-center justify-between">
-            <div>
-              <div className="text-sm font-semibold">Moms Fitness Mojo Assistant</div>
-              <div className="text-[11px] opacity-80">Ask about workouts, events, challenges & policies — now backed by our community knowledge base.</div>
+        <div
+          ref={widgetRef}
+          className={`fixed z-40 bg-white rounded-2xl shadow-2xl border border-orange-100 overflow-hidden flex flex-col transition-all ${
+            isMinimized ? 'h-14' : ''
+          } ${isDragging ? 'cursor-move' : ''}`}
+          style={{
+            width: isMinimized ? '380px' : `${widgetSize.width}px`,
+            height: isMinimized ? 'auto' : `${widgetSize.height}px`,
+            ...(isDragging && dragPosition
+              ? {
+                  // When dragging, use left/top directly from dragPosition
+                  left: `${dragPosition.left}px`,
+                  top: `${dragPosition.top}px`,
+                  bottom: 'auto',
+                  right: 'auto',
+                }
+              : {
+                  // When not dragging, use bottom/right for default positioning
+                  bottom: isMinimized ? '24px' : `${24 + widgetPosition.y}px`,
+                  right: isMinimized ? '24px' : `${24 + widgetPosition.x}px`,
+                }),
+            maxHeight: isMinimized ? 'none' : '90vh',
+          }}
+        >
+          <header
+            data-drag-handle
+            onMouseDown={handleMouseDown}
+            className="bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white px-4 py-3 flex items-center justify-between cursor-move select-none"
+          >
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <GripVertical size={16} className="opacity-70 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold truncate">Moms Fitness Mojo Assistant</div>
+                {!isMinimized && (
+                  <div className="text-[11px] opacity-80 truncate">Ask about workouts, events, challenges & policies — now backed by our community knowledge base.</div>
+                )}
+              </div>
             </div>
-            <button
-              onClick={toggleOpen}
-              className="p-1 rounded-full hover:bg-white/20 transition"
-              aria-label="Close assistant"
-            >
-              <X size={18} />
-            </button>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={toggleMinimize}
+                className="p-1 rounded-full hover:bg-white/20 transition"
+                aria-label={isMinimized ? 'Maximize assistant' : 'Minimize assistant'}
+              >
+                {isMinimized ? <Maximize2 size={18} /> : <Minimize2 size={18} />}
+              </button>
+              <button
+                onClick={toggleOpen}
+                className="p-1 rounded-full hover:bg-white/20 transition"
+                aria-label="Close assistant"
+              >
+                <X size={18} />
+              </button>
+            </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm" ref={scrollContainerRef}>
+          {!isMinimized && (
+            <>
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm" ref={scrollContainerRef} style={{ maxHeight: `${widgetSize.height - 200}px` }}>
             {!hasConversation && (
               <div className="bg-orange-50 border border-orange-100 text-orange-800 rounded-xl px-3 py-2 text-[13px] leading-relaxed">
                 <p className="font-semibold">Hi! I’m Mojo, your fitness concierge.</p>
@@ -821,12 +1060,18 @@ const AssistantWidget: React.FC = () => {
               <button
                 type="button"
                 onClick={handleToggleRecording}
-                className={`p-2 rounded-full border ${
-                  isRecording ? 'border-[#F25129] bg-[#F25129] text-white animate-pulse' : 'border-gray-300 text-gray-600'
+                className={`p-2 rounded-full border relative ${
+                  isRecording ? 'border-[#F25129] bg-[#F25129] text-white animate-pulse' : 
+                  conversationMode ? 'border-green-500 bg-green-50 text-green-700' :
+                  'border-gray-300 text-gray-600'
                 }`}
                 aria-label={isRecording ? 'Stop recording' : 'Record message'}
+                title={conversationMode ? `Conversation mode active (turn ${turnCountRef.current}/${maxConversationTurns}) - Click to stop` : undefined}
               >
                 {isRecording ? <Square size={16} /> : <Mic size={16} />}
+                {conversationMode && !isRecording && (
+                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
+                )}
               </button>
               <form onSubmit={handleSubmit} className="flex-1 flex items-center gap-2">
                 <input
@@ -847,7 +1092,13 @@ const AssistantWidget: React.FC = () => {
                 </button>
               </form>
             </div>
-            <div className="flex items-center justify-end text-[11px] text-gray-500">
+            <div className="flex items-center justify-between text-[11px] text-gray-500">
+              {conversationMode && (
+                <div className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 border border-green-200 rounded-full text-green-700 text-xs font-medium">
+                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                  Conversation mode ({turnCountRef.current}/{maxConversationTurns})
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => setAutoSpeak(prev => !prev)}
@@ -864,6 +1115,19 @@ const AssistantWidget: React.FC = () => {
               </button>
             </div>
           </footer>
+          </>
+          )}
+
+          {/* Resize handle */}
+          {!isMinimized && (
+            <div
+              onMouseDown={handleResizeStart}
+              className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize bg-orange-100/50 hover:bg-orange-200/50 rounded-tl-lg flex items-end justify-end p-1 transition-colors"
+              style={{ clipPath: 'polygon(100% 0, 100% 100%, 0 100%)' }}
+            >
+              <div className="w-4 h-4 border-r-2 border-b-2 border-orange-400 rounded-sm"></div>
+            </div>
+          )}
         </div>
       )}
     </>

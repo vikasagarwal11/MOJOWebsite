@@ -9,6 +9,7 @@ import ContactMessagesAdmin from '../components/admin/ContactMessagesAdmin';
 import BulkAttendeesPanel from '../components/admin/BulkAttendeesPanel';
 import CleanupToolPanel from '../components/admin/CleanupToolPanel';
 import { AssistantConfigPanel } from '../components/admin/AssistantConfigPanel';
+import { KBGapsPanel } from '../components/admin/KBGapsPanel';
 import { useTestimonials } from '../hooks/useTestimonials';
 import { adminUpdateTestimonial, deleteTestimonial } from '../services/testimonialsService';
 import type { Testimonial, TestimonialStatus, TestimonialAIPrompts, PostAIPrompts } from '../types';
@@ -77,7 +78,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
-  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig'>('events');
+  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig' | 'kbGaps'>('events');
   const { currentUser } = useAuth();
   
   // Media management state
@@ -729,6 +730,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         >
           <Settings className="w-4 h-4 inline mr-2" />
           Assistant Config
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('kbGaps')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'kbGaps'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4 inline mr-2" />
+          KB Gaps
         </button>
       </div>
 
@@ -1729,6 +1741,11 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       {/* Assistant Configuration Section */}
       {activeAdminSection === 'assistantConfig' && (
         <AssistantConfigPanel />
+      )}
+
+      {/* KB Gaps Section */}
+      {activeAdminSection === 'kbGaps' && (
+        <KBGapsPanel />
       )}
     </div>
   );

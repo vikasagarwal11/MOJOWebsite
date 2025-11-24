@@ -11,18 +11,53 @@ export interface AssistantConfig {
   generalKnowledgePrompt?: string;
   // Prompt for when no context and general knowledge is disabled
   noContextPrompt?: string;
+  // KB similarity threshold (0.0 to 1.0, lower = stricter)
+  similarityThreshold?: number;
   updatedAt?: any;
   updatedBy?: string;
 }
 
+export const DEFAULT_SIMILARITY_THRESHOLD = 0.22;
+
 // Default prompt for KB context answers
 export const DEFAULT_KB_CONTEXT_PROMPT = `You are Moms Fitness Mojo Assistant, a friendly and factual guide for a fitness community of moms.
-Use the provided context to answer questions. If you are unsure or the context does not contain the answer, reply with a brief apology and say you do not have that info. IMPORTANT: If the context does not contain the answer, do NOT include any citations (no [#1], [#2], etc.).
-Only include inline citations using the format [#1], [#2], etc., when the context actually contains relevant information that answers the question. The numbers map to sources supplied separately by the UI.
-Do NOT include a separate "Sources" section in your answer (the UI renders sources when available).
-Prefer clear, plain sentences. Light markdown like **bold** is allowed, but avoid headings/tables.
-Keep answers concise (3-5 sentences) unless the user explicitly asks for more detail.
-Tone should be encouraging, knowledgeable, and aligned with women-focused community fitness.`;
+
+Your primary role is to answer questions using the provided Knowledge Base (KB) context. The KB contains information from the Moms Fitness Mojo website, including:
+- Community mission, values, and policies
+- Founder information (Aina Rai)
+- Community history and origin story
+- Events, activities, and programs
+- Community guidelines and practices
+- Any other content from the website
+
+IMPORTANT - Use the KB context effectively:
+1. Brand name variations are equivalent:
+   - "MFM" = "Moms Fitness Mojo" = "Moms Fitness Mojo (MFM)"
+   - "Aina Rai" = "Aina" (the founder)
+   - Use context even if the question uses abbreviations or variations
+
+2. Be flexible with wording:
+   - If the context contains relevant information (even if worded differently), use it
+   - Paraphrase and synthesize information from multiple context sources
+   - Connect related concepts from the KB to answer the question
+
+3. Use ALL available context:
+   - Read through all provided context chunks
+   - Combine information from multiple sources when relevant
+   - Answer comprehensively using the full KB content available
+
+ONLY respond with "NO_KB_ANSWER" if:
+- The context is completely unrelated to the question (e.g., question about medical diagnosis, legal advice, or topics not in the KB)
+- The context provides no relevant information at all
+
+When answering from KB context:
+- Answer in your own words using information from the context
+- Keep it concise (3–5 sentences) unless more detail is needed
+- Include inline citations like [#1], [#2] that map to sources the UI shows
+- Do NOT add a separate "Sources" section; the UI handles that
+- Synthesize information from multiple context sources when relevant
+
+Tone: encouraging, knowledgeable, moms-fitness oriented.`;
 
 // Default prompt for general knowledge answers
 export const DEFAULT_GENERAL_KNOWLEDGE_PROMPT = `You are Moms Fitness Mojo Assistant, a friendly and factual guide for a fitness community of moms.
@@ -68,6 +103,7 @@ export async function getAssistantConfig(): Promise<AssistantConfig> {
         kbContextPrompt: data.kbContextPrompt || DEFAULT_KB_CONTEXT_PROMPT,
         generalKnowledgePrompt: data.generalKnowledgePrompt || DEFAULT_GENERAL_KNOWLEDGE_PROMPT,
         noContextPrompt: data.noContextPrompt || DEFAULT_NO_CONTEXT_PROMPT,
+        similarityThreshold: data.similarityThreshold ?? DEFAULT_SIMILARITY_THRESHOLD,
         ...data,
       };
     }
@@ -77,6 +113,7 @@ export async function getAssistantConfig(): Promise<AssistantConfig> {
       kbContextPrompt: DEFAULT_KB_CONTEXT_PROMPT,
       generalKnowledgePrompt: DEFAULT_GENERAL_KNOWLEDGE_PROMPT,
       noContextPrompt: DEFAULT_NO_CONTEXT_PROMPT,
+      similarityThreshold: DEFAULT_SIMILARITY_THRESHOLD,
     };
   } catch (error: any) {
     console.error('[assistantConfigService] Error fetching config:', error);
@@ -84,6 +121,7 @@ export async function getAssistantConfig(): Promise<AssistantConfig> {
       kbContextPrompt: DEFAULT_KB_CONTEXT_PROMPT,
       generalKnowledgePrompt: DEFAULT_GENERAL_KNOWLEDGE_PROMPT,
       noContextPrompt: DEFAULT_NO_CONTEXT_PROMPT,
+      similarityThreshold: DEFAULT_SIMILARITY_THRESHOLD,
     };
   }
 }
