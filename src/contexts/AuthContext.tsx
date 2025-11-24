@@ -579,9 +579,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           console.log('🔍 AuthContext: New user data to save:', userData);
           
-          await setDoc(userRef, userData);
-          console.log('🔍 AuthContext: New user document created successfully');
-          toast.success('Account created successfully!');
+          try {
+            await setDoc(userRef, userData);
+            console.log('🔍 AuthContext: New user document created successfully');
+            toast.success('Account created successfully!');
+          } catch (docError: any) {
+            console.error('🚨 AuthContext: Failed to create user document:', {
+              error: docError,
+              errorCode: docError?.code,
+              errorMessage: docError?.message,
+              errorStack: docError?.stack,
+              userId: fbUser.uid,
+              userData
+            });
+            
+            // Handle Firestore permission errors specifically
+            if (docError?.code === 'permission-denied') {
+              const permissionMsg = 'Permission denied: Unable to create user profile. Please contact support.';
+              console.error('🚨 AuthContext: Firestore permission denied when creating user document');
+              toast.error(permissionMsg);
+              throw new Error(permissionMsg);
+            }
+            
+            // Re-throw other errors to be handled by outer catch
+            throw docError;
+          }
         } else {
           console.log('🔍 AuthContext: No user document exists and no valid data provided');
           console.log('🔍 AuthContext: firstName =', firstName, ', lastName =', lastName);
@@ -625,6 +647,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         msg = 'Invalid verification code. Please try again.';
       else if (error?.code === 'auth/code-expired')
         msg = 'Verification code expired. Request a new one.';
+      else if (error?.code === 'permission-denied')
+        msg = error?.message || 'Permission denied. Unable to complete registration. Please contact support.';
+      else if (error?.message)
+        msg = error.message;
       toast.error(msg);
       throw error;
     }
