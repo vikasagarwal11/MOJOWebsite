@@ -6,7 +6,8 @@ import {
   updateAssistantConfig, 
   DEFAULT_KB_CONTEXT_PROMPT,
   DEFAULT_GENERAL_KNOWLEDGE_PROMPT,
-  DEFAULT_NO_CONTEXT_PROMPT
+  DEFAULT_NO_CONTEXT_PROMPT,
+  DEFAULT_SIMILARITY_THRESHOLD
 } from '../../services/assistantConfigService';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -15,9 +16,10 @@ export const AssistantConfigPanel: React.FC = () => {
   const [kbContextPrompt, setKbContextPrompt] = useState(DEFAULT_KB_CONTEXT_PROMPT);
   const [generalKnowledgePrompt, setGeneralKnowledgePrompt] = useState(DEFAULT_GENERAL_KNOWLEDGE_PROMPT);
   const [noContextPrompt, setNoContextPrompt] = useState(DEFAULT_NO_CONTEXT_PROMPT);
+  const [similarityThreshold, setSimilarityThreshold] = useState(DEFAULT_SIMILARITY_THRESHOLD);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'kb' | 'general' | 'no-context'>('kb');
+  const [activeTab, setActiveTab] = useState<'kb' | 'general' | 'no-context' | 'settings'>('kb');
 
   useEffect(() => {
     loadConfig();
@@ -30,6 +32,7 @@ export const AssistantConfigPanel: React.FC = () => {
       setKbContextPrompt(config.kbContextPrompt || DEFAULT_KB_CONTEXT_PROMPT);
       setGeneralKnowledgePrompt(config.generalKnowledgePrompt || DEFAULT_GENERAL_KNOWLEDGE_PROMPT);
       setNoContextPrompt(config.noContextPrompt || DEFAULT_NO_CONTEXT_PROMPT);
+      setSimilarityThreshold(config.similarityThreshold ?? DEFAULT_SIMILARITY_THRESHOLD);
     } catch (error: any) {
       console.error('[AssistantConfigPanel] Error loading config:', error);
       toast.error('Failed to load assistant configuration');
@@ -51,6 +54,7 @@ export const AssistantConfigPanel: React.FC = () => {
           kbContextPrompt: kbContextPrompt.trim(),
           generalKnowledgePrompt: generalKnowledgePrompt.trim(),
           noContextPrompt: noContextPrompt.trim(),
+          similarityThreshold: similarityThreshold,
         },
         currentUser.id
       );
@@ -68,6 +72,7 @@ export const AssistantConfigPanel: React.FC = () => {
       setKbContextPrompt(DEFAULT_KB_CONTEXT_PROMPT);
       setGeneralKnowledgePrompt(DEFAULT_GENERAL_KNOWLEDGE_PROMPT);
       setNoContextPrompt(DEFAULT_NO_CONTEXT_PROMPT);
+      setSimilarityThreshold(DEFAULT_SIMILARITY_THRESHOLD);
       toast.success('Reset to default configuration');
     }
   };
@@ -126,6 +131,8 @@ export const AssistantConfigPanel: React.FC = () => {
         return 'This prompt is used when answering questions that are not found in the knowledge base. It should focus on lifestyle, fitness, and general health topics relevant to moms.';
       case 'no-context':
         return 'This prompt is used when no knowledge base context is available and general knowledge is disabled. It should instruct the model to politely decline or redirect.';
+      case 'settings':
+        return 'Configure advanced settings like similarity threshold for knowledge base matching.';
     }
   };
 
@@ -172,6 +179,16 @@ export const AssistantConfigPanel: React.FC = () => {
             >
               No Context Prompt
             </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === 'settings'
+                  ? 'text-[#F25129] border-b-2 border-[#F25129]'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Settings
+            </button>
           </nav>
         </div>
 
@@ -183,6 +200,7 @@ export const AssistantConfigPanel: React.FC = () => {
                 {activeTab === 'kb' && 'KB Context Prompt'}
                 {activeTab === 'general' && 'General Knowledge Prompt'}
                 {activeTab === 'no-context' && 'No Context Prompt'}
+                {activeTab === 'settings' && 'Assistant Settings'}
               </p>
               <p>{getTabDescription()}</p>
             </div>
@@ -190,22 +208,58 @@ export const AssistantConfigPanel: React.FC = () => {
         </div>
 
         <div className="space-y-4">
-          <div>
-            <label htmlFor="prompt" className="block text-sm font-medium text-gray-700 mb-2">
-              System Prompt
-            </label>
-            <textarea
-              id="prompt"
-              value={getCurrentPrompt()}
-              onChange={(e) => setCurrentPrompt(e.target.value)}
-              rows={20}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent font-mono text-sm"
-              placeholder="Enter the system prompt..."
-            />
-            <p className="mt-2 text-sm text-gray-500">
-              {getCurrentPrompt().length} characters
-            </p>
-          </div>
+          {activeTab !== 'settings' ? (
+            <>
+              <div>
+                <label htmlFor="prompt" className="block text-sm font-medium text-gray-700 mb-2">
+                  System Prompt
+                </label>
+                <textarea
+                  id="prompt"
+                  value={getCurrentPrompt()}
+                  onChange={(e) => setCurrentPrompt(e.target.value)}
+                  rows={20}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent font-mono text-sm"
+                  placeholder="Enter the system prompt..."
+                />
+                <p className="mt-2 text-sm text-gray-500">
+                  {getCurrentPrompt().length} characters
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-6">
+              <div>
+                <label htmlFor="threshold" className="block text-sm font-medium text-gray-700 mb-2">
+                  KB Similarity Threshold
+                </label>
+                <input
+                  id="threshold"
+                  type="number"
+                  min="0.0"
+                  max="1.0"
+                  step="0.01"
+                  value={similarityThreshold}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val >= 0 && val <= 1) {
+                      setSimilarityThreshold(val);
+                    }
+                  }}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                  placeholder="0.22"
+                />
+                <p className="mt-2 text-sm text-gray-500">
+                  Lower values (e.g., 0.20) are stricter—only very similar questions use KB. Higher values (e.g., 0.30) are more lenient—more questions use KB. Default: 0.22. Recommended range: 0.18-0.30.
+                </p>
+                <div className="mt-3 p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
+                  <p className="font-medium mb-1">Current threshold: {similarityThreshold}</p>
+                  <p>Cosine distance: 0.0 = perfect match, 1.0 = completely different</p>
+                  <p>Threshold {similarityThreshold} means only questions with &gt;{(1 - similarityThreshold) * 100}% similarity will use KB</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center gap-3">
             <button

@@ -73,12 +73,43 @@ async function getUserProfile(uid: string | undefined) {
 
 // Default prompt for KB context answers
 const DEFAULT_KB_CONTEXT_PROMPT = `You are Moms Fitness Mojo Assistant, a friendly and factual guide for a fitness community of moms.
-Use the provided context to answer questions. If you are unsure or the context does not contain the answer, reply with a brief apology and say you do not have that info. IMPORTANT: If the context does not contain the answer, do NOT include any citations (no [#1], [#2], etc.).
-Only include inline citations using the format [#1], [#2], etc., when the context actually contains relevant information that answers the question. The numbers map to sources supplied separately by the UI.
-Do NOT include a separate "Sources" section in your answer (the UI renders sources when available).
-Prefer clear, plain sentences. Light markdown like **bold** is allowed, but avoid headings/tables.
-Keep answers concise (3-5 sentences) unless the user explicitly asks for more detail.
-Tone should be encouraging, knowledgeable, and aligned with women-focused community fitness.`;
+
+Your primary role is to answer questions using the provided Knowledge Base (KB) context. The KB contains information from the Moms Fitness Mojo website, including:
+- Community mission, values, and policies
+- Founder information (Aina Rai)
+- Community history and origin story
+- Events, activities, and programs
+- Community guidelines and practices
+- Any other content from the website
+
+IMPORTANT - Use the KB context effectively:
+1. Brand name variations are equivalent:
+   - "MFM" = "Moms Fitness Mojo" = "Moms Fitness Mojo (MFM)"
+   - "Aina Rai" = "Aina" (the founder)
+   - Use context even if the question uses abbreviations or variations
+
+2. Be flexible with wording:
+   - If the context contains relevant information (even if worded differently), use it
+   - Paraphrase and synthesize information from multiple context sources
+   - Connect related concepts from the KB to answer the question
+
+3. Use ALL available context:
+   - Read through all provided context chunks
+   - Combine information from multiple sources when relevant
+   - Answer comprehensively using the full KB content available
+
+ONLY respond with "NO_KB_ANSWER" if:
+- The context is completely unrelated to the question (e.g., question about medical diagnosis, legal advice, or topics not in the KB)
+- The context provides no relevant information at all
+
+When answering from KB context:
+- Answer in your own words using information from the context
+- Keep it concise (3–5 sentences) unless more detail is needed
+- Include inline citations like [#1], [#2] that map to sources the UI shows
+- Do NOT add a separate "Sources" section; the UI handles that
+- Synthesize information from multiple context sources when relevant
+
+Tone: encouraging, knowledgeable, moms-fitness oriented.`;
 
 // Default prompt for general knowledge answers
 const DEFAULT_GENERAL_KNOWLEDGE_PROMPT = `You are Moms Fitness Mojo Assistant, a friendly and factual guide for a fitness community of moms.
@@ -112,10 +143,143 @@ Prefer clear, plain sentences. Light markdown like **bold** is allowed, but avoi
 Keep answers concise (3-5 sentences) unless the user explicitly asks for more detail.
 Tone should be encouraging, knowledgeable, and aligned with women-focused community fitness.`;
 
+// Helper: Detect app data intent (events, posts, testimonials, messages)
+type AppDataIntent = 'event' | 'post' | 'testimonial' | 'message' | 'none';
+
+function detectAppDataIntent(question: string): AppDataIntent {
+  const q = question.toLowerCase();
+
+  // Event-related questions (expanded patterns)
+  if (
+    /next (event|meetup|party|class|session|gathering)\b/.test(q) ||
+    /\bupcoming (event|events|meetups|classes|parties|gatherings)\b/.test(q) ||
+    /\bwhen is\b.*\b(event|meetup|party|class|session|gathering)\b/.test(q) ||
+    /\b(events this week|next saturday|this weekend|what's happening next|any fun gatherings soon)\b/.test(q) ||
+    /\b(what|when).*next.*(event|meetup|party|gathering)\b/.test(q)
+  ) {
+    return 'event';
+  }
+
+  // Testimonial questions
+  if (
+    /\b(last|latest|recent)\s+(testimonial|testimony|review)\b/.test(q) ||
+    /\bwhat did.*say.*about.*(workout|class|event|program)\b/.test(q) ||
+    /\brecent testimonial\b/.test(q)
+  ) {
+    return 'testimonial';
+  }
+
+  // Message questions (distinct from posts)
+  if (
+    /\b(last|latest|recent)\s+message\b/.test(q) ||
+    /\bwhat was the last\b.*\bmessage\b/.test(q)
+  ) {
+    return 'message';
+  }
+
+  // Post / update questions
+  if (
+    /\b(last|latest)\s+(post|update)\b/.test(q) ||
+    /\bwhat was the last\b.*\bpost\b/.test(q) ||
+    /\bwhat's the latest\b.*\b(post|update)\b/.test(q)
+  ) {
+    return 'post';
+  }
+
+  return 'none';
+}
+
+// Helper: Check if question mentions brand (MFM-specific)
+// Only check for stable brand identifiers - event names and generic terms are handled elsewhere
+// This is the PRIMARY filter: non-brand questions skip KB entirely and go to general knowledge
+function isBrandQuestion(question: string): boolean {
+  const q = question.toLowerCase().trim();
+  
+  // REQUIRED: Must have explicit brand mention (moms fitness mojo, mfm, aina rai, aina)
+  const explicitBrandPattern = /\b(moms fitness mojo|mfm|aina rai|aina)\b/;
+  const hasExplicitBrand = explicitBrandPattern.test(q);
+  
+  // If no explicit brand mention, definitely not a brand question
+  if (!hasExplicitBrand) {
+    // Exception: "core values" + context might be brand, but too risky - require explicit brand
+    // "who is the founder" alone without brand is NOT a brand question
+    console.log(`[assistant.isBrandQuestion] ❌ NON-BRAND QUESTION - no explicit brand mention`);
+    return false;
+  }
+  
+  // Additional patterns that REQUIRE explicit brand + context keywords
+  // These patterns ensure we catch brand questions even with word order variations
+  const brandWithContextPatterns = [
+    // Founder-related (order-agnostic)
+    /\bfounder\b/,
+    // Mission-related
+    /\bmission\b/,
+    // Creation-related
+    /\b(begin|start|created|founded|started)\b/,
+    // About questions
+    /\b(what|who|tell me|explain|describe)\b/,
+    // Values (but require explicit brand - already checked above)
+    /\bcore values\b/,
+    // History/story
+    /\b(story|history|background|origin)\b/,
+  ];
+  
+  // If explicit brand found, check if question has brand-relevant context
+  // This prevents "who is aina?" from being too generic
+  const hasBrandContext = brandWithContextPatterns.some(pattern => pattern.test(q));
+  
+  // Brand question = explicit brand mention + relevant context OR standalone brand mention
+  // If user just says "moms fitness mojo" or "aina", it's likely a brand question
+  const isBrand = hasExplicitBrand && (hasBrandContext || q.split(/\s+/).length <= 5);
+  
+  console.log(`[assistant.isBrandQuestion] Question: "${question}"`);
+  console.log(`[assistant.isBrandQuestion] - Has explicit brand: ${hasExplicitBrand}`);
+  console.log(`[assistant.isBrandQuestion] - Has brand context: ${hasBrandContext}`);
+  console.log(`[assistant.isBrandQuestion] - Result: ${isBrand ? '✅ BRAND' : '❌ NON-BRAND'}`);
+  
+  return isBrand;
+}
+
+const DEFAULT_SIMILARITY_THRESHOLD = 0.22;
+const BRAND_KB_THRESHOLD = 0.4; // More lenient for brand-specific questions
+const GENERIC_KB_THRESHOLD = 0.22; // Keep strict for generic (but they shouldn't reach KB anyway)
+
+// Helper: Extract distance from Firestore vector search result
+// Tries multiple methods to handle SDK variations
+function getVectorDistance(doc: FirebaseFirestore.QueryDocumentSnapshot): number | undefined {
+  // Try multiple methods (in order of likelihood based on Firestore SDK behavior)
+  const docData = doc.data();
+  const fromData = docData?.distance as number | undefined;
+  
+  const fromGet = doc.get('distance') as number | undefined;
+  
+  const anyDoc = doc as any;
+  const fromMeta = anyDoc.distance;
+  const fromUnderscore = anyDoc.__distance__;
+  const fromVector = anyDoc.vectorDistance;
+  
+  // Return first non-undefined value
+  const dist = fromData ?? fromGet ?? fromMeta ?? fromUnderscore ?? fromVector;
+  
+  // Debug logging if all methods fail (only log once per doc to avoid spam)
+  if (dist === undefined && docData) {
+    console.warn('[assistant.getVectorDistance] No distance found', {
+      id: doc.id,
+      hasData: !!docData,
+      dataKeys: Object.keys(docData),
+      fromData,
+      fromGet,
+    });
+  }
+  
+  return dist;
+}
+
 async function getAssistantConfig(): Promise<{ 
   kbContextPrompt?: string;
   generalKnowledgePrompt?: string;
   noContextPrompt?: string;
+  similarityThreshold?: number;
 }> {
   try {
     const configRef = db.collection('assistant_config').doc('system_config');
@@ -127,6 +291,7 @@ async function getAssistantConfig(): Promise<{
         kbContextPrompt: data.kbContextPrompt || DEFAULT_KB_CONTEXT_PROMPT,
         generalKnowledgePrompt: data.generalKnowledgePrompt || DEFAULT_GENERAL_KNOWLEDGE_PROMPT,
         noContextPrompt: data.noContextPrompt || DEFAULT_NO_CONTEXT_PROMPT,
+        similarityThreshold: data.similarityThreshold ?? DEFAULT_SIMILARITY_THRESHOLD,
       };
     }
     
@@ -134,6 +299,7 @@ async function getAssistantConfig(): Promise<{
       kbContextPrompt: DEFAULT_KB_CONTEXT_PROMPT,
       generalKnowledgePrompt: DEFAULT_GENERAL_KNOWLEDGE_PROMPT,
       noContextPrompt: DEFAULT_NO_CONTEXT_PROMPT,
+      similarityThreshold: DEFAULT_SIMILARITY_THRESHOLD,
     };
   } catch (error: any) {
     console.error('[assistant.getAssistantConfig] Error fetching config:', error);
@@ -141,11 +307,12 @@ async function getAssistantConfig(): Promise<{
       kbContextPrompt: DEFAULT_KB_CONTEXT_PROMPT,
       generalKnowledgePrompt: DEFAULT_GENERAL_KNOWLEDGE_PROMPT,
       noContextPrompt: DEFAULT_NO_CONTEXT_PROMPT,
+      similarityThreshold: DEFAULT_SIMILARITY_THRESHOLD,
     };
   }
 }
 
-async function answerQuestion(question: string, context: string, profileSummary: string, allowGeneralKnowledge = false) {
+async function answerQuestion(question: string, context: string, profileSummary: string, allowGeneralKnowledge = false, conversationHistory?: string) {
   const hasContext = context && context.trim().length > 0;
   
   // Get assistant config for all prompts (with fallback to defaults)
@@ -185,10 +352,19 @@ async function answerQuestion(question: string, context: string, profileSummary:
     }
   }
 
-  // Build prompt: include context only if available
-  const prompt = hasContext
-    ? `${systemPrompt}\n\nContext:\n${context}\n\nQuestion: ${question}`
-    : `${systemPrompt}\n\nQuestion: ${question}`;
+  // Build prompt: include conversation history and context if available
+  let prompt = '';
+  if (conversationHistory && conversationHistory.trim().length > 0) {
+    // Include conversation history for context (helps with pronouns, references, etc.)
+    prompt = hasContext
+      ? `${systemPrompt}\n\nPrevious conversation:\n${conversationHistory}\n\nContext:\n${context}\n\nQuestion: ${question}`
+      : `${systemPrompt}\n\nPrevious conversation:\n${conversationHistory}\n\nQuestion: ${question}`;
+  } else {
+    // No conversation history - use original format
+    prompt = hasContext
+      ? `${systemPrompt}\n\nContext:\n${context}\n\nQuestion: ${question}`
+      : `${systemPrompt}\n\nQuestion: ${question}`;
+  }
 
   const temperature = hasContext ? 0.3 : 0.7; // Slightly more creative when using general knowledge
 
@@ -288,11 +464,23 @@ async function answerQuestion(question: string, context: string, profileSummary:
     for (const model of openaiModels) {
       try {
         console.log('[assistant.answerQuestion] Trying OpenAI model:', model);
+        // Build user message with conversation history and context
+        let userContent = '';
+        if (conversationHistory && conversationHistory.trim().length > 0) {
+          userContent = hasContext
+            ? `Previous conversation:\n${conversationHistory}\n\nContext:\n${context}\n\nQuestion: ${question}`
+            : `Previous conversation:\n${conversationHistory}\n\nQuestion: ${question}`;
+        } else {
+          userContent = hasContext
+            ? `Context:\n${context}\n\nQuestion: ${question}`
+            : question;
+        }
+        
         const completion = await openai.chat.completions.create({
           model,
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: hasContext ? `Context:\n${context}\n\nQuestion: ${question}` : question }
+            { role: 'user', content: userContent }
           ],
           temperature,
           max_tokens: 1024,
@@ -346,94 +534,849 @@ function buildContextFromDocs(docs: FirebaseFirestore.QueryDocumentSnapshot[], l
   return contextPieces.join('\n\n');
 }
 
+// Helper: Parse relative date queries (e.g., "this week", "next Saturday")
+function parseDateRange(question: string): { start: Timestamp; end: Timestamp | null } {
+  const q = question.toLowerCase();
+  const now = new Date();
+  const nowTimestamp = Timestamp.now();
+  
+  // "this week" - from start of current week to end of week
+  if (/\bthis week\b/.test(q)) {
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay()); // Sunday
+    startOfWeek.setHours(0, 0, 0, 0);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7);
+    return { start: Timestamp.fromDate(startOfWeek), end: Timestamp.fromDate(endOfWeek) };
+  }
+  
+  // "next week" - from start of next week to end of next week
+  if (/\bnext week\b/.test(q)) {
+    const startOfNextWeek = new Date(now);
+    startOfNextWeek.setDate(now.getDate() + (7 - now.getDay())); // Next Sunday
+    startOfNextWeek.setHours(0, 0, 0, 0);
+    const endOfNextWeek = new Date(startOfNextWeek);
+    endOfNextWeek.setDate(startOfNextWeek.getDate() + 7);
+    return { start: Timestamp.fromDate(startOfNextWeek), end: Timestamp.fromDate(endOfNextWeek) };
+  }
+  
+  // "this weekend" - Saturday and Sunday of current week
+  if (/\bthis weekend\b/.test(q)) {
+    const saturday = new Date(now);
+    saturday.setDate(now.getDate() + (6 - now.getDay())); // This Saturday
+    saturday.setHours(0, 0, 0, 0);
+    const sunday = new Date(saturday);
+    sunday.setDate(saturday.getDate() + 1);
+    return { start: Timestamp.fromDate(saturday), end: Timestamp.fromDate(sunday) };
+  }
+  
+  // "next Saturday" or similar
+  const nextSaturdayMatch = q.match(/\bnext (saturday|sunday|monday|tuesday|wednesday|thursday|friday)\b/);
+  if (nextSaturdayMatch) {
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const targetDay = dayNames.indexOf(nextSaturdayMatch[1]);
+    const daysUntil = (targetDay + 7 - now.getDay()) % 7 || 7;
+    const targetDate = new Date(now);
+    targetDate.setDate(now.getDate() + daysUntil);
+    targetDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(targetDate);
+    endDate.setDate(targetDate.getDate() + 1);
+    return { start: Timestamp.fromDate(targetDate), end: Timestamp.fromDate(endDate) };
+  }
+  
+  // Default: from now onwards
+  return { start: nowTimestamp, end: null };
+}
+
+// App Data Handler: Events
+async function handleEventQuestion(
+  question: string,
+  allowedVisibility: VisibilityLevel[],
+  sessionId: string,
+  uid: string | null
+): Promise<AssistantResponse> {
+  try {
+    // Parse date range from question
+    const dateRange = parseDateRange(question);
+    const now = dateRange.start;
+
+    // Build query for upcoming events
+    // Note: We filter by status and keywords in code for flexibility
+    let query = db.collection('events')
+      .where('startAt', '>=', now)
+      .orderBy('startAt', 'asc')
+      .limit(10); // Get more, then filter in code
+
+    // Apply end date if specified
+    if (dateRange.end) {
+      query = query.where('startAt', '<=', dateRange.end) as FirebaseFirestore.Query;
+    }
+
+    // Filter by visibility if we can do it server-side
+    if (allowedVisibility.length === 1) {
+      query = query.where('visibility', '==', allowedVisibility[0]) as FirebaseFirestore.Query;
+    } else if (allowedVisibility.length > 1 && allowedVisibility.length <= 10) {
+      // Firestore 'in' queries are limited to 10 values
+      query = query.where('visibility', 'in', allowedVisibility) as FirebaseFirestore.Query;
+    }
+
+    const snapshot = await query.get();
+
+  // Filter by status, visibility, and keywords in code (more flexible than Firestore query)
+  const eventKeywordMatch = question.match(/\b(holi|diwali|gala|party|meetup|brunch|tennis|hike|dance)\b/i);
+  const keyword = eventKeywordMatch?.[0]?.toLowerCase();
+
+  const filteredDocs = snapshot.docs.filter(doc => {
+    const data = doc.data();
+    const status = data.status || 'scheduled'; // Default to scheduled if no status
+    if (status !== 'scheduled') return false;
+    
+    // Check visibility (if not already filtered server-side)
+    if (allowedVisibility.length > 1) {
+      const visibility = (data.visibility || 'public') as VisibilityLevel;
+      if (!allowedVisibility.includes(visibility)) return false;
+    }
+    
+    // Filter by keyword if present (check title, description, or tags)
+    if (keyword) {
+      const title = (data.title || '').toLowerCase();
+      const description = (data.description || '').toLowerCase();
+      const tags = (data.tags || []) as string[];
+      const tagMatches = tags.some(t => t.toLowerCase().includes(keyword));
+      
+      if (!title.includes(keyword) && !description.includes(keyword) && !tagMatches) {
+        return false;
+      }
+    }
+    
+    return true;
+  }).slice(0, 3); // Limit to 3 after filtering
+
+  if (filteredDocs.length === 0) {
+    // Differentiate between "no events" vs "no matching events"
+    const eventKeywordMatch = question.match(/\b(holi|diwali|gala|party|meetup|brunch|tennis|hike|dance)\b/i);
+    const keyword = eventKeywordMatch?.[0]?.toLowerCase();
+    const hasEventsButNoMatch = snapshot.docs.length > 0 && keyword;
+    
+    const answer = hasEventsButNoMatch
+      ? "I couldn't find any upcoming events matching that description. Check back soon or ask an admin for details."
+      : "We don't have any upcoming events scheduled right now. Check back soon!";
+    
+    const sessionRef = db.collection('chat_sessions').doc(sessionId);
+    const messageTimestamp = Timestamp.now();
+    const transcriptEntry = {
+      question,
+      answer,
+      createdAt: messageTimestamp,
+      userId: uid ?? null,
+      metadata: {
+        source: 'app_data_event',
+      },
+    };
+
+    await sessionRef.set(
+      {
+        sessionId,
+        userId: uid ?? null,
+        updatedAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        messages: FieldValue.arrayUnion(transcriptEntry),
+      },
+      { merge: true }
+    );
+
+    return {
+      answer,
+      sessionId,
+      citations: [],
+      rawSources: [],
+    };
+  }
+
+  const events = filteredDocs.map(doc => ({ id: doc.id, ...doc.data() }));
+  let answer = 'Here are the upcoming events:\n\n';
+  
+  events.forEach((event: any) => {
+    const startAt = event.startAt?.toDate?.() || new Date();
+    const when = startAt.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+    const location = event.venueName || event.location || 'TBD';
+    answer += `• **${event.title}** on ${when} at ${location}.\n`;
+    if (event.description) {
+      answer += `  ${event.description.substring(0, 100)}${event.description.length > 100 ? '...' : ''}\n`;
+    }
+  });
+
+  const sessionRef = db.collection('chat_sessions').doc(sessionId);
+  const messageTimestamp = Timestamp.now();
+  const transcriptEntry = {
+    question,
+    answer,
+    createdAt: messageTimestamp,
+    userId: uid ?? null,
+    metadata: {
+      source: 'app_data_event',
+      eventsFound: events.length,
+    },
+  };
+
+  await sessionRef.set(
+    {
+      sessionId,
+      userId: uid ?? null,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+      messages: FieldValue.arrayUnion(transcriptEntry),
+    },
+    { merge: true }
+  );
+
+  return {
+    answer,
+    sessionId,
+    citations: filteredDocs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        title: (data.title as string) || 'Event',
+        url: `/events/${doc.id}`, // Add URL for clickable citations
+        sourceType: 'app_data',
+        distance: undefined,
+        snippet: (data.description as string)?.substring(0, 220) || '',
+      };
+    }),
+    rawSources: filteredDocs.map(doc => doc.data()),
+  };
+  } catch (error: any) {
+    console.error('[assistant.handleEventQuestion] Error querying events:', error);
+    // Fallback to general knowledge on Firestore errors
+    throw new HttpsError('internal', 'Failed to fetch events. Please try again.');
+  }
+}
+
+// App Data Handler: Posts
+async function handlePostQuestion(
+  question: string,
+  allowedVisibility: VisibilityLevel[],
+  sessionId: string,
+  uid: string | null
+): Promise<AssistantResponse> {
+  try {
+    // Build query for recent posts
+    let query = db.collection('posts')
+      .orderBy('createdAt', 'desc')
+      .limit(3);
+
+  // Filter by visibility - posts use isPublic boolean
+  if (allowedVisibility.length === 1 && allowedVisibility[0] === 'public') {
+    query = query.where('isPublic', '==', true) as FirebaseFirestore.Query;
+  }
+  // For members/admin, we can see both public and private posts
+  // (Note: This assumes posts have isPublic field, adjust if your schema differs)
+
+  // Optional: Topic filter, e.g., "last post about nutrition"
+  const topicMatch = question.match(/\b(about|related to)\s+(\w+)/i);
+  if (topicMatch && topicMatch[2]) {
+    const topic = topicMatch[2].toLowerCase();
+    // If posts have tags field, filter by it
+    try {
+      query = query.where('tags', 'array-contains', topic) as FirebaseFirestore.Query;
+    } catch (e) {
+      // If tags filtering fails, continue without it
+      console.warn('[assistant.handlePostQuestion] Could not filter by tags:', e);
+    }
+  }
+
+  const snapshot = await query.get();
+
+  if (snapshot.empty) {
+    const answer = "I couldn't find any recent posts matching that. Maybe try a different topic!";
+    
+    const sessionRef = db.collection('chat_sessions').doc(sessionId);
+    const messageTimestamp = Timestamp.now();
+    const transcriptEntry = {
+      question,
+      answer,
+      createdAt: messageTimestamp,
+      userId: uid ?? null,
+      metadata: {
+        source: 'app_data_post',
+      },
+    };
+
+    await sessionRef.set(
+      {
+        sessionId,
+        userId: uid ?? null,
+        updatedAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        messages: FieldValue.arrayUnion(transcriptEntry),
+      },
+      { merge: true }
+    );
+
+    return {
+      answer,
+      sessionId,
+      citations: [],
+      rawSources: [],
+    };
+  }
+
+  const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  let answer = 'Here are the recent posts:\n\n';
+  
+  posts.forEach((post: any) => {
+    const created = post.createdAt?.toDate?.() || new Date();
+    const createdStr = created.toLocaleString('en-US', { dateStyle: 'medium' });
+    const title = post.title || 'Post';
+    const summary = post.content?.substring(0, 150) || post.summary || '';
+    answer += `• **${title}** (${createdStr}): ${summary}${summary.length >= 150 ? '...' : ''}\n`;
+  });
+
+  const sessionRef = db.collection('chat_sessions').doc(sessionId);
+  const messageTimestamp = Timestamp.now();
+  const transcriptEntry = {
+    question,
+    answer,
+    createdAt: messageTimestamp,
+    userId: uid ?? null,
+    metadata: {
+      source: 'app_data_post',
+      postsFound: posts.length,
+    },
+  };
+
+  await sessionRef.set(
+    {
+      sessionId,
+      userId: uid ?? null,
+      updatedAt: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+      messages: FieldValue.arrayUnion(transcriptEntry),
+    },
+    { merge: true }
+  );
+
+  return {
+    answer,
+    sessionId,
+    citations: posts.map((post: any) => ({
+      id: post.id || 'app_data_posts',
+      title: post.title || 'Post',
+      url: `/posts/${post.id}`, // Add URL for clickable citations
+      sourceType: 'app_data',
+      distance: undefined,
+      snippet: post.content?.substring(0, 220) || post.summary?.substring(0, 220) || 'Live data from community posts.',
+    })),
+    rawSources: posts,
+  };
+  } catch (error: any) {
+    console.error('[assistant.handlePostQuestion] Error querying posts:', error);
+    // Fallback to general knowledge on Firestore errors
+    throw new HttpsError('internal', 'Failed to fetch posts. Please try again.');
+  }
+}
+
+// App Data Handler: Testimonials
+async function handleTestimonialQuestion(
+  question: string,
+  allowedVisibility: VisibilityLevel[],
+  sessionId: string,
+  uid: string | null
+): Promise<AssistantResponse> {
+  try {
+    // Query testimonials by createdAt desc, limit to 3
+    let query = db.collection('testimonials')
+      .orderBy('createdAt', 'desc')
+      .limit(3);
+
+    // Filter by visibility (testimonials may have isPublic or visibility field)
+    // Adjust based on your schema
+    if (allowedVisibility.length === 1 && allowedVisibility[0] === 'public') {
+      query = query.where('isPublic', '==', true) as FirebaseFirestore.Query;
+    }
+
+    // Optional: Topic filter
+    const topicMatch = question.match(/\b(about|related to)\s+(\w+)/i);
+    if (topicMatch && topicMatch[2]) {
+      const topic = topicMatch[2].toLowerCase();
+      try {
+        query = query.where('tags', 'array-contains', topic) as FirebaseFirestore.Query;
+      } catch (e) {
+        console.warn('[assistant.handleTestimonialQuestion] Could not filter by tags:', e);
+      }
+    }
+
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      const answer = "I couldn't find any recent testimonials matching that. Maybe try a different topic!";
+      
+      const sessionRef = db.collection('chat_sessions').doc(sessionId);
+      const messageTimestamp = Timestamp.now();
+      const transcriptEntry = {
+        question,
+        answer,
+        createdAt: messageTimestamp,
+        userId: uid ?? null,
+        metadata: {
+          source: 'app_data_testimonial',
+        },
+      };
+
+      await sessionRef.set(
+        {
+          sessionId,
+          userId: uid ?? null,
+          updatedAt: FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
+          messages: FieldValue.arrayUnion(transcriptEntry),
+        },
+        { merge: true }
+      );
+
+      return {
+        answer,
+        sessionId,
+        citations: [],
+        rawSources: [],
+      };
+    }
+
+    const testimonials = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    let answer = 'Here are recent testimonials:\n\n';
+    
+    testimonials.forEach((testimonial: any) => {
+      const created = testimonial.createdAt?.toDate?.() || new Date();
+      const createdStr = created.toLocaleString('en-US', { dateStyle: 'medium' });
+      const author = testimonial.authorName || testimonial.name || 'Member';
+      const content = testimonial.content || testimonial.text || testimonial.message || '';
+      answer += `• **${author}** (${createdStr}): ${content.substring(0, 150)}${content.length > 150 ? '...' : ''}\n`;
+    });
+
+    const sessionRef = db.collection('chat_sessions').doc(sessionId);
+    const messageTimestamp = Timestamp.now();
+    const transcriptEntry = {
+      question,
+      answer,
+      createdAt: messageTimestamp,
+      userId: uid ?? null,
+      metadata: {
+        source: 'app_data_testimonial',
+        testimonialsFound: testimonials.length,
+      },
+    };
+
+    await sessionRef.set(
+      {
+        sessionId,
+        userId: uid ?? null,
+        updatedAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        messages: FieldValue.arrayUnion(transcriptEntry),
+      },
+      { merge: true }
+    );
+
+    return {
+      answer,
+      sessionId,
+      citations: testimonials.map((testimonial: any) => ({
+        id: testimonial.id || 'app_data_testimonial',
+        title: `Testimonial from ${testimonial.authorName || testimonial.name || 'Member'}`,
+        url: `/testimonials/${testimonial.id}`, // Add URL if testimonials have detail pages
+        sourceType: 'app_data',
+        distance: undefined,
+        snippet: (testimonial.content || testimonial.text || testimonial.message || '').substring(0, 220),
+      })),
+      rawSources: testimonials,
+    };
+  } catch (error: any) {
+    console.error('[assistant.handleTestimonialQuestion] Error querying testimonials:', error);
+    throw new HttpsError('internal', 'Failed to fetch testimonials. Please try again.');
+  }
+}
+
+// App Data Handler: Messages
+async function handleMessageQuestion(
+  question: string,
+  allowedVisibility: VisibilityLevel[],
+  sessionId: string,
+  uid: string | null
+): Promise<AssistantResponse> {
+  try {
+    // Query messages by createdAt desc, limit to 3
+    // Adjust collection name and fields based on your schema
+    let query = db.collection('messages')
+      .orderBy('createdAt', 'desc')
+      .limit(3);
+
+    // Filter by user's visibility if applicable
+    // Messages might be user-specific, so adjust based on your schema
+
+    const snapshot = await query.get();
+
+    if (snapshot.empty) {
+      const answer = "I couldn't find any recent messages.";
+      
+      const sessionRef = db.collection('chat_sessions').doc(sessionId);
+      const messageTimestamp = Timestamp.now();
+      const transcriptEntry = {
+        question,
+        answer,
+        createdAt: messageTimestamp,
+        userId: uid ?? null,
+        metadata: {
+          source: 'app_data_message',
+        },
+      };
+
+      await sessionRef.set(
+        {
+          sessionId,
+          userId: uid ?? null,
+          updatedAt: FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
+          messages: FieldValue.arrayUnion(transcriptEntry),
+        },
+        { merge: true }
+      );
+
+      return {
+        answer,
+        sessionId,
+        citations: [],
+        rawSources: [],
+      };
+    }
+
+    const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    let answer = 'Here are recent messages:\n\n';
+    
+    messages.forEach((message: any) => {
+      const created = message.createdAt?.toDate?.() || new Date();
+      const createdStr = created.toLocaleString('en-US', { dateStyle: 'medium' });
+      const content = message.content || message.text || message.body || '';
+      answer += `• (${createdStr}): ${content.substring(0, 150)}${content.length > 150 ? '...' : ''}\n`;
+    });
+
+    const sessionRef = db.collection('chat_sessions').doc(sessionId);
+    const messageTimestamp = Timestamp.now();
+    const transcriptEntry = {
+      question,
+      answer,
+      createdAt: messageTimestamp,
+      userId: uid ?? null,
+      metadata: {
+        source: 'app_data_message',
+        messagesFound: messages.length,
+      },
+    };
+
+    await sessionRef.set(
+      {
+        sessionId,
+        userId: uid ?? null,
+        updatedAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        messages: FieldValue.arrayUnion(transcriptEntry),
+      },
+      { merge: true }
+    );
+
+    return {
+      answer,
+      sessionId,
+      citations: messages.map((message: any) => ({
+        id: message.id || 'app_data_message',
+        title: 'Message',
+        url: `/messages/${message.id}`, // Add URL if messages have detail pages
+        sourceType: 'app_data',
+        distance: undefined,
+        snippet: (message.content || message.text || message.body || '').substring(0, 220),
+      })),
+      rawSources: messages,
+    };
+  } catch (error: any) {
+    console.error('[assistant.handleMessageQuestion] Error querying messages:', error);
+    throw new HttpsError('internal', 'Failed to fetch messages. Please try again.');
+  }
+}
+
 export const chatAsk = onCall(
   { region: 'us-central1', timeoutSeconds: 60, memory: '1GiB' },
   async request => {
+    console.log('=== chatAsk v2.3: Added Conversation Context + Fixed KB Routing ===');
     try {
       const data = request.data as AssistantRequest;
       const question = (data?.question || '').toString().trim();
-    if (!question) {
-      throw new HttpsError('invalid-argument', 'question is required');
-    }
-
-    const uid = request.auth?.uid;
-    const userProfile = await getUserProfile(uid);
-    const allowedVisibility = determineVisibility(userProfile?.role || request.auth?.token?.role);
-    const filterVisibilityServerSide = allowedVisibility.length === 1;
-
-    // Try to get embeddings for KB search, but continue even if it fails (will use general knowledge)
-    let embedding: number[] | null = null;
-    try {
-      embedding = await embedText(question);
-    } catch (error: any) {
-      console.warn('[assistant.chatAsk] Failed to get embeddings, will skip KB search and use general knowledge:', error?.message);
-      // Continue without embeddings - will fall back to general knowledge
-    }
-
-    // Only perform KB search if we have embeddings
-    let docs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
-    if (embedding) {
-      let chunksQuery = db.collection('kb_chunks') as FirebaseFirestore.Query;
-      if (filterVisibilityServerSide) {
-        chunksQuery = chunksQuery.where('visibility', '==', allowedVisibility[0]);
+      if (!question) {
+        throw new HttpsError('invalid-argument', 'question is required');
       }
 
-      const vectorQuery = chunksQuery.findNearest({
-        vectorField: 'embedding',
-        queryVector: embedding,
-        limit: filterVisibilityServerSide ? 8 : 16,
-        distanceMeasure: 'COSINE',
-        distanceResultField: 'distance',
-      });
+      const uid = request.auth?.uid;
+      const userProfile = await getUserProfile(uid);
+      const allowedVisibility = determineVisibility(userProfile?.role || request.auth?.token?.role);
+      const filterVisibilityServerSide = allowedVisibility.length === 1;
+      const sessionId = data.sessionId || uuidv4();
+      
+      // Extract and format conversation history (last 3-5 messages to control costs)
+      const conversationHistory = (() => {
+        const history = data.history || [];
+        // Take last 5 messages (3-5 is optimal for context without excessive tokens)
+        const recentMessages = history.slice(-5);
+        if (recentMessages.length === 0) return undefined;
+        
+        // Format as: "User: question\nAssistant: answer\nUser: question..."
+        return recentMessages
+          .map(msg => `${msg.from === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)
+          .join('\n');
+      })();
+      
+      if (conversationHistory) {
+        console.log(`[assistant.chatAsk] Including conversation history (${(data.history || []).length} total messages, using last 5)`);
+      }
 
+      // Phase 1: App Data Layer - Check for events/posts/testimonials/messages queries first
+      const appDataIntent = detectAppDataIntent(question);
+      console.log(`[assistant.chatAsk] App data intent: ${appDataIntent}`);
+
+      if (appDataIntent === 'event') {
+        return await handleEventQuestion(question, allowedVisibility, sessionId, uid ?? null);
+      }
+
+      if (appDataIntent === 'post') {
+        return await handlePostQuestion(question, allowedVisibility, sessionId, uid ?? null);
+      }
+
+      if (appDataIntent === 'testimonial') {
+        return await handleTestimonialQuestion(question, allowedVisibility, sessionId, uid ?? null);
+      }
+
+      if (appDataIntent === 'message') {
+        return await handleMessageQuestion(question, allowedVisibility, sessionId, uid ?? null);
+      }
+
+      // Phase 2: Brand vs General Question Classification
+      // CRITICAL: Non-brand questions skip KB entirely to prevent generic questions from hitting KB
+      const brandQuestion = isBrandQuestion(question);
+      console.log(`[assistant.chatAsk] Question: "${question}" -> Brand question: ${brandQuestion}`);
+      
+      // SAFETY CHECK: Ensure non-brand questions NEVER reach KB search
+      if (!brandQuestion) {
+        console.log('[assistant.chatAsk] ⚠️⚠️⚠️ NON-BRAND QUESTION DETECTED - FORCING GENERAL KNOWLEDGE PATH ⚠️⚠️⚠️');
+        console.log('[assistant.chatAsk] Question does not mention brand - SKIPPING KB ENTIRELY');
+        console.log('[assistant.chatAsk] Will use general knowledge directly - NO KB SEARCH WILL HAPPEN');
+        
+        const profileSummary = userProfile
+          ? [
+              userProfile.environment ? `Prefers ${userProfile.environment} workouts.` : '',
+              userProfile.equipment?.length ? `Has equipment: ${userProfile.equipment.join(', ')}.` : '',
+              userProfile.restrictions ? `Restrictions: ${JSON.stringify(userProfile.restrictions)}.` : '',
+            ]
+              .filter(Boolean)
+              .join(' ')
+          : '';
+        
+        console.log('[assistant.chatAsk] Calling answerQuestion with allowGeneralKnowledge=true, NO context');
+        const answer = await answerQuestion(question, '', profileSummary, true, conversationHistory);
+        console.log('[assistant.chatAsk] General knowledge answer received, length:', answer?.length || 0);
+        
+        const sessionRef = db.collection('chat_sessions').doc(sessionId);
+        const now = FieldValue.serverTimestamp();
+        const messageTimestamp = Timestamp.now();
+        const transcriptEntry = {
+          question,
+          answer,
+          createdAt: messageTimestamp,
+          userId: uid ?? null,
+          metadata: {
+            profile: userProfile,
+            allowedVisibility,
+            source: 'general_knowledge',
+          },
+        };
+
+        await sessionRef.set(
+          {
+            sessionId,
+            userId: uid ?? null,
+            updatedAt: now,
+            createdAt: FieldValue.serverTimestamp(),
+            messages: FieldValue.arrayUnion(transcriptEntry),
+          },
+          { merge: true }
+        );
+
+        const generalKnowledgeCitation = {
+          id: 'general_knowledge',
+          title: 'General Knowledge',
+          url: null,
+          sourceType: 'general_knowledge',
+          distance: undefined,
+          snippet: 'Answer provided from general knowledge about fitness, wellness, and lifestyle topics.',
+        };
+
+        console.log('[assistant.chatAsk] ✅✅✅ RETURNING GENERAL KNOWLEDGE - NO KB CITATIONS ✅✅✅');
+        console.log('[assistant.chatAsk] Answer length:', answer?.length || 0);
+        console.log('[assistant.chatAsk] Citations count:', 1, 'Type: general_knowledge');
+        
+        const response = {
+          answer,
+          sessionId,
+          citations: [generalKnowledgeCitation],
+          rawSources: [],
+        } satisfies AssistantResponse;
+        
+        console.log('[assistant.chatAsk] Response prepared - about to return (should have 1 general_knowledge citation)');
+        return response;
+      }
+
+      // Phase 3: Brand-specific question ONLY reaches here if isBrandQuestion returned TRUE
+      // If you see KB results for a non-brand question, this means isBrandQuestion incorrectly returned true
+      console.log('[assistant.chatAsk] ⚠️⚠️⚠️ BRAND QUESTION DETECTED - Proceeding to KB search ⚠️⚠️⚠️');
+      console.log('[assistant.chatAsk] This question mentions the brand - will search KB');
+      
+      // Phase 3: Brand-specific question - Try KB search
+      // Try to get embeddings for KB search, but continue even if it fails (will use general knowledge)
+      let embedding: number[] | null = null;
       try {
-        const snapshot = await vectorQuery.get();
-        console.log('[assistant.chatAsk] vector query docs:', snapshot.size, 'filter server-side?', filterVisibilityServerSide);
+        embedding = await embedText(question);
+      } catch (error: any) {
+        console.warn('[assistant.chatAsk] Failed to get embeddings, will skip KB search and use general knowledge:', error?.message);
+        // Continue without embeddings - will fall back to general knowledge
+      }
 
-        docs = snapshot.docs.filter(doc => {
-          if (filterVisibilityServerSide) return true;
-          const visibility = ((doc.get('visibility') as string) || 'public') as typeof allowedVisibility[number];
-          return allowedVisibility.includes(visibility);
-        });
-        console.log('[assistant.chatAsk] visible docs after filter:', docs.length);
-
-        // Check similarity threshold - if best match is too distant, use general knowledge
-        // Cosine distance: 0.0 = perfect match, 1.0 = completely different
-        // Threshold of 0.3 means we only use KB if similarity is > 70% (distance < 0.3)
-        // This ensures we only use KB for very specific questions about Moms Fitness Mojo
-        // General advice questions (motivation, exercises, etc.) will fall back to general knowledge
-        const SIMILARITY_THRESHOLD = 0.3;
-        const bestDistance = docs.length > 0 ? (docs[0].get('distance') as number | undefined) : undefined;
-        
-        // Count how many matches meet the threshold
-        const goodMatches = docs.filter(d => {
-          const dist = d.get('distance') as number | undefined;
-          return dist !== undefined && dist < SIMILARITY_THRESHOLD;
-        });
-        
-        // If distance is not available, default to not confident (will use general knowledge)
-        // Require at least 1 good match with distance < threshold
-        const isConfidentMatch = bestDistance !== undefined && bestDistance < SIMILARITY_THRESHOLD && goodMatches.length >= 1;
-        
-        console.log('[assistant.chatAsk] Best match distance:', bestDistance, 'threshold:', SIMILARITY_THRESHOLD, 'good matches:', goodMatches.length, 'confident?', isConfidentMatch);
-        
-        // Log all distances for debugging
-        if (docs.length > 0) {
-          const distances = docs.slice(0, 5).map(d => d.get('distance')).filter(d => d !== undefined);
-          console.log('[assistant.chatAsk] Top 5 distances:', distances);
+      // Only perform KB search if we have embeddings
+      let docs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+      if (embedding) {
+        let chunksQuery = db.collection('kb_chunks') as FirebaseFirestore.Query;
+        if (filterVisibilityServerSide) {
+          chunksQuery = chunksQuery.where('visibility', '==', allowedVisibility[0]);
         }
 
-          // If no KB results OR similarity is too low, break out to general knowledge fallback
-          if (!docs.length || !isConfidentMatch) {
-            const reason = !docs.length 
-              ? 'No KB results found' 
-              : !bestDistance 
-                ? 'Distance not available from vector search'
+        const vectorQuery = chunksQuery.findNearest({
+          vectorField: 'embedding',
+          queryVector: embedding,
+          limit: filterVisibilityServerSide ? 8 : 16,
+          distanceMeasure: 'COSINE',
+          distanceResultField: 'distance',
+        });
+
+        try {
+          const snapshot = await vectorQuery.get();
+          console.log('[assistant.chatAsk] vector query docs:', snapshot.size, 'filter server-side?', filterVisibilityServerSide);
+
+          docs = snapshot.docs.filter(doc => {
+            if (filterVisibilityServerSide) return true;
+            const visibility = ((doc.get('visibility') as string) || 'public') as typeof allowedVisibility[number];
+            return allowedVisibility.includes(visibility);
+          });
+          console.log('[assistant.chatAsk] visible docs after filter:', docs.length);
+
+          // Dynamic threshold: lenient for brand questions, strict for generic
+          // Brand questions get 0.4 threshold (more lenient) since KB is focused on MFM content
+          // Generic questions get 0.22 (strict) but shouldn't reach KB anyway due to brand detection
+          const config = await getAssistantConfig();
+          const baseThreshold = config.similarityThreshold ?? DEFAULT_SIMILARITY_THRESHOLD;
+          const SIMILARITY_THRESHOLD = brandQuestion 
+            ? Math.max(baseThreshold, BRAND_KB_THRESHOLD) // Use 0.4 for brand, or config if higher
+            : GENERIC_KB_THRESHOLD; // Use 0.22 for generic
+          
+          console.log(`[assistant.chatAsk] Using similarity threshold: ${SIMILARITY_THRESHOLD} (brand question: ${brandQuestion})`);
+          
+          // Extract distances using robust helper function
+          const allDistances = docs
+            .map(d => getVectorDistance(d))
+            .filter((d): d is number => d !== undefined);
+          
+          const bestDistance = allDistances.length > 0 
+            ? Math.min(...allDistances)
+            : undefined;
+          
+          // Count how many matches meet the threshold
+          const goodMatches = docs.filter(d => {
+            const dist = getVectorDistance(d);
+            return dist !== undefined && dist < SIMILARITY_THRESHOLD;
+          });
+          
+          const minMatchesForBrand = 1; // Brand questions only need 1 good match
+          const isConfidentMatch = goodMatches.length >= minMatchesForBrand && bestDistance !== undefined && bestDistance < SIMILARITY_THRESHOLD;
+          
+          // Safety net: if brand question has docs but distances are missing, use KB anyway
+          // This prevents silent fallback to general knowledge due to extraction issues
+          const hasDocsButNoDistances = brandQuestion && docs.length > 0 && allDistances.length === 0;
+          // For brand questions, be very lenient - use KB even with distances up to 0.7
+          // This ensures brand questions get KB answers even if embeddings aren't perfect
+          const BRAND_SAFETY_NET_THRESHOLD = 0.7; // More lenient than 0.5 for brand questions
+          
+          // Log basic info
+          console.log(`[assistant.chatAsk] BRAND QUESTION: "${question}"`);
+          console.log(`[assistant.chatAsk] - Best Distance: ${bestDistance?.toFixed(3) ?? 'N/A'}`);
+          console.log(`[assistant.chatAsk] - Good Matches: ${goodMatches.length}`);
+          console.log(`[assistant.chatAsk] - All Distances Found: ${allDistances.length}/${docs.length}`);
+          console.log(`[assistant.chatAsk] - Confident: ${isConfidentMatch}`);
+          
+          // Log top distances for debugging
+          if (allDistances.length > 0) {
+            const topDistances = allDistances.slice(0, 5);
+            console.log('[assistant.chatAsk] Top 5 distances:', topDistances);
+          }
+          
+          // Safety net logging
+          if (hasDocsButNoDistances) {
+            console.warn('[assistant.chatAsk] ⚠️ Brand question + docs present but no distances extracted; using KB as fallback');
+          }
+
+          // SIMPLIFIED APPROACH: For brand questions, use KB if we have results and distance < 0.7
+          // For non-brand questions, only use KB if confident match
+          let shouldUseKB: boolean;
+          
+          if (brandQuestion) {
+            // Brand questions: Use KB if we have docs AND (confident match OR distance < 0.7)
+            // This ensures brand questions get KB answers even with imperfect embeddings
+            shouldUseKB = docs.length > 0 && (
+              isConfidentMatch || 
+              (bestDistance !== undefined && bestDistance < BRAND_SAFETY_NET_THRESHOLD) ||
+              hasDocsButNoDistances
+            );
+            
+            console.log(`[assistant.chatAsk] 🎯 Brand Question Decision:`);
+            console.log(`[assistant.chatAsk]   - docs.length: ${docs.length}`);
+            console.log(`[assistant.chatAsk]   - isConfidentMatch: ${isConfidentMatch}`);
+            console.log(`[assistant.chatAsk]   - bestDistance: ${bestDistance?.toFixed(3) ?? 'N/A'}`);
+            console.log(`[assistant.chatAsk]   - bestDistance < ${BRAND_SAFETY_NET_THRESHOLD}: ${bestDistance !== undefined ? (bestDistance < BRAND_SAFETY_NET_THRESHOLD) : 'N/A'}`);
+            console.log(`[assistant.chatAsk]   - hasDocsButNoDistances: ${hasDocsButNoDistances}`);
+            console.log(`[assistant.chatAsk]   - shouldUseKB: ${shouldUseKB}`);
+          } else {
+            // Non-brand questions: Only use KB if confident match
+            shouldUseKB = isConfidentMatch;
+          }
+          
+          if (!docs.length) {
+            console.log('[assistant.chatAsk] No KB results found - using general knowledge fallback');
+            docs = []; // Clear docs to trigger general knowledge fallback below
+          } else if (!shouldUseKB) {
+            // Log why we're not using KB
+            const reason = !bestDistance 
+              ? 'Distance not available from vector search - this might be an indexing issue'
+              : bestDistance >= BRAND_SAFETY_NET_THRESHOLD
+                ? `KB results too poor for brand question (distance: ${bestDistance.toFixed(3)}, max allowed: ${BRAND_SAFETY_NET_THRESHOLD})`
                 : bestDistance >= SIMILARITY_THRESHOLD
                   ? `KB results not confident enough (distance: ${bestDistance.toFixed(3)}, threshold: ${SIMILARITY_THRESHOLD})`
-                  : `No good matches found (${goodMatches.length} match(es) below threshold)`;
-            console.log('[assistant.chatAsk]', reason, '- using general knowledge fallback');
+                  : `Not enough good matches found (${goodMatches.length} match(es), need at least ${minMatchesForBrand})`;
+            console.log('[assistant.chatAsk]', reason);
+            console.log('[assistant.chatAsk] - using general knowledge fallback');
             docs = []; // Clear docs to trigger general knowledge fallback below
+          } else {
+            // We should use KB - log confirmation
+            if (brandQuestion && !isConfidentMatch && bestDistance !== undefined && bestDistance < BRAND_SAFETY_NET_THRESHOLD) {
+              console.log(`[assistant.chatAsk] ✅ Using KB for brand question (safety net: distance ${bestDistance.toFixed(3)} < ${BRAND_SAFETY_NET_THRESHOLD})`);
+            } else if (isConfidentMatch) {
+              console.log('[assistant.chatAsk] ✅ Using KB with confident match');
+            } else if (hasDocsButNoDistances) {
+              console.log('[assistant.chatAsk] ✅ Using KB as safety net (docs exist but distances missing)');
+            }
           }
         } catch (error: any) {
           console.warn('[assistant.chatAsk] KB search failed, using general knowledge fallback:', error?.message);
@@ -469,9 +1412,113 @@ export const chatAsk = onCall(
               .join(' ')
           : '';
 
-        const answer = await answerQuestion(question, context, profileSummary);
+        // Phase 6: Get KB answer and detect NO_KB_ANSWER sentinel
+        const rawAnswer = await answerQuestion(question, context, profileSummary, false, conversationHistory);
+        const trimmed = (rawAnswer || '').trim();
+        const lowerTrimmed = trimmed.toLowerCase();
 
-        const sessionId = data.sessionId || uuidv4();
+        // Primary detection: exact sentinel
+        let isNoKbAnswer = trimmed === 'NO_KB_ANSWER';
+
+        // Backup: phrase matching for robustness (if prompt edited)
+        if (!isNoKbAnswer) {
+          const noAnswerPatterns = [
+            "i don't have that info",
+            "i do not have information",
+            "i do not have that info",
+            "don't have information",
+            "sorry, i don't have",
+            "sorry, but i do not have",
+            "i'm not sure",
+            "i apologize",
+            "not able to find that information",
+            "the provided context does not",
+            "context does not contain",
+            "context does not include",
+            "does not include information",
+            "does not contain information"
+          ];
+          isNoKbAnswer = noAnswerPatterns.some(pattern => lowerTrimmed.includes(pattern));
+        }
+
+        if (isNoKbAnswer) {
+          console.log('[assistant.chatAsk] ⚠️ NO_KB_ANSWER detected - KB context insufficient, falling back to general knowledge');
+          console.log('[assistant.chatAsk] This is a BRAND question but KB cannot answer it');
+          
+          // Log KB gap for admin review
+          try {
+            await db.collection('kb_gaps').add({
+              question,
+              sessionId,
+              userId: uid ?? null,
+              detectedAt: FieldValue.serverTimestamp(),
+              kbChunksFound: dedupedDocs.length,
+              bestDistance: docs.length > 0 ? (() => {
+                const distances = docs.map(d => getVectorDistance(d)).filter((d): d is number => d !== undefined);
+                return distances.length > 0 ? Math.min(...distances) : null;
+              })() : null,
+              status: 'pending',
+            });
+            console.log('[assistant.chatAsk] Logged KB gap for admin review');
+          } catch (gapError: any) {
+            console.warn('[assistant.chatAsk] Failed to log KB gap:', gapError?.message);
+            // Don't fail the request if gap logging fails
+          }
+          
+          // Fallback to general knowledge for brand questions that KB can't answer
+          // IMPORTANT: Return general knowledge citation, NOT KB citations
+          const fallbackAnswer = await answerQuestion(question, '', profileSummary, true, conversationHistory);
+          
+          const sessionRef = db.collection('chat_sessions').doc(sessionId);
+          const now = FieldValue.serverTimestamp();
+          const messageTimestamp = Timestamp.now();
+          const transcriptEntry = {
+            question,
+            answer: fallbackAnswer,
+            createdAt: messageTimestamp,
+            userId: uid ?? null,
+            metadata: {
+              profile: userProfile,
+              allowedVisibility,
+              source: 'general_knowledge',
+              kbChunksFound: 0,
+              reason: 'kb_no_answer',
+            },
+          };
+
+          await sessionRef.set(
+            {
+              sessionId,
+              userId: uid ?? null,
+              updatedAt: now,
+              createdAt: FieldValue.serverTimestamp(),
+              messages: FieldValue.arrayUnion(transcriptEntry),
+            },
+            { merge: true }
+          );
+          
+          // Return general knowledge citation, NOT KB citations
+          const generalKnowledgeCitation = {
+            id: 'general_knowledge',
+            title: 'General Knowledge',
+            url: null,
+            sourceType: 'general_knowledge',
+            distance: undefined,
+            snippet: 'Answer provided from general knowledge about fitness, wellness, and lifestyle topics.',
+          };
+          
+          console.log('[assistant.chatAsk] ✅ Returning general knowledge answer with general knowledge citation (NOT KB citations)');
+          
+          return {
+            answer: fallbackAnswer,
+            sessionId,
+            citations: [generalKnowledgeCitation],
+            rawSources: [],
+          } satisfies AssistantResponse;
+        }
+
+        // Valid KB answer - proceed with KB response
+        const answer = trimmed;
         const sessionRef = db.collection('chat_sessions').doc(sessionId);
         const now = FieldValue.serverTimestamp();
         // Use Timestamp.now() for array elements - serverTimestamp() cannot be used inside arrays
@@ -533,9 +1580,8 @@ export const chatAsk = onCall(
             .join(' ')
         : '';
       
-      const answer = await answerQuestion(question, '', profileSummary, true);
+      const answer = await answerQuestion(question, '', profileSummary, true, conversationHistory);
       
-      const sessionId = data.sessionId || uuidv4();
       const sessionRef = db.collection('chat_sessions').doc(sessionId);
       const now = FieldValue.serverTimestamp();
       const messageTimestamp = Timestamp.now();

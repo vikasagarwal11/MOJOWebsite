@@ -820,6 +820,14 @@ service cloud.firestore {
       allow write: if isAdmin(); // Only admins can update configuration
     }
     
+    // --- KB Gaps (admin managed) ---
+    match /kb_gaps/{gapId} {
+      allow read: if isAdmin(); // Only admins can view KB gaps
+      allow write: if isAdmin(); // Only admins can update gap status
+      // Allow Cloud Functions to create gaps (this happens server-side via chatAsk)
+      allow create: if true; // Server-side writes don't use client auth
+    }
+    
     // --- PUSH NOTIFICATION QUEUE ---
     match /push_notification_queue/{messageId} {
       // Allow authenticated users to read their own queued messages
