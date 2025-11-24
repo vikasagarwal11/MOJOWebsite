@@ -284,7 +284,7 @@ const Home: React.FC = () => {
         <div className="grid gap-6 lg:grid-cols-3 items-start">
           <div className="lg:col-span-2">
             <h2
-              className="text-2xl sm:text-3xl font-bold text-[#F25129]"
+              className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent"
               tabIndex={-1}
               data-section-heading
             >
@@ -476,7 +476,7 @@ const Home: React.FC = () => {
         <div className="text-center mb-6">
           <div className="flex items-center justify-center gap-4 mb-3 flex-wrap">
             <h2
-              className="text-3xl md:text-4xl font-bold text-gray-900"
+              className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent"
               tabIndex={-1}
               data-section-heading
             >
@@ -509,7 +509,7 @@ const Home: React.FC = () => {
            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 rounded-2xl">
              <div className="text-center space-y-8">
                <h2
-                 className="text-3xl md:text-4xl font-bold text-gray-900"
+                 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent"
                  tabIndex={-1}
                  data-section-heading
                >
