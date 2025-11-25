@@ -367,15 +367,15 @@ const Contact: React.FC = () => {
               },
               {
                 question: "Are there membership fees?",
-                answer: "We offer both free and premium membership options. Check our membership page for details."
+                answer: "At this time there is no membership fee."
               },
               {
                 question: "How do I RSVP to events?",
-                answer: "Click on any event and use the RSVP button. You can add family members to your RSVP."
+                answer: "Click on any event and use the RSVP button."
               },
               {
                 question: "What if I can't attend an event?",
-                answer: "No problem! Just update your RSVP status or contact us if you need to cancel last minute."
+                answer: "Update your RSVP status before the cancellation deadline or contact the organizer"
               },
               {
                 question: "How do I contact event organizers?",
