@@ -141,22 +141,6 @@ const Founder: React.FC = () => {
                 <h2 className="text-3xl lg:text-4xl font-bold mb-2">{founderData.name}</h2>
                 <p className="text-xl text-white/90 mb-1">{founderData.title}</p>
                 <p className="text-lg text-white/80 mb-4">{founderData.subtitle}</p>
-                
-                {/* Stats */}
-                <div className="flex flex-wrap justify-center lg:justify-start gap-6 mb-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">{founderData.followers}</div>
-                    <div className="text-sm text-white/80">Followers</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">{founderData.following}</div>
-                    <div className="text-sm text-white/80">Following</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold">{founderData.posts}</div>
-                    <div className="text-sm text-white/80">Posts</div>
-                  </div>
-                </div>
 
                 {/* Location / joined */}
                 <div className="flex flex-wrap justify-center lg:justify-start gap-4 text-white/80">
@@ -183,11 +167,13 @@ const Founder: React.FC = () => {
                   Message
                 </a>
                 <a
-                  href="/register"
+                  href={founderData.socials[0].url}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="px-6 py-3 bg-white/20 backdrop-blur-sm text-white rounded-full font-semibold hover:bg-white/30 transition-all duration-200 flex items-center gap-2"
                 >
-                  <Heart className="w-4 h-4" aria-hidden="true" />
-                  Follow / Join
+                  <Instagram className="w-4 h-4" aria-hidden="true" />
+                  Follow up
                 </a>
               </div>
             </div>
@@ -213,63 +199,79 @@ const Founder: React.FC = () => {
 
             {/* Story */}
             <section aria-labelledby="story-heading" className="space-y-8">
-              <div className="prose prose-lg text-gray-700 max-w-none">
-                <p className="mb-6 text-lg leading-relaxed">
+              <h3 id="story-heading" className="text-3xl font-bold text-gray-900 mb-8 bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent">
+                My Story
+              </h3>
+              
+              <div className="prose prose-lg text-gray-700 max-w-none space-y-6">
+                <p className="text-lg leading-relaxed">
                   I'm Aina Rai, the founder and heart behind Moms Fitness Mojo.
                 </p>
-                <p className="mb-6 text-lg leading-relaxed">
+
+                <h4 className="text-2xl font-bold text-gray-900 mt-8 mb-4">The Search for Connection</h4>
+                <p className="text-lg leading-relaxed">
                   When I became a parent and moved to the suburbs, I expected to naturally connect with other moms. I joined groups, went to meetups, and tried to find my tribe: moms who understood the journey, the challenges, and the need for connection beyond motherhood.
                 </p>
-                <p className="mb-6 text-lg leading-relaxed">
+                <p className="text-lg leading-relaxed">
                   But almost every conversation circled back to kids — nap schedules, diaper changes, school logistics.
                 </p>
-                <p className="mb-6 text-lg leading-relaxed">
+                <p className="text-lg leading-relaxed">
                   I love my children deeply, but I quietly wondered:
                 </p>
-                <p className="mb-6 text-lg leading-relaxed font-semibold text-gray-800">
-                  Where am I in all of this?
-                </p>
-                <p className="mb-6 text-lg leading-relaxed font-semibold text-gray-800">
-                  Where were the conversations about our goals, our dreams, and our identities beyond being moms?
-                </p>
-                <p className="mb-6 text-lg leading-relaxed">
+                <ul className="list-disc list-inside space-y-2 ml-4 text-lg leading-relaxed text-gray-800 font-semibold">
+                  <li>Where am I in all of this?</li>
+                  <li>Where were the conversations about our goals, our dreams, and our identities beyond being moms?</li>
+                </ul>
+
+                <h4 className="text-2xl font-bold text-gray-900 mt-8 mb-4">My Fitness Journey</h4>
+                <p className="text-lg leading-relaxed">
                   Meanwhile, I was on my own fitness journey. I had gained weight during pregnancy and worked out whenever I found a free moment — early mornings, lunch breaks, or sometimes even 10 p.m. if that's when the day slowed down. Balancing work, home, parenting, and self-care took effort, and while my family supported me, I still longed for a community of moms who understood what it takes to show up for yourself.
                 </p>
-                <p className="mb-6 text-lg leading-relaxed">
+                <p className="text-lg leading-relaxed">
                   That's when I realized something important:
                 </p>
-                <div className="bg-gradient-to-r from-[#F25129]/10 to-[#FFC107]/10 rounded-2xl p-6 mb-6">
-                  <p className="text-lg text-gray-800 font-semibold">
+                <div className="bg-gradient-to-r from-[#F25129]/10 to-[#FFC107]/10 rounded-2xl p-6 my-6 border-l-4 border-[#F25129]">
+                  <p className="text-xl text-gray-800 font-semibold">
                     Moms thrive when they have a circle that motivates and supports them.
                   </p>
                 </div>
-                <p className="mb-6 text-lg leading-relaxed">
-                  So I created the space I was searching for.
+
+                <h4 className="text-2xl font-bold text-gray-900 mt-8 mb-4">Creating the Space</h4>
+                <p className="text-lg leading-relaxed">
+                  So I created the space I was searching for:
                 </p>
-                <p className="mb-6 text-lg leading-relaxed">
-                  A space where moms could talk about more than routines and responsibilities.
-                </p>
-                <p className="mb-6 text-lg leading-relaxed">
-                  A space where we could share our fitness wins, celebrate progress, laugh, move, reset, and feel like ourselves again.
-                </p>
-                <p className="mb-6 text-lg leading-relaxed">
-                  A space where fitness and connection naturally come together — from working out, walking, hiking, dancing, or taking a class, to enjoying occasional social gatherings that help us bond and build genuine friendships.
-                </p>
-                <p className="mb-6 text-lg leading-relaxed">
+                <ul className="list-disc list-inside space-y-3 ml-4 text-lg leading-relaxed">
+                  <li>A space where moms could talk about more than routines and responsibilities</li>
+                  <li>A space where we could share our fitness wins, celebrate progress, laugh, move, reset, and feel like ourselves again</li>
+                  <li>A space where fitness and connection naturally come together — from working out, walking, hiking, dancing, or taking a class, to enjoying occasional social gatherings that help us bond and build genuine friendships</li>
+                </ul>
+                <p className="text-lg leading-relaxed mt-6">
                   And that's how Moms Fitness Mojo was born.
                 </p>
-                <p className="mb-6 text-lg leading-relaxed">
-                  What started as a small idea has grown into a powerful community of moms who uplift and energize one another every day. This isn't about perfect bodies or rigid routines — it's about encouragement, accountability, and rediscovering yourself through connection and movement.
+
+                <h4 className="text-2xl font-bold text-gray-900 mt-8 mb-4">The Community Today</h4>
+                <p className="text-lg leading-relaxed">
+                  What started as a small idea has grown into a powerful community of moms who uplift and energize one another every day. This isn't about perfect bodies or rigid routines — it's about:
                 </p>
-                <p className="mb-6 text-lg leading-relaxed">
+                <ul className="list-disc list-inside space-y-2 ml-4 text-lg leading-relaxed">
+                  <li>Encouragement</li>
+                  <li>Accountability</li>
+                  <li>Rediscovering yourself through connection and movement</li>
+                </ul>
+
+                <h4 className="text-2xl font-bold text-gray-900 mt-8 mb-4">About Me</h4>
+                <p className="text-lg leading-relaxed">
                   Outside of MFM, I'm a mom to two energetic boys, a wife, and a Technical Program Manager by profession. Creating this community brought balance, joy, and confidence back into my own life — and now it's helping so many other moms do the same.
                 </p>
-                <p className="mb-6 text-lg leading-relaxed">
-                  Moms Fitness Mojo has been transformative — for me, and for all of us who needed a space like this.
-                </p>
-                <p className="mb-6 text-lg leading-relaxed font-semibold text-[#F25129]">
-                  Together, we are Fit, Fierce & Fabulous.
-                </p>
+
+                <div className="bg-gradient-to-r from-[#F25129] to-[#FFC107] rounded-2xl p-8 text-white mt-8 text-center">
+                  <p className="text-xl font-semibold mb-2">
+                    Moms Fitness Mojo has been transformative — for me, and for all of us who needed a space like this.
+                  </p>
+                  <p className="text-2xl font-bold mt-4">
+                    Together, we are Fit, Fierce & Fabulous.
+                  </p>
+                </div>
               </div>
 
 
