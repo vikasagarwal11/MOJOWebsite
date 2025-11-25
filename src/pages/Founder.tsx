@@ -44,7 +44,7 @@ const Founder: React.FC = () => {
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'AboutPage',
-    name: 'About the Founder — Aina Rai',
+    name: 'About the Founder',
     url: founderData.pageUrl,
     primaryImageOfPage: founderData.profileJpg,
     mainEntity: {
@@ -80,7 +80,7 @@ const Founder: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-amber-50">
       {/* SEO */}
       <Helmet>
-        <title>About the Founder — Aina Rai | Moms Fitness Mojo</title>
+        <title>About the Founder | Moms Fitness Mojo</title>
         <meta
           name="description"
           content="Aina Rai founded Moms Fitness Mojo to bring moms in Short Hills & Millburn, NJ together through fitness, friendship, and accountability."
@@ -89,7 +89,7 @@ const Founder: React.FC = () => {
 
         {/* Open Graph */}
         <meta property="og:type" content="profile" />
-        <meta property="og:title" content="About the Founder — Aina Rai | Moms Fitness Mojo" />
+        <meta property="og:title" content="About the Founder | Moms Fitness Mojo" />
         <meta property="og:description" content="Empowering moms through fitness in Short Hills & Millburn, NJ." />
         <meta property="og:url" content={founderData.pageUrl} />
         <meta property="og:image" content={founderData.ogImage} />
@@ -98,7 +98,7 @@ const Founder: React.FC = () => {
 
         {/* Twitter */}
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="About the Founder — Aina Rai | Moms Fitness Mojo" />
+        <meta name="twitter:title" content="About the Founder | Moms Fitness Mojo" />
         <meta name="twitter:description" content="Fit, Fierce & Fabulous — Together." />
         <meta name="twitter:image" content={founderData.ogImage} />
 
@@ -110,7 +110,7 @@ const Founder: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Page H1 for accessibility */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">About the Founder — Aina Rai</h1>
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">About the Founder</h1>
         </div>
         
         {/* Profile Card */}
