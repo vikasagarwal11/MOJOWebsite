@@ -11,10 +11,12 @@ import {
 } from 'lucide-react';
 import { Helmet } from 'react-helmet-async';
 import ContactFormModal from '../components/ContactFormModal';
+import { useAuth } from '../contexts/AuthContext';
 
 
 const Founder: React.FC = () => {
   const [showContactModal, setShowContactModal] = useState(false);
+  const { currentUser } = useAuth();
 
   const founderData = {
     name: 'Aina Rai',
@@ -173,7 +175,7 @@ const Founder: React.FC = () => {
                   className="px-6 py-3 bg-white/20 backdrop-blur-sm text-white rounded-full font-semibold hover:bg-white/30 transition-all duration-200 flex items-center gap-2"
                 >
                   <Instagram className="w-4 h-4" aria-hidden="true" />
-                  Follow up
+                  Follow Us
                 </a>
               </div>
             </div>
@@ -198,17 +200,13 @@ const Founder: React.FC = () => {
             </div>
 
             {/* Story */}
-            <section aria-labelledby="story-heading" className="space-y-8">
-              <h3 id="story-heading" className="text-3xl font-bold text-gray-900 mb-8 bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent">
-                My Story
-              </h3>
-              
+            <section className="space-y-8">
               <div className="prose prose-lg text-gray-700 max-w-none space-y-6">
                 <p className="text-lg leading-relaxed">
                   I'm Aina Rai, the founder and heart behind Moms Fitness Mojo.
                 </p>
 
-                <h4 className="text-2xl font-bold text-gray-900 mt-8 mb-4">The Search for Connection</h4>
+                <h3 className="text-3xl font-bold mb-8 bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent">The Search for Connection</h3>
                 <p className="text-lg leading-relaxed">
                   When I became a parent and moved to the suburbs, I expected to naturally connect with other moms. I joined groups, went to meetups, and tried to find my tribe: moms who understood the journey, the challenges, and the need for connection beyond motherhood.
                 </p>
@@ -223,7 +221,7 @@ const Founder: React.FC = () => {
                   <li>Where were the conversations about our goals, our dreams, and our identities beyond being moms?</li>
                 </ul>
 
-                <h4 className="text-2xl font-bold text-gray-900 mt-8 mb-4">My Fitness Journey</h4>
+                <h3 className="text-3xl font-bold mb-8 bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent">My Fitness Journey</h3>
                 <p className="text-lg leading-relaxed">
                   Meanwhile, I was on my own fitness journey. I had gained weight during pregnancy and worked out whenever I found a free moment — early mornings, lunch breaks, or sometimes even 10 p.m. if that's when the day slowed down. Balancing work, home, parenting, and self-care took effort, and while my family supported me, I still longed for a community of moms who understood what it takes to show up for yourself.
                 </p>
@@ -236,7 +234,7 @@ const Founder: React.FC = () => {
                   </p>
                 </div>
 
-                <h4 className="text-2xl font-bold text-gray-900 mt-8 mb-4">Creating the Space</h4>
+                <h3 className="text-3xl font-bold mb-8 bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent">Creating the Space</h3>
                 <p className="text-lg leading-relaxed">
                   So I created the space I was searching for:
                 </p>
@@ -249,7 +247,7 @@ const Founder: React.FC = () => {
                   And that's how Moms Fitness Mojo was born.
                 </p>
 
-                <h4 className="text-2xl font-bold text-gray-900 mt-8 mb-4">The Community Today</h4>
+                <h3 className="text-3xl font-bold mb-8 bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent">The Community Today</h3>
                 <p className="text-lg leading-relaxed">
                   What started as a small idea has grown into a powerful community of moms who uplift and energize one another every day. This isn't about perfect bodies or rigid routines — it's about:
                 </p>
@@ -259,7 +257,7 @@ const Founder: React.FC = () => {
                   <li>Rediscovering yourself through connection and movement</li>
                 </ul>
 
-                <h4 className="text-2xl font-bold text-gray-900 mt-8 mb-4">About Me</h4>
+                <h3 className="text-3xl font-bold mb-8 bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent">About Me</h3>
                 <p className="text-lg leading-relaxed">
                   Outside of MFM, I'm a mom to two energetic boys, a wife, and a Technical Program Manager by profession. Creating this community brought balance, joy, and confidence back into my own life — and now it's helping so many other moms do the same.
                 </p>
@@ -285,12 +283,14 @@ const Founder: React.FC = () => {
                 >
                   See Events
                 </a>
-                <a
-                  href="/register"
-                  className="px-6 py-3 rounded-full border border-[#F25129] text-[#F25129] font-semibold hover:bg-orange-50 transition"
-                >
-                  Join the Community
-                </a>
+                {!currentUser && (
+                  <a
+                    href="/register"
+                    className="px-6 py-3 rounded-full border border-[#F25129] text-[#F25129] font-semibold hover:bg-orange-50 transition"
+                  >
+                    Join the Community
+                  </a>
+                )}
               </div>
             </section>
           </div>
