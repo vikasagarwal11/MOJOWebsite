@@ -1,6 +1,6 @@
 import React from 'react';
 import { Helmet } from 'react-helmet-async';
-import { Heart, Shield, Eye, AlertTriangle, Mail, ShieldAlert, Megaphone } from 'lucide-react';
+import { Heart, Shield, AlertTriangle, Mail, ShieldAlert, Megaphone } from 'lucide-react';
 
 const CommunityGuidelines: React.FC = () => {
 
@@ -16,12 +16,6 @@ const CommunityGuidelines: React.FC = () => {
       title: 'Privacy',
       description: 'No screenshots or sharing chat content outside our community.',
       details: 'What\'s shared in our space stays in our space. Respect each other\'s privacy and personal stories.'
-    },
-    {
-      icon: Eye,
-      title: 'Consent',
-      description: 'No kids\' faces without parent permission.',
-      details: 'Always ask before posting photos of children, even in the background of workout photos.'
     },
     {
       icon: ShieldAlert,
