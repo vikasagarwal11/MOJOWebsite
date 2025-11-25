@@ -44,7 +44,7 @@ const Founder: React.FC = () => {
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'AboutPage',
-    name: 'Meet Our Founder — Aina Rai',
+    name: 'About the Founder — Aina Rai',
     url: founderData.pageUrl,
     primaryImageOfPage: founderData.profileJpg,
     mainEntity: {
@@ -80,7 +80,7 @@ const Founder: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-amber-50">
       {/* SEO */}
       <Helmet>
-        <title>Meet Our Founder — Aina Rai | Moms Fitness Mojo</title>
+        <title>About the Founder — Aina Rai | Moms Fitness Mojo</title>
         <meta
           name="description"
           content="Aina Rai founded Moms Fitness Mojo to bring moms in Short Hills & Millburn, NJ together through fitness, friendship, and accountability."
@@ -89,7 +89,7 @@ const Founder: React.FC = () => {
 
         {/* Open Graph */}
         <meta property="og:type" content="profile" />
-        <meta property="og:title" content="Aina Rai — Founder of Moms Fitness Mojo" />
+        <meta property="og:title" content="About the Founder — Aina Rai | Moms Fitness Mojo" />
         <meta property="og:description" content="Empowering moms through fitness in Short Hills & Millburn, NJ." />
         <meta property="og:url" content={founderData.pageUrl} />
         <meta property="og:image" content={founderData.ogImage} />
@@ -98,7 +98,7 @@ const Founder: React.FC = () => {
 
         {/* Twitter */}
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Aina Rai — Founder, Moms Fitness Mojo" />
+        <meta name="twitter:title" content="About the Founder — Aina Rai | Moms Fitness Mojo" />
         <meta name="twitter:description" content="Fit, Fierce & Fabulous — Together." />
         <meta name="twitter:image" content={founderData.ogImage} />
 
@@ -110,7 +110,7 @@ const Founder: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Page H1 for accessibility */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">Meet Our Founder</h1>
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">About the Founder — Aina Rai</h1>
         </div>
         
         {/* Profile Card */}
@@ -213,30 +213,62 @@ const Founder: React.FC = () => {
 
             {/* Story */}
             <section aria-labelledby="story-heading" className="space-y-8">
-              <h3 id="story-heading" className="text-2xl font-bold text-gray-900 mb-6">
-                My Story
-              </h3>
               <div className="prose prose-lg text-gray-700 max-w-none">
                 <p className="mb-6 text-lg leading-relaxed">
-                  I'm Aina Rai, the heart behind Moms Fitness Mojo.
+                  I'm Aina Rai, the founder and heart behind Moms Fitness Mojo.
                 </p>
                 <p className="mb-6 text-lg leading-relaxed">
-                  When I became a parent and moved to the suburbs, I thought it would be easy to connect with other moms. Like most new parents, I joined groups, went to meetups, and tried to find my tribe. But every single conversation circled back to kids—nap times, diaper changes, feeding schedules. I adore my children, but I found myself asking: Where am I in all of this? Where are the conversations about who I am as a person, not just as a mom?
+                  When I became a parent and moved to the suburbs, I expected to naturally connect with other moms. I joined groups, went to meetups, and tried to find my tribe: moms who understood the journey, the challenges, and the need for connection beyond motherhood.
                 </p>
                 <p className="mb-6 text-lg leading-relaxed">
-                  At the same time, I was on my own fitness journey. During pregnancy, I gained weight, and I worked tirelessly—sometimes sneaking in workouts at 10 p.m.—to reclaim my health. But I had no one to share those wins with. Sure, family would notice, but they couldn't fully understand the effort it took to juggle a full-time job, family, home, and still carve out time for myself.
+                  But almost every conversation circled back to kids — nap schedules, diaper changes, school logistics.
                 </p>
                 <p className="mb-6 text-lg leading-relaxed">
-                  So I created the space I was looking for: a place where moms could come together to talk about goals beyond nap times, share fitness wins, celebrate progress, and connect as women—not just as mothers. Laugh, sweat, brunch, dance, and just be themselves.
+                  I love my children deeply, but I quietly wondered:
+                </p>
+                <p className="mb-6 text-lg leading-relaxed font-semibold text-gray-800">
+                  Where am I in all of this?
+                </p>
+                <p className="mb-6 text-lg leading-relaxed font-semibold text-gray-800">
+                  Where were the conversations about our goals, our dreams, and our identities beyond being moms?
                 </p>
                 <p className="mb-6 text-lg leading-relaxed">
-                  That's how Moms Fitness Mojo was born. What started as a small idea has grown into a <a href="/events" className="text-[#F25129] hover:underline font-medium">circle of moms who truly inspire one another</a>. This group is more than workouts—it's about friendship, accountability, and rediscovering yourself.
+                  Meanwhile, I was on my own fitness journey. I had gained weight during pregnancy and worked out whenever I found a free moment — early mornings, lunch breaks, or sometimes even 10 p.m. if that's when the day slowed down. Balancing work, home, parenting, and self-care took effort, and while my family supported me, I still longed for a community of moms who understood what it takes to show up for yourself.
                 </p>
                 <p className="mb-6 text-lg leading-relaxed">
-                  Outside of MFM, I'm a mom of two energetic little boys, a wife, and a Technical Program Manager by profession. Through this community, I found a way to bring all of that back into my life while giving other moms the same opportunity. 
+                  That's when I realized something important:
+                </p>
+                <div className="bg-gradient-to-r from-[#F25129]/10 to-[#FFC107]/10 rounded-2xl p-6 mb-6">
+                  <p className="text-lg text-gray-800 font-semibold">
+                    Moms thrive when they have a circle that motivates and supports them.
+                  </p>
+                </div>
+                <p className="mb-6 text-lg leading-relaxed">
+                  So I created the space I was searching for.
                 </p>
                 <p className="mb-6 text-lg leading-relaxed">
-                  Moms Fitness Mojo has been life-changing—for me and for so many of us. Together, we are <strong className="text-[#F25129]">Fit, Fierce & Fabulous.</strong>
+                  A space where moms could talk about more than routines and responsibilities.
+                </p>
+                <p className="mb-6 text-lg leading-relaxed">
+                  A space where we could share our fitness wins, celebrate progress, laugh, move, reset, and feel like ourselves again.
+                </p>
+                <p className="mb-6 text-lg leading-relaxed">
+                  A space where fitness and connection naturally come together — from working out, walking, hiking, dancing, or taking a class, to enjoying occasional social gatherings that help us bond and build genuine friendships.
+                </p>
+                <p className="mb-6 text-lg leading-relaxed">
+                  And that's how Moms Fitness Mojo was born.
+                </p>
+                <p className="mb-6 text-lg leading-relaxed">
+                  What started as a small idea has grown into a powerful community of moms who uplift and energize one another every day. This isn't about perfect bodies or rigid routines — it's about encouragement, accountability, and rediscovering yourself through connection and movement.
+                </p>
+                <p className="mb-6 text-lg leading-relaxed">
+                  Outside of MFM, I'm a mom to two energetic boys, a wife, and a Technical Program Manager by profession. Creating this community brought balance, joy, and confidence back into my own life — and now it's helping so many other moms do the same.
+                </p>
+                <p className="mb-6 text-lg leading-relaxed">
+                  Moms Fitness Mojo has been transformative — for me, and for all of us who needed a space like this.
+                </p>
+                <p className="mb-6 text-lg leading-relaxed font-semibold text-[#F25129]">
+                  Together, we are Fit, Fierce & Fabulous.
                 </p>
               </div>
 
