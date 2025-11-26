@@ -43,17 +43,57 @@ export default function ChallengeDetail() {
 
   const formatDate = (value: any) => {
     if (!value) return '—';
-    if (value instanceof Date) return value.toLocaleDateString();
-    if (value?.toDate) return value.toDate().toLocaleDateString();
-    return value;
+    const date = value instanceof Date ? value : (value?.toDate ? value.toDate() : new Date(value));
+    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  };
+
+  const formatDateShort = (value: any) => {
+    if (!value) return '—';
+    const date = value instanceof Date ? value : (value?.toDate ? value.toDate() : new Date(value));
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const getChallengeDescription = () => {
+    if (!challenge) return '';
+    const goalText = challenge.goal === 'minutes' 
+      ? `${challenge.target} minutes of movement` 
+      : `${challenge.target} workout session${challenge.target !== 1 ? 's' : ''}`;
+    return goalText;
+  };
+
+  const getChallengeDuration = () => {
+    if (!challenge?.startAt || !challenge?.endAt) return '';
+    const start = challenge.startAt instanceof Date ? challenge.startAt : (challenge.startAt?.toDate ? challenge.startAt.toDate() : new Date(challenge.startAt));
+    const end = challenge.endAt instanceof Date ? challenge.endAt : (challenge.endAt?.toDate ? challenge.endAt.toDate() : new Date(challenge.endAt));
+    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    return days;
+  };
+
+  const getMotivationalMessage = () => {
+    if (!challenge || !currentEntry) return '';
+    const percent = percentComplete;
+    if (percent === 0) return "You're just getting started! Every journey begins with the first step. 💪";
+    if (percent < 25) return "Great start! You're building momentum. Keep going! 🔥";
+    if (percent < 50) return "You're making amazing progress! You've got this! ⚡";
+    if (percent < 75) return "You're more than halfway there! So close to the finish line! 🌟";
+    if (percent < 100) return "Almost there! You're crushing this challenge! 🏆";
+    return "Congratulations! You've completed the challenge! You're a champion! 🎉";
   };
 
   const progressString = (() => {
     if (!challenge || !currentEntry) return '';
     if (challenge.goal === 'minutes') {
-      return `${currentEntry.minutesSum || 0} / ${challenge.target} min`;
+      const completed = currentEntry.minutesSum || 0;
+      const remaining = Math.max(0, challenge.target - completed);
+      return remaining > 0 
+        ? `${completed} of ${challenge.target} minutes completed • ${remaining} to go!`
+        : `All ${challenge.target} minutes completed! 🎉`;
     }
-    return `${currentEntry.progressCount || 0} / ${challenge.target} sessions`;
+    const completed = currentEntry.progressCount || 0;
+    const remaining = Math.max(0, challenge.target - completed);
+    return remaining > 0
+      ? `${completed} of ${challenge.target} session${challenge.target !== 1 ? 's' : ''} completed • ${remaining} to go!`
+      : `All ${challenge.target} session${challenge.target !== 1 ? 's' : ''} completed! 🎉`;
   })();
 
   const percentComplete = (() => {
@@ -110,13 +150,19 @@ export default function ChallengeDetail() {
       <div className="flex items-center justify-between gap-3 mb-4">
         <div>
           <button onClick={handleBack} className="text-sm text-gray-500 hover:text-[#F25129]">&larr; Back to challenges</button>
-          <h1 className="text-3xl md:text-4xl font-bold text-[#F25129] mt-2 mb-1">
+          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent mt-2 mb-2">
             {loadingChallenge ? 'Loading…' : challenge?.title || 'Challenge'}
           </h1>
-          <div className="text-sm text-gray-600">
-            Goal: <span className="uppercase">{challenge?.goal}</span> • Target: {challenge?.target} •
-            {' '}Starts {formatDate(challenge?.startAt)} • Ends {formatDate(challenge?.endAt)}
-          </div>
+          {challenge && (
+            <div className="space-y-2">
+              <div className="text-base text-gray-700 font-medium">
+                Complete {getChallengeDescription()} in {getChallengeDuration()} day{getChallengeDuration() !== 1 ? 's' : ''}!
+              </div>
+              <div className="text-sm text-gray-600">
+                📅 Runs from {formatDateShort(challenge.startAt)} to {formatDateShort(challenge.endAt)}, {challenge.endAt?.toDate ? challenge.endAt.toDate().getFullYear() : new Date().getFullYear()}
+              </div>
+            </div>
+          )}
         </div>
         <div className="flex flex-col items-end gap-2">
           {!isParticipant && (
@@ -139,17 +185,24 @@ export default function ChallengeDetail() {
       </div>
 
       {isParticipant && currentEntry && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 mb-6">
-          <div className="text-sm font-semibold text-emerald-700">Your Progress</div>
-          <div className="flex items-center justify-between text-sm text-emerald-800 mt-1">
-            <span>{progressString}</span>
-            <span>{percentComplete}% complete</span>
+        <div className="rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-green-50 px-6 py-4 mb-6 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-base font-bold text-emerald-800">Your Journey</div>
+            <div className="text-lg font-bold text-emerald-700">{percentComplete}%</div>
           </div>
-          <div className="mt-2 h-2 bg-white rounded-full overflow-hidden">
-            <div
-              className="h-full bg-emerald-500 transition-all duration-500"
-              style={{ width: `${percentComplete}%` }}
-            />
+          <div className="text-sm text-emerald-700 mb-3">
+            {progressString}
+          </div>
+          <div className="mb-2">
+            <div className="h-3 bg-white rounded-full overflow-hidden shadow-inner">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-green-500 transition-all duration-500 shadow-sm"
+                style={{ width: `${percentComplete}%` }}
+              />
+            </div>
+          </div>
+          <div className="text-xs text-emerald-600 italic mt-2">
+            {getMotivationalMessage()}
           </div>
         </div>
       )}
