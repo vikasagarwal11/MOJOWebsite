@@ -17,8 +17,6 @@ export default function ChallengeDetail() {
   const [joining, setJoining] = useState(false);
   const [sharing, setSharing] = useState(false);
 
-  if (!id) return <div className="max-w-4xl mx-auto p-6">Invalid challenge</div>;
-
   const sortedParticipants = useMemo(() => {
     if (!participants) return [];
     const copy = [...participants];
@@ -40,6 +38,8 @@ export default function ChallengeDetail() {
     if (!currentUser) return null;
     return sortedParticipants.find((p: any) => p.id === currentUser.id || p.userId === currentUser.id) || null;
   }, [sortedParticipants, currentUser]);
+
+  if (!id) return <div className="max-w-4xl mx-auto p-6">Invalid challenge</div>;
 
   const formatDate = (value: any) => {
     if (!value) return '—';
@@ -169,18 +169,20 @@ export default function ChallengeDetail() {
             <button
               onClick={handleJoin}
               disabled={joining}
-              className="px-4 py-2 rounded bg-[#F25129] text-white text-sm disabled:opacity-60"
+              className="px-6 py-3 rounded-full bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold text-sm shadow-lg hover:shadow-xl transition-all disabled:opacity-60 transform hover:scale-105"
             >
-              {joining ? 'Joining…' : 'Join Challenge'}
+              {joining ? 'Joining…' : '🚀 Join the Challenge'}
             </button>
           )}
-          <button
-            onClick={handleShare}
-            disabled={!isParticipant || sharing}
-            className="px-4 py-2 rounded border border-gray-300 text-sm hover:bg-gray-50 disabled:opacity-60"
-          >
-            {sharing ? 'Generating…' : 'Share Progress'}
-          </button>
+          {isParticipant && (
+            <button
+              onClick={handleShare}
+              disabled={sharing}
+              className="px-6 py-3 rounded-full border-2 border-[#F25129] text-[#F25129] font-semibold text-sm hover:bg-[#F25129] hover:text-white transition-all disabled:opacity-60 transform hover:scale-105"
+            >
+              {sharing ? 'Generating…' : '📸 Share Your Progress'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -207,29 +209,59 @@ export default function ChallengeDetail() {
         </div>
       )}
 
-      <div className="rounded-xl border bg-white/70 p-4">
-        <div className="text-lg font-semibold mb-3">Leaderboard</div>
+      <div className="rounded-xl border bg-white/70 p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="text-xl font-bold text-gray-900 mb-1">🏆 Leaderboard</div>
+            <div className="text-sm text-gray-600">
+              {sortedParticipants && sortedParticipants.length 
+                ? `${sortedParticipants.length} ${sortedParticipants.length === 1 ? 'champion' : 'champions'} competing`
+                : 'Be the first to join and lead the way!'}
+            </div>
+          </div>
+        </div>
         {sortedParticipants && sortedParticipants.length ? (
-          <div className="divide-y">
-            {sortedParticipants.map((p:any, idx:number) => (
-              <div key={p.id} className={`py-2 flex items-center justify-between ${currentUser && (p.id === currentUser.id || p.userId === currentUser.id) ? 'bg-[#F25129]/5 rounded-lg px-2' : 'px-2'}`}>
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full bg-[#F25129]/10 text-[#F25129] flex items-center justify-center text-xs font-semibold">{idx+1}</div>
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{p.displayName || 'Member'}</div>
-                    <div className="text-xs text-gray-600">
-                      {(p.progressCount || 0)} sessions • {(p.minutesSum || 0)} min
+          <div className="divide-y divide-gray-200">
+            {sortedParticipants.map((p:any, idx:number) => {
+              const isCurrentUser = currentUser && (p.id === currentUser.id || p.userId === currentUser.id);
+              const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '';
+              return (
+                <div key={p.id} className={`py-3 flex items-center justify-between transition-colors ${isCurrentUser ? 'bg-gradient-to-r from-[#F25129]/10 to-[#FFC107]/10 rounded-lg px-3 border-l-4 border-[#F25129]' : 'px-3 hover:bg-gray-50'}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
+                      idx === 0 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500 text-white' :
+                      idx === 1 ? 'bg-gradient-to-r from-gray-300 to-gray-400 text-white' :
+                      idx === 2 ? 'bg-gradient-to-r from-orange-300 to-orange-400 text-white' :
+                      'bg-[#F25129]/10 text-[#F25129]'
+                    }`}>
+                      {medal || (idx + 1)}
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                        {p.displayName || 'Member'}
+                        {isCurrentUser && <span className="text-xs bg-[#F25129] text-white px-2 py-0.5 rounded-full">You</span>}
+                      </div>
+                      <div className="text-xs text-gray-600 mt-0.5">
+                        {challenge?.goal === 'minutes' 
+                          ? `${p.minutesSum || 0} minutes completed`
+                          : `${p.progressCount || 0} session${(p.progressCount || 0) !== 1 ? 's' : ''} completed`}
+                        {p.minutesSum > 0 && challenge?.goal === 'sessions' && ` • ${p.minutesSum} total minutes`}
+                      </div>
                     </div>
                   </div>
+                  <div className="text-xs text-gray-500">
+                    Joined {p.joinedAt?.toDate?.() ? new Date(p.joinedAt.toDate()).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500">
-                  Joined {p.joinedAt?.toDate?.() ? new Date(p.joinedAt.toDate()).toLocaleDateString() : ''}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
-          <div className="text-sm text-gray-600">No participants yet.</div>
+          <div className="text-center py-8">
+            <div className="text-4xl mb-3">🎯</div>
+            <div className="text-base font-semibold text-gray-700 mb-1">Ready to be the first champion?</div>
+            <div className="text-sm text-gray-600">Join now and set the pace for everyone else!</div>
+          </div>
         )}
       </div>
     </div>
