@@ -2,9 +2,9 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Calendar, MapPin, Users, Share2, Clock, Link } from 'lucide-react';
-import { format } from 'date-fns';
 import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { EventDoc } from '../../hooks/useEvents';
+import { EventImage } from './EventImage';
 
 interface PastEventModalProps {
   open: boolean;
@@ -59,6 +59,14 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
   const memoizedEvent = React.useMemo(() => event, [event?.id]);
 
   if (!memoizedEvent) return null;
+
+  const venueName = memoizedEvent.venueName || '';
+  const venueAddress = memoizedEvent.venueAddress || '';
+  const legacyLocation = memoizedEvent.location || '';
+  const displayLocation = venueName && venueAddress
+    ? `${venueName} - ${venueAddress}`
+    : venueAddress || venueName || legacyLocation;
+  const mapsQuery = (legacyLocation || `${venueName} ${venueAddress}`).trim();
 
   // Calculate event duration with better date handling
   const getEventDuration = () => {
@@ -142,9 +150,9 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
               {/* Header */}
-              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="p-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-gray-100 rounded-lg">
                     <Clock className="w-5 h-5 text-gray-600" />
@@ -162,26 +170,24 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
                 </button>
               </div>
 
-              {/* Event Image */}
-              {memoizedEvent.imageUrl && (
-                <div className="relative h-56 overflow-hidden">
-                  <img
+              {/* Scrollable Content Area */}
+              <div className="flex-1 overflow-y-auto min-h-0">
+                {/* Event Image (non-cropped with placeholder) */}
+                <div className="relative">
+                  <EventImage
                     src={memoizedEvent.imageUrl}
-                    alt={memoizedEvent.title}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      console.warn(`🚨 PastEventModal: Failed to load image: ${memoizedEvent.imageUrl}`);
-                      // Hide image if it fails to load
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = 'none';
-                    }}
+                    alt={memoizedEvent.title || "Event image"}
+                    fit="contain"
+                    aspect="16/9"
+                    title={memoizedEvent.title}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                  {memoizedEvent.imageUrl && (
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
+                  )}
                 </div>
-              )}
-
-              {/* Event Content */}
-              <div className="p-6 overflow-y-auto max-h-96">
+                
+                {/* Event Content */}
+                <div className="p-6">
                 {/* Event Title */}
                 <h3 className="text-2xl font-bold text-gray-900 mb-3">
                   {memoizedEvent.title}
@@ -220,12 +226,23 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
                   </div>
 
                   {/* Location */}
-                  {memoizedEvent.location && (
+                  {displayLocation && (
                     <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
                       <MapPin className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
                       <div>
                         <div className="font-medium text-gray-900">Location</div>
-                        <div className="text-gray-600">{memoizedEvent.location}</div>
+                        {mapsQuery ? (
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-gray-600 hover:text-blue-700 hover:underline"
+                          >
+                            {displayLocation}
+                          </a>
+                        ) : (
+                          <div className="text-gray-600">{displayLocation}</div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -261,10 +278,11 @@ export const PastEventModal: React.FC<PastEventModalProps> = ({ open, event, onC
                     </div>
                   )}
                 </div>
+                </div>
               </div>
 
               {/* Footer Actions */}
-              <div className="p-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between">
+              <div className="p-4 border-t border-gray-100 bg-gray-50 flex items-center justify-between flex-shrink-0">
                 <div className="text-sm text-gray-500">
                   This event has ended and RSVP is no longer available
                 </div>

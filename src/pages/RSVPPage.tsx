@@ -36,6 +36,7 @@ import { QRCodeTab } from '../components/events/QRCodeTab';
 import { PaymentSection } from '../components/events/PaymentSection';
 import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
 import { AutoPromotionManager } from '../components/admin/AutoPromotionManager';
+import { EventImage } from '../components/events/EventImage';
 
 const RSVPPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
@@ -586,11 +587,20 @@ const RSVPPage: React.FC = () => {
           onClick={handleClose}
           className="mb-4 text-[#F25129] hover:text-[#E0451F] flex items-center gap-2 transition-colors"
         >
-          ← Back to Events
+          Back to Events
         </button>
 
         {/* Main Content Card */}
         <div className="bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden">
+          {/* Event Hero Image (non-cropped) */}
+          <EventImage
+            src={event.imageUrl}
+            alt={event.title || 'Event image'}
+            fit="contain"
+            aspect="16/9"
+            title={event.title}
+          />
+
           {/* Header Component */}
           <Header 
             event={event}
@@ -1072,4 +1082,3 @@ const RSVPPage: React.FC = () => {
 };
 
 export default RSVPPage;
-
