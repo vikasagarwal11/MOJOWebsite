@@ -780,9 +780,39 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
             </div>
           ) : (
             <div className="space-y-6">
-              {allEvents.slice(eventsPage * PAGE_SIZE, (eventsPage + 1) * PAGE_SIZE).map((event, index) => {
-                // Removed console.log from render to prevent setState during render
-                return (
+              {(() => {
+                const startIndex = eventsPage * PAGE_SIZE;
+                const endIndex = (eventsPage + 1) * PAGE_SIZE;
+                const paginatedEvents = allEvents.slice(startIndex, endIndex);
+                
+                // Debug logging
+                if (import.meta.env.DEV) {
+                  console.log('🔍 ProfileAdminTab: Event Management Display', {
+                    totalEvents: allEvents.length,
+                    eventsPage,
+                    PAGE_SIZE,
+                    startIndex,
+                    endIndex,
+                    paginatedEventsCount: paginatedEvents.length,
+                    eventIds: paginatedEvents.map(e => e.id),
+                    allEventIds: allEvents.map(e => e.id)
+                  });
+                }
+                
+                if (paginatedEvents.length === 0 && allEvents.length > 0) {
+                  console.warn('⚠️ ProfileAdminTab: No events in paginated slice but allEvents has events', {
+                    eventsPage,
+                    PAGE_SIZE,
+                    totalEvents: allEvents.length
+                  });
+                  // Reset to page 0 if current page has no events
+                  if (eventsPage > 0) {
+                    setEventsPage(0);
+                    return null; // Will re-render with page 0
+                  }
+                }
+                
+                return paginatedEvents.map((event, index) => (
                   <div 
                     key={event.id} 
                     className={`space-y-4 p-4 rounded-lg ${
@@ -827,29 +857,37 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                     </div>
                   </div>
                 </div>
-                );
-              })}
+                ));
+              })()}
               
-              {/* Event Pagination */}
-              {allEvents.length > PAGE_SIZE && (
-                <div className="flex justify-center gap-2 mt-6">
-                  <button
-                    onClick={() => setEventsPage(Math.max(0, eventsPage - 1))}
-                    disabled={eventsPage === 0}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Previous
-                  </button>
-                  <span className="px-4 py-2 text-gray-600">
-                    Page {eventsPage + 1} of {Math.ceil(allEvents.length / PAGE_SIZE)}
-                  </span>
-                  <button
-                    onClick={() => setEventsPage(Math.min(Math.ceil(allEvents.length / PAGE_SIZE) - 1, eventsPage + 1))}
-                    disabled={eventsPage >= Math.ceil(allEvents.length / PAGE_SIZE) - 1}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Next
-                  </button>
+              {/* Event Pagination - Always show when there are events */}
+              {allEvents.length > 0 && (
+                <div className="flex justify-center items-center gap-2 mt-6">
+                  {allEvents.length > PAGE_SIZE ? (
+                    <>
+                      <button
+                        onClick={() => setEventsPage(Math.max(0, eventsPage - 1))}
+                        disabled={eventsPage === 0}
+                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Previous
+                      </button>
+                      <span className="px-4 py-2 text-gray-600">
+                        Page {eventsPage + 1} of {Math.ceil(allEvents.length / PAGE_SIZE)}
+                      </span>
+                      <button
+                        onClick={() => setEventsPage(Math.min(Math.ceil(allEvents.length / PAGE_SIZE) - 1, eventsPage + 1))}
+                        disabled={eventsPage >= Math.ceil(allEvents.length / PAGE_SIZE) - 1}
+                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
+                    </>
+                  ) : (
+                    <span className="px-4 py-2 text-gray-600 text-sm">
+                      Showing all {allEvents.length} event{allEvents.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
                 </div>
               )}
             </div>

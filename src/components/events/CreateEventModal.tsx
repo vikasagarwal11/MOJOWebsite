@@ -800,7 +800,7 @@ useEffect(() => {
         waitlistCount: data.waitlistCount ? Number(data.waitlistCount) : undefined,
         attendanceEnabled: data.attendanceEnabled || false,
         tags: tags.length > 0 ? tags : undefined,
-        createdBy: currentUser.id,
+        createdBy: isEditing ? (eventToEdit?.createdBy || currentUser.id) : currentUser.id,
         visibility: eventVisibility,
         invitedUserIds: eventVisibility === 'private' ? invitedUserIds : undefined,
         attendingCount: eventToEdit?.attendingCount ?? 0,

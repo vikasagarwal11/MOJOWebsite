@@ -52,6 +52,7 @@ export default function Workouts() {
     environment: 'home',
     restrictions: [],
   });
+  const [restrictionsInput, setRestrictionsInput] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [showPlanBuilder, setShowPlanBuilder] = useState(!latestPlan);
   const [readiness, setReadiness] = useState({ sleep: 3 as 1|2|3|4|5, stress: 3 as 1|2|3|4|5, timeAvailable: 20 as 5|10|20|30|45, soreness: 1 as 0|1|2|3 });
@@ -98,6 +99,15 @@ export default function Workouts() {
   useEffect(() => {
     if (!latestPlan) {
       setShowPlanBuilder(true);
+    }
+  }, [latestPlan]);
+
+  // Sync restrictionsInput with intake.restrictions when editing existing plan
+  useEffect(() => {
+    if (intake.restrictions && intake.restrictions.length > 0) {
+      setRestrictionsInput(intake.restrictions.join(', '));
+    } else if (latestPlan?.restrictions && Array.isArray(latestPlan.restrictions) && latestPlan.restrictions.length > 0) {
+      setRestrictionsInput(latestPlan.restrictions.join(', '));
     }
   }, [latestPlan]);
 
@@ -511,10 +521,21 @@ export default function Workouts() {
             <div>
               <label className="block text-sm text-gray-600 mb-1">Restrictions (comma-separated)</label>
               <input
+                type="text"
                 className="w-full border rounded px-3 py-2"
                 placeholder="e.g., knee pain, low back"
-                value={(intake.restrictions || []).join(', ')}
-                onChange={(e)=> setIntake(v=>({ ...v, restrictions: e.target.value.split(',').map(s=>s.trim()).filter(Boolean) }))}
+                value={restrictionsInput}
+                onChange={(e) => {
+                  setRestrictionsInput(e.target.value);
+                  // Update intake restrictions by splitting on comma
+                  const restrictions = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                  setIntake(v => ({ ...v, restrictions }));
+                }}
+                onBlur={() => {
+                  // Ensure restrictions are properly set when user leaves the field
+                  const restrictions = restrictionsInput.split(',').map(s => s.trim()).filter(Boolean);
+                  setIntake(v => ({ ...v, restrictions }));
+                }}
               />
             </div>
           </div>
