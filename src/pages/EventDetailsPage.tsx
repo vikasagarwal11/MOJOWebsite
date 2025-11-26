@@ -7,6 +7,8 @@ import { EventDoc } from '../hooks/useEvents';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { EventImage } from '../components/events/EventImage';
+import { EventSeo } from '../components/seo/EventSeo';
+import { createEventCanonicalUrl } from '../utils/seo';
 
 const EventDetailsPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
@@ -146,9 +148,17 @@ const EventDetailsPage: React.FC = () => {
 
   const eventStatus = getEventStatus(event);
   const duration = getEventDuration();
+  const canonicalUrl = createEventCanonicalUrl(event);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
+    <>
+      {/* SEO: Event Structured Data, Meta Tags, and Canonical URL */}
+      <EventSeo 
+        event={event} 
+        canonicalUrl={canonicalUrl}
+      />
+      
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Back Button */}
         <motion.div
@@ -173,13 +183,14 @@ const EventDetailsPage: React.FC = () => {
           transition={{ duration: 0.5, delay: 0.1 }}
           className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8"
         >
-          {/* Event Image with Smart Cropping Prevention */}
+          {/* Event Image with Smart Cropping Prevention - Above the fold, so eager load */}
           <EventImage 
             src={event.imageUrl} 
             alt={event.title} 
             fit="contain" 
             aspect="16/9"
             title={event.title}
+            loading="eager"
           >
             {/* Status Badge Only */}
             <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium ${eventStatus.bgColor} ${eventStatus.color}`}>
@@ -314,7 +325,8 @@ const EventDetailsPage: React.FC = () => {
           </p>
         </motion.div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
