@@ -423,7 +423,7 @@ const Home: React.FC = () => {
          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 bg-gradient-to-r from-[#F25129] to-[#FFC107] rounded-2xl">
            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
              <div>
-               <div className="text-4xl md:text-5xl font-bold mb-2">150+</div>
+               <div className="text-4xl md:text-5xl font-bold mb-2">180+</div>
                <div className="text-[#FFE4D6]">Active Members</div>
              </div>
              <div>

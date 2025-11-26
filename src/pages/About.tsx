@@ -70,7 +70,7 @@ const About: React.FC = () => {
             <div className="bg-gradient-to-r from-[#F25129]/10 to-[#FFC107]/10 rounded-2xl p-6 mt-6">
               <p className="text-gray-800 font-semibold text-xl mb-2">Our goal is simple:</p>
               <p className="text-gray-700">
-                to create consistent, supportive spaces where moms feel motivated, seen, and encouraged.
+                To create consistent, supportive spaces where moms feel motivated, seen, and encouraged.
               </p>
             </div>
           </div>
