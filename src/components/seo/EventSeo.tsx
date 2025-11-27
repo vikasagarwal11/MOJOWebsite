@@ -33,8 +33,7 @@ export const EventSeo: React.FC<Props> = ({ event, canonicalUrl, defaultImage = 
   const endDate = toISO(event.endAt);
 
   const imageUrl =
-    (event.images && event.images[0]) ||
-    (event.heroImageUrl as string) ||
+    event.imageUrl ||
     defaultImage;
 
   // Location (offline / online / hybrid)
@@ -51,12 +50,16 @@ export const EventSeo: React.FC<Props> = ({ event, canonicalUrl, defaultImage = 
       };
 
   // Price & availability (optional; keep simple)
+  // Pricing is stored in event.pricing.adultPrice (in cents)
+  const adultPriceInDollars = event.pricing?.adultPrice 
+    ? (event.pricing.adultPrice / 100).toFixed(2) 
+    : null;
   const offers =
-    event.price != null
+    adultPriceInDollars && !event.pricing?.isFree
       ? {
           '@type': 'Offer',
-          price: String(event.price),
-          priceCurrency: 'USD',
+          price: adultPriceInDollars,
+          priceCurrency: event.pricing?.currency || 'USD',
           availability: 'https://schema.org/InStock',
           url: canonicalUrl,
         }
@@ -80,8 +83,8 @@ export const EventSeo: React.FC<Props> = ({ event, canonicalUrl, defaultImage = 
       name: 'Moms Fitness Mojo',
       url: 'https://momfitnessmojo.web.app/',
     },
-    isAccessibleForFree: event.price == null || event.price === 0,
-    maximumAttendeeCapacity: event.maxCapacity || undefined,
+    isAccessibleForFree: event.pricing?.isFree ?? true,
+    maximumAttendeeCapacity: event.maxAttendees || undefined,
     offers,
   };
 
