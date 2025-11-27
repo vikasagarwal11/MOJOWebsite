@@ -3830,19 +3830,92 @@ export const getDailyWorkoutSuggestion = onCallWithCors({ region: 'us-east1' }, 
 export const createChallenge = onCallWithCors({ region: 'us-east1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
   const data = request.data as {
-    title: string; goal: 'sessions'|'minutes'; target: number; startAt: number; endAt: number; visibility?: string;
+    title: string;
+    category?: 'exercise' | 'nutrition' | 'lifestyle' | 'wellness' | 'custom';
+    type?: string;
+    goal?: 'sessions' | 'minutes'; // Legacy support
+    target: number;
+    unit?: string;
+    startAt: number;
+    endAt: number;
+    description?: string;
+    instructions?: string;
+    visibility?: string;
   };
-  if (!data?.title || !data.goal || !data.target || !data.startAt || !data.endAt) throw new HttpsError('invalid-argument', 'Missing fields');
+  
+  // Validate required fields - check for undefined/null, not truthy (0 is valid for target)
+  if (!data?.title || data.target === undefined || data.target === null || 
+      data.startAt === undefined || data.startAt === null || 
+      data.endAt === undefined || data.endAt === null) {
+    console.error('❌ createChallenge: Missing required fields', {
+      hasTitle: !!data?.title,
+      target: data?.target,
+      startAt: data?.startAt,
+      endAt: data?.endAt,
+      fullData: data
+    });
+    throw new HttpsError('invalid-argument', 'Missing required fields: title, target, startAt, and endAt are required');
+  }
+
+  // Backward compatibility: map old 'goal' to new structure
+  let category: string = data.category || 'exercise';
+  let type: string = data.type || 'workout_sessions';
+  let unit: string = data.unit || 'sessions';
+
+  if (data.goal) {
+    // Legacy format - convert to new format
+    category = 'exercise';
+    if (data.goal === 'sessions') {
+      type = 'workout_sessions';
+      unit = 'sessions';
+    } else if (data.goal === 'minutes') {
+      type = 'workout_minutes';
+      unit = 'minutes';
+    }
+  }
+
+  // Default unit based on type if not provided
+  if (!data.unit && !data.goal) {
+    const unitMap: Record<string, string> = {
+      'workout_sessions': 'sessions',
+      'workout_minutes': 'minutes',
+      'steps': 'steps',
+      'distance': 'miles',
+      'healthy_meals': 'meals',
+      'water_intake': 'glasses',
+      'no_sugar': 'days',
+      'vegetarian_days': 'days',
+      'meal_prep': 'days',
+      'meditation': 'minutes',
+      'sleep_hours': 'hours',
+      'gratitude': 'entries',
+      'reading': 'minutes',
+      'screen_time': 'hours',
+      'self_care': 'days',
+      'social_connection': 'days',
+      'outdoor_time': 'hours',
+      'custom': 'units',
+    };
+    unit = unitMap[type] || 'units';
+  }
+
   const challenge = {
     title: data.title.trim(),
-    goal: data.goal,
+    category: category,
+    type: type,
     target: Math.max(1, Number(data.target) || 1),
+    unit: unit,
     startAt: new Date(data.startAt),
     endAt: new Date(data.endAt),
+    description: data.description?.trim() || null,
+    instructions: data.instructions?.trim() || null,
     visibility: data.visibility || 'members',
     createdBy: request.auth.uid,
     createdAt: new Date(),
+    // Legacy support - keep goal for backward compatibility
+    goal: data.goal || (type === 'workout_sessions' ? 'sessions' : type === 'workout_minutes' ? 'minutes' : null),
   };
+  
   const ref = await db.collection('challenges').add(challenge);
   return { id: ref.id };
 });
@@ -3867,7 +3940,8 @@ export const joinChallenge = onCallWithCors({ region: 'us-east1' }, async (reque
       userId: request.auth.uid,
       displayName,
       progressCount: 0,
-      minutesSum: 0,
+      progressValue: 0,
+      minutesSum: 0, // Legacy support
       joinedAt: new Date(),
       updatedAt: new Date(),
     },
@@ -3883,13 +3957,17 @@ export const joinChallenge = onCallWithCors({ region: 'us-east1' }, async (reque
       {
         challengeId,
         title: challengeData.title || '',
-        goal: challengeData.goal || 'sessions',
+        category: challengeData.category || 'exercise',
+        type: challengeData.type || 'workout_sessions',
+        unit: challengeData.unit || 'sessions',
+        goal: challengeData.goal || 'sessions', // Legacy support
         target: challengeData.target || 1,
         startAt: challengeData.startAt || null,
         endAt: challengeData.endAt || null,
         visibility: challengeData.visibility || 'members',
         progressCount: 0,
-        minutesSum: 0,
+        progressValue: 0,
+        minutesSum: 0, // Legacy support
         joinedAt: new Date(),
         updatedAt: new Date(),
       },
@@ -3899,62 +3977,157 @@ export const joinChallenge = onCallWithCors({ region: 'us-east1' }, async (reque
   return { ok: true };
 });
 
-async function applyChallengeProgressInternal(params: { userId: string; challengeId: string; sessions?: number; minutes?: number }) {
+async function applyChallengeProgressInternal(params: { userId: string; challengeId: string; count?: number; value?: number; sessions?: number; minutes?: number }) {
   const { userId, challengeId } = params;
-  const sessions = Math.max(0, Number(params.sessions || 0));
-  const minutes = Math.max(0, Number(params.minutes || 0));
-  if (!sessions && !minutes) {
+  
+  // Support both new format (count/value) and legacy format (sessions/minutes)
+  let count = Math.max(0, Number(params.count || params.sessions || 0));
+  let value = Math.max(0, Number(params.value || params.minutes || 0));
+  
+  if (!count && !value) {
     return;
   }
 
-  const partRef = db.collection('challenges').doc(challengeId).collection('participants').doc(userId);
+  // Get challenge to determine if it's count-based or value-based
+  const challengeRef = db.collection('challenges').doc(challengeId);
+  const challengeSnap = await challengeRef.get();
+  const challengeData = challengeSnap.exists ? challengeSnap.data() : {};
+  
+  const challengeType = challengeData?.type || challengeData?.goal || 'workout_sessions';
+  const isValueBased = challengeType === 'workout_minutes' || 
+                       challengeType === 'meditation' || 
+                       challengeType === 'sleep_hours' || 
+                       challengeType === 'reading' || 
+                       challengeType === 'screen_time' || 
+                       challengeType === 'outdoor_time' ||
+                       challengeType === 'water_intake' ||
+                       challengeType === 'minutes';
+
+  const partRef = challengeRef.collection('participants').doc(userId);
   const membershipRef = db.collection('users').doc(userId).collection('challengeMemberships').doc(challengeId);
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(partRef);
     if (!snap.exists) throw new HttpsError('failed-precondition', 'Not a participant');
     const data = snap.data() || {};
-    const next = {
-      progressCount: (data.progressCount || 0) + sessions,
-      minutesSum: (data.minutesSum || 0) + minutes,
+    
+    const next: any = {
       updatedAt: new Date(),
     };
+    
+    if (isValueBased) {
+      // Value-based progress (minutes, hours, glasses, etc.)
+      const increment = value || count; // Use value if provided, otherwise count
+      next.progressValue = (data.progressValue || data.minutesSum || 0) + increment;
+      next.minutesSum = next.progressValue; // Legacy support
+      if (count > 0) {
+        next.progressCount = (data.progressCount || 0) + 1; // Increment count for tracking
+      }
+    } else {
+      // Count-based progress (sessions, meals, days, etc.)
+      const increment = count || (value > 0 ? 1 : 0); // Use count if provided, otherwise 1 if value > 0
+      next.progressCount = (data.progressCount || 0) + increment;
+      if (value > 0) {
+        next.progressValue = (data.progressValue || 0) + value; // Track value for count-based too
+      }
+    }
+    
     tx.update(partRef, next);
 
     const membershipSnap = await tx.get(membershipRef);
     if (membershipSnap.exists) {
       const membershipData = membershipSnap.data() || {};
-      tx.update(membershipRef, {
-        progressCount: (membershipData.progressCount || 0) + sessions,
-        minutesSum: (membershipData.minutesSum || 0) + minutes,
+      const membershipUpdate: any = {
         updatedAt: new Date(),
-      });
+      };
+      
+      if (isValueBased) {
+        const increment = value || count;
+        membershipUpdate.progressValue = (membershipData.progressValue || membershipData.minutesSum || 0) + increment;
+        membershipUpdate.minutesSum = membershipUpdate.progressValue; // Legacy support
+        if (count > 0) {
+          membershipUpdate.progressCount = (membershipData.progressCount || 0) + 1;
+        }
+      } else {
+        const increment = count || (value > 0 ? 1 : 0);
+        membershipUpdate.progressCount = (membershipData.progressCount || 0) + increment;
+        if (value > 0) {
+          membershipUpdate.progressValue = (membershipData.progressValue || 0) + value;
+        }
+      }
+      
+      tx.update(membershipRef, membershipUpdate);
     } else {
-      tx.set(
-        membershipRef,
-        {
-          challengeId,
-          progressCount: sessions,
-          minutesSum: minutes,
-          joinedAt: new Date(),
-          updatedAt: new Date(),
-        },
-        { merge: true }
-      );
+      const initialData: any = {
+        challengeId,
+        progressCount: isValueBased ? (count > 0 ? 1 : 0) : count,
+        progressValue: isValueBased ? (value || count) : (value || 0),
+        minutesSum: isValueBased ? (value || count) : 0, // Legacy support
+        joinedAt: new Date(),
+        updatedAt: new Date(),
+      };
+      tx.set(membershipRef, initialData, { merge: true });
     }
   });
 }
 
 export const incrementChallengeProgress = onCallWithCors({ region: 'us-east1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
-  const { challengeId, sessions, minutes } = request.data as { challengeId: string; sessions?: number; minutes?: number };
+  const { challengeId, count, value, sessions, minutes } = request.data as { 
+    challengeId: string; 
+    count?: number; 
+    value?: number; 
+    sessions?: number; 
+    minutes?: number;
+  };
   if (!challengeId) throw new HttpsError('invalid-argument', 'challengeId required');
 
   await applyChallengeProgressInternal({
     userId: request.auth.uid,
     challengeId,
-    sessions,
-    minutes,
+    count,
+    value,
+    sessions, // Legacy support
+    minutes, // Legacy support
+  });
+
+  return { ok: true };
+});
+
+export const logChallengeCheckIn = onCallWithCors({ region: 'us-east1' }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const { challengeId, count, value, note } = request.data as {
+    challengeId: string;
+    count?: number;
+    value?: number;
+    note?: string;
+  };
+  if (!challengeId) throw new HttpsError('invalid-argument', 'challengeId required');
+
+  const challengeRef = db.collection('challenges').doc(challengeId);
+  const participantRef = challengeRef.collection('participants').doc(request.auth.uid);
+  const participantSnap = await participantRef.get();
+  if (!participantSnap.exists) {
+    throw new HttpsError('failed-precondition', 'Join the challenge first');
+  }
+
+  await applyChallengeProgressInternal({
+    userId: request.auth.uid,
+    challengeId,
+    count,
+    value,
+    sessions: undefined,
+    minutes: undefined,
+  });
+
+  // Record the check-in for history/audit
+  await participantRef.collection('checkIns').add({
+    userId: request.auth.uid,
+    challengeId,
+    count: count ?? null,
+    value: value ?? null,
+    note: note?.trim() || null,
+    createdAt: new Date(),
   });
 
   return { ok: true };
@@ -4056,23 +4229,31 @@ export const generateChallengeShareCard = onCallWithCors({
   const membershipSnap = await db.collection('users').doc(uid).collection('challengeMemberships').doc(challengeId).get();
   const membership = membershipSnap.exists ? (membershipSnap.data() || {}) : {};
 
-  const goal: 'sessions' | 'minutes' = challenge.goal || 'sessions';
+  // Support both new flexible structure and legacy structure
+  const challengeType = challenge.type || challenge.goal || 'workout_sessions';
+  const isValueBased = challengeType === 'workout_minutes' || 
+                      challengeType === 'meditation' || 
+                      challengeType === 'sleep_hours' || 
+                      challengeType === 'reading' || 
+                      challengeType === 'screen_time' || 
+                      challengeType === 'outdoor_time' ||
+                      challengeType === 'water_intake' ||
+                      challengeType === 'minutes';
+  
+  const unit = challenge.unit || (challenge.goal === 'minutes' ? 'minutes' : 'sessions');
   const target = Math.max(1, Number(challenge.target) || 1);
-  const progressValue =
-    goal === 'minutes' ? Number(participant.minutesSum || membership.minutesSum || 0) : Number(participant.progressCount || membership.progressCount || 0);
+  
+  const progressValue = isValueBased
+    ? Number(participant.progressValue || participant.minutesSum || membership.progressValue || membership.minutesSum || 0)
+    : Number(participant.progressCount || membership.progressCount || 0);
+  
   const percentComplete = Math.min(100, Math.max(0, Math.round((progressValue / target) * 100)));
   const remaining = Math.max(0, target - progressValue);
 
   const userName = (participant.displayName || membership.displayName || 'Member').toString();
   const title = (challenge.title || 'Challenge').toString();
-  const progressLabel =
-    goal === 'minutes'
-      ? `${progressValue} / ${target} minutes`
-      : `${progressValue} / ${target} sessions`;
-  const remainingLabel =
-    goal === 'minutes'
-      ? `${remaining} minutes to go`
-      : `${remaining} sessions to go`;
+  const progressLabel = `${progressValue} / ${target} ${unit}`;
+  const remainingLabel = `${remaining} ${unit} to go`;
 
   const now = new Date();
   const startAt = challenge.startAt?.toDate?.() || (challenge.startAt instanceof Date ? challenge.startAt : null);
@@ -4156,7 +4337,7 @@ export const generateChallengeShareCard = onCallWithCors({
     const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedPath}?alt=media&token=${downloadToken}`;
 
     const storageFolder = storagePath.substring(0, storagePath.lastIndexOf('/') + 1);
-    const titleForCard = `${userName} • ${percentComplete}% ${goal === 'minutes' ? 'minutes' : 'sessions'}`;
+    const titleForCard = `${userName} • ${percentComplete}% ${unit}`;
 
     const mediaDoc: Record<string, any> = {
       title: titleForCard,
@@ -4186,10 +4367,12 @@ export const generateChallengeShareCard = onCallWithCors({
       allowComments: true,
       allowReactions: true,
       description: `Challenge progress for ${challenge.title || 'Challenge'}`,
-      tags: ['challenge', 'share-card', goal],
+      tags: ['challenge', 'share-card', challengeType, challenge.category || 'exercise'],
       challengeId,
       challengeTitle: challenge.title || '',
-      challengeGoal: goal,
+      challengeCategory: challenge.category || 'exercise',
+      challengeType: challengeType,
+      challengeGoal: challenge.goal || challengeType, // Legacy support
       challengeTarget: target,
       challengePercentComplete: percentComplete,
       challengeProgressValue: progressValue,
