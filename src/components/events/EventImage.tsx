@@ -10,6 +10,7 @@ interface EventImageProps {
   aspect?: string | number;
   focus?: "center" | "top" | "bottom" | "left" | "right";
   title?: string;
+  loading?: "lazy" | "eager"; // Allow override for above-the-fold images
 }
 
 // ------------------------------
@@ -23,7 +24,8 @@ const EventImage: React.FC<EventImageProps> = ({
   fit = "contain", 
   aspect = "16/9", 
   focus = "center",
-  title
+  title,
+  loading = "lazy" // Default to lazy, but allow override for above-the-fold
 }) => {
   const [naturalRatio, setNaturalRatio] = React.useState<number | null>(null);
   const [imageError, setImageError] = React.useState<boolean>(false);
@@ -70,7 +72,7 @@ const EventImage: React.FC<EventImageProps> = ({
       <img
         src={resolved}
         alt={alt}
-        loading="lazy"
+        loading={loading}
         onLoad={(e) => {
           const img = e.currentTarget as HTMLImageElement;
           if (img.naturalWidth && img.naturalHeight) {

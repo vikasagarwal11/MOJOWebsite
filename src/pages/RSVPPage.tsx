@@ -37,6 +37,8 @@ import { PaymentSection } from '../components/events/PaymentSection';
 import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
 import { AutoPromotionManager } from '../components/admin/AutoPromotionManager';
 import { EventImage } from '../components/events/EventImage';
+import { Helmet } from 'react-helmet-async';
+import { createEventCanonicalUrl } from '../utils/seo';
 
 const RSVPPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
@@ -579,10 +581,20 @@ const RSVPPage: React.FC = () => {
     }
   };
 
+  const canonicalUrl = event ? createEventCanonicalUrl(event) : '';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 py-8">
-      <div className="max-w-4xl mx-auto px-4">
-        {/* Back Button */}
+    <>
+      {/* SEO: Canonical link pointing to Event Details Page (primary URL) */}
+      {canonicalUrl && (
+        <Helmet>
+          <link rel="canonical" href={canonicalUrl} />
+        </Helmet>
+      )}
+      
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 py-8">
+        <div className="max-w-4xl mx-auto px-4">
+          {/* Back Button */}
         <button
           onClick={handleClose}
           className="mb-4 text-[#F25129] hover:text-[#E0451F] flex items-center gap-2 transition-colors"
@@ -1078,6 +1090,7 @@ const RSVPPage: React.FC = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 
