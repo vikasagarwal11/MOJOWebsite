@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useFirestore } from '../hooks/useFirestore';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
-import { joinChallenge, generateChallengeShareCard } from '../services/challengeService';
+import { joinChallenge, generateChallengeShareCard, logChallengeCheckIn } from '../services/challengeService';
 
 export default function ChallengeDetail() {
   const { id } = useParams();
@@ -16,18 +16,44 @@ export default function ChallengeDetail() {
   const { data: participants } = useRealtimeCollection(participantsPath as any, []);
   const [joining, setJoining] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [loggingProgress, setLoggingProgress] = useState(false);
+  const [progressInput, setProgressInput] = useState<number>(1);
+
+  const isValueBasedChallenge = (ch?: any) => {
+    if (!ch) return false;
+    const type = ch.type;
+    const unit = ch.unit;
+    const valueTypes = new Set([
+      'workout_minutes',
+      'meditation',
+      'sleep_hours',
+      'reading',
+      'screen_time',
+      'outdoor_time',
+      'water_intake',
+      'distance',
+      'steps',
+    ]);
+    if (type && valueTypes.has(type)) return true;
+    if (unit && ['minutes', 'hours', 'glasses', 'miles', 'steps'].includes(unit)) return true;
+    return ch.goal === 'minutes';
+  };
 
   const sortedParticipants = useMemo(() => {
     if (!participants) return [];
     const copy = [...participants];
     copy.sort((a: any, b: any) => {
-      if (challenge?.goal === 'minutes') {
-        return (b?.minutesSum || 0) - (a?.minutesSum || 0);
+      const valueBased = isValueBasedChallenge(challenge);
+      if (valueBased) {
+        const aValue = a?.progressValue || a?.minutesSum || 0;
+        const bValue = b?.progressValue || b?.minutesSum || 0;
+        return bValue - aValue;
+      } else {
+        return (b?.progressCount || 0) - (a?.progressCount || 0);
       }
-      return (b?.progressCount || 0) - (a?.progressCount || 0);
     });
     return copy;
-  }, [participants, challenge?.goal]);
+  }, [participants, challenge?.goal, challenge?.type]);
 
   const isParticipant = useMemo(() => {
     if (!currentUser) return false;
@@ -42,23 +68,52 @@ export default function ChallengeDetail() {
   if (!id) return <div className="max-w-4xl mx-auto p-6">Invalid challenge</div>;
 
   const formatDate = (value: any) => {
-    if (!value) return '—';
+    if (!value) return 'Date TBD';
     const date = value instanceof Date ? value : (value?.toDate ? value.toDate() : new Date(value));
     return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
   const formatDateShort = (value: any) => {
-    if (!value) return '—';
+    if (!value) return 'Date TBD';
     const date = value instanceof Date ? value : (value?.toDate ? value.toDate() : new Date(value));
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   const getChallengeDescription = () => {
     if (!challenge) return '';
-    const goalText = challenge.goal === 'minutes' 
-      ? `${challenge.target} minutes of movement` 
-      : `${challenge.target} workout session${challenge.target !== 1 ? 's' : ''}`;
-    return goalText;
+    const unit = challenge.unit || (challenge.goal === 'minutes' ? 'minutes' : 'sessions');
+    const category = challenge.category || 'exercise';
+    
+    // Get friendly description based on category and type
+    if (challenge.type) {
+      const typeDescriptions: Record<string, string> = {
+        'workout_sessions': 'workout sessions',
+        'workout_minutes': 'minutes of workouts',
+        'steps': 'steps',
+        'distance': 'miles',
+        'healthy_meals': 'healthy meals',
+        'water_intake': 'glasses of water',
+        'no_sugar': 'days without added sugar',
+        'vegetarian_days': 'vegetarian days',
+        'meal_prep': 'meal prep days',
+        'meditation': 'minutes of meditation',
+        'sleep_hours': 'hours of sleep',
+        'gratitude': 'gratitude entries',
+        'reading': 'minutes of reading',
+        'screen_time': 'hours of screen time',
+        'self_care': 'self-care days',
+        'social_connection': 'days of social connection',
+        'outdoor_time': 'hours outdoors',
+        'custom': `${challenge.target} ${unit}`,
+      };
+      const desc = typeDescriptions[challenge.type];
+      if (desc) {
+        return `${challenge.target} ${desc}`;
+      }
+    }
+    
+    // Fallback to unit-based description
+    return `${challenge.target} ${unit}`;
   };
 
   const getChallengeDuration = () => {
@@ -72,33 +127,44 @@ export default function ChallengeDetail() {
   const getMotivationalMessage = () => {
     if (!challenge || !currentEntry) return '';
     const percent = percentComplete;
-    if (percent === 0) return "You're just getting started! Every journey begins with the first step. 💪";
-    if (percent < 25) return "Great start! You're building momentum. Keep going! 🔥";
-    if (percent < 50) return "You're making amazing progress! You've got this! ⚡";
-    if (percent < 75) return "You're more than halfway there! So close to the finish line! 🌟";
-    if (percent < 100) return "Almost there! You're crushing this challenge! 🏆";
-    return "Congratulations! You've completed the challenge! You're a champion! 🎉";
+    if (percent === 0) return "You're just getting started! Every journey begins with the first step.";
+    if (percent < 25) return "Great start! You're building momentum. Keep going!";
+    if (percent < 50) return "You're making solid progress! You've got this!";
+    if (percent < 75) return "You're more than halfway there! So close to the finish line!";
+    if (percent < 100) return "Almost there! You're crushing this challenge!";
+    return "Congratulations! You've completed the challenge!";
   };
 
   const progressString = (() => {
     if (!challenge || !currentEntry) return '';
-    if (challenge.goal === 'minutes') {
-      const completed = currentEntry.minutesSum || 0;
+    
+    const unit = challenge.unit || (challenge.goal === 'minutes' ? 'minutes' : 'sessions');
+    const valueBased = isValueBasedChallenge(challenge);
+    
+    if (valueBased) {
+      const completed = currentEntry.progressValue || currentEntry.minutesSum || 0;
       const remaining = Math.max(0, challenge.target - completed);
       return remaining > 0 
-        ? `${completed} of ${challenge.target} minutes completed • ${remaining} to go!`
-        : `All ${challenge.target} minutes completed! 🎉`;
+        ? `${completed} of ${challenge.target} ${unit} completed - ${remaining} to go!`
+        : `All ${challenge.target} ${unit} completed!`;
+    } else {
+      const completed = currentEntry.progressCount || 0;
+      const remaining = Math.max(0, challenge.target - completed);
+      return remaining > 0
+        ? `${completed} of ${challenge.target} ${unit} completed - ${remaining} to go!`
+        : `All ${challenge.target} ${unit} completed!`;
     }
-    const completed = currentEntry.progressCount || 0;
-    const remaining = Math.max(0, challenge.target - completed);
-    return remaining > 0
-      ? `${completed} of ${challenge.target} session${challenge.target !== 1 ? 's' : ''} completed • ${remaining} to go!`
-      : `All ${challenge.target} session${challenge.target !== 1 ? 's' : ''} completed! 🎉`;
   })();
 
   const percentComplete = (() => {
     if (!challenge || !currentEntry || !challenge.target) return 0;
-    const value = challenge.goal === 'minutes' ? (currentEntry.minutesSum || 0) : (currentEntry.progressCount || 0);
+    
+    const valueBased = isValueBasedChallenge(challenge);
+    
+    const value = valueBased 
+      ? (currentEntry.progressValue || currentEntry.minutesSum || 0)
+      : (currentEntry.progressCount || 0);
+    
     return Math.min(100, Math.round((value / challenge.target) * 100));
   })();
 
@@ -143,6 +209,37 @@ export default function ChallengeDetail() {
     }
   };
 
+  const handleLogProgress = async () => {
+    if (!currentUser) {
+      toast.error('Sign in to log progress');
+      return;
+    }
+    if (!id) return;
+    if (!isParticipant) {
+      toast.error('Join the challenge to log progress');
+      return;
+    }
+    const valueBased = isValueBasedChallenge(challenge);
+    const payload = valueBased
+      ? { value: Math.max(0, Number(progressInput) || 0) }
+      : { count: Math.max(0, Number(progressInput) || 0) };
+    if ((payload.value ?? payload.count ?? 0) <= 0) {
+      toast.error('Enter a positive value');
+      return;
+    }
+    setLoggingProgress(true);
+    try {
+      await logChallengeCheckIn(id, payload);
+      toast.success('Progress logged');
+      setProgressInput(valueBased ? payload.value || 0 : payload.count || 1);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.message || 'Failed to log progress');
+    } finally {
+      setLoggingProgress(false);
+    }
+  };
+
   const handleBack = () => navigate('/challenges');
 
   return (
@@ -151,7 +248,7 @@ export default function ChallengeDetail() {
         <div>
           <button onClick={handleBack} className="text-sm text-gray-500 hover:text-[#F25129]">&larr; Back to challenges</button>
           <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent mt-2 mb-2">
-            {loadingChallenge ? 'Loading…' : challenge?.title || 'Challenge'}
+            {loadingChallenge ? 'Loading...' : challenge?.title || 'Challenge'}
           </h1>
           {challenge && (
             <div className="space-y-2">
@@ -159,7 +256,7 @@ export default function ChallengeDetail() {
                 Complete {getChallengeDescription()} in {getChallengeDuration()} day{getChallengeDuration() !== 1 ? 's' : ''}!
               </div>
               <div className="text-sm text-gray-600">
-                📅 Runs from {formatDateShort(challenge.startAt)} to {formatDateShort(challenge.endAt)}, {challenge.endAt?.toDate ? challenge.endAt.toDate().getFullYear() : new Date().getFullYear()}
+                  Runs from {formatDateShort(challenge.startAt)} to {formatDateShort(challenge.endAt)}, {challenge.endAt?.toDate ? challenge.endAt.toDate().getFullYear() : new Date().getFullYear()}
               </div>
             </div>
           )}
@@ -171,7 +268,7 @@ export default function ChallengeDetail() {
               disabled={joining}
               className="px-6 py-3 rounded-full bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold text-sm shadow-lg hover:shadow-xl transition-all disabled:opacity-60 transform hover:scale-105"
             >
-              {joining ? 'Joining…' : '🚀 Join the Challenge'}
+              {joining ? 'Joining...' : 'Join the Challenge'}
             </button>
           )}
           {isParticipant && (
@@ -180,7 +277,7 @@ export default function ChallengeDetail() {
               disabled={sharing}
               className="px-6 py-3 rounded-full border-2 border-[#F25129] text-[#F25129] font-semibold text-sm hover:bg-[#F25129] hover:text-white transition-all disabled:opacity-60 transform hover:scale-105"
             >
-              {sharing ? 'Generating…' : '📸 Share Your Progress'}
+              {sharing ? 'Generating...' : 'Share Your Progress'}
             </button>
           )}
         </div>
@@ -209,10 +306,42 @@ export default function ChallengeDetail() {
         </div>
       )}
 
+      {isParticipant && (
+        <div className="rounded-xl border bg-white/70 p-6 shadow-sm mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-lg font-semibold text-gray-900">Log Progress</div>
+              <div className="text-sm text-gray-600">
+                {isValueBasedChallenge(challenge)
+                  ? `Add ${challenge?.unit || 'units'} toward your goal`
+                  : 'Add completed count toward your goal'}
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 items-center">
+            <input
+              type="number"
+              value={progressInput}
+              onChange={(e) => setProgressInput(Number(e.target.value))}
+              min={0}
+              className="w-full sm:w-48 border rounded-lg px-3 py-2 focus:ring-2 focus:ring-[#F25129] focus:border-[#F25129]"
+              aria-label="Progress amount"
+            />
+            <button
+              onClick={handleLogProgress}
+              disabled={loggingProgress}
+              className="px-6 py-2 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold hover:from-[#E0451F] hover:to-[#E5A900] transition-all disabled:opacity-60"
+            >
+              {loggingProgress ? 'Saving...' : 'Log Progress'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border bg-white/70 p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="text-xl font-bold text-gray-900 mb-1">🏆 Leaderboard</div>
+            <div className="text-xl font-bold text-gray-900 mb-1">Leaderboard</div>
             <div className="text-sm text-gray-600">
               {sortedParticipants && sortedParticipants.length 
                 ? `${sortedParticipants.length} ${sortedParticipants.length === 1 ? 'champion' : 'champions'} competing`
@@ -224,7 +353,7 @@ export default function ChallengeDetail() {
           <div className="divide-y divide-gray-200">
             {sortedParticipants.map((p:any, idx:number) => {
               const isCurrentUser = currentUser && (p.id === currentUser.id || p.userId === currentUser.id);
-              const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '';
+              const medal = idx === 0 ? '1st' : idx === 1 ? '2nd' : idx === 2 ? '3rd' : '';
               return (
                 <div key={p.id} className={`py-3 flex items-center justify-between transition-colors ${isCurrentUser ? 'bg-gradient-to-r from-[#F25129]/10 to-[#FFC107]/10 rounded-lg px-3 border-l-4 border-[#F25129]' : 'px-3 hover:bg-gray-50'}`}>
                   <div className="flex items-center gap-3">
@@ -242,10 +371,18 @@ export default function ChallengeDetail() {
                         {isCurrentUser && <span className="text-xs bg-[#F25129] text-white px-2 py-0.5 rounded-full">You</span>}
                       </div>
                       <div className="text-xs text-gray-600 mt-0.5">
-                        {challenge?.goal === 'minutes' 
-                          ? `${p.minutesSum || 0} minutes completed`
-                          : `${p.progressCount || 0} session${(p.progressCount || 0) !== 1 ? 's' : ''} completed`}
-                        {p.minutesSum > 0 && challenge?.goal === 'sessions' && ` • ${p.minutesSum} total minutes`}
+                        {(() => {
+                          const unit = challenge?.unit || (challenge?.goal === 'minutes' ? 'minutes' : 'sessions');
+                          const valueBased = isValueBasedChallenge(challenge);
+                          
+                          if (valueBased) {
+                            const value = p.progressValue || p.minutesSum || 0;
+                            return `${value} ${unit} completed`;
+                          } else {
+                            const count = p.progressCount || 0;
+                            return `${count} ${unit} completed`;
+                          }
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -258,7 +395,7 @@ export default function ChallengeDetail() {
           </div>
         ) : (
           <div className="text-center py-8">
-            <div className="text-4xl mb-3">🎯</div>
+            <div className="text-4xl mb-3">*</div>
             <div className="text-base font-semibold text-gray-700 mb-1">Ready to be the first champion?</div>
             <div className="text-sm text-gray-600">Join now and set the pace for everyone else!</div>
           </div>
@@ -267,4 +404,3 @@ export default function ChallengeDetail() {
     </div>
   );
 }
-
