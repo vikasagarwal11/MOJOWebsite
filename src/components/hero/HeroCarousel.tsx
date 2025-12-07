@@ -19,15 +19,19 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({
     const discoverImages = async () => {
       // Put your likely hero photos here (add/remove as you add files)
       const candidates = [
-        'group-workout.jpg',
-        'pexels-hhaa-17271761.jpg',
-        'john-arano-h4i9G-de7Po-unsplash.jpg',
-        'pexels-chanwalrus-941861.jpg',
-        'pexels-helenalop-es-696218.jpg',
-        'pexels-sabel-blanco-662810-1772974.jpg',
-        'pexels-helenalopes-1861785.jpg',
-        'pexels-life-of-pix-101533.jpg',
-        'pexels-lum3n-44775-305972.jpg'
+        '5E3A7417-1.jpg',
+        '5E3A7550-1.jpg',
+        '5E3A7829-1.jpg',
+        'IMG_5525.jpeg',
+        'IMG_5678.jpeg',
+        'IMG_6091.JPG',
+        'IMG_6249.jpeg',
+        'IMG_6356.JPG',
+        'IMG_6710.jpeg',
+        'IMG_7252.jpeg',
+        'IMG_7827.jpeg',
+        'IMG_7883.JPG',
+        'IMG_9241.JPG'
       ];
 
       const check = async (name: string) => {
@@ -44,7 +48,7 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({
 
       const results = await Promise.all(candidates.map(check));
       const valid = results.filter(Boolean) as string[];
-      setImages(valid.length ? valid : [`${imagesDirectory}/group-workout.jpg`]);
+      setImages(valid.length ? valid : [`${imagesDirectory}/5E3A7417-1.jpg`]);
     };
     discoverImages();
   }, [imagesDirectory]);
