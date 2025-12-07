@@ -18,20 +18,21 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({
     // Keep this tiny and deterministic: check a short, sensible list.
     const discoverImages = async () => {
       // Put your likely hero photos here (add/remove as you add files)
+      // Images are numbered in order: 001, 002, 003, etc.
       const candidates = [
-        '5E3A7417-1.jpg',
-        '5E3A7550-1.jpg',
-        '5E3A7829-1.jpg',
-        'IMG_5525.jpeg',
-        'IMG_5678.jpeg',
-        'IMG_6091.JPG',
-        'IMG_6249.jpeg',
-        'IMG_6356.JPG',
-        'IMG_6710.jpeg',
-        'IMG_7252.jpeg',
-        'IMG_7827.jpeg',
-        'IMG_7883.JPG',
-        'IMG_9241.JPG'
+        '001.jpeg',
+        '002.JPG',
+        '003.jpg',
+        '004.JPG',
+        '005.jpeg',
+        '006.JPG',
+        '007.jpeg',
+        '008.JPG',
+        '009.jpeg',
+        '010.jpeg',
+        '011.jpg',
+        '012.jpeg',
+        '013.jpg'
       ];
 
       const check = async (name: string) => {
@@ -48,7 +49,7 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({
 
       const results = await Promise.all(candidates.map(check));
       const valid = results.filter(Boolean) as string[];
-      setImages(valid.length ? valid : [`${imagesDirectory}/5E3A7417-1.jpg`]);
+      setImages(valid.length ? valid : [`${imagesDirectory}/001.jpeg`]);
     };
     discoverImages();
   }, [imagesDirectory]);
