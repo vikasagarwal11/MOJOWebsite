@@ -42,7 +42,8 @@ const Events: React.FC = () => {
   } = useRealTimeEvents({
     enableNotifications: false,
     enableRealTimeUpdates: true,
-    userId: currentUser?.id
+    userId: currentUser?.id,
+    isApproved: currentUser ? (currentUser.status === 'approved' || !currentUser.status) : false
   });
 
   const [activeTab, setActiveTab] = useState<'upcoming'|'past'>('upcoming');
@@ -828,7 +829,10 @@ const Events: React.FC = () => {
       >
         {viewMode === 'grid' ? (
           <>
-            {currentUser ? (
+            {/* Past events are always visible to everyone, regardless of original visibility */}
+            {activeTab === 'past' ? (
+              <EventList events={filtered} loading={loading} emptyText="No past events yet." />
+            ) : currentUser ? (
               <EventList events={filtered} loading={loading} emptyText="No events yet." />
             ) : (
               <EventList events={filtered.filter(e => e.visibility === 'public')} loading={loading} emptyText="No public events yet." />
