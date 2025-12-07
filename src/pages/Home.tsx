@@ -236,11 +236,11 @@ const Home: React.FC = () => {
           <div className="grid items-center gap-8 lg:grid-cols-2 mb-12">
             {/* Left: Logo */}
             <div className="flex justify-center lg:justify-start">
-              <div className="bg-gradient-to-br from-[#F25129] to-[#FFC107] p-4 sm:p-6 rounded-2xl shadow-lg">
+              <div className="relative max-w-lg aspect-[2/1.5] rounded-2xl overflow-hidden shadow-lg bg-[#F25129] flex items-center justify-center p-2 sm:p-3">
                 <img 
-                  src="/assets/logo/mfm-logo-home-page.svg" 
+                  src="/assets/logo/mfm-logo-updated-tagline-2.svg" 
                   alt="Moms Fitness Mojo" 
-                  className="h-40 sm:h-56 lg:h-72 w-auto object-contain"
+                  className="w-full h-full object-contain"
                 />
               </div>
             </div>
