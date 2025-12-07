@@ -1,7 +1,8 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 import {
   Calendar,
   Users,
@@ -10,6 +11,8 @@ import {
   UploadCloud,
   Image as ImageIcon,
   MessageSquare,
+  Instagram,
+  Facebook,
 } from 'lucide-react';
 import { orderBy, where, limit } from 'firebase/firestore';
 import { useInView } from 'react-intersection-observer';
@@ -74,6 +77,7 @@ const Home: React.FC = () => {
   const { currentUser } = useAuth();
   const isAuthed = !!currentUser;
   const { useRealtimeCollection } = useFirestore();
+  const navigate = useNavigate();
 
   const scrollToSection = useCallback((sectionId: string) => {
     if (typeof window === 'undefined') return;
@@ -217,7 +221,7 @@ const Home: React.FC = () => {
         </script>
       </HelmetWrapper>
 
-      {/* Hero Section */}
+      {/* Hero Section - Ladder Layout */}
       <section id="hero" className="relative overflow-hidden">
         <div className="absolute inset-0 -z-10">
           {/* Coral → Peach soft gradient */}
@@ -228,19 +232,20 @@ const Home: React.FC = () => {
         </div>
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-          {/* MOJO Title */}
-          <div className="text-center mb-12">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-[#F25129] to-[#FFC107] pb-3">
-              Moms Fitness Mojo
-            </h1>
-            <h3 className="text-base sm:text-lg lg:text-xl font-bold leading-tight tracking-tight text-[#FFC107]">
-              Fit, Fierce, and Fabulous: Together
-            </h3>
-          </div>
-          
-          <div className="grid items-center gap-5 lg:grid-cols-2">
+          {/* ROW 1: Logo + "Where Fitness meets Friendship" */}
+          <div className="grid items-center gap-8 lg:grid-cols-2 mb-12">
+            {/* Left: Logo */}
+            <div className="flex justify-center lg:justify-start">
+              <div className="bg-gradient-to-br from-[#F25129] to-[#FFC107] p-4 sm:p-6 rounded-2xl shadow-lg">
+                <img 
+                  src="/assets/logo/mfm-logo-home-page.svg" 
+                  alt="Moms Fitness Mojo" 
+                  className="h-40 sm:h-56 lg:h-72 w-auto object-contain"
+                />
+              </div>
+            </div>
             
-            {/* Left Content */}
+            {/* Right: "Where Fitness meets Friendship" */}
             <div>
               <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold leading-tight tracking-tight">
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F25129] to-[#FFC107]">Where</span> <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F25129] to-[#FFC107]">Fitness</span> <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F25129] to-[#FFC107]">meets Friendship</span>
@@ -249,27 +254,60 @@ const Home: React.FC = () => {
                 More than a fitness group — we're a lifestyle and a circle of strength for moms balancing health, family, careers, and fun.
               </p>
               {!isAuthed && (
-                <div className="mt-8 flex flex-wrap gap-3">
+                <div className="mt-8 flex flex-wrap items-center gap-4">
                   <Link
                     to="/register"
                     className="inline-flex items-center rounded-full px-5 py-3 text-sm font-semibold bg-[#F25129] text-white shadow hover:shadow-md transition-all duration-300"
                   >
                     Join MOJO
                   </Link>
-                  <button
-                    type="button"
-                    onClick={() => scrollToSection('about')}
-                    className="inline-flex items-center rounded-full px-5 py-3 text-sm font-semibold border border-gray-300 text-gray-800 hover:bg-gray-50 transition-all duration-300"
-                  >
-                    Learn More
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-gray-700">Follow Us:</span>
+                    <a
+                      href="https://www.instagram.com/momsfitnessmojo/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center w-10 h-10 rounded-full border-2 border-gray-300 text-gray-700 hover:border-[#E4405F] hover:text-[#E4405F] hover:bg-[#E4405F]/10 transition-all duration-300"
+                      aria-label="Follow us on Instagram"
+                    >
+                      <Instagram className="w-5 h-5" />
+                    </a>
+                    <a
+                      href="https://www.facebook.com/momsfitnessmojo"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center w-10 h-10 rounded-full border-2 border-gray-300 text-gray-700 hover:border-[#1877F2] hover:text-[#1877F2] hover:bg-[#1877F2]/10 transition-all duration-300"
+                      aria-label="Follow us on Facebook"
+                    >
+                      <Facebook className="w-5 h-5" />
+                    </a>
+                  </div>
                 </div>
               )}
-
             </div>
-
-            {/* Right Content - Dynamic Hero Image Carousel */}
-            <div className="relative max-w-lg ml-auto min-h-[200px]">  {/* smaller carousel */}
+          </div>
+          
+          {/* ROW 2: "Your Lifestyle..." + Carousel */}
+          <div className="grid items-center gap-8 lg:grid-cols-2 mb-6">
+            {/* Left: "Your Lifestyle, Your Circle, Your Mojo" */}
+            <div>
+              <h2
+                className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent"
+                tabIndex={-1}
+                data-section-heading
+              >
+                Your Lifestyle, Your Circle, Your Mojo
+              </h2>
+              <p className="mt-3 text-gray-700 text-lg leading-relaxed">
+                Moms Fitness Mojo brings together health, wellness, and social life in one powerful community.
+                From energizing workouts, hikes, tennis, and dance to social events like brunches, dinners,
+                cocktail nights, and festival celebrations — every moment is filled with motivation, laughter,
+                and lasting friendships.
+              </p>
+            </div>
+            
+            {/* Right: Hero Carousel (same size as before) */}
+            <div className="relative max-w-lg ml-auto min-h-[200px]">
               <HeroCarousel 
                 imagesDirectory="/assets/hero-images"
                 duration={4}
@@ -279,37 +317,8 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* About / Story */}
-      <section id="about" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
-        <div className="grid gap-6 lg:grid-cols-3 items-start">
-          <div className="lg:col-span-2">
-            <h2
-              className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent"
-              tabIndex={-1}
-              data-section-heading
-            >
-              Your Lifestyle, Your Circle, Your Mojo
-            </h2>
-            <p className="mt-3 text-gray-700 text-lg leading-relaxed">
-              Moms Fitness Mojo brings together health, wellness, and social life in one powerful community.
-              From energizing workouts, hikes, tennis, and dance to social events like brunches, dinners,
-              cocktail nights, and festival celebrations — every moment is filled with motivation, laughter,
-              and lasting friendships.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-[#F25129]/15 bg-white/60 backdrop-blur p-5">
-            <h3 className="font-semibold text-gray-900">Quick Facts</h3>
-            <ul className="mt-3 space-y-2 text-sm text-gray-700">
-              <li>✓ Weekly fitness challenges & accountability</li>
-              <li>✓ Chic social events & celebrations</li>
-              <li>✓ Supportive, welcoming moms-only circle</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
       {/* Features Section */}
-      <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4">
+      <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 -mt-2">
         <div className="text-center mb-8">
           <h2
             className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent mb-4"
@@ -482,13 +491,66 @@ const Home: React.FC = () => {
             >
               What Moms Are Saying
             </h2>
-            <Link
-              to="/share-your-story"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white rounded-full font-semibold hover:from-[#E0451F] hover:to-[#E55A2B] transition-all shadow-md hover:shadow-lg transform hover:scale-105"
-            >
-              <MessageSquare className="w-4 h-4" />
-              Share Your Story
-            </Link>
+            {isAuthed ? (
+              <Link
+                to="/share-your-story"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white rounded-full font-semibold hover:from-[#E0451F] hover:to-[#E55A2B] transition-all shadow-md hover:shadow-lg transform hover:scale-105"
+              >
+                <MessageSquare className="w-4 h-4" />
+                Share Your Story
+              </Link>
+            ) : (
+              <button
+                onClick={() => {
+                  toast(
+                    (t) => (
+                      <div className="flex flex-col gap-3" style={{ minWidth: '320px' }}>
+                        <div>
+                          <span className="font-semibold text-gray-900 block mb-1">Please sign in to share your story</span>
+                          <p className="text-sm text-gray-600">Create an account or log in to publish your testimonial.</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              toast.dismiss(t.id);
+                              navigate('/login');
+                            }}
+                            className="flex-1 px-4 py-2 bg-[#F25129] text-white rounded-lg text-sm font-medium hover:bg-[#E0451F] transition-colors"
+                          >
+                            Sign In
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              toast.dismiss(t.id);
+                              navigate('/register');
+                            }}
+                            className="flex-1 px-4 py-2 border border-[#F25129] text-[#F25129] rounded-lg text-sm font-medium hover:bg-[#F25129]/10 transition-colors"
+                          >
+                            Join MOJO
+                          </button>
+                        </div>
+                      </div>
+                    ),
+                    {
+                      duration: 10000,
+                      position: 'top-center',
+                      style: {
+                        padding: '20px',
+                        maxWidth: '400px',
+                      },
+                    }
+                  );
+                }}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white rounded-full font-semibold hover:from-[#E0451F] hover:to-[#E55A2B] transition-all shadow-md hover:shadow-lg transform hover:scale-105"
+              >
+                <MessageSquare className="w-4 h-4" />
+                Share Your Story
+              </button>
+            )}
           </div>
           <p className="mx-auto max-w-2xl text-base text-gray-600">
             Real words from the women shaping Moms Fitness Mojo. Scroll through our community stories. Feeling inspired? Tap{' '}
