@@ -12,7 +12,7 @@ import { storage } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '../ConfirmDialog';
 import { useImageOrientation } from '../../utils/imageOrientation';
-import { getResponsiveThumbnailSrcSet, isFirebaseStorageUrl, getThumbnailUrl } from '../../utils/thumbnailUtils';
+import { getThumbnailUrl } from '../../utils/thumbnailUtils';
 // Download feature temporarily disabled - uncomment to re-enable
 // import { requestWatermarkedDownload } from '../../services/mediaDownloadService';
 import { isUserApproved } from '../../utils/userUtils';
@@ -549,30 +549,15 @@ export default function MediaCard({
         </div>
       ) : (
         (() => {
-          // Generate responsive srcset for images with Firebase Storage URLs
+          // Use original image instead of thumbnail to avoid cropping faces
+          // Thumbnails are square (400x400, 800x800, 1200x1200) which crop images
+          // Original images preserve full content, and object-contain shows everything
           const originalUrl = localMedia.url;
-          // Only use srcset if we have a valid thumbnail (not the original image as fallback)
-          // This prevents srcset from trying to load URLs without tokens when falling back to original
-          const hasValidThumbnail = thumbnailUrl && thumbnailUrl !== originalUrl;
-          const useResponsiveSrcSet = localMedia.type === 'image' && isFirebaseStorageUrl(originalUrl) && hasValidThumbnail;
-          
-          // Build image props with responsive srcset if applicable
-          // Use thumbnailUrl as fallback src (already loaded/verified by existing logic)
-          const imageSrc = thumbnailUrl;
-          
-          const imageSrcSet = useResponsiveSrcSet 
-            ? getResponsiveThumbnailSrcSet(originalUrl)
-            : undefined;
-          
-          const imageSizes = useResponsiveSrcSet
-            ? '(max-width: 640px) 400px, (max-width: 1024px) 800px, 1200px'
-            : undefined;
+          const imageSrc = originalUrl || thumbnailUrl;
           
           return (
             <img 
               src={imageSrc}
-              srcSet={imageSrcSet}
-              sizes={imageSizes}
               alt={localMedia.title} 
               loading="lazy" 
               onDoubleClick={onDoubleTap} 
@@ -586,20 +571,17 @@ export default function MediaCard({
                   mediaId: localMedia.id,
                   failedSrc: img.src,
                   currentSrc: img.currentSrc,
-                  srcsetUsed: useResponsiveSrcSet
                 });
                 
-                // If thumbnail failed, fallback to original image
-                if (img.src !== localMedia.url && thumbnailUrl !== localMedia.url) {
-                  console.log('🖼️ [DEBUG] Falling back to original image URL');
-                  img.src = localMedia.url;
-                  // Remove srcset to prevent browser from trying other sizes
-                  img.srcset = '';
+                // Fallback to thumbnail if original fails
+                if (img.src !== thumbnailUrl && thumbnailUrl) {
+                  console.log('🖼️ [DEBUG] Falling back to thumbnail URL');
+                  img.src = thumbnailUrl;
                 } else {
-                  console.error('🖼️ [DEBUG] Original image also failed to load');
+                  console.error('🖼️ [DEBUG] Both original and thumbnail failed to load');
                 }
               }}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" 
+              className="w-full h-full object-contain transition-opacity duration-300" 
             />
           );
         })()
@@ -629,7 +611,7 @@ export default function MediaCard({
       data-media-card
       onClick={handleCardClick}
     >
-      <div className="relative aspect-square overflow-hidden">
+      <div className="relative aspect-square overflow-hidden bg-[#FFF5F2]">
         {/* Selection checkbox overlay */}
         {selectionMode && (
           <div className="absolute top-2 left-2 z-20">
