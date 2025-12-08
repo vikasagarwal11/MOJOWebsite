@@ -13,6 +13,7 @@ import AdminThreadDeletionModal from './AdminThreadDeletionModal';
 import toast from 'react-hot-toast';
 import { createPortal } from 'react-dom';
 import { isUserApproved } from '../../utils/userUtils';
+import { ContentModerationService } from '../../services/contentModerationService';
 
 function usePopoverPosition(anchorRef: React.RefObject<HTMLElement>, open: boolean) {
   const [pos, setPos] = React.useState<{top:number; left:number}>({ top: 0, left: 0 });
@@ -754,29 +755,84 @@ const CommentSection: React.FC<CommentSectionProps> = ({
     setUploading(true);
     try {
       console.log('💬 [CommentSection] Starting comment submission...');
-      const mediaUrls = await uploadFiles(files);
       
-      const commentData = {
-        text,
-        mediaUrls: mediaUrls,
-        authorId: currentUser.id,
-        authorName: currentUser.displayName || 'Member',
-        createdAt: serverTimestamp(),
-        parentCommentId: replyingTo || null,
-        threadLevel: replyingTo ? 1 : 0,
-        replyCount: 0,
-      };
-      
-      console.log('💬 [CommentSection] Submitting comment to Firestore:', commentData);
-      const docRef = await addDoc(collection(db, collectionPath), commentData);
-      console.log('✅ [CommentSection] Comment submitted successfully with ID:', docRef.id);
+      // Run content moderation before saving
+      if (text) {
+        const moderationResult = await ContentModerationService.moderateContent(
+          text,
+          'comment',
+          currentUser.id
+        );
 
-      setNewComment('');
-      setSelectedFiles([]);
-      setReplyFiles([]);
-      setReplyingTo(null);
-      setReplyText('');
-      toast.success('Comment posted!');
+        // If content is blocked, don't save it
+        if (moderationResult.isBlocked) {
+          toast.error(moderationResult.reason || 'Your comment was blocked due to inappropriate content.');
+          setUploading(false);
+          return;
+        }
+
+        // Determine moderation status
+        const moderationStatus = moderationResult.requiresApproval ? 'pending' : 'approved';
+
+        const mediaUrls = await uploadFiles(files);
+        
+        const commentData = {
+          text,
+          mediaUrls: mediaUrls,
+          authorId: currentUser.id,
+          authorName: currentUser.displayName || 'Member',
+          createdAt: serverTimestamp(),
+          parentCommentId: replyingTo || null,
+          threadLevel: replyingTo ? 1 : 0,
+          replyCount: 0,
+          moderationStatus, // New field
+          requiresApproval: moderationResult.requiresApproval, // New field
+          moderationReason: moderationResult.reason, // New field
+          moderationDetectedIssues: moderationResult.detectedIssues, // New field
+        };
+        
+        console.log('💬 [CommentSection] Submitting comment to Firestore:', commentData);
+        const docRef = await addDoc(collection(db, collectionPath), commentData);
+        console.log('✅ [CommentSection] Comment submitted successfully with ID:', docRef.id);
+
+        setNewComment('');
+        setSelectedFiles([]);
+        setReplyFiles([]);
+        setReplyingTo(null);
+        setReplyText('');
+        
+        if (moderationStatus === 'pending') {
+          toast.success('Your comment has been submitted for review and will appear shortly after approval.');
+        } else {
+          toast.success('Comment posted!');
+        }
+      } else {
+        // If no text, just upload media (media-only comments don't need moderation)
+        const mediaUrls = await uploadFiles(files);
+        
+        const commentData = {
+          text: '',
+          mediaUrls: mediaUrls,
+          authorId: currentUser.id,
+          authorName: currentUser.displayName || 'Member',
+          createdAt: serverTimestamp(),
+          parentCommentId: replyingTo || null,
+          threadLevel: replyingTo ? 1 : 0,
+          replyCount: 0,
+          moderationStatus: 'approved', // Media-only comments auto-approved
+        };
+        
+        console.log('💬 [CommentSection] Submitting comment to Firestore:', commentData);
+        const docRef = await addDoc(collection(db, collectionPath), commentData);
+        console.log('✅ [CommentSection] Comment submitted successfully with ID:', docRef.id);
+
+        setNewComment('');
+        setSelectedFiles([]);
+        setReplyFiles([]);
+        setReplyingTo(null);
+        setReplyText('');
+        toast.success('Comment posted!');
+      }
     } catch (error: any) {
       console.error('❌ [CommentSection] Comment submission failed:', error);
       toast.error('Failed to post comment: ' + error.message);
@@ -824,27 +880,80 @@ const CommentSection: React.FC<CommentSectionProps> = ({
     setUploading(true);
     try {
       console.log('💬 [CommentSection] Starting reply submission...');
-      const mediaUrls = await uploadFiles(files);
       
-      const replyData = {
-        text,
-        mediaUrls: mediaUrls,
-        authorId: currentUser.id,
-        authorName: currentUser.displayName || 'Member',
-        createdAt: serverTimestamp(),
-        parentCommentId: replyingTo,
-        threadLevel: 1,
-        replyCount: 0,
-      };
-      
-      console.log('💬 [CommentSection] Submitting reply to Firestore:', replyData);
-      const docRef = await addDoc(collection(db, collectionPath), replyData);
-      console.log('✅ [CommentSection] Reply submitted successfully with ID:', docRef.id);
+      // Run content moderation before saving
+      if (text) {
+        const moderationResult = await ContentModerationService.moderateContent(
+          text,
+          'comment',
+          currentUser.id
+        );
 
-      setReplyText('');
-      setReplyFiles([]);
-      setReplyingTo(null);
-      toast.success('Reply posted!');
+        // If content is blocked, don't save it
+        if (moderationResult.isBlocked) {
+          toast.error(moderationResult.reason || 'Your reply was blocked due to inappropriate content.');
+          setUploading(false);
+          return;
+        }
+
+        // Determine moderation status
+        const moderationStatus = moderationResult.requiresApproval ? 'pending' : 'approved';
+
+        const mediaUrls = await uploadFiles(files);
+        
+        const replyData = {
+          text,
+          mediaUrls: mediaUrls,
+          authorId: currentUser.id,
+          authorName: currentUser.displayName || 'Member',
+          createdAt: serverTimestamp(),
+          parentCommentId: replyingTo,
+          threadLevel: 1,
+          replyCount: 0,
+          moderationStatus, // New field
+          requiresApproval: moderationResult.requiresApproval, // New field
+          moderationReason: moderationResult.reason, // New field
+          moderationDetectedIssues: moderationResult.detectedIssues, // New field
+        };
+        
+        console.log('💬 [CommentSection] Submitting reply to Firestore:', replyData);
+        const docRef = await addDoc(collection(db, collectionPath), replyData);
+        console.log('✅ [CommentSection] Reply submitted successfully with ID:', docRef.id);
+
+        setReplyText('');
+        setReplyFiles([]);
+        setReplyingTo(null);
+        
+        if (moderationStatus === 'pending') {
+          toast.success('Your reply has been submitted for review and will appear shortly after approval.');
+        } else {
+          toast.success('Reply posted!');
+        }
+      } else {
+        // If no text, just upload media (media-only replies don't need moderation)
+        const mediaUrls = await uploadFiles(files);
+        
+        const replyData = {
+          text: '',
+          mediaUrls: mediaUrls,
+          authorId: currentUser.id,
+          authorName: currentUser.displayName || 'Member',
+          createdAt: serverTimestamp(),
+          parentCommentId: replyingTo,
+          threadLevel: 1,
+          replyCount: 0,
+          moderationStatus: 'approved', // Media-only replies auto-approved
+        };
+        
+        console.log('💬 [CommentSection] Submitting reply to Firestore:', replyData);
+        const docRef = await addDoc(collection(db, collectionPath), replyData);
+        console.log('✅ [CommentSection] Reply submitted successfully with ID:', docRef.id);
+
+        setReplyText('');
+        setReplyFiles([]);
+        setReplyingTo(null);
+        toast.success('Reply posted!');
+      }
     } catch (error: any) {
       console.error('❌ [CommentSection] Reply submission failed:', error);
       toast.error('Failed to post reply: ' + error.message);

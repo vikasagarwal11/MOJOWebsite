@@ -65,11 +65,15 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
   const teasersRef = collection(db, 'event_teasers');
 
   const buildUpcomingQueries = (): Query[] => {
-    // Treat non-approved users like logged-out users (only show public events)
+    // Members-only events are now visible to everyone, but only members can RSVP
+    // Treat non-approved users like logged-out users (show public and members events)
     const isApproved = currentUser && (currentUser.status === 'approved' || !currentUser.status); // Legacy users without status are approved
     
     if (!currentUser || !isApproved) {
-      return [query(eventsRef, where('visibility', '==', 'public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc'))];
+      // Show both public and members-only events to everyone (non-members can see but not RSVP)
+      return [
+        query(eventsRef, where('visibility', 'in', ['public', 'members']), where('startAt', '>=', nowTs), orderBy('startAt', 'asc'))
+      ];
     }
     return [
       query(eventsRef, where('visibility', 'in', ['public', 'members']), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),

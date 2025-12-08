@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Share2, Download, ChevronLeft, ChevronRight, Play, Pause, Volume2, VolumeX } from 'lucide-react';
+import { X, Share2, /* Download, */ ChevronLeft, ChevronRight, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { shareUrl } from '../../utils/share';
 import { useSwipeRaw } from '../../hooks/useSwipeRaw';
@@ -8,7 +8,8 @@ import { storage } from '../../config/firebase';
 import { attachHls, detachHls } from '../../utils/hls';
 import { useImageOrientation } from '../../utils/imageOrientation';
 import toast from 'react-hot-toast';
-import { requestWatermarkedDownload } from '../../services/mediaDownloadService';
+// Download feature temporarily disabled - uncomment to re-enable
+// import { requestWatermarkedDownload } from '../../services/mediaDownloadService';
 
 type Props = {
   item: any;
@@ -44,7 +45,8 @@ export default function MediaLightbox({
   const [controlsVisible, setControlsVisible] = useState(true);
   const [videoLoading, setVideoLoading] = useState(false);
   const [showSoundHint, setShowSoundHint] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
+  // Download feature temporarily disabled - uncomment to re-enable
+  // const [isDownloading, setIsDownloading] = useState(false);
   const lastTapTimeRef = useRef<number>(0);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -376,6 +378,8 @@ export default function MediaLightbox({
     debug: false         // Disable debug logs
   });
 
+  // Download feature temporarily disabled - uncomment to re-enable
+  /*
   const handleDownloadMedia = async () => {
     if (isDownloading) return;
     
@@ -408,6 +412,7 @@ export default function MediaLightbox({
       setIsDownloading(false);
     }
   };
+  */
 
   return (
     <div
@@ -438,6 +443,8 @@ export default function MediaLightbox({
               <button data-no-swipe onClick={() => shareUrl(item.url, item.title)} className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1">
                 <Share2 className="w-4 h-4" /> Share
               </button>
+              {/* Download feature temporarily disabled - uncomment to re-enable */}
+              {/*
               <button
                 data-no-swipe
                 onClick={handleDownloadMedia}
@@ -446,6 +453,7 @@ export default function MediaLightbox({
               >
                 <Download className="w-4 h-4" /> {isDownloading ? 'Preparing…' : 'Download'}
               </button>
+              */}
             </div>
           )}
         </div>

@@ -743,7 +743,9 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
             >
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-green-600" />
-                <h4 className="font-medium text-gray-900 text-[13px]">Going ({attendeesByStatus.going.length})</h4>
+                <h4 className="font-medium text-gray-900 text-[13px]">
+                  {isAdmin ? 'Going' : 'Your RSVP'} ({attendeesByStatus.going.length})
+                </h4>
               </div>
               <motion.div
                 animate={{ rotate: collapsedSections.going ? 0 : 180 }}
@@ -833,7 +835,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                            className="text-green-700"
                                            disabled={goingOptionDisabled} title={goingOptionDisabled ? getCapacityBlockedMessage() : ''}
                                          >
-                                           Going
+                                           {isAdmin ? 'Going' : 'Your RSVP'}
                                          </option>
                                          <option value="not-going" className="text-red-700">Not Going</option>
                                        </select>
@@ -1015,7 +1017,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                           disabled={goingOptionDisabled}
                                           title={goingOptionDisabled ? getCapacityBlockedMessage() : ''}
                                         >
-                                          Going
+                                          {isAdmin ? 'Going' : 'Your RSVP'}
                                         </option>
                                         <option value="not-going" className="text-red-700">
                                           Not Going
@@ -1203,7 +1205,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                              className="text-green-700"
                                              disabled={goingOptionDisabled} title={goingOptionDisabled ? getCapacityBlockedMessage() : ''}
                                            >
-                                             Going
+                                             {isAdmin ? 'Going' : 'Your RSVP'}
                                            </option>
                                            <option value="not-going" className="text-red-700">Not Going</option>
                                          </select>

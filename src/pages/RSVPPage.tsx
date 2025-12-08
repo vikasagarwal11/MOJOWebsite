@@ -669,7 +669,7 @@ const RSVPPage: React.FC = () => {
                 }`}
               >
                 <Users className="w-4 h-4" />
-                Who's Going
+                Guest List
               </button>
             </div>
           </div>
@@ -746,24 +746,27 @@ const RSVPPage: React.FC = () => {
                   }}
                 />
 
-                <div className="mb-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <h3 className="text-[15px] font-semibold text-gray-900">Manage Attendees</h3>
-                    <div className="flex items-center gap-2 text-[12px] text-gray-600">
-                      <span className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full" />
-                        <span>{counts.goingCount} Going</span>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-red-500 rounded-full" />
-                        <span>{counts.notGoingCount} Not Going</span>
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-purple-500 rounded-full" />
-                        <span>{counts.waitlistedCount} Waitlisted</span>
-                      </span>
+                {isAdmin && (
+                  <div className="mb-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <h3 className="text-[15px] font-semibold text-gray-900">Manage Attendees</h3>
+                      <div className="flex items-center gap-2 text-[12px] text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-green-500 rounded-full" />
+                          <span>{counts.goingCount} Going</span>
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-red-500 rounded-full" />
+                          <span>{counts.notGoingCount} Not Going</span>
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-purple-500 rounded-full" />
+                          <span>{counts.waitlistedCount} Waitlisted</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
+                )}
 
                   <div className="bg-[#F25129]/10 border border-[#F25129]/20 rounded-lg mb-4">
                     <motion.button
@@ -1043,36 +1046,35 @@ const RSVPPage: React.FC = () => {
                       }}
                     />
                   </div>
-                </div>
 
-                {event.description && (
-                  <div className="mt-6 bg-gray-50 rounded-lg p-4">
-                    <h4 className="font-medium text-gray-900 mb-2">Event Details</h4>
-                    <div className="relative">
-                      <p className={`text-gray-700 leading-relaxed break-words ${!isDescriptionExpanded ? 'line-clamp-2' : ''}`}>
-                        {event.description}
-                      </p>
-                      {event.description.length > 120 && (
-                        <button
-                          onClick={() => setIsDescriptionExpanded((v) => !v)}
-                          className="text-[#F25129] hover:text-[#E0451F] text-sm font-medium mt-1"
-                        >
-                          {isDescriptionExpanded ? 'Show less' : 'View event details...'}
-                        </button>
-                      )}
+                  {event.description && (
+                    <div className="mt-6 bg-gray-50 rounded-lg p-4">
+                      <h4 className="font-medium text-gray-900 mb-2">Event Details</h4>
+                      <div className="relative">
+                        <p className={`text-gray-700 leading-relaxed break-words ${!isDescriptionExpanded ? 'line-clamp-2' : ''}`}>
+                          {event.description}
+                        </p>
+                        {event.description.length > 120 && (
+                          <button
+                            onClick={() => setIsDescriptionExpanded((v) => !v)}
+                            className="text-[#F25129] hover:text-[#E0451F] text-sm font-medium mt-1"
+                          >
+                            {isDescriptionExpanded ? 'Show less' : 'View event details...'}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Admin Tools */}
-                {isAdmin && (
-                  <AutoPromotionManager
-                    eventId={event.id}
-                    eventTitle={event.title}
-                    isAdmin={isAdmin}
-                  />
-                )}
-              </div>
+                  {/* Admin Tools */}
+                  {isAdmin && (
+                    <AutoPromotionManager
+                      eventId={event.id}
+                      eventTitle={event.title}
+                      isAdmin={isAdmin}
+                    />
+                  )}
+                </div>
             )}
           </div>
 
