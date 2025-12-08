@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Upload, Image, Video, Filter } from 'lucide-react';
 // import { Video as VideoIcon } from 'lucide-react'; // PHASE 2: Re-enable live camera functionality
-import { orderBy, doc, deleteDoc } from 'firebase/firestore';
+import { orderBy, doc, deleteDoc, where } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import { useFirestore } from '../hooks/useFirestore';
 import MediaUploadModal from '../components/media/MediaUploadModal';
@@ -11,6 +11,7 @@ import MediaLightbox from '../components/media/MediaLightbox';
 import { useLightbox } from '../hooks/useLightbox';
 import { db } from '../config/firebase';
 import toast from 'react-hot-toast';
+import { isUserApproved } from '../utils/userUtils';
 
 const Media: React.FC = () => {
   const { currentUser } = useAuth();
@@ -63,10 +64,11 @@ const Media: React.FC = () => {
   const { data: mediaFiles } =
     useRealtimeCollection('media', [orderBy('createdAt', 'desc')]);
 
-  // Events: remove Firestore orderBy('date') to avoid composite index requirement.
-  // Our hook will add a public==true filter for guests automatically; we'll sort in memory.
+  // Events: Query only public events for the filter dropdown to avoid permission issues
+  // We explicitly filter by 'visibility' == 'public' to ensure the query works for all users
+  // This is safe because public events are accessible to everyone (including non-approved users)
   const { data: events } =
-    useRealtimeCollection('events', []); // no constraints
+    useRealtimeCollection('events', [where('visibility', '==', 'public'), orderBy('startAt', 'desc')]);
 
   // Sort events client-side (DESC) by startAt (preferred), falling back to date.
   const eventsForFilter = useMemo(() => {
@@ -201,41 +203,28 @@ const Media: React.FC = () => {
         {/* COMMENTED OUT: Description text for layout consistency testing */}
         {/* <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-6">Share and explore moments from our fitness community</p> */}
         
-        <div className="flex gap-2 justify-center">
-          {/* Mobile: Icon-only buttons */}
-          <button
-            onClick={() => setIsUploadModalOpen(true)}
-            className="flex items-center justify-center px-3 py-2 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg md:hidden"
-            title="Upload Media"
-          >
-            <Upload className="w-4 h-4" />
-          </button>
-          {/* PHASE 2: Re-enable live camera functionality */}
-          {/* <button
-            onClick={() => setIsLiveUploadOpen(true)}
-            className="flex items-center justify-center px-3 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-full hover:from-red-600 hover:to-red-700 transition-all duration-300 transform hover:scale-105 shadow-lg md:hidden"
-            title="Live Upload"
-          >
-            <VideoIcon className="w-4 h-4" />
-          </button> */}
+        {/* Only show upload buttons for approved users - hide for non-approved to keep consistent with Posts page */}
+        {currentUser && isUserApproved(currentUser) && (
+          <div className="flex gap-2 justify-center">
+            {/* Mobile: Icon-only buttons */}
+            <button
+              onClick={() => setIsUploadModalOpen(true)}
+              className="flex items-center justify-center px-3 py-2 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg md:hidden"
+              title="Upload Media"
+            >
+              <Upload className="w-4 h-4" />
+            </button>
 
-          {/* Desktop: Icon + Text buttons */}
-          <button
-            onClick={() => setIsUploadModalOpen(true)}
-            className="hidden md:flex items-center justify-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg"
-          >
-            <Upload className="w-5 h-5 mr-2" />
-            Upload Media
-          </button>
-          {/* PHASE 2: Re-enable live camera functionality */}
-          {/* <button
-            onClick={() => setIsLiveUploadOpen(true)}
-            className="hidden md:flex items-center justify-center px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white font-semibold rounded-full hover:from-red-600 hover:to-red-700 transition-all duration-300 transform hover:scale-105 shadow-lg"
-          >
-            <VideoIcon className="w-5 h-5 mr-2" />
-            Live Upload
-          </button> */}
-        </div>
+            {/* Desktop: Icon + Text buttons */}
+            <button
+              onClick={() => setIsUploadModalOpen(true)}
+              className="hidden md:flex items-center justify-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg"
+            >
+              <Upload className="w-5 h-5 mr-2" />
+              Upload Media
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Filters - Single Row with Debounced Search */}
@@ -432,7 +421,8 @@ const Media: React.FC = () => {
               <p className="text-gray-400 text-sm md:text-base mb-4">
                 Tap the upload button to share your fitness moments!
               </p>
-              {currentUser && (
+              {/* Only show upload button for approved users */}
+              {currentUser && isUserApproved(currentUser) && (
                 <button
                   onClick={() => setIsUploadModalOpen(true)}
                   className="px-4 py-2 md:px-6 md:py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 text-sm md:text-base"

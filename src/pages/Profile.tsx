@@ -10,6 +10,7 @@ import { ProfileEventsTab } from './ProfileEventsTab';
 import { ProfileRSVPAdminTab } from './ProfileRSVPAdminTab';
 import { ProfileAdminTab } from './ProfileAdminTab';
 import { AdminKnowledgeBaseTab } from './AdminKnowledgeBaseTab';
+import { ProfileNotificationsTab } from './ProfileNotificationsTab';
 import CreateEventModal from '../components/events/CreateEventModal';
 import { useUserBlocking } from '../hooks/useUserBlocking';
 import { UserBlockModal } from '../components/user/UserBlockModal';
@@ -64,7 +65,7 @@ function normalizeTag(input: string): string | null {
 }
 
 type ProfileMode = 'profile' | 'admin';
-type TabKey = 'personal' | 'events' | 'rsvp' | 'admin' | 'family' | 'knowledge';
+type TabKey = 'personal' | 'events' | 'rsvp' | 'admin' | 'family' | 'knowledge' | 'notifications';
 
 interface ProfileProps {
   mode?: ProfileMode;
@@ -106,7 +107,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
   const [eventToEdit, setEventToEdit] = useState<Event | null>(null);
   const [exportingRsvps, setExportingRsvps] = useState<string | null>(null);
   const [notificationsPage, setNotificationsPage] = useState(1);
-  const [eventsPage, setEventsPage] = useState(1);
+  const [eventsPage, setEventsPage] = useState(0);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [loadingAdminEvents, setLoadingAdminEvents] = useState(false);
@@ -128,6 +129,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         label: isAdmin ? 'My Events' : "Events I'm Attending",
         show: mode === 'profile',
       },
+      { key: 'notifications' as TabKey, label: 'Notifications', show: mode === 'profile' },
       { key: 'rsvp' as TabKey, label: 'RSVP Management', show: isAdmin && mode === 'admin' },
       { key: 'family' as TabKey, label: 'Family Management', show: mode === 'profile' },
       { key: 'admin' as TabKey, label: 'Admin Tools', show: isAdmin && mode === 'admin' },
@@ -160,8 +162,12 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
 
     let active = true;
 
+    // Load all user profile fields from currentUser
+    setFirstName(currentUser.firstName || '');
+    setLastName(currentUser.lastName || '');
     setDisplayName(currentUser.displayName || '');
     setEmail(currentUser.email || '');
+    setPhoneNumber(currentUser.phoneNumber || '');
     setPhotoURL(currentUser.photoURL);
     setLoadingEvents(true);
 
@@ -262,7 +268,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         collection(db, 'events'),
         where('createdBy', '==', currentUser.id),
         orderBy('startAt', 'desc'),
-        limit(PAGE_SIZE * eventsPage)
+        limit(eventsPage > 0 ? Math.max(1, PAGE_SIZE * eventsPage) : PAGE_SIZE)
       );
       console.log('🔍 Profile: Setting up user events onSnapshot listener');
       const unsubUser = onSnapshot(userQ, (snap) => {
@@ -1118,6 +1124,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         )}
         {activeTab === 'knowledge' && mode === 'admin' && currentUser?.role === 'admin' && (
           <AdminKnowledgeBaseTab />
+        )}
+        {activeTab === 'notifications' && currentUser && (
+          <ProfileNotificationsTab userId={currentUser.id} />
         )}
         {activeTab === 'family' && (
           <div className="space-y-6">

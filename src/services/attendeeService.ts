@@ -590,7 +590,10 @@ export const checkEventCapacity = async (eventId: string, additionalCount: numbe
 
 // Get all attendees for an event (for current user only)
 export const listAttendees = async (eventId: string, userId: string): Promise<Attendee[]> => {
-  console.log('🔍 listAttendees called with:', { eventId, userId });
+  // Only log in development mode
+  if (import.meta.env.DEV) {
+    console.log('🔍 listAttendees called with:', { eventId, userId });
+  }
   
   const attendeesRef = collection(db, 'events', eventId, 'attendees');
   const q = query(
@@ -638,7 +641,10 @@ export const listAttendees = async (eventId: string, userId: string): Promise<At
     }
   });
   
-  console.log('🔍 listAttendees returning:', { count: attendees.length, attendees });
+  // Only log in development mode
+  if (import.meta.env.DEV && attendees.length > 0) {
+    console.log('🔍 listAttendees returning:', { count: attendees.length });
+  }
   return attendees;
 };
 

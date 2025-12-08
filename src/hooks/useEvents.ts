@@ -65,7 +65,10 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
   const teasersRef = collection(db, 'event_teasers');
 
   const buildUpcomingQueries = (): Query[] => {
-    if (!currentUser) {
+    // Treat non-approved users like logged-out users (only show public events)
+    const isApproved = currentUser && (currentUser.status === 'approved' || !currentUser.status); // Legacy users without status are approved
+    
+    if (!currentUser || !isApproved) {
       return [query(eventsRef, where('visibility', '==', 'public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc'))];
     }
     return [
@@ -78,16 +81,9 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
   };
 
   const buildPastQueries = (): Query[] => {
-    if (!currentUser) {
-      return [query(eventsRef, where('visibility', '==', 'public'), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc'))];
-    }
-    return [
-      query(eventsRef, where('visibility', 'in', ['public', 'members']), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc')),
-      query(eventsRef, where('createdBy', '==', currentUser.id), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc')),
-      // Check for both new and legacy field names
-      query(eventsRef, where('invitedUserIds', 'array-contains', currentUser.id), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc')),
-      query(eventsRef, where('invitedUsers', 'array-contains', currentUser.id), where('startAt', '<', pastCutoff), orderBy('startAt', 'desc')),
-    ];
+    // Past events: ALL past events are public (Firestore rules allow everyone to read past events)
+    // This is intentional - past events become public history regardless of original visibility
+    return [query(eventsRef, where('startAt', '<', pastCutoff), orderBy('startAt', 'desc'))];
   };
 
   useEffect(() => {

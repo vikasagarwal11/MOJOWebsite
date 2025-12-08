@@ -32,6 +32,7 @@
     "genkit-cli": "^1.16.1",
     "openai": "^6.7.0",
     "sharp": "^0.34.3",
+    "twilio": "^5.3.5",
     "uuid": "^11.1.0",
     "vite-react-typescript-starter": "file:.."
   },

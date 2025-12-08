@@ -122,7 +122,9 @@ const Login: React.FC = () => {
       console.log('🔍 Login: Calling verifyCode with isLogin=true (will preserve existing user data)');
       console.log('🔍 Login: This is a LOGIN attempt - should only work for existing users');
       await verifyCode(confirmationResult, data.verificationCode, '', '', '', true);
-      console.log('🔍 Login: verifyCode completed successfully, navigating to home');
+      console.log('🔍 Login: verifyCode completed successfully, Layout will handle routing based on status');
+      // Navigate to home - Layout.tsx will automatically redirect pending users to /pending-approval
+      // and rejected users to /account-rejected based on their status
       navigate('/');
     } catch (error) {
       console.error('🚨 Login: Code verification error:', {
@@ -132,15 +134,17 @@ const Login: React.FC = () => {
         errorStack: (error as any)?.stack
       });
       
-      // Check if this is a "no account found" error
-      if ((error as any)?.message?.includes('No account found')) {
+      const errorMessage = (error as any)?.message;
+      
+      // 🔥 FIX: Handle specific error messages from AuthContext for redirection
+      if (errorMessage?.includes('No account found')) {
         toast.error('No account found. Please register first.');
         // Reset to phone step and redirect to registration
         setStep('phone');
         phoneForm.reset();
         navigate('/register');
       } else {
-        toast.error('Login failed. Please try again.');
+        toast.error(errorMessage || 'Login failed. Please try again.');
       }
     } finally {
       setIsLoading(false);

@@ -11,6 +11,8 @@ import { serverTimestamp } from 'firebase/firestore';
 import { stripUndefined } from '../../utils/firestore';
 import toast from 'react-hot-toast';
 import { generatePostSuggestionsV2 as generatePostSuggestions } from '../../services/postAIService';
+import { isUserApproved } from '../../utils/userUtils';
+import { ContentModerationService } from '../../services/contentModerationService';
 
 const postSchema = z.object({
   title: z.string()
@@ -44,7 +46,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   const canPost = useMemo(
-    () => !!currentUser && (currentUser.role === 'member' || currentUser.role === 'admin'),
+    () => !!currentUser && isUserApproved(currentUser) && (currentUser.role === 'member' || currentUser.role === 'admin'),
     [currentUser]
   );
 
@@ -129,18 +131,40 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
   const onSubmit = async (data: PostFormData) => {
     if (!currentUser) return;
     if (!canPost) {
-      toast.error('Only members can create community posts.');
+      if (!isUserApproved(currentUser)) {
+        toast.error('Your account is pending approval. You can browse posts but cannot create them yet.');
+      } else {
+        toast.error('Only members can create community posts.');
+      }
       return;
     }
 
     setIsLoading(true);
     try {
+      // Run content moderation before saving
+      const contentToModerate = `${data.title.trim()} ${data.content.trim()}`.trim();
+      const moderationResult = await ContentModerationService.moderateContent(
+        contentToModerate,
+        'post',
+        currentUser.id
+      );
+
+      // If content is blocked, don't save it
+      if (moderationResult.isBlocked) {
+        toast.error(moderationResult.reason || 'Your post cannot be published due to inappropriate content.');
+        setIsLoading(false);
+        return;
+      }
+
       // optional image upload
       let uploadedUrl: string | undefined;
       if (selectedFile) {
         const imagePath = getStoragePath('posts', selectedFile.name);
         uploadedUrl = await uploadFile(selectedFile, imagePath);
       }
+
+      // Determine moderation status
+      const moderationStatus = moderationResult.requiresApproval ? 'pending' : 'approved';
 
       // Build post doc safely (NO undefined values)
       const postData = stripUndefined({
@@ -151,6 +175,10 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
         authorName: currentUser.displayName || 'Member',
         authorPhoto: currentUser.photoURL || undefined,
         isPublic,                          // visibility flag
+        moderationStatus,                  // 'pending' | 'approved' | 'rejected'
+        requiresApproval: moderationResult.requiresApproval,
+        moderationReason: moderationResult.reason,
+        moderationDetectedIssues: moderationResult.detectedIssues,
         likes: [] as string[],
         comments: [] as any[],
         likesCount: 0,
@@ -160,7 +188,14 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
       });
 
       await addDocument('posts', postData);
-      toast.success('Post published!');
+      
+      // Show appropriate message based on moderation result
+      if (moderationResult.requiresApproval) {
+        toast.success('Post submitted! It will be reviewed before being published.');
+      } else {
+        toast.success('Post published!');
+      }
+      
       onPostCreated();
     } catch (error: any) {
       console.error('Error creating post:', error);

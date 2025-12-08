@@ -1,0 +1,18 @@
+# Delete Invalid Functions - Run These Commands
+
+# Step 1: Set the project
+gcloud config set project momsfitnessmojo-65d00
+
+# Step 2: Delete the three functions (run one at a time)
+gcloud functions delete onAccountApprovalCreated --gen2 --region=us-east1 --project=momsfitnessmojo-65d00 --quiet
+
+gcloud functions delete onAccountApprovalUpdated --gen2 --region=us-east1 --project=momsfitnessmojo-65d00 --quiet
+
+gcloud functions delete onApprovalMessageCreated --gen2 --region=us-east1 --project=momsfitnessmojo-65d00 --quiet
+
+# Step 3: Wait 2-3 minutes, then verify they're gone
+firebase functions:list --project=momsfitnessmojo-65d00 | Select-String "onAccount"
+
+# Step 4: If they're gone, deploy the functions
+cd functions
+firebase deploy --only functions:onAccountApprovalCreated,functions:onAccountApprovalUpdated,functions:onApprovalMessageCreated,functions:checkAndDispatchPendingSms --project=momsfitnessmojo-65d00

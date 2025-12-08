@@ -1,0 +1,257 @@
+[
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "authenticationInfo": {
+        "principalEmail": "service-313384637691@gcf-admin-robot.iam.gserviceaccount.com"
+      },
+      "requestMetadata": {
+        "requestAttributes": {
+          "time": "2025-12-07T04:32:10.588168Z",
+          "auth": {}
+        },
+        "destinationAttributes": {}
+      },
+      "serviceName": "run.googleapis.com",
+      "methodName": "google.cloud.serverless.internal.InternalServices.CreateInternalService",
+      "authorizationInfo": [
+        {
+          "resource": "namespaces/momsfitnessmojo-65d00/services/onaccountapprovalupdated",
+          "permission": "run.services.create",
+          "granted": true,
+          "resourceAttributes": {},
+          "permissionType": "ADMIN_WRITE"
+        },
+        {
+          "resource": "namespaces/momsfitnessmojo-65d00/services/onaccountapprovalupdated",
+          "permission": "run.services.create",
+          "granted": true,
+          "resourceAttributes": {
+            "service": "run.googleapis.com/",
+            "name": "namespaces/momsfitnessmojo-65d00/services/onaccountapprovalupdated",
+            "type": "run.googleapis.com/Service"
+          },
+          "permissionType": "ADMIN_WRITE"
+        }
+      ],
+      "resourceName": "namespaces/momsfitnessmojo-65d00/services/onaccountapprovalupdated",
+      "resourceLocation": {
+        "currentLocations": [
+          "us-east1"
+        ]
+      }
+    },
+    "insertId": "78tyu2d829u",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "us-east1",
+        "revision_name": "",
+        "project_id": "momsfitnessmojo-65d00",
+        "service_name": "onaccountapprovalupdated",
+        "configuration_name": ""
+      }
+    },
+    "timestamp": "2025-12-07T04:32:10.352033Z",
+    "severity": "NOTICE",
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudaudit.googleapis.com%2Factivity",
+    "receiveTimestamp": "2025-12-07T04:32:10.776085256Z"
+  },
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "authenticationInfo": {
+        "principalEmail": "VikasAgarwal11@gmail.com",
+        "principalSubject": "user:VikasAgarwal11@gmail.com",
+        "oauthInfo": {
+          "oauthClientId": "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com"
+        }
+      },
+      "requestMetadata": {
+        "callerIp": "72.76.183.215",
+        "callerSuppliedUserAgent": "FirebaseCLI/14.14.0,gzip(gfe),gzip(gfe)",
+        "requestAttributes": {
+          "time": "2025-12-07T04:32:10.122463591Z",
+          "auth": {}
+        },
+        "destinationAttributes": {}
+      },
+      "serviceName": "cloudfunctions.googleapis.com",
+      "methodName": "google.cloud.functions.v2.FunctionService.CreateFunction",
+      "authorizationInfo": [
+        {
+          "resource": "projects/momsfitnessmojo-65d00/locations/us-east1/functions/onAccountApprovalUpdated",
+          "permission": "cloudfunctions.functions.create",
+          "granted": true,
+          "resourceAttributes": {
+            "service": "cloudfunctions.googleapis.com",
+            "name": "projects/momsfitnessmojo-65d00/locations/us-east1/functions/onAccountApprovalUpdated",
+            "type": "cloudfunctions.googleapis.com/Function"
+          },
+          "permissionType": "ADMIN_WRITE"
+        }
+      ],
+      "resourceName": "projects/momsfitnessmojo-65d00/locations/us-east1/functions/onAccountApprovalUpdated",
+      "request": {
+        "@type": "type.googleapis.com/google.cloud.functions.v2.CreateFunctionRequest",
+        "function": {
+          "build_config": {
+            "runtime": "nodejs22",
+            "source": {},
+            "entry_point": "onAccountApprovalUpdated"
+          },
+          "service_config": {
+            "available_memory": "256Mi",
+            "max_instance_request_concurrency": 80,
+            "available_cpu": "1"
+          },
+          "labels": {
+            "deployment-tool": "cli-firebase",
+            "firebase-functions-hash": "bcfeabb742d994fb09f4786bace192d75cecdb65"
+          },
+          "event_trigger": {
+            "trigger_region": "nam5",
+            "retry_policy": "RETRY_POLICY_DO_NOT_RETRY",
+            "event_filters": [
+              {
+                "value": "(default)",
+                "attribute": "database"
+              },
+              {
+                "attribute": "namespace",
+                "value": "(default)"
+              },
+              {
+                "operator": "match-path-pattern",
+                "value": "accountApprovals/{approvalId}",
+                "attribute": "document"
+              }
+            ],
+            "event_type": "google.cloud.firestore.document.v1.written"
+          },
+          "name": "projects/momsfitnessmojo-65d00/locations/us-east1/functions/onAccountApprovalUpdated"
+        },
+        "parent": "projects/momsfitnessmojo-65d00/locations/us-east1"
+      },
+      "response": {
+        "@type": "type.googleapis.com/google.longrunning.Operation"
+      },
+      "resourceLocation": {
+        "currentLocations": [
+          "us-east1"
+        ]
+      }
+    },
+    "insertId": "526209d73rs",
+    "resource": {
+      "type": "cloud_function",
+      "labels": {
+        "region": "us-east1",
+        "project_id": "momsfitnessmojo-65d00",
+        "function_name": "onAccountApprovalUpdated"
+      }
+    },
+    "timestamp": "2025-12-07T04:32:10.607663682Z",
+    "severity": "NOTICE",
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudaudit.googleapis.com%2Factivity",
+    "operation": {
+      "id": "projects/momsfitnessmojo-65d00/locations/us-east1/operations/operation-1765081930127-645552971d77e-187ea279-f14eb487",
+      "producer": "cloudfunctions.googleapis.com",
+      "first": true
+    },
+    "receiveTimestamp": "2025-12-07T04:32:10.995967931Z"
+  },
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "authenticationInfo": {
+        "principalEmail": "service-313384637691@gcf-admin-robot.iam.gserviceaccount.com"
+      },
+      "requestMetadata": {
+        "requestAttributes": {
+          "time": "2025-12-07T04:33:02.387162Z",
+          "auth": {}
+        },
+        "destinationAttributes": {}
+      },
+      "serviceName": "run.googleapis.com",
+      "methodName": "google.cloud.serverless.internal.InternalServices.DeleteInternalService",
+      "authorizationInfo": [
+        {
+          "resource": "namespaces/momsfitnessmojo-65d00/services/onaccountapprovalupdated",
+          "permission": "run.services.delete",
+          "granted": true,
+          "resourceAttributes": {},
+          "permissionType": "ADMIN_WRITE"
+        }
+      ],
+      "resourceName": "namespaces/momsfitnessmojo-65d00/services/onaccountapprovalupdated",
+      "resourceLocation": {
+        "currentLocations": [
+          "us-east1"
+        ]
+      }
+    },
+    "insertId": "p0e80kdaddm",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "location": "us-east1",
+        "service_name": "onaccountapprovalupdated",
+        "revision_name": "",
+        "configuration_name": "",
+        "project_id": "momsfitnessmojo-65d00"
+      }
+    },
+    "timestamp": "2025-12-07T04:33:02.360399Z",
+    "severity": "NOTICE",
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudaudit.googleapis.com%2Factivity",
+    "receiveTimestamp": "2025-12-07T04:33:03.142685891Z"
+  },
+  {
+    "protoPayload": {
+      "@type": "type.googleapis.com/google.cloud.audit.AuditLog",
+      "status": {
+        "code": 3,
+        "message": "Build failed with status: FAILURE and message: npm error code EUSAGE\nnpm error\nnpm error `npm ci` can only install packages when your package.json and package-lock.json or npm-shrinkwrap.json are in sync. Please update your lock file with `npm install` before continuing.\nnpm error\nnpm error Missing: twilio@5.10.7 from lock file\nnpm error Missing: dayjs@1.11.19 from lock file\nnpm error Missing: https-proxy-agent@5.0.1 from lock file\nnpm error Missing: scmp@2.1.0 from lock file\nnpm error Missing: xmlbuilder@13.0.2 from lock file\nnpm error Missing: agent-base@6.0.2 from lock file\nnpm error\nnpm error Clean install a project\nnpm error\nnpm error Usage:\nnpm error npm ci\nnpm error\nnpm error Options:\nnpm error [--install-strategy <hoisted|nested|shallow|linked>] [--legacy-bundling]\nnpm error [--global-style] [--omit <dev|optional|peer> [--omit <dev|optional|peer> ...]]\nnpm error [--include <prod|dev|optional|peer> [--include <prod|dev|optional|peer> ...]]\nnpm error [--strict-peer-deps] [--foreground-scripts] [--ignore-scripts] [--no-audit]\nnpm error [--no-bin-links] [--no-fund] [--dry-run]\nnpm error [-w|--workspace <workspace-name> [-w|--workspace <workspace-name> ...]]\nnpm error [-ws|--workspaces] [--include-workspace-root] [--install-links]\nnpm error\nnpm error aliases: clean-install, ic, install-clean, isntall-clean\nnpm error\nnpm error Run \"npm help ci\" for more info\nnpm error A complete log of this run can be found in: /www-data-home/.npm/_logs/2025-12-07T04_32_40_334Z-debug-0.log. For more details see the logs at https://console.cloud.google.com/cloud-build/builds;region=us-east1/7e67cbc0-b88a-4a91-9925-085f95dadaea?project=313384637691."
+      },
+      "authenticationInfo": {
+        "principalEmail": "VikasAgarwal11@gmail.com",
+        "principalSubject": "user:VikasAgarwal11@gmail.com",
+        "oauthInfo": {
+          "oauthClientId": "563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com"
+        }
+      },
+      "requestMetadata": {
+        "requestAttributes": {},
+        "destinationAttributes": {}
+      },
+      "serviceName": "cloudfunctions.googleapis.com",
+      "methodName": "google.cloud.functions.v2.FunctionService.CreateFunction",
+      "resourceName": "projects/momsfitnessmojo-65d00/locations/us-east1/functions/onAccountApprovalUpdated",
+      "resourceLocation": {
+        "currentLocations": [
+          "us-east1"
+        ]
+      }
+    },
+    "insertId": "526209d73v3",
+    "resource": {
+      "type": "cloud_function",
+      "labels": {
+        "function_name": "onAccountApprovalUpdated",
+        "project_id": "momsfitnessmojo-65d00",
+        "region": "us-east1"
+      }
+    },
+    "timestamp": "2025-12-07T04:33:02.692964272Z",
+    "severity": "ERROR",
+    "logName": "projects/momsfitnessmojo-65d00/logs/cloudaudit.googleapis.com%2Factivity",
+    "operation": {
+      "id": "projects/momsfitnessmojo-65d00/locations/us-east1/operations/operation-1765081930127-645552971d77e-187ea279-f14eb487",
+      "producer": "cloudfunctions.googleapis.com",
+      "last": true
+    },
+    "receiveTimestamp": "2025-12-07T04:33:03.503445095Z"
+  }
+]

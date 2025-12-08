@@ -19,6 +19,10 @@ service cloud.firestore {
       return userDoc() != null && userDoc().role == 'member';
     }
 
+    function isApprovedUser() {
+      return userDoc() != null && (!('status' in userDoc()) || userDoc().status == 'approved');
+    }
+
     function isTrainer() {
       return userDoc() != null && userDoc().role == 'trainer';
     }
@@ -259,12 +263,17 @@ service cloud.firestore {
       allow create: if isSignedIn() && 
         request.auth.uid == userId && 
         (!('role' in request.resource.data) || (request.resource.data.role == 'member' && !isBlockedPhone())) && 
+        (!('status' in request.resource.data) || request.resource.data.status == 'pending') &&
         validUserProfileData(request.resource.data);
       allow update: if isSignedIn() && (
         (request.auth.uid == userId && 
-         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) && 
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status', 'approvedAt', 'approvedBy', 'rejectedAt', 'rejectedBy', 'rejectionReason']) && 
          validUserProfileData(request.resource.data)) ||
-        (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['blockedFromRsvp', 'updatedAt', 'fcmToken']) &&
+        (isAdmin() && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['blockedFromRsvp', 'updatedAt', 'fcmToken']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedAt', 'approvedBy', 'updatedAt']) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'rejectedAt', 'rejectedBy', 'rejectionReason', 'updatedAt'])
+        ) &&
          (!('fcmToken' in request.resource.data) || request.resource.data.fcmToken is string))
       );
       allow delete: if isSignedIn() && request.auth.uid == userId;
@@ -286,7 +295,8 @@ service cloud.firestore {
 
       // --- CHALLENGE MEMBERSHIPS ---
       match /challengeMemberships/{challengeId} {
-        allow read, write: if isSignedIn() && request.auth.uid == userId;
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow write: if isSignedIn() && isApprovedUser() && request.auth.uid == userId;
       }
     }
     
@@ -342,8 +352,8 @@ service cloud.firestore {
           resource.data.createdBy == request.auth.uid ||
           // Admin can see all events
           isAdmin() ||
-          // Members can see members-only events
-          (isMember() && (('visibility' in resource.data) && resource.data.visibility == 'members')) ||
+          // Only approved members can see members-only events (non-approved users treated like guests)
+          (isMember() && isApprovedUser() && (('visibility' in resource.data) && resource.data.visibility == 'members')) ||
           // Invited users can see private events (handle missing fields)
           (('invitedUserIds' in resource.data) && request.auth.uid in resource.data.invitedUserIds) ||
           // Legacy support: old invitedUsers field
@@ -352,7 +362,7 @@ service cloud.firestore {
       
       // Enhanced create/update/delete permissions
       allow create: if isSignedIn() && 
-        (isMember() || isAdmin()) && 
+        (isAdmin() || (isMember() && isApprovedUser())) && 
         request.auth.uid == request.resource.data.createdBy &&
         validEventData(request.resource.data);
       
@@ -368,7 +378,7 @@ service cloud.firestore {
       match /rsvps/{userId} {
         allow read: if isSignedIn();
         
-        allow create: if (isMember() || isAdmin()) && 
+        allow create: if (isAdmin() || (isMember() && isApprovedUser())) && 
           request.auth.uid == userId && 
           request.resource.data.eventId == eventId &&
           request.resource.data.userId == userId &&
@@ -383,7 +393,7 @@ service cloud.firestore {
              request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds)
           );
         
-        allow update: if (isMember() || isAdmin()) &&
+        allow update: if (isAdmin() || (isMember() && isApprovedUser())) &&
           (request.auth.uid == userId || isAdmin()) &&
           request.resource.data.eventId == eventId &&
           request.resource.data.userId == userId &&
@@ -422,7 +432,7 @@ service cloud.firestore {
           ));
         
         // Users can create attendees for events they have access to
-        allow create: if isSignedIn() && 
+        allow create: if isSignedIn() && isApprovedUser() &&
           validAttendeeData(request.resource.data) &&
           // Skip capacity check for family members (they can exceed capacity)
           // Also skip capacity check for authenticated members creating their own primary attendees (they can go to waitlist)
@@ -466,7 +476,7 @@ service cloud.firestore {
         // TEMPORARY RULE REMOVED - Security vulnerability fixed
         
         // Users can update their own attendees, event creators can update all attendees
-        allow update: if isSignedIn() && (
+        allow update: if isSignedIn() && isApprovedUser() && (
           request.resource.data.userId == request.auth.uid ||
           get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
           isAdmin()
@@ -513,16 +523,16 @@ service cloud.firestore {
     match /challenges/{challengeId} {
       allow read: if true; // public listing for now
       // Restrict creation to admins in production; allow members for beta
-      allow create: if isSignedIn() && (isAdmin() || isMember());
+      allow create: if isSignedIn() && isApprovedUser() && (isAdmin() || isMember());
       allow update, delete: if isAdmin();
 
       // Participants subcollection
       match /participants/{userId} {
         allow read: if true;
-        allow create: if isSignedIn() && request.auth.uid == userId; // join
+        allow create: if isSignedIn() && isApprovedUser() && request.auth.uid == userId; // join
         // Progress updates should be via Cloud Functions; lock direct writes to own doc minimal fields
-        allow update: if isSignedIn() && request.auth.uid == userId;
-        allow delete: if isSignedIn() && request.auth.uid == userId;
+        allow update: if isSignedIn() && isApprovedUser() && request.auth.uid == userId;
+        allow delete: if isSignedIn() && isApprovedUser() && request.auth.uid == userId;
       }
     }
     
@@ -544,10 +554,18 @@ service cloud.firestore {
     
     // --- POSTS ---
     match /posts/{postId} {
-      allow read: if (('isPublic' in resource.data) && resource.data.isPublic == true) || 
-        isMember() || isAdmin();
+      allow read: if 
+        // Admins can see all posts
+        (isSignedIn() && isAdmin()) ||
+        // Authors can see their own posts (even if pending)
+        (isSignedIn() && resource.data.authorId == request.auth.uid) ||
+        // Others can only see approved posts
+        ((!('moderationStatus' in resource.data) || resource.data.moderationStatus == 'approved') &&
+         ((('isPublic' in resource.data) && resource.data.isPublic == true) || 
+          (isSignedIn() && isApprovedUser())));
       
       allow create: if isSignedIn() && 
+        isApprovedUser() &&
         request.auth.uid == request.resource.data.authorId &&
         !isUserBlockedFromRsvp(request.auth.uid);
       
@@ -557,6 +575,7 @@ service cloud.firestore {
       match /likes/{userId} {
         allow read: if true;
         allow create: if isSignedIn() && 
+          isApprovedUser() &&
           request.auth.uid == userId && 
           request.resource.data.keys().hasOnly(['userId','createdAt']) && 
           request.resource.data.userId == userId;
@@ -568,6 +587,7 @@ service cloud.firestore {
       match /comments/{commentId} {
         allow read: if true;
         allow create: if isSignedIn() && 
+          isApprovedUser() &&
           request.auth.uid == request.resource.data.authorId && 
           (isNonEmptyString(request.resource.data.text) || ('mediaUrls' in request.resource.data && request.resource.data.mediaUrls is list)) && 
           (!('text' in request.resource.data) || request.resource.data.text.size() <= 1000) && 
@@ -583,6 +603,7 @@ service cloud.firestore {
         match /likes/{userId} {
           allow read: if true;
           allow create: if isSignedIn() && 
+            isApprovedUser() &&
             request.auth.uid == userId && 
             request.resource.data.keys().hasOnly(['userId','createdAt']) && 
             request.resource.data.userId == userId;
@@ -614,7 +635,7 @@ service cloud.firestore {
         (isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid))
       );
 
-      allow create: if isSignedIn()
+      allow create: if isSignedIn() && isApprovedUser()
         && request.resource.data.keys().hasOnly([
           'userId',
           'displayName',
@@ -698,8 +719,14 @@ service cloud.firestore {
     
     // --- MEDIA ---
     match /media/{mediaId} {
-      allow read: if true; // Anyone can read all media
-      allow create: if isSignedIn() && 
+      allow read: if 
+        // Admins can see all media
+        (isSignedIn() && isAdmin()) ||
+        // Authors can see their own media (even if pending)
+        (isSignedIn() && resource.data.uploadedBy == request.auth.uid) ||
+        // Others can only see approved media
+        (!('moderationStatus' in resource.data) || resource.data.moderationStatus == 'approved');
+      allow create: if isSignedIn() && isApprovedUser() &&
         request.auth.uid == request.resource.data.uploadedBy;
       allow update, delete: if isSignedIn() && 
         (request.auth.uid == resource.data.uploadedBy || isAdmin()) ||
@@ -708,7 +735,7 @@ service cloud.firestore {
       
       match /likes/{userId} {
         allow read: if true;
-        allow create: if isSignedIn() && 
+        allow create: if isSignedIn() && isApprovedUser() &&
           request.auth.uid == userId && 
           request.resource.data.keys().hasOnly(['userId','createdAt']) && 
           request.resource.data.userId == userId;
@@ -719,7 +746,7 @@ service cloud.firestore {
       
       match /comments/{commentId} {
         allow read: if true;
-        allow create: if isSignedIn() && 
+        allow create: if isSignedIn() && isApprovedUser() &&
           request.auth.uid == request.resource.data.authorId && 
           (isNonEmptyString(request.resource.data.text) || ('mediaUrls' in request.resource.data && request.resource.data.mediaUrls is list)) && 
           (!('text' in request.resource.data) || request.resource.data.text.size() <= 1000) && 
@@ -734,7 +761,7 @@ service cloud.firestore {
         // Comment likes subcollection
         match /likes/{userId} {
           allow read: if true;
-          allow create: if isSignedIn() && 
+          allow create: if isSignedIn() && isApprovedUser() &&
             request.auth.uid == userId && 
             request.resource.data.keys().hasOnly(['userId','createdAt']) && 
             request.resource.data.userId == userId;
@@ -746,7 +773,7 @@ service cloud.firestore {
          // Comment reactions subcollection - compound key userId_emoji
          match /reactions/{userId_emoji} {
            allow read: if true;
-           allow create: if isSignedIn() && 
+           allow create: if isSignedIn() && isApprovedUser() &&
              request.auth.uid == request.resource.data.userId && 
              request.resource.data.keys().hasOnly(['userId','emoji','createdAt']) && 
              request.resource.data.userId == request.auth.uid &&
@@ -852,7 +879,7 @@ service cloud.firestore {
       allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
       
       // Users can create payment transactions for their own RSVPs
-      allow create: if isSignedIn() && 
+      allow create: if isSignedIn() && isApprovedUser() &&
         request.auth.uid == request.resource.data.userId &&
         isNonEmptyString(request.resource.data.eventId) &&
         isNonEmptyString(request.resource.data.attendeeId) &&
@@ -867,7 +894,7 @@ service cloud.firestore {
       
       // Users can update their own payment transactions, admins can update any
       allow update: if isSignedIn() && (
-        request.auth.uid == resource.data.userId ||
+        (isApprovedUser() && request.auth.uid == resource.data.userId) ||
         isAdmin()
       );
       
@@ -894,6 +921,7 @@ service cloud.firestore {
       
       // Users can create refund requests for their own payments
       allow create: if isSignedIn() && 
+        isApprovedUser() &&
         request.auth.uid == request.resource.data.userId &&
         isNonEmptyString(request.resource.data.paymentId) &&
         isNonEmptyString(request.resource.data.eventId) &&
@@ -925,6 +953,72 @@ service cloud.firestore {
     // =========================
     match /adminLogs/{logId} {
       allow read, write: if isSignedIn() && isAdmin();
+    }
+    
+    // =========================
+    // Account Approvals: accountApprovals/{approvalId}
+    // =========================
+    match /accountApprovals/{approvalId} {
+      // Users can read their own approval request
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || 
+        isAdmin()
+      );
+      
+      // Users can create their own approval request
+      allow create: if isSignedIn() && 
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      
+      // Update rules: Allow users to update message-related fields, admins can update everything
+      allow update: if isSignedIn() && (
+        // Admins can update all fields including status
+        isAdmin() ||
+        // Users can update message-related fields of their own approval (for Q&A thread)
+        (resource.data.userId == request.auth.uid &&
+         // Cannot change sensitive fields: status, userId, and other approval data
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'userId', 'firstName', 'lastName', 'email', 'phoneNumber', 'location', 'howDidYouHear', 'referredBy', 'submittedAt', 'reviewedAt', 'reviewedBy', 'rejectionReason']) &&
+         // Ensure userId doesn't change
+         request.resource.data.userId == resource.data.userId &&
+         // Ensure status doesn't change
+         request.resource.data.status == resource.data.status)
+      );
+      
+      // Only admins can delete
+      allow delete: if isSignedIn() && isAdmin();
+    }
+    
+    // =========================
+    // Approval Messages: approvalMessages/{messageId}
+    // =========================
+    match /approvalMessages/{messageId} {
+      // Users can read messages for their own approval requests, admins can read all
+      allow read: if isSignedIn() && (
+        (exists(/databases/$(database)/documents/accountApprovals/$(resource.data.approvalId)) &&
+         get(/databases/$(database)/documents/accountApprovals/$(resource.data.approvalId)).data.userId == request.auth.uid) ||
+        isAdmin()
+      );
+      
+      // Users can create messages for their own approval requests, admins for any
+      allow create: if isSignedIn() && (
+        (exists(/databases/$(database)/documents/accountApprovals/$(request.resource.data.approvalId)) &&
+         get(/databases/$(database)/documents/accountApprovals/$(request.resource.data.approvalId)).data.userId == request.auth.uid &&
+         request.resource.data.userId == request.auth.uid &&
+         request.resource.data.senderRole == 'user') ||
+        (isAdmin() && request.resource.data.senderRole == 'admin')
+      );
+      
+      // Users and admins can update read status for their own messages or messages in their approvals
+      allow update: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        (exists(/databases/$(database)/documents/accountApprovals/$(resource.data.approvalId)) &&
+         get(/databases/$(database)/documents/accountApprovals/$(resource.data.approvalId)).data.userId == request.auth.uid) ||
+        isAdmin()
+      ) &&
+      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']);
+      
+      // Only admins can delete messages
+      allow delete: if isSignedIn() && isAdmin();
     }
     
     // --- Default Security: Deny all unknown collections ---

@@ -1,3 +1,5 @@
+export type UserStatus = 'pending' | 'approved' | 'rejected' | 'needs_clarification';
+
 export interface User {
   id: string;
   email: string;
@@ -15,6 +17,14 @@ export interface User {
   membershipExpiresAt?: Date;
   eventHistory?: number; // Number of events attended
   joinDate?: Date;
+  // Account Approval Workflow
+  status?: UserStatus; // Approval status, defaults to 'approved' for existing users
+  approvalRequestedAt?: Date;
+  approvedAt?: Date;
+  approvedBy?: string; // Admin user ID who approved
+  rejectedAt?: Date;
+  rejectedBy?: string; // Admin user ID who rejected
+  rejectionReason?: string;
 }
 
 export interface Event {
@@ -145,6 +155,48 @@ export interface PostAIPrompts {
   tone: string;
   updatedAt: Date;
   updatedBy?: string;
+}
+
+// Account Approval Types
+export type AccountApprovalStatus = 'pending' | 'approved' | 'rejected' | 'needs_clarification';
+
+export interface AccountApproval {
+  id: string;
+  userId: string; // References users/{userId}
+  firstName: string;
+  lastName: string;
+  email: string;
+  phoneNumber: string;
+  location?: string;
+  howDidYouHear?: string;
+  howDidYouHearOther?: string; // If howDidYouHear === 'other'
+  referredBy?: string; // User ID of referring member
+  referralNotes?: string; // Additional notes from user
+  status: AccountApprovalStatus;
+  submittedAt: Date;
+  reviewedAt?: Date;
+  reviewedBy?: string; // Admin user ID
+  rejectionReason?: string;
+  adminNotes?: string; // Internal admin notes
+  awaitingResponseFrom?: 'admin' | 'user' | null; // Track who needs to respond
+  lastMessageAt?: Date; // Last message timestamp
+  unreadCount?: {
+    admin: number; // Unread messages for admin
+    user: number; // Unread messages for user
+  };
+}
+
+export interface ApprovalMessage {
+  id: string;
+  approvalId: string; // References accountApprovals/{approvalId}
+  userId: string; // User who sent the message
+  senderRole: 'admin' | 'user';
+  senderName: string; // Display name of sender
+  message: string; // Message content
+  createdAt: Date;
+  read: boolean; // Whether recipient has read it
+  readAt?: Date;
+  attachments?: string[]; // Optional file attachments (e.g., screenshots, documents)
 }
 
 // Re-export payment types

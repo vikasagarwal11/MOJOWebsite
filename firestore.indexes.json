@@ -719,9 +719,44 @@
       "collectionGroup": "kb_chunks",
       "queryScope": "COLLECTION",
       "fields": [
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 768,
+            "flat": {}
+          }
+        }
+      ]
+    },
+    {
+      "collectionGroup": "kb_chunks",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "embeddingStatus", "order": "ASCENDING" },
         { "fieldPath": "embeddingUpdatedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "accountApprovals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "submittedAt", "order": "DESCENDING" }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "approvalMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "approvalId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ],
+      "density": "SPARSE_ALL"
     }
   ],
   "fieldOverrides": []

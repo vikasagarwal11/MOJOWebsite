@@ -11,7 +11,13 @@ export function useWaitlistPositions(eventId: string, currentUserId?: string) {
   const [waitlistData, setWaitlistData] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!eventId) return;
+    if (!eventId) {
+      // Reset state when eventId is empty (waitlist disabled)
+      setPositions(new Map());
+      setWaitlistData([]);
+      setMyPosition(null);
+      return;
+    }
     
     // Query waitlisted attendees ordered by their stored position
     // Temporarily remove orderBy until Firestore index is built
@@ -25,17 +31,14 @@ export function useWaitlistPositions(eventId: string, currentUserId?: string) {
       const map: PositionsMap = new Map();
       const attendees: any[] = [];
       
-      console.log('🔍 useWaitlistPositions: Fetched', snap.docs.length, 'waitlisted attendees');
+      // Only log in development mode
+      if (import.meta.env.DEV && snap.docs.length > 0) {
+        console.log('🔍 useWaitlistPositions: Fetched', snap.docs.length, 'waitlisted attendees');
+      }
       
       snap.docs.forEach((doc) => {
         const rawData = doc.data();
         const data = sanitizeFirebaseData(rawData);
-        console.log('🔍 Attendee data for user', data.userId, ':', {
-          userId: data.userId,
-          waitlistPosition: data.waitlistPosition,
-          rsvpStatus: data.rsvpStatus,
-          hasPosition: !!data.waitlistPosition
-        });
         
         if (data?.userId && typeof data.userId === 'string' && data?.waitlistPosition && typeof data.waitlistPosition === 'number') {
           // Use stored position from database, not array index
@@ -46,9 +49,6 @@ export function useWaitlistPositions(eventId: string, currentUserId?: string) {
       
       // Sort attendees by waitlist position since we can't use orderBy yet
       attendees.sort((a, b) => (a.waitlistPosition || 0) - (b.waitlistPosition || 0));
-      
-      console.log('🔍 Final waitlist positions map:', map);
-      console.log('🔍 My position for current user', currentUserId, ':', currentUserId ? (map.get(currentUserId) ?? null) : null);
       
       setPositions(map);
       setWaitlistData(attendees);

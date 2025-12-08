@@ -217,6 +217,16 @@ export const syncEventToKnowledgeBase = onDocumentWritten(
     const description = data.description || '';
     const location = data.venueName || data.location || 'See event details';
     const startAt = data.startAt?.toDate?.()?.toISOString?.() ?? data.startAt ?? '';
+    
+    // Build searchable text: include event name, keywords, and description
+    // This helps semantic search match queries like "diwali event" → "MFM Diwali Gala 2025"
+    const eventKeywords = [
+      title, // Event name (most important for search)
+      ...(Array.isArray(data.tags) ? data.tags : []), // Tags as keywords
+      'event', // Always include "event" keyword
+      'upcoming event', // Help match "upcoming events" queries
+    ].filter(Boolean);
+    
     const summaryLines = [
       location ? `Location: ${location}` : '',
       startAt ? `Starts: ${startAt}` : '',
@@ -225,12 +235,18 @@ export const syncEventToKnowledgeBase = onDocumentWritten(
       .filter(Boolean)
       .join(' | ');
 
+    // Combine keywords with description for better semantic matching
+    const enhancedBody = [
+      ...eventKeywords,
+      description,
+    ].filter(Boolean).join(' — ');
+
     await upsertChunks(sourceKey, {
       sourceId: eventId,
       sourceType: 'event',
       title,
       summary: summaryLines,
-      body: description,
+      body: enhancedBody, // Use enhanced body with keywords
       visibility,
       tags: Array.isArray(data.tags) ? data.tags : ['event'],
       url: `/events/${eventId}`,

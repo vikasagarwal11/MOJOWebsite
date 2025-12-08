@@ -16,7 +16,7 @@ import app from '../config/firebase';
 export interface Notification {
   id: string;
   userId: string;
-  type: 'waitlist_promotion' | 'event_reminder' | 'rsvp_confirmation' | 'general';
+  type: 'waitlist_promotion' | 'event_reminder' | 'rsvp_confirmation' | 'general' | 'content_approved' | 'content_rejected';
   title: string;
   message: string;
   eventId?: string;
@@ -136,14 +136,9 @@ class NotificationService {
         }
       });
 
-      // 3. SMS notifications will be handled by Cloud Functions
-      // Mark for SMS notification processing
-      await addDoc(collection(db, 'sms_queue'), {
-        userId: userId,
-        phoneNumber: promotionData.phoneNumber, // You'll need to get this from user data
-        message: `🎉 MOMS FITNESS MOJO: You've been promoted from waitlist! Confirm attendance at "${promotionData.eventTitle}" within 24h.`,
-        createdAt: serverTimestamp()
-      });
+      // 3. SMS notifications are handled by Cloud Functions (sendPromotionNotifications)
+      // This frontend service should NOT queue SMS directly - it's done server-side
+      // to respect user preferences and use the proper queue system
 
       // 4. Mark user for popup alert on next visit
       await this.markForPopupAlert(userId, {
@@ -162,27 +157,45 @@ class NotificationService {
 
   /**
    * Send browser push notification via FCM
+   * Checks user preferences before sending
    */
   private async sendBrowserPushNotification(userId: string, payload: any): Promise<void> {
     try {
-      const messaging = getMessaging(app);
-      const fcmToken = await this.getUserFCMToken(userId);
-      
-      if (fcmToken) {
-        // Add to push notification queue for Cloud Functions to process
-        await addDoc(collection(db, 'push_notification_queue'), {
-          userId: userId,
-          fcmToken: fcmToken,
-          title: payload.title,
-          body: payload.body,
-          data: payload.data || {},
-          createdAt: serverTimestamp()
-        });
-        
-        console.log('✅ Browser push queued for', userId);
-      } else {
-        console.log('ℹ️ No FCM token for user', userId);
+      // Check if push notifications are enabled for this user
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (!userDoc.exists()) {
+        console.log('ℹ️ User not found for push notification:', userId);
+        return;
       }
+
+      const userData = userDoc.data();
+      const fcmToken = userData?.fcmToken;
+      const pushEnabled = userData?.notificationPreferences?.pushEnabled !== false; // Default to true if not set
+      
+      // Check if push is enabled
+      if (!pushEnabled) {
+        console.log('ℹ️ Push notifications disabled for user:', userId);
+        return;
+      }
+
+      if (!fcmToken) {
+        console.log('ℹ️ No FCM token for user', userId);
+        return;
+      }
+
+      const messaging = getMessaging(app);
+      
+      // Add to push notification queue for Cloud Functions to process
+      await addDoc(collection(db, 'push_notification_queue'), {
+        userId: userId,
+        fcmToken: fcmToken,
+        title: payload.title,
+        body: payload.body,
+        data: payload.data || {},
+        createdAt: serverTimestamp()
+      });
+      
+      console.log('✅ Browser push queued for', userId);
     } catch (error) {
       console.error('❌ Error queuing browser push:', error);
     }
