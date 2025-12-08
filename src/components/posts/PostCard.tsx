@@ -21,6 +21,8 @@ import toast from 'react-hot-toast';
 import CommentSection from '../common/CommentSection';
 import AdminPostDeletionModal from './AdminPostDeletionModal';
 import { createPortal } from 'react-dom';
+import { isUserApproved } from '../../utils/userUtils';
+import { Lock } from 'lucide-react';
 
 interface PostCardProps {
   post: Post;
@@ -78,6 +80,10 @@ const PostCard: React.FC<PostCardProps> = ({ post, onPostDeleted }) => {
 
   const handleLike = async () => {
     if (!currentUser) return;
+    if (!isUserApproved(currentUser)) {
+      toast.error('Your account is pending approval. You can browse posts but cannot like yet.');
+      return;
+    }
     try {
       const likeRef = doc(db, 'posts', post.id, 'likes', currentUser.id);
       if (isLiked) {
@@ -159,11 +165,21 @@ const PostCard: React.FC<PostCardProps> = ({ post, onPostDeleted }) => {
           <div className="flex items-center space-x-6">
             <button
               onClick={handleLike}
+              disabled={!currentUser || !isUserApproved(currentUser)}
+              title={currentUser && !isUserApproved(currentUser) ? 'Account pending approval - cannot like yet' : undefined}
               className={`flex items-center space-x-2 transition-colors ${
-                isLiked ? 'text-red-500' : 'text-gray-500 hover:text-red-500'
+                !currentUser || !isUserApproved(currentUser)
+                  ? 'text-gray-300 cursor-not-allowed opacity-50'
+                  : isLiked
+                  ? 'text-red-500'
+                  : 'text-gray-500 hover:text-red-500'
               }`}
             >
-              <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
+              {currentUser && !isUserApproved(currentUser) ? (
+                <Lock className="w-5 h-5" />
+              ) : (
+                <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
+              )}
               <span className="text-sm font-medium">{likesCount}</span>
             </button>
 

@@ -42,7 +42,8 @@
     },
     "momsfitnessmojo-65d00": {
       "extensionInstances": {
-        "storage-resize-images": "a0a17c8bd34242c651c9625a8314fce734b4838b68ea2a3ed85406ef6d4acbd0"
+        "firestore-vector-search": "a4ef0384fca22acb8789ddedf1351c57c08356b608d607d5f01f732891c163a5",
+        "storage-resize-images": "9abf6412e9d2284f6ea31ea42ef45a7b75fa3e6d23b2c55dddaf53cfaa60a06a"
       }
     }
   }

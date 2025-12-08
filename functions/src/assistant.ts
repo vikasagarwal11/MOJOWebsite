@@ -85,13 +85,15 @@ Your primary role is to answer questions using the provided Knowledge Base (KB) 
 IMPORTANT - Use the KB context effectively:
 1. Brand name variations are equivalent:
    - "MFM" = "Moms Fitness Mojo" = "Moms Fitness Mojo (MFM)"
-   - "Aina Rai" = "Aina" (the founder)
-   - Use context even if the question uses abbreviations or variations
+   - "Aina Rai" = "Aina" = "Anina Rai" = "Anina" (the founder - handle common typos)
+   - "the community" = "this community" = "the group" = "Moms Fitness Mojo" (when context is clear)
+   - Use context even if the question uses abbreviations, variations, or typos
 
 2. Be flexible with wording:
    - If the context contains relevant information (even if worded differently), use it
    - Paraphrase and synthesize information from multiple context sources
    - Connect related concepts from the KB to answer the question
+   - Questions about "founder" or "who started this community" refer to Aina Rai and Moms Fitness Mojo
 
 3. Use ALL available context:
    - Read through all provided context chunks
@@ -111,8 +113,21 @@ When answering from KB context:
 
 Tone: encouraging, knowledgeable, moms-fitness oriented.`;
 
-// Default prompt for general knowledge answers
+// Default prompt for general knowledge answers (ONLY used when KB search fails)
 const DEFAULT_GENERAL_KNOWLEDGE_PROMPT = `You are Moms Fitness Mojo Assistant, a friendly and factual guide for a fitness community of moms.
+
+IMPORTANT: This prompt is ONLY used when the Knowledge Base (KB) search did NOT find relevant information. 
+If KB had found information, you would be using that instead.
+
+CRITICAL - DO NOT HALLUCINATE: Since KB search failed, you do NOT have access to specific information about:
+- The founder of Moms Fitness Mojo (NEVER make up names - if you don't know, say "I don't have access to that information")
+- Specific events, dates, or community details
+- Member information or community history
+- Any specific facts about the Moms Fitness Mojo community
+
+If asked about these topics, you MUST respond with: "I don't have access to that specific information. Please check the community platform or ask an admin for details."
+
+NEVER invent names, dates, or facts. If you don't know something, say you don't have access to it.
 
 When answering questions using general knowledge, focus exclusively on:
 - Lifestyle, fitness, and general health topics
@@ -127,6 +142,7 @@ Do NOT answer questions about:
 - Specific medical conditions (refer to healthcare professionals)
 - Legal or financial advice
 - Topics unrelated to fitness, wellness, or lifestyle
+- Specific information about Moms Fitness Mojo (founder, events, members, etc.) - say you don't have access (because KB search failed to find this information)
 
 Keep answers encouraging, knowledgeable, and aligned with women-focused community fitness.
 If a question falls outside your scope, politely redirect to fitness/wellness topics or suggest consulting a professional.
@@ -190,20 +206,51 @@ function detectAppDataIntent(question: string): AppDataIntent {
 }
 
 // Helper: Check if question mentions brand (MFM-specific)
-// Only check for stable brand identifiers - event names and generic terms are handled elsewhere
-// This is the PRIMARY filter: non-brand questions skip KB entirely and go to general knowledge
+// Used for threshold tuning only - KB-first strategy means all questions try KB first
+// Brand detection adjusts similarity thresholds (more lenient for brand questions)
 function isBrandQuestion(question: string): boolean {
   const q = question.toLowerCase().trim();
   
   // REQUIRED: Must have explicit brand mention (moms fitness mojo, mfm, aina rai, aina)
-  const explicitBrandPattern = /\b(moms fitness mojo|mfm|aina rai|aina)\b/;
+  // Also handle common typos: "anina" -> "aina"
+  const explicitBrandPattern = /\b(moms fitness mojo|mfm|aina rai|aina|anina rai|anina)\b/;
   const hasExplicitBrand = explicitBrandPattern.test(q);
   
-  // If no explicit brand mention, definitely not a brand question
+  // Brand context keywords that indicate brand questions even without explicit brand mention
+  // These are strong indicators of questions about the community/app itself
+  const strongBrandContextPatterns = [
+    // Founder questions (very specific to this app) - more flexible patterns
+    /\b(who is|who's|who was|tell me about|what is).*\bfounder\b/,
+    /\bfounder\b.*\b(who|what|this|the|community|group|app|website)\b/,
+    /\b(who|what).*\bfounder\b/,  // Simple: "who founder" or "what founder"
+    // Community-specific questions
+    /\b(this|the) (community|group|app|website|organization)\b.*\b(founder|mission|values|story|history|begin|start|created|founded|for|about|purpose|goal)\b/,
+    /\b(founder|mission|values|story|history|begin|start|created|founded|for|about|purpose|goal).*\b(this|the) (community|group|app|website|organization)\b/,
+    // Questions about what the group/community does
+    /\bwhat (is|does|are|do|did|will).*\b(this|the) (group|community|app|organization)\b/,
+    /\b(this|the) (group|community|app|organization).*\b(for|about|do|does|did|will)\b/,
+    // Questions about events (upcoming/past)
+    /\b(upcoming|past|future|previous|recent|next).*\b(event|events|activity|activities|meeting|meetings)\b/,
+    /\b(event|events|activity|activities).*\b(upcoming|past|future|previous|recent|next|when|where)\b/,
+    // Questions about activities/what they do
+    /\bwhat (do|does|did|will).*\b(they|this|the group|the community)\b/,
+    /\b(they|this|the group|the community).*\b(do|does|did|will|offer|provide)\b/,
+  ];
+  
+  // Check for strong brand context (founder/community questions)
+  const hasStrongBrandContext = strongBrandContextPatterns.some(pattern => pattern.test(q));
+  
+  // If we have strong brand context (founder/community questions), treat as brand question
+  if (hasStrongBrandContext) {
+    console.log(`[assistant.isBrandQuestion] Question: "${question}"`);
+    console.log(`[assistant.isBrandQuestion] - Has strong brand context (founder/community): true`);
+    console.log(`[assistant.isBrandQuestion] - Result: BRAND (strong context)`);
+    return true;
+  }
+  
+  // If no explicit brand mention and no strong context, not a brand question
   if (!hasExplicitBrand) {
-    // Exception: "core values" + context might be brand, but too risky - require explicit brand
-    // "who is the founder" alone without brand is NOT a brand question
-    console.log(`[assistant.isBrandQuestion] ❌ NON-BRAND QUESTION - no explicit brand mention`);
+    console.log(`[assistant.isBrandQuestion] NON-BRAND QUESTION - no explicit brand mention or strong context`);
     return false;
   }
   
@@ -235,14 +282,17 @@ function isBrandQuestion(question: string): boolean {
   console.log(`[assistant.isBrandQuestion] Question: "${question}"`);
   console.log(`[assistant.isBrandQuestion] - Has explicit brand: ${hasExplicitBrand}`);
   console.log(`[assistant.isBrandQuestion] - Has brand context: ${hasBrandContext}`);
-  console.log(`[assistant.isBrandQuestion] - Result: ${isBrand ? '✅ BRAND' : '❌ NON-BRAND'}`);
+  console.log(`[assistant.isBrandQuestion] - Result: ${isBrand ? 'BRAND' : 'NON-BRAND'}`);
   
   return isBrand;
 }
 
-const DEFAULT_SIMILARITY_THRESHOLD = 0.22;
-const BRAND_KB_THRESHOLD = 0.4; // More lenient for brand-specific questions
-const GENERIC_KB_THRESHOLD = 0.22; // Keep strict for generic (but they shouldn't reach KB anyway)
+// 🔥 Semantic Search Thresholds for KB retrieval
+// Using cosine distance: lower = more similar, higher = less similar
+// For semantic search, we use more lenient thresholds - embeddings handle semantic similarity naturally
+const DEFAULT_SIMILARITY_THRESHOLD = 0.40; // More lenient for semantic matching (was 0.35)
+const GENERIC_KB_THRESHOLD = 0.40; // Lenient threshold for semantic search (was 0.35)
+const MAX_IRRELEVANCE_THRESHOLD = 0.70; // Max distance before skipping (more lenient, was 0.65)
 
 // Helper: Extract distance from Firestore vector search result
 // Tries multiple methods to handle SDK variations
@@ -401,7 +451,7 @@ async function answerQuestion(question: string, context: string, profileSummary:
         console.log('[assistant.answerQuestion] Trying Gemini model:', m);
         result = await gen(m);
         lastErr = null;
-        console.log('[assistant.answerQuestion] ✅ Success with Gemini model:', m);
+        console.log('[assistant.answerQuestion] Success with Gemini model:', m);
         const answer = result.response?.text()?.trim();
         if (answer) {
           // For general knowledge answers, ensure citation marker is present
@@ -425,7 +475,7 @@ async function answerQuestion(question: string, context: string, profileSummary:
     
     // If we got here, all Gemini models failed
     if (lastErr) {
-      console.warn('[assistant.answerQuestion] ⚠️ All Gemini models failed, falling back to OpenAI');
+      console.warn('[assistant.answerQuestion] All Gemini models failed, falling back to OpenAI');
     }
   } else {
     console.log('[assistant.answerQuestion] Gemini not configured, trying OpenAI');
@@ -488,7 +538,7 @@ async function answerQuestion(question: string, context: string, profileSummary:
 
         const answer = completion.choices[0]?.message?.content?.trim();
         if (answer) {
-          console.log('[assistant.answerQuestion] ✅ Success with OpenAI model:', model);
+          console.log('[assistant.answerQuestion] Success with OpenAI model:', model);
           // For general knowledge answers, ensure citation marker is present
           if (allowGeneralKnowledge && !hasContext && !answer.includes('[#1]')) {
             return `${answer} [#1]`;
@@ -510,7 +560,7 @@ async function answerQuestion(question: string, context: string, profileSummary:
       }
     }
   } catch (error: any) {
-    console.error('[assistant.answerQuestion] ❌ OpenAI fallback failed:', error?.message);
+    console.error('[assistant.answerQuestion] OpenAI fallback failed:', error?.message);
     throw new Error(`Failed to generate answer with both Gemini and OpenAI: ${error?.message || 'Unknown error'}`);
   }
 
@@ -1040,7 +1090,7 @@ async function handleMessageQuestion(
           messages: FieldValue.arrayUnion(transcriptEntry),
         },
         { merge: true }
-      );
+    );
 
       return {
         answer,
@@ -1106,7 +1156,7 @@ async function handleMessageQuestion(
 export const chatAsk = onCall(
   { region: 'us-central1', timeoutSeconds: 60, memory: '1GiB' },
   async request => {
-    console.log('=== chatAsk v2.3: Added Conversation Context + Fixed KB Routing ===');
+    console.log('=== chatAsk v2.5: KB Confidence Fix (Simplified Logic) ===');
     try {
       const data = request.data as AssistantRequest;
       const question = (data?.question || '').toString().trim();
@@ -1137,108 +1187,12 @@ export const chatAsk = onCall(
         console.log(`[assistant.chatAsk] Including conversation history (${(data.history || []).length} total messages, using last 5)`);
       }
 
-      // Phase 1: App Data Layer - Check for events/posts/testimonials/messages queries first
-      const appDataIntent = detectAppDataIntent(question);
-      console.log(`[assistant.chatAsk] App data intent: ${appDataIntent}`);
-
-      if (appDataIntent === 'event') {
-        return await handleEventQuestion(question, allowedVisibility, sessionId, uid ?? null);
-      }
-
-      if (appDataIntent === 'post') {
-        return await handlePostQuestion(question, allowedVisibility, sessionId, uid ?? null);
-      }
-
-      if (appDataIntent === 'testimonial') {
-        return await handleTestimonialQuestion(question, allowedVisibility, sessionId, uid ?? null);
-      }
-
-      if (appDataIntent === 'message') {
-        return await handleMessageQuestion(question, allowedVisibility, sessionId, uid ?? null);
-      }
-
-      // Phase 2: Brand vs General Question Classification
-      // CRITICAL: Non-brand questions skip KB entirely to prevent generic questions from hitting KB
-      const brandQuestion = isBrandQuestion(question);
-      console.log(`[assistant.chatAsk] Question: "${question}" -> Brand question: ${brandQuestion}`);
+      // Phase 1: KB-First Strategy - Use semantic search for ALL questions
+      // This is the true AI approach: embeddings handle semantic similarity naturally
+      // Events, posts, founder questions, etc. are all in KB and will be found semantically
+      console.log('[assistant.chatAsk] KB-First Strategy: Searching KB for all questions (semantic search)');
       
-      // SAFETY CHECK: Ensure non-brand questions NEVER reach KB search
-      if (!brandQuestion) {
-        console.log('[assistant.chatAsk] ⚠️⚠️⚠️ NON-BRAND QUESTION DETECTED - FORCING GENERAL KNOWLEDGE PATH ⚠️⚠️⚠️');
-        console.log('[assistant.chatAsk] Question does not mention brand - SKIPPING KB ENTIRELY');
-        console.log('[assistant.chatAsk] Will use general knowledge directly - NO KB SEARCH WILL HAPPEN');
-        
-        const profileSummary = userProfile
-          ? [
-              userProfile.environment ? `Prefers ${userProfile.environment} workouts.` : '',
-              userProfile.equipment?.length ? `Has equipment: ${userProfile.equipment.join(', ')}.` : '',
-              userProfile.restrictions ? `Restrictions: ${JSON.stringify(userProfile.restrictions)}.` : '',
-            ]
-              .filter(Boolean)
-              .join(' ')
-          : '';
-        
-        console.log('[assistant.chatAsk] Calling answerQuestion with allowGeneralKnowledge=true, NO context');
-        const answer = await answerQuestion(question, '', profileSummary, true, conversationHistory);
-        console.log('[assistant.chatAsk] General knowledge answer received, length:', answer?.length || 0);
-        
-        const sessionRef = db.collection('chat_sessions').doc(sessionId);
-        const now = FieldValue.serverTimestamp();
-        const messageTimestamp = Timestamp.now();
-        const transcriptEntry = {
-          question,
-          answer,
-          createdAt: messageTimestamp,
-          userId: uid ?? null,
-          metadata: {
-            profile: userProfile,
-            allowedVisibility,
-            source: 'general_knowledge',
-          },
-        };
-
-        await sessionRef.set(
-          {
-            sessionId,
-            userId: uid ?? null,
-            updatedAt: now,
-            createdAt: FieldValue.serverTimestamp(),
-            messages: FieldValue.arrayUnion(transcriptEntry),
-          },
-          { merge: true }
-        );
-
-        const generalKnowledgeCitation = {
-          id: 'general_knowledge',
-          title: 'General Knowledge',
-          url: null,
-          sourceType: 'general_knowledge',
-          distance: undefined,
-          snippet: 'Answer provided from general knowledge about fitness, wellness, and lifestyle topics.',
-        };
-
-        console.log('[assistant.chatAsk] ✅✅✅ RETURNING GENERAL KNOWLEDGE - NO KB CITATIONS ✅✅✅');
-        console.log('[assistant.chatAsk] Answer length:', answer?.length || 0);
-        console.log('[assistant.chatAsk] Citations count:', 1, 'Type: general_knowledge');
-        
-        const response = {
-          answer,
-          sessionId,
-          citations: [generalKnowledgeCitation],
-          rawSources: [],
-        } satisfies AssistantResponse;
-        
-        console.log('[assistant.chatAsk] Response prepared - about to return (should have 1 general_knowledge citation)');
-        return response;
-      }
-
-      // Phase 3: Brand-specific question ONLY reaches here if isBrandQuestion returned TRUE
-      // If you see KB results for a non-brand question, this means isBrandQuestion incorrectly returned true
-      console.log('[assistant.chatAsk] ⚠️⚠️⚠️ BRAND QUESTION DETECTED - Proceeding to KB search ⚠️⚠️⚠️');
-      console.log('[assistant.chatAsk] This question mentions the brand - will search KB');
-      
-      // Phase 3: Brand-specific question - Try KB search
-      // Try to get embeddings for KB search, but continue even if it fails (will use general knowledge)
+      // KB search - Try KB search for all questions (semantic search handles variations)
       let embedding: number[] | null = null;
       try {
         embedding = await embedText(question);
@@ -1249,6 +1203,8 @@ export const chatAsk = onCall(
 
       // Only perform KB search if we have embeddings
       let docs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+      let bestDistance: number | undefined;
+      
       if (embedding) {
         let chunksQuery = db.collection('kb_chunks') as FirebaseFirestore.Query;
         if (filterVisibilityServerSide) {
@@ -1274,23 +1230,21 @@ export const chatAsk = onCall(
           });
           console.log('[assistant.chatAsk] visible docs after filter:', docs.length);
 
-          // Dynamic threshold: lenient for brand questions, strict for generic
-          // Brand questions get 0.4 threshold (more lenient) since KB is focused on MFM content
-          // Generic questions get 0.22 (strict) but shouldn't reach KB anyway due to brand detection
+          // Dynamic threshold: Use configurable threshold (semantic search handles relevance)
           const config = await getAssistantConfig();
           const baseThreshold = config.similarityThreshold ?? DEFAULT_SIMILARITY_THRESHOLD;
-          const SIMILARITY_THRESHOLD = brandQuestion 
-            ? Math.max(baseThreshold, BRAND_KB_THRESHOLD) // Use 0.4 for brand, or config if higher
-            : GENERIC_KB_THRESHOLD; // Use 0.22 for generic
+          // Use a balanced threshold - semantic search will naturally find relevant content
+          // Events, posts, founder info, etc. are all in KB and will match semantically
+          const SIMILARITY_THRESHOLD = Math.max(baseThreshold, GENERIC_KB_THRESHOLD); // 0.35 default
           
-          console.log(`[assistant.chatAsk] Using similarity threshold: ${SIMILARITY_THRESHOLD} (brand question: ${brandQuestion})`);
+          console.log(`[assistant.chatAsk] Using similarity threshold: ${SIMILARITY_THRESHOLD} (semantic search)`);
           
           // Extract distances using robust helper function
           const allDistances = docs
             .map(d => getVectorDistance(d))
             .filter((d): d is number => d !== undefined);
           
-          const bestDistance = allDistances.length > 0 
+          bestDistance = allDistances.length > 0 
             ? Math.min(...allDistances)
             : undefined;
           
@@ -1300,87 +1254,72 @@ export const chatAsk = onCall(
             return dist !== undefined && dist < SIMILARITY_THRESHOLD;
           });
           
-          const minMatchesForBrand = 1; // Brand questions only need 1 good match
-          const isConfidentMatch = goodMatches.length >= minMatchesForBrand && bestDistance !== undefined && bestDistance < SIMILARITY_THRESHOLD;
+          const minMatches = 1; // Need at least 1 good match for confident match
           
-          // Safety net: if brand question has docs but distances are missing, use KB anyway
-          // This prevents silent fallback to general knowledge due to extraction issues
-          const hasDocsButNoDistances = brandQuestion && docs.length > 0 && allDistances.length === 0;
-          // For brand questions, be very lenient - use KB even with distances up to 0.7
-          // This ensures brand questions get KB answers even if embeddings aren't perfect
-          const BRAND_SAFETY_NET_THRESHOLD = 0.7; // More lenient than 0.5 for brand questions
-          
-          // Log basic info
-          console.log(`[assistant.chatAsk] BRAND QUESTION: "${question}"`);
+          // Log results for debugging
+          console.log(`[assistant.chatAsk] KB Search Results: "${question}"`);
           console.log(`[assistant.chatAsk] - Best Distance: ${bestDistance?.toFixed(3) ?? 'N/A'}`);
-          console.log(`[assistant.chatAsk] - Good Matches: ${goodMatches.length}`);
+          console.log(`[assistant.chatAsk] - Good Matches (dist < ${SIMILARITY_THRESHOLD.toFixed(2)}): ${goodMatches.length}`);
           console.log(`[assistant.chatAsk] - All Distances Found: ${allDistances.length}/${docs.length}`);
-          console.log(`[assistant.chatAsk] - Confident: ${isConfidentMatch}`);
-          
-          // Log top distances for debugging
-          if (allDistances.length > 0) {
-            const topDistances = allDistances.slice(0, 5);
-            console.log('[assistant.chatAsk] Top 5 distances:', topDistances);
-          }
-          
-          // Safety net logging
-          if (hasDocsButNoDistances) {
-            console.warn('[assistant.chatAsk] ⚠️ Brand question + docs present but no distances extracted; using KB as fallback');
-          }
 
-          // SIMPLIFIED APPROACH: For brand questions, use KB if we have results and distance < 0.7
-          // For non-brand questions, only use KB if confident match
-          let shouldUseKB: boolean;
+          // 🔥 Semantic Search Decision Logic - More lenient for true AI approach
+          // If we have docs and a reasonable distance, use KB (let LLM decide relevance)
+          let shouldUseKB = false;
           
-          if (brandQuestion) {
-            // Brand questions: Use KB if we have docs AND (confident match OR distance < 0.7)
-            // This ensures brand questions get KB answers even with imperfect embeddings
-            shouldUseKB = docs.length > 0 && (
-              isConfidentMatch || 
-              (bestDistance !== undefined && bestDistance < BRAND_SAFETY_NET_THRESHOLD) ||
-              hasDocsButNoDistances
-            );
-            
-            console.log(`[assistant.chatAsk] 🎯 Brand Question Decision:`);
-            console.log(`[assistant.chatAsk]   - docs.length: ${docs.length}`);
-            console.log(`[assistant.chatAsk]   - isConfidentMatch: ${isConfidentMatch}`);
-            console.log(`[assistant.chatAsk]   - bestDistance: ${bestDistance?.toFixed(3) ?? 'N/A'}`);
-            console.log(`[assistant.chatAsk]   - bestDistance < ${BRAND_SAFETY_NET_THRESHOLD}: ${bestDistance !== undefined ? (bestDistance < BRAND_SAFETY_NET_THRESHOLD) : 'N/A'}`);
-            console.log(`[assistant.chatAsk]   - hasDocsButNoDistances: ${hasDocsButNoDistances}`);
-            console.log(`[assistant.chatAsk]   - shouldUseKB: ${shouldUseKB}`);
+          if (docs.length === 0) {
+              // Case 1: No KB docs found - skip KB entirely
+              console.log('[assistant.chatAsk] KB Decision: No documents found.');
+          } else if (allDistances.length === 0) {
+              // Case 2: Safety Net - Docs exist but distances are missing (e.g., indexing error).
+              // We use KB to prevent silent fallback to general LLM.
+              shouldUseKB = true;
+              console.warn('[assistant.chatAsk] KB Decision: WARNING - No distances found, using KB as safety net.');
+          } else if (bestDistance !== undefined && bestDistance >= MAX_IRRELEVANCE_THRESHOLD) {
+              // Case 3: Irrelevance - Best match is too far away (distance >= 0.70).
+              // Only skip if truly irrelevant
+              console.log(`[assistant.chatAsk] KB Decision: Best match too poor (distance: ${bestDistance.toFixed(3)} >= ${MAX_IRRELEVANCE_THRESHOLD}). Skipping KB.`);
           } else {
-            // Non-brand questions: Only use KB if confident match
-            shouldUseKB = isConfidentMatch;
+              // Case 4: Use KB if distance is reasonable (< 0.70)
+              // This is the semantic approach: if embeddings found relevant content, use it
+              // The LLM will filter out irrelevant content from the context
+              shouldUseKB = true;
+              if (goodMatches.length >= minMatches) {
+                  console.log(`[assistant.chatAsk] KB Decision: Using KB with confident matches (Best distance: ${bestDistance?.toFixed(3)}, ${goodMatches.length} good matches).`);
+              } else {
+                  console.log(`[assistant.chatAsk] KB Decision: Using KB with reasonable match (Best distance: ${bestDistance?.toFixed(3)} < ${MAX_IRRELEVANCE_THRESHOLD}, letting LLM filter context).`);
+              }
           }
           
-          if (!docs.length) {
-            console.log('[assistant.chatAsk] No KB results found - using general knowledge fallback');
-            docs = []; // Clear docs to trigger general knowledge fallback below
-          } else if (!shouldUseKB) {
-            // Log why we're not using KB
-            const reason = !bestDistance 
-              ? 'Distance not available from vector search - this might be an indexing issue'
-              : bestDistance >= BRAND_SAFETY_NET_THRESHOLD
-                ? `KB results too poor for brand question (distance: ${bestDistance.toFixed(3)}, max allowed: ${BRAND_SAFETY_NET_THRESHOLD})`
-                : bestDistance >= SIMILARITY_THRESHOLD
-                  ? `KB results not confident enough (distance: ${bestDistance.toFixed(3)}, threshold: ${SIMILARITY_THRESHOLD})`
-                  : `Not enough good matches found (${goodMatches.length} match(es), need at least ${minMatchesForBrand})`;
-            console.log('[assistant.chatAsk]', reason);
-            console.log('[assistant.chatAsk] - using general knowledge fallback');
-            docs = []; // Clear docs to trigger general knowledge fallback below
-          } else {
-            // We should use KB - log confirmation
-            if (brandQuestion && !isConfidentMatch && bestDistance !== undefined && bestDistance < BRAND_SAFETY_NET_THRESHOLD) {
-              console.log(`[assistant.chatAsk] ✅ Using KB for brand question (safety net: distance ${bestDistance.toFixed(3)} < ${BRAND_SAFETY_NET_THRESHOLD})`);
-            } else if (isConfidentMatch) {
-              console.log('[assistant.chatAsk] ✅ Using KB with confident match');
-            } else if (hasDocsButNoDistances) {
-              console.log('[assistant.chatAsk] ✅ Using KB as safety net (docs exist but distances missing)');
-            }
+          if (!shouldUseKB) {
+            // Clear docs to explicitly signal to the rest of the function that we are falling back.
+            docs = []; 
           }
+          
         } catch (error: any) {
           console.warn('[assistant.chatAsk] KB search failed, using general knowledge fallback:', error?.message);
           docs = []; // Clear docs to trigger general knowledge fallback
+        }
+      }
+
+      // 🔥 FALLBACK: If KB didn't find good matches, check if it's a structured query (events/posts)
+      // This provides structured lists for events/posts while keeping KB-first for everything else
+      if (docs.length === 0) {
+        const appDataIntent = detectAppDataIntent(question);
+        console.log(`[assistant.chatAsk] KB found no matches, checking app data intent: ${appDataIntent}`);
+        
+        if (appDataIntent === 'event') {
+          console.log('[assistant.chatAsk] Using live event query as fallback (KB found no matches)');
+          return await handleEventQuestion(question, allowedVisibility, sessionId, uid ?? null);
+        }
+        
+        if (appDataIntent === 'post') {
+          console.log('[assistant.chatAsk] Using live post query as fallback (KB found no matches)');
+          return await handlePostQuestion(question, allowedVisibility, sessionId, uid ?? null);
+        }
+        
+        if (appDataIntent === 'testimonial') {
+          console.log('[assistant.chatAsk] Using live testimonial query as fallback (KB found no matches)');
+          return await handleTestimonialQuestion(question, allowedVisibility, sessionId, uid ?? null);
         }
       }
 
@@ -1442,8 +1381,8 @@ export const chatAsk = onCall(
         }
 
         if (isNoKbAnswer) {
-          console.log('[assistant.chatAsk] ⚠️ NO_KB_ANSWER detected - KB context insufficient, falling back to general knowledge');
-          console.log('[assistant.chatAsk] This is a BRAND question but KB cannot answer it');
+          console.log('[assistant.chatAsk] NO_KB_ANSWER detected - KB context insufficient, falling back to general knowledge');
+          console.log('[assistant.chatAsk] KB search found docs but cannot answer this question');
           
           // Log KB gap for admin review
           try {
@@ -1465,7 +1404,7 @@ export const chatAsk = onCall(
             // Don't fail the request if gap logging fails
           }
           
-          // Fallback to general knowledge for brand questions that KB can't answer
+          // Fallback to general knowledge when KB can't answer (NO_KB_ANSWER detected)
           // IMPORTANT: Return general knowledge citation, NOT KB citations
           const fallbackAnswer = await answerQuestion(question, '', profileSummary, true, conversationHistory);
           
@@ -1497,22 +1436,13 @@ export const chatAsk = onCall(
             { merge: true }
           );
           
-          // Return general knowledge citation, NOT KB citations
-          const generalKnowledgeCitation = {
-            id: 'general_knowledge',
-            title: 'General Knowledge',
-            url: null,
-            sourceType: 'general_knowledge',
-            distance: undefined,
-            snippet: 'Answer provided from general knowledge about fitness, wellness, and lifestyle topics.',
-          };
-          
-          console.log('[assistant.chatAsk] ✅ Returning general knowledge answer with general knowledge citation (NOT KB citations)');
+          // Return NO citations for general knowledge (source hygiene - only cite KB docs actually used)
+          console.log('[assistant.chatAsk] Returning general knowledge answer with NO citations (source hygiene)');
           
           return {
             answer: fallbackAnswer,
             sessionId,
-            citations: [generalKnowledgeCitation],
+            citations: [], // No citations for general knowledge - only cite KB docs actually used
             rawSources: [],
           } satisfies AssistantResponse;
         }
@@ -1608,20 +1538,11 @@ export const chatAsk = onCall(
         { merge: true }
       );
 
-      // Include a citation for general knowledge answers
-      const generalKnowledgeCitation = {
-        id: 'general_knowledge',
-        title: 'General Knowledge',
-        url: null,
-        sourceType: 'general_knowledge',
-        distance: undefined,
-        snippet: 'Answer provided from general knowledge about fitness, wellness, and lifestyle topics.',
-      };
-
+      // Return NO citations for general knowledge (source hygiene - only cite KB docs actually used)
       return {
         answer,
         sessionId,
-        citations: [generalKnowledgeCitation], // Show citation for general knowledge answers
+        citations: [], // No citations for general knowledge - only cite KB docs actually used
         rawSources: [],
       } satisfies AssistantResponse;
     } catch (error: any) {
@@ -1737,4 +1658,3 @@ export const synthesizeSpeech = onCall(
     }
   }
 );
-

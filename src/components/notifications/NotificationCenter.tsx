@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, limit, writeBatch } from 'firebase/firestore';
 import { db } from '../../config/firebase';
-import { Bell, Check, X } from 'lucide-react';
+import { Bell, X } from 'lucide-react';
 
 interface Notification {
   id: string;
   userId: string;
-  type: 'waitlist_promotion' | 'event_reminder' | 'rsvp_confirmation' | 'general';
+  type: 'waitlist_promotion' | 'event_reminder' | 'rsvp_confirmation' | 'general' | 'account_approval_request' | 'account_approved' | 'approval_question' | 'approval_response';
   title: string;
   message: string;
   eventId?: string;
@@ -25,6 +25,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ userId, onNavig
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const NOTIFICATION_LIMIT = 50; // Limit to most recent 50 notifications for performance
 
   useEffect(() => {
     if (!userId) return;
@@ -33,7 +34,8 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ userId, onNavig
       query(
         collection(db, 'notifications'),
         where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
+        orderBy('createdAt', 'desc'),
+        limit(NOTIFICATION_LIMIT) // Add pagination limit
       ),
       (snapshot) => {
         const updatedNotifications = snapshot.docs.map(doc => ({
@@ -42,6 +44,10 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ userId, onNavig
         })) as Notification[];
         
         setNotifications(updatedNotifications);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error loading notifications:', error);
         setLoading(false);
       }
     );
@@ -65,14 +71,31 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ userId, onNavig
   const markAllAsRead = async () => {
     try {
       const unreadNotifications = notifications.filter(n => !n.read);
-      const promises = unreadNotifications.map(notification =>
-        updateDoc(doc(db, 'notifications', notification.id), {
+      
+      if (unreadNotifications.length === 0) return;
+      
+      // Use Firestore batch writes (max 500 operations per batch)
+      const batch = writeBatch(db);
+      const BATCH_SIZE = 500; // Firestore batch limit
+      
+      for (let i = 0; i < unreadNotifications.length && i < BATCH_SIZE; i++) {
+        const notification = unreadNotifications[i];
+        const notificationRef = doc(db, 'notifications', notification.id);
+        batch.update(notificationRef, {
           read: true,
           readAt: new Date()
-        })
-      );
+        });
+      }
       
-      await Promise.all(promises);
+      await batch.commit();
+      
+      // If there are more than 500, process in additional batches
+      if (unreadNotifications.length > BATCH_SIZE) {
+        console.warn(`⚠️ More than ${BATCH_SIZE} notifications to mark as read. Only first ${BATCH_SIZE} processed.`);
+        // Could implement pagination here if needed
+      }
+      
+      console.log(`✅ Marked ${Math.min(unreadNotifications.length, BATCH_SIZE)} notifications as read`);
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
     }
@@ -87,6 +110,20 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ userId, onNavig
     // Navigate to event if applicable
     if (notification.eventId && onNavigateToEvent) {
       onNavigateToEvent(notification.eventId);
+    }
+
+    // Navigate to account approval page if it's an approval-related notification
+    if (notification.metadata?.approvalId) {
+      if (notification.type === 'account_approval_request' || notification.type === 'approval_response') {
+        // Admin notifications - navigate to admin console
+        window.location.href = '/admin';
+      } else if (notification.type === 'account_approved') {
+        // User approved - navigate to home
+        window.location.href = '/';
+      } else if (notification.type === 'approval_question') {
+        // Admin question - navigate to pending approval page
+        window.location.href = '/pending-approval';
+      }
     }
 
     // Close notification center
@@ -120,6 +157,14 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ userId, onNavig
         return '🔔';
       case 'rsvp_confirmation':
         return '✅';
+      case 'account_approval_request':
+        return '👤';
+      case 'account_approved':
+        return '🎉';
+      case 'approval_question':
+        return '❓';
+      case 'approval_response':
+        return '💬';
       default:
         return '📢';
     }
@@ -133,6 +178,14 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ userId, onNavig
         return 'border-blue-500 bg-blue-50';
       case 'rsvp_confirmation':
         return 'border-purple-500 bg-purple-50';
+      case 'account_approval_request':
+        return 'border-orange-500 bg-orange-50';
+      case 'account_approved':
+        return 'border-green-500 bg-green-50';
+      case 'approval_question':
+        return 'border-yellow-500 bg-yellow-50';
+      case 'approval_response':
+        return 'border-blue-500 bg-blue-50';
       default:
         return 'border-gray-500 bg-gray-50';
     }

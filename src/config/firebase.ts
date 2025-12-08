@@ -60,18 +60,6 @@ const shouldLogFirebaseConfig =
   (import.meta as any).env?.DEV ||
   ((import.meta as any).env?.VITE_DEBUG_FIREBASE === 'true');
 
-if (shouldLogFirebaseConfig) {
-  console.log(`🚨 [CRITICAL] Firebase Project ID: ${firebaseConfig.projectId}`);
-  console.log(`🚨 [CRITICAL] Firebase Auth Domain: ${firebaseConfig.authDomain}`);
-  console.log(`🚨 [CRITICAL] Firebase Storage Bucket: ${firebaseConfig.storageBucket}`);
-  console.log(`🚨 [CRITICAL] Environment Variables:`, {
-    VITE_FIREBASE_PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    VITE_FIREBASE_STORAGE_BUCKET: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-    VITE_ENVIRONMENT: import.meta.env.VITE_ENVIRONMENT,
-    MODE: import.meta.env.MODE
-  });
-}
-
 // Flag to control local emulators (set VITE_USE_EMULATORS=true in .env.local)
 export const USING_EMULATORS = import.meta.env.VITE_USE_EMULATORS === 'true';
 
@@ -92,6 +80,7 @@ if (import.meta.env.DEV) {
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
+// Log critical config only once after initialization
 if (shouldLogFirebaseConfig) {
   console.log(`🚨 [CRITICAL] Firebase Project ID: ${firebaseConfig.projectId}`);
   console.log(`🚨 [CRITICAL] Firebase Auth Domain: ${firebaseConfig.authDomain}`);

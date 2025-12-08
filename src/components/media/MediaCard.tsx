@@ -14,6 +14,7 @@ import ConfirmDialog from '../ConfirmDialog';
 import { useImageOrientation } from '../../utils/imageOrientation';
 import { getResponsiveThumbnailSrcSet, isFirebaseStorageUrl, getThumbnailUrl } from '../../utils/thumbnailUtils';
 import { requestWatermarkedDownload } from '../../services/mediaDownloadService';
+import { isUserApproved } from '../../utils/userUtils';
 
 export default function MediaCard({ 
   media, 
@@ -297,6 +298,10 @@ export default function MediaCard({
       toast.error('Only members can like.'); 
       return; 
     }
+    if (!isUserApproved(currentUser)) {
+      toast.error('Your account is pending approval. You can browse media but cannot like yet.');
+      return;
+    }
     
     const likeRef = doc(db, 'media', localMedia.id, 'likes', currentUser.id);
     
@@ -327,26 +332,17 @@ export default function MediaCard({
     e.stopPropagation();
     if (isDownloading) return;
     
-    const toastId = 'watermark-download';
     try {
       setIsDownloading(true);
       
-      // Show loading toast for first-time generation
-      toast.loading('Preparing watermarked download...', { id: toastId });
-      
-      const { url, isCached } = await requestWatermarkedDownload(localMedia.id);
+      // Silently prepare watermarked download (no toast messages)
+      const { url } = await requestWatermarkedDownload(localMedia.id);
       
       // Build filename with _watermarked suffix
       const originalFilename = localMedia.filePath?.split('/').pop() || `${localMedia.title || 'media'}`;
       const ext = originalFilename.includes('.') ? originalFilename.substring(originalFilename.lastIndexOf('.')) : '';
       const baseName = ext ? originalFilename.substring(0, originalFilename.lastIndexOf('.')) : originalFilename;
       const filename = `${baseName}_watermarked${ext}`;
-      
-      if (isCached) {
-        toast.success('Download ready!', { id: toastId, duration: 2000 });
-      } else {
-        toast.success('Watermarked copy generated!', { id: toastId, duration: 2000 });
-      }
       
       if (isMobile) {
         const anchor = document.createElement('a');
@@ -360,7 +356,7 @@ export default function MediaCard({
       }
     } catch (error: any) {
       console.error('Failed to download watermarked media:', error);
-      toast.error(error?.message || 'Failed to download media', { id: toastId });
+      toast.error(error?.message || 'Failed to download media');
     } finally {
       setIsDownloading(false);
     }

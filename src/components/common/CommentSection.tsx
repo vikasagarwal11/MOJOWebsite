@@ -12,6 +12,7 @@ import { CommentMediaLightbox } from './CommentMediaLightbox';
 import AdminThreadDeletionModal from './AdminThreadDeletionModal';
 import toast from 'react-hot-toast';
 import { createPortal } from 'react-dom';
+import { isUserApproved } from '../../utils/userUtils';
 
 function usePopoverPosition(anchorRef: React.RefObject<HTMLElement>, open: boolean) {
   const [pos, setPos] = React.useState<{top:number; left:number}>({ top: 0, left: 0 });
@@ -82,7 +83,19 @@ const CommentItem: React.FC<CommentItemProps> = ({
   const isAdmin = currentUser?.role === 'admin';
   
   // Use the new reactions hook
-  const { reactionCounts, userReactions, toggleReaction } = useReactions(comment.id, collectionPath);
+const { reactionCounts, userReactions, toggleReaction } = useReactions(comment.id, collectionPath);
+
+  const handleToggleReaction = (emoji: string) => {
+    if (!currentUser) {
+      toast.error('Please log in to react');
+      return;
+    }
+    if (!isUserApproved(currentUser)) {
+      toast.error('Your account is pending approval. You cannot react yet.');
+      return;
+    }
+    toggleReaction(emoji);
+  };
 
   // Close admin menu when clicking outside
   useEffect(() => {
@@ -159,6 +172,10 @@ const CommentItem: React.FC<CommentItemProps> = ({
   const handleLike = async () => {
     if (!currentUser) {
       toast.error('Please log in to like comments');
+      return;
+    }
+    if (!isUserApproved(currentUser)) {
+      toast.error('Your account is pending approval. You cannot react yet.');
       return;
     }
 
@@ -242,7 +259,7 @@ const CommentItem: React.FC<CommentItemProps> = ({
                   console.log('🎨 [CommentSection] Closing reaction picker');
                   setShowReactions(false);
                 }}
-                onReaction={toggleReaction}
+                onReaction={handleToggleReaction}
                 userReactions={userReactions}
                 triggerRef={triggerRef}
                 disabled={!currentUser}
@@ -388,7 +405,7 @@ const CommentItem: React.FC<CommentItemProps> = ({
                       currentCount: count,
                       userHasReacted: userReactions[emoji]
                     });
-                    toggleReaction(emoji);
+                    handleToggleReaction(emoji);
                   }}
                   title={`${count} reaction${count > 1 ? 's' : ''}`}
                   style={{ maxWidth: 'calc(33.333% - 2px)', minWidth: 'fit-content' }}
@@ -599,6 +616,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({
   }, []);
   
   const { currentUser } = useAuth();
+  const isApprovedUser = isUserApproved(currentUser || null);
   const [newComment, setNewComment] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
@@ -706,6 +724,10 @@ const CommentSection: React.FC<CommentSectionProps> = ({
       toast.error('Please log in to comment');
       return;
     }
+    if (!isApprovedUser) {
+      toast.error('Your account is pending approval. You can browse comments but cannot post yet.');
+      return;
+    }
 
     const text = newComment.trim();
     const files = replyingTo ? replyFiles : selectedFiles;
@@ -772,6 +794,10 @@ const CommentSection: React.FC<CommentSectionProps> = ({
       toast.error('Please log in to reply');
       return;
     }
+    if (!isApprovedUser) {
+      toast.error('Your account is pending approval. You can browse comments but cannot post yet.');
+      return;
+    }
 
     const text = replyText?.trim() || '';
     const files = replyFiles || [];
@@ -828,6 +854,10 @@ const CommentSection: React.FC<CommentSectionProps> = ({
   };
 
   const handleReply = (commentId: string) => {
+    if (!isApprovedUser) {
+      toast.error('Your account is pending approval. You can browse comments but cannot post yet.');
+      return;
+    }
     setReplyingTo(commentId);
     setReplyText('');
   };

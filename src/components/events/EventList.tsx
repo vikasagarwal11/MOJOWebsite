@@ -9,6 +9,7 @@ type Props = {
   events: EventDoc[];
   loading?: boolean;
   onEdit?: (e: EventDoc) => void;
+  onDelete?: (e: EventDoc) => void;
   onClick?: (e: EventDoc) => void;
   emptyText?: string;
 };
@@ -18,13 +19,15 @@ const EventItem = React.memo(({
   index, 
   style, 
   data, 
-  onEdit, 
+  onEdit,
+  onDelete,
   onClick 
 }: {
   index: number;
   style: React.CSSProperties;
   data: EventDoc[];
   onEdit?: (e: EventDoc) => void;
+  onDelete?: (e: EventDoc) => void;
   onClick?: (e: EventDoc) => void;
 }) => {
   const event = data[index];
@@ -58,7 +61,8 @@ const EventItem = React.memo(({
           >
             <EventCardNew 
               event={event} 
-              onEdit={onEdit ? () => onEdit(event) : undefined} 
+              onEdit={onEdit ? () => onEdit(event) : undefined}
+              onDelete={onDelete ? () => onDelete(event) : undefined}
               onClick={onClick ? () => onClick(event) : undefined} 
             />
           </motion.div>
@@ -70,7 +74,7 @@ const EventItem = React.memo(({
 
 EventItem.displayName = 'EventItem';
 
-const EventList: React.FC<Props> = ({ events, loading, onEdit, onClick, emptyText }) => {
+const EventList: React.FC<Props> = ({ events, loading, onEdit, onDelete, onClick, emptyText }) => {
   const [listHeight, setListHeight] = useState(800);
   const [itemSize, setItemSize] = useState(480);
 
@@ -193,7 +197,8 @@ const EventList: React.FC<Props> = ({ events, loading, onEdit, onClick, emptyTex
           >
             <EventCardNew 
               event={event} 
-              onEdit={onEdit ? () => onEdit(event) : undefined} 
+              onEdit={onEdit ? () => onEdit(event) : undefined}
+              onDelete={onDelete ? () => onDelete(event) : undefined}
               onClick={onClick ? () => onClick(event) : undefined} 
             />
           </motion.div>
@@ -219,6 +224,7 @@ const EventList: React.FC<Props> = ({ events, loading, onEdit, onClick, emptyTex
             style={style}
             data={data}
             onEdit={onEdit}
+            onDelete={onDelete}
             onClick={onClick}
           />
         )}

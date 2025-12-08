@@ -10,6 +10,8 @@ import CreateEventModal from '../components/events/CreateEventModal';
 import { useEvents } from '../hooks/useEvents';
 import { useRealTimeEvents } from '../hooks/useRealTimeEvents';
 import { useAuth } from '../contexts/AuthContext';
+import { EventDeletionService } from '../services/eventDeletionService';
+import toast from 'react-hot-toast';
 import { EventsListSeo } from '../components/seo/EventsListSeo';
 // import { useUserBlocking } from '../hooks/useUserBlocking'; // For future RSVP blocking feature
 import { EventDoc } from '../hooks/useEvents';
@@ -49,6 +51,7 @@ const Events: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'upcoming'|'past'>('upcoming');
   const [viewMode, setViewMode] = useState<'grid'|'calendar'>('grid');
   const [showModal, setShowModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<EventDoc | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [tagSearch, setTagSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -74,6 +77,44 @@ const Events: React.FC = () => {
     enabled: false
   });
   const [sortBy, setSortBy] = useState<'date' | 'title' | 'location' | 'popularity'>('date');
+
+  // Handle edit event
+  const handleEditEvent = (event: EventDoc) => {
+    setEditingEvent(event);
+    setShowModal(true);
+  };
+
+  // Handle delete event
+  const handleDeleteEvent = async (event: EventDoc) => {
+    if (!currentUser || currentUser.role !== 'admin') {
+      toast.error('Only admins can delete events');
+      return;
+    }
+
+    // Confirmation dialog
+    const confirmed = window.confirm(
+      `🚨 DELETE CONFIRMATION\n\nAre you sure you want to delete "${event.title}"?\n\nThis action:\n• Cannot be undone\n• Will remove all RSVPs and attendees\n• Will delete event images\n\nClick OK to confirm deletion.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const result = await EventDeletionService.deleteEvent(event.id, currentUser.id);
+      
+      if (result.success) {
+        toast.success(`Event "${event.title}" deleted successfully`);
+        console.log('✅ Event deleted:', result.deletedCounts);
+      } else {
+        toast.error(`Failed to delete event: ${result.errors.join(', ')}`);
+        console.error('❌ Event deletion errors:', result.errors);
+      }
+    } catch (error) {
+      console.error('❌ Error deleting event:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete event');
+    }
+  };
 
 
   // Modal states for calendar events
@@ -831,11 +872,27 @@ const Events: React.FC = () => {
           <>
             {/* Past events are always visible to everyone, regardless of original visibility */}
             {activeTab === 'past' ? (
-              <EventList events={filtered} loading={loading} emptyText="No past events yet." />
+              <EventList 
+                events={filtered} 
+                loading={loading} 
+                emptyText="No past events yet."
+                onEdit={currentUser?.role === 'admin' ? handleEditEvent : undefined}
+                onDelete={currentUser?.role === 'admin' ? handleDeleteEvent : undefined}
+              />
             ) : currentUser ? (
-              <EventList events={filtered} loading={loading} emptyText="No events yet." />
+              <EventList 
+                events={filtered} 
+                loading={loading} 
+                emptyText="No events yet."
+                onEdit={currentUser?.role === 'admin' ? handleEditEvent : undefined}
+                onDelete={currentUser?.role === 'admin' ? handleDeleteEvent : undefined}
+              />
             ) : (
-              <EventList events={filtered.filter(e => e.visibility === 'public')} loading={loading} emptyText="No public events yet." />
+              <EventList 
+                events={filtered.filter(e => e.visibility === 'public')} 
+                loading={loading} 
+                emptyText="No public events yet."
+              />
             )}
           </>
         ) : (
@@ -864,8 +921,15 @@ const Events: React.FC = () => {
       <AnimatePresence>
         {showModal && (
         <CreateEventModal
-            onClose={() => setShowModal(false)} 
-            onEventCreated={() => setShowModal(false)} 
+            onClose={() => {
+              setShowModal(false);
+              setEditingEvent(null);
+            }} 
+            onEventCreated={() => {
+              setShowModal(false);
+              setEditingEvent(null);
+            }}
+            eventToEdit={editingEvent || undefined}
           />
         )}
       </AnimatePresence>

@@ -164,8 +164,11 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
     return () => unsubscribe();
   }, [event.id]);
 
-  // Real-time waitlist positions
-  const { positions: waitlistPositions, myPosition: waitlistPosition, waitlistCount } = useWaitlistPositions(event.id, currentUser?.id);
+  // Real-time waitlist positions - ONLY when waitlist is enabled
+  const { positions: waitlistPositions, myPosition: waitlistPosition, waitlistCount } = useWaitlistPositions(
+    event.waitlistEnabled ? event.id : '', 
+    event.waitlistEnabled ? currentUser?.id : undefined
+  );
 
   // Create capacity state using real-time count and waitlist data
   const liveGoingCount = typeof counts.totalGoing === 'number' ? counts.totalGoing : realTimeAttendingCount;

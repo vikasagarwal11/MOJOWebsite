@@ -1,17 +1,20 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
-import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, Dumbbell, Settings } from 'lucide-react';
+import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, Dumbbell, Settings, UserCheck, Shield } from 'lucide-react';
 import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc, getDoc, setDoc, Timestamp, updateDoc, DocumentReference } from 'firebase/firestore';
 import { ref, listAll } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
 import EventCardNew from '../components/events/EventCardNew';
 import ContactMessagesAdmin from '../components/admin/ContactMessagesAdmin';
+import AccountApprovalsAdmin from '../components/admin/AccountApprovalsAdmin';
 import BulkAttendeesPanel from '../components/admin/BulkAttendeesPanel';
 import CleanupToolPanel from '../components/admin/CleanupToolPanel';
 import { AssistantConfigPanel } from '../components/admin/AssistantConfigPanel';
 import { KBGapsPanel } from '../components/admin/KBGapsPanel';
+import { ContentModerationPanel } from '../components/admin/ContentModerationPanel';
 import { useTestimonials } from '../hooks/useTestimonials';
 import { adminUpdateTestimonial, deleteTestimonial } from '../services/testimonialsService';
+import { ModerationService } from '../services/moderationService';
 import type { Testimonial, TestimonialStatus, TestimonialAIPrompts, PostAIPrompts } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -78,7 +81,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
-  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig' | 'kbGaps'>('events');
+  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig' | 'kbGaps' | 'accountApprovals' | 'moderation'>('events');
   const { currentUser } = useAuth();
   
   // Media management state
@@ -666,6 +669,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           Contact Messages
         </button>
         <button
+          onClick={() => setActiveAdminSection('accountApprovals')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'accountApprovals'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <UserCheck className="w-4 h-4 inline mr-2" />
+          Account Approvals
+        </button>
+        <button
           onClick={() => setActiveAdminSection('users')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeAdminSection === 'users'
@@ -741,6 +755,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         >
           <MessageSquare className="w-4 h-4 inline mr-2" />
           KB Gaps
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('moderation')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'moderation'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Shield className="w-4 h-4 inline mr-2" />
+          Content Moderation
         </button>
       </div>
 
@@ -978,31 +1003,74 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
             {searchResults.length > 0 && (
               <div className="space-y-2">
                 <h3 className="font-medium text-gray-900">Search Results:</h3>
-                {searchResults.map((user) => (
-                  <div key={user.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium">{user.displayName}</p>
-                      <p className="text-sm text-gray-600">{user.email}</p>
+                {searchResults.map((user) => {
+                  const requireApproval = user.moderationSettings?.requireApproval || false;
+                  const isUpdating = updatingModerationSettings === user.id;
+                  
+                  return (
+                    <div key={user.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="font-medium">{user.displayName}</p>
+                          <p className="text-sm text-gray-600">{user.email}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          {user.blockedFromRsvp ? (
+                            <button
+                              onClick={() => handleUnblockUser(user.id)}
+                              className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                            >
+                              Unblock
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleBlockUser(user.id)}
+                              className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
+                            >
+                              Block
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Moderation Settings */}
+                      <div className="pt-3 border-t border-gray-300">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={requireApproval}
+                            onChange={async (e) => {
+                              setUpdatingModerationSettings(user.id);
+                              try {
+                                await ModerationService.updateUserModerationSettings(user.id, {
+                                  requireApprovalForUser: e.target.checked,
+                                });
+                                // Update local state
+                                setSearchResults(prev => prev.map(u => 
+                                  u.id === user.id 
+                                    ? { ...u, moderationSettings: { ...u.moderationSettings, requireApproval: e.target.checked } }
+                                    : u
+                                ));
+                              } catch (error) {
+                                console.error('Failed to update moderation settings:', error);
+                              } finally {
+                                setUpdatingModerationSettings(null);
+                              }
+                            }}
+                            disabled={isUpdating}
+                            className="w-4 h-4 text-[#F25129] rounded focus:ring-[#F25129]"
+                          />
+                          <span className="text-sm text-gray-700">
+                            {isUpdating ? 'Updating...' : 'Require approval for all content'}
+                          </span>
+                        </label>
+                        <p className="text-xs text-gray-500 mt-1 ml-6">
+                          When enabled, all posts and media from this user will require admin approval before being published.
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      {user.blockedFromRsvp ? (
-                        <button
-                          onClick={() => handleUnblockUser(user.id)}
-                          className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
-                        >
-                          Unblock
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleBlockUser(user.id)}
-                          className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-sm"
-                        >
-                          Block
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -1776,6 +1844,11 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         </div>
       )}
 
+      {/* Account Approvals Section */}
+      {activeAdminSection === 'accountApprovals' && (
+        <AccountApprovalsAdmin />
+      )}
+
       {/* Assistant Configuration Section */}
       {activeAdminSection === 'assistantConfig' && (
         <AssistantConfigPanel />
@@ -1784,6 +1857,11 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       {/* KB Gaps Section */}
       {activeAdminSection === 'kbGaps' && (
         <KBGapsPanel />
+      )}
+
+      {/* Content Moderation Section */}
+      {activeAdminSection === 'moderation' && (
+        <ContentModerationPanel />
       )}
     </div>
   );

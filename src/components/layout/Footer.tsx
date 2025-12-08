@@ -1,7 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { Instagram, Facebook } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 const Footer: React.FC = () => {
+  const { currentUser } = useAuth();
+  
   return (
     <footer className="border-t border-[#F25129]/20 bg-[#EFD8C5]/20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
@@ -19,8 +23,34 @@ const Footer: React.FC = () => {
             <Link to="/sponsors" className="hover:text-[#F25129] transition-colors">Sponsors</Link>
             <Link to="/community-guidelines" className="hover:text-[#F25129] transition-colors">Guidelines</Link>
             <Link to="/contact" className="hover:text-[#F25129] transition-colors">Contact</Link>
-            <Link to="/register" className="hover:text-[#F25129] transition-colors">Join MOJO</Link>
+            {!currentUser && (
+              <Link to="/register" className="hover:text-[#F25129] transition-colors">Join MOJO</Link>
+            )}
           </nav>
+        </div>
+        
+        {/* Social Media Links */}
+        <div className="flex items-center justify-center gap-4 mb-4">
+          <a
+            href="https://www.instagram.com/momsfitnessmojo/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-gray-600 hover:text-[#F25129] transition-colors"
+            aria-label="Follow us on Instagram"
+          >
+            <Instagram className="w-5 h-5" />
+            <span className="text-sm">Instagram</span>
+          </a>
+          <a
+            href="https://www.facebook.com/momsfitnessmojo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-gray-600 hover:text-[#F25129] transition-colors"
+            aria-label="Follow us on Facebook"
+          >
+            <Facebook className="w-5 h-5" />
+            <span className="text-sm">Facebook</span>
+          </a>
         </div>
         
         {/* SEO Content & Copyright */}

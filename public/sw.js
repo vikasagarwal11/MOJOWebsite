@@ -269,23 +269,58 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-// Push notifications
+// Push notifications (Firebase Cloud Messaging)
 self.addEventListener('push', (event) => {
-  console.log('Service Worker: Push notification received');
+  console.log('Service Worker: Push notification received', event);
   
-  const options = {
-    body: event.data ? event.data.text() : 'New notification from Moms Fitness Mojo',
+  let notificationData = {
+    title: 'Moms Fitness Mojo',
+    body: 'New notification from Moms Fitness Mojo',
     icon: '/logo-small.png',
     badge: '/logo-small.png',
-    vibrate: [200, 100, 200],
     data: {
       dateOfArrival: Date.now(),
       primaryKey: 1
-    },
+    }
+  };
+  
+  // Handle FCM payload (can be JSON or text)
+  if (event.data) {
+    try {
+      // Try to parse as JSON (FCM format)
+      const payload = event.data.json();
+      console.log('Service Worker: FCM payload received:', payload);
+      
+      if (payload.notification) {
+        notificationData.title = payload.notification.title || notificationData.title;
+        notificationData.body = payload.notification.body || notificationData.body;
+        notificationData.icon = payload.notification.icon || notificationData.icon;
+      }
+      
+      // Include FCM data in notification data
+      if (payload.data) {
+        notificationData.data = {
+          ...notificationData.data,
+          ...payload.data,
+          click_action: payload.data.click_action || payload.fcmOptions?.link || '/events'
+        };
+      }
+    } catch (e) {
+      // Fallback to text if not JSON
+      const text = event.data.text();
+      console.log('Service Worker: Push notification text:', text);
+      notificationData.body = text || notificationData.body;
+    }
+  }
+  
+  const options = {
+    ...notificationData,
+    vibrate: [200, 100, 200],
+    requireInteraction: false,
     actions: [
       {
         action: 'explore',
-        title: 'View Event',
+        title: 'View',
         icon: '/logo-small.png'
       },
       {
@@ -297,20 +332,39 @@ self.addEventListener('push', (event) => {
   };
   
   event.waitUntil(
-    self.registration.showNotification('Moms Fitness Mojo', options)
+    self.registration.showNotification(notificationData.title, options)
   );
 });
 
 // Handle notification clicks
 self.addEventListener('notificationclick', (event) => {
-  console.log('Service Worker: Notification clicked');
+  console.log('Service Worker: Notification clicked', event);
   event.notification.close();
   
-  if (event.action === 'explore') {
+  const notificationData = event.notification.data || {};
+  const urlToOpen = notificationData.click_action || 
+                    notificationData.url || 
+                    '/events';
+  
+  if (event.action === 'explore' || !event.action) {
     event.waitUntil(
-      clients.openWindow('/events')
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        // If a window is already open, focus it
+        for (let i = 0; i < clientList.length; i++) {
+          const client = clientList[i];
+          if (client.url === urlToOpen && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        // Otherwise, open a new window
+        if (clients.openWindow) {
+          return clients.openWindow(urlToOpen);
+        }
+      })
     );
   }
+  
+  // Close action - just close the notification (already done above)
 });
 
 // Handle messages from the main thread

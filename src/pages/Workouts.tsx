@@ -15,6 +15,7 @@ import { applySessionToActiveChallenges } from '../services/userChallengeService
 import { resolveExerciseByName } from '../services/exerciseService';
 import { stripPrescription } from '../utils/exerciseName';
 import ExercisePreviewCard from '../components/exercise/ExercisePreviewCard';
+import { isUserApproved } from '../utils/userUtils';
 
 const MAX_NOTES_LENGTH = 500;
 const generateId = () =>
@@ -95,6 +96,7 @@ export default function Workouts() {
   const { logEvent } = useLogging();
 
   const canUse = !!currentUser;
+  const isApproved = isUserApproved(currentUser);
 
   useEffect(() => {
     if (!latestPlan) {
@@ -447,7 +449,8 @@ export default function Workouts() {
         </div>
       )}
 
-      {(showPlanBuilder || !latestPlan) && (
+      {/* Show plan builder only for approved users */}
+      {isApproved && (showPlanBuilder || !latestPlan) && (
         <div className="bg-white/70 rounded-2xl shadow p-6 mb-8 border border-orange-100">
           <h2 className="text-xl font-semibold mb-4">Create Your Plan</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -557,8 +560,10 @@ export default function Workouts() {
         </div>
       )}
 
-      <div className="bg-white/70 rounded-2xl shadow p-6 border border-orange-100">
-        <h2 className="text-xl font-semibold mb-4">Today’s Mojo</h2>
+      {/* Show "Today's Mojo" only for approved users */}
+      {isApproved && (
+        <div className="bg-white/70 rounded-2xl shadow p-6 border border-orange-100 mb-8">
+          <h2 className="text-xl font-semibold mb-4">Today's Mojo</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm text-gray-600 mb-1">Sleep</label>
@@ -623,9 +628,23 @@ export default function Workouts() {
             </button>
           )}
         </div>
-      </div>
+        </div>
+      )}
 
-      {latestPlan && (
+      {/* Show informational message for non-approved users */}
+      {currentUser && !isApproved && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl shadow p-6 mb-8">
+          <h2 className="text-xl font-semibold mb-2 text-blue-900">AI Workouts Available After Approval</h2>
+          <p className="text-blue-800 mb-4">
+            Once your account is approved, you'll be able to create personalized workout plans, get daily "Today's Mojo" suggestions, track your sessions, and see your progress.
+          </p>
+          <p className="text-sm text-blue-700">
+            Your account is currently pending approval. Check your approval status on the <Link to="/pending-approval" className="underline font-medium">pending approval page</Link>.
+          </p>
+        </div>
+      )}
+
+      {latestPlan && isApproved && (
         <div className="mt-8">
           <div className="flex items-center justify-between mb-2 gap-3">
             <h3 className="text-lg font-semibold">Your Plan</h3>
@@ -727,8 +746,8 @@ export default function Workouts() {
         </div>
       )}
 
-      {/* Session History */}
-      {currentUser && (
+      {/* Session History - Only show for approved users */}
+      {currentUser && isApproved && (
         <div className="mt-8">
           <h3 className="text-lg font-semibold mb-2">Recent Sessions</h3>
           <div className="bg-white/70 rounded-xl border p-4">

@@ -13,6 +13,7 @@ import MediaControls from './MediaControls';
 import TrimEditor from './TrimEditor';
 import useMediaCapture, { Mode } from './useMediaCapture';
 import toast from 'react-hot-toast';
+import { ContentModerationService } from '../../services/contentModerationService';
 
 interface LiveMediaUploadProps {
   eventId?: string;
@@ -216,16 +217,39 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
         thumbnailUrl = await getDownloadURL(thumbRef);
       }
 
+      // Run content moderation on description before saving
+      const descriptionToModerate = description.trim();
+      let moderationResult = null;
+      if (descriptionToModerate) {
+        moderationResult = await ContentModerationService.moderateContent(
+          descriptionToModerate,
+          'media',
+          currentUser.id
+        );
+
+        // If content is blocked, don't save it
+        if (moderationResult.isBlocked) {
+          toast.error(moderationResult.reason || 'Your media cannot be published due to inappropriate content.');
+          setUploadProgress(0);
+          setUploadTask(null);
+          return;
+        }
+      }
+
       // IMPORTANT: keep 'type' to 'image' or 'video' only; flag reels separately
       const mediaType = isPhoto ? 'image' : 'video';
       console.log('🔍 Storing media type:', mediaType, 'for isPhoto:', isPhoto);
+      
+      // Determine moderation status
+      const moderationStatus = moderationResult?.requiresApproval ? 'pending' : 'approved';
+      
       await addDocument('media', {
         type: mediaType,        // <-- CHANGED
         url: mediaUrl,
         thumbnailUrl,
         uploadedBy: currentUser.id,
         uploadedByName: currentUser.displayName || 'Member',
-        description: description.trim(),
+        description: descriptionToModerate,
         eventId: selectedEvent.id,
         isLiveRecording: !isPhoto,
         isPhotoCapture: isPhoto,
@@ -236,6 +260,10 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
         // Store trim metadata even if we didn't cut the bytes
         trim: !isPhoto ? { start: trimStart, end: trimEnd || recordingTime } : null,
         duration: !isPhoto ? recordingTime : null,
+        moderationStatus,                          // 'pending' | 'approved' | 'rejected'
+        requiresApproval: moderationResult?.requiresApproval || false,
+        moderationReason: moderationResult?.reason,
+        moderationDetectedIssues: moderationResult?.detectedIssues || [],
         createdAt: new Date(),
         likesCount: 0,
         commentsCount: 0,
@@ -245,6 +273,13 @@ export const LiveMediaUpload: React.FC<LiveMediaUploadProps> = ({ eventId, onClo
         storageFolder: path.substring(0, path.lastIndexOf('/') + 1),   // Directory path in Storage (with trailing slash)
         transcodeStatus: 'pending',               // Initial status for Cloud Function
       });
+      
+      // Show appropriate message based on moderation result
+      if (moderationResult?.requiresApproval) {
+        toast.success('Media uploaded! It will be reviewed before being published.');
+      } else {
+        toast.success('Media uploaded successfully!');
+      }
 
       if (socialMediaOptions.website) {
         // your site reads from Firestore; nothing to do

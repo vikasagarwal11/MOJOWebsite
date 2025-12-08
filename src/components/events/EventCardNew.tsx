@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, MapPin, Users, Share2, ThumbsUp, ThumbsDown, Clock, Edit } from 'lucide-react';
+import { Calendar, MapPin, Users, Share2, ThumbsUp, ThumbsDown, Clock, Edit, Trash2 } from 'lucide-react';
 import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { EventDoc } from '../../hooks/useEvents';
 import { RSVPModalNew as RSVPModal } from './RSVPModalNew';
@@ -27,16 +27,19 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import toast from 'react-hot-toast';
 import { safeCall } from '../../utils/safeWrapper';
-import { ErrorBoundary, withErrorBoundary } from '../ErrorBoundary';
+// ErrorBoundary removed - not used in this component
 import { EventImage } from './EventImage';
+import { isUserApproved } from '../../utils/userUtils';
+import { Lock } from 'lucide-react';
 
 interface EventCardProps {
   event: EventDoc;
   onEdit?: () => void;
+  onDelete?: () => void;
   onClick?: () => void;
 }
 
-const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
+const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onClick }) => {
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
   const navigate = useNavigate();
@@ -59,22 +62,18 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       if (doc.exists()) {
         const data = doc.data();
         const newCount = data.attendingCount || 0;
-        console.log('🔄 EventCardNew: Checking count update:', { 
-          eventId: event.id, 
-          currentState: realTimeAttendingCount, 
-          newCount,
-          eventPropCount: event.attendingCount,
-          shouldUpdate: newCount !== realTimeAttendingCount
-        });
+        
+        // Only log in development mode when count actually changes
+        if (import.meta.env.DEV && newCount !== realTimeAttendingCount) {
+          console.log('🔄 EventCardNew: Real-time attendingCount updated:', { 
+            eventId: event.id, 
+            oldCount: realTimeAttendingCount, 
+            newCount
+          });
+        }
         
         // Always update if the count is different, regardless of current state
         setRealTimeAttendingCount(newCount);
-        console.log('🔄 EventCardNew: Real-time attendingCount updated:', { 
-          eventId: event.id, 
-          oldCount: realTimeAttendingCount, 
-          newCount,
-          timestamp: new Date().toISOString()
-        });
       }
     }, (error) => {
       console.error('EventCardNew: Error listening to event changes:', error);
@@ -83,8 +82,11 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     return () => unsubscribe();
   }, [event.id]); // Only depend on event.id
   
-  // Real-time waitlist positions
-  const { myPosition: waitlistPosition, waitlistCount: totalWaitlistCount } = useWaitlistPositions(event.id, currentUser?.id);
+  // Real-time waitlist positions - ONLY when waitlist is enabled
+  const { myPosition: waitlistPosition, waitlistCount: totalWaitlistCount } = useWaitlistPositions(
+    event.waitlistEnabled ? event.id : '', 
+    event.waitlistEnabled ? currentUser?.id : undefined
+  );
 
   // Create capacity state using live event-level metrics rather than per-user counts
   const liveGoingCount = typeof realTimeAttendingCount === 'number' ? realTimeAttendingCount : counts.totalGoing;
@@ -100,13 +102,6 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   }), [counts, liveGoingCount, liveWaitlistCount]);
   
   const capacityState = useCapacityState(capacityCounts, event.maxAttendees, event.waitlistEnabled, event.waitlistLimit);
-  
-  // Debug logging for waitlist position
-  console.log('🔍 EventCardNew: User waitlist position for event', event.id, ':', {
-    userId: currentUser?.id,
-    waitlistPosition: waitlistPosition,
-    hasPosition: !!waitlistPosition
-  });
 
   // Smart display logic for venue information
   const getDisplayVenueInfo = (venueName: string, venueAddress: string, isMobile: boolean) => {
@@ -295,6 +290,10 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     } else if (isEventPast) {
       setShowPastEventModal(true);
     } else if (currentUser) {
+      if (!isUserApproved(currentUser)) {
+        toast.error('Your account is pending approval. You can browse events but cannot RSVP yet.');
+        return;
+      }
       // User is logged in - flexible RSVP handling based on toggle
       if (RSVP_MODE === 'page') {
         // Navigate to new RSVP page
@@ -317,6 +316,10 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
 
     if (!currentUser) {
       setShowTeaserModal(true);
+      return;
+    }
+    if (!isUserApproved(currentUser)) {
+      toast.error('Your account is pending approval. You can browse events but cannot RSVP yet.');
       return;
     }
 
@@ -349,7 +352,12 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
       );
 
       if (existingAttendee) {
-        await setAttendeeStatus(existingAttendee.attendeeId || existingAttendee.id, finalStatus);
+        const attendeeIdToUse = existingAttendee.attendeeId || existingAttendee.id;
+        if (!attendeeIdToUse) {
+          toast.error('Unable to update RSVP. Please try again.');
+          return;
+        }
+        await setAttendeeStatus(attendeeIdToUse, finalStatus);
 
         if (finalStatus === 'not-going') {
           const familyMembers = attendees.filter(
@@ -360,7 +368,10 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
           );
 
           for (const familyMember of familyMembers) {
-            await setAttendeeStatus(familyMember.attendeeId || familyMember.id, 'not-going');
+            const memberIdToUse = familyMember.attendeeId || familyMember.id;
+            if (memberIdToUse) {
+              await setAttendeeStatus(memberIdToUse, 'not-going');
+            }
           }
 
           if (familyMembers.length > 0) {
@@ -425,6 +436,11 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
     if (isEventPast) {
       setShowPastEventModal(true);
     } else if (currentUser) {
+      // Check if user is approved before allowing RSVP
+      if (!isUserApproved(currentUser)) {
+        toast.error('Your account is pending approval. You can browse events but cannot RSVP yet.');
+        return;
+      }
       // User is logged in - flexible RSVP handling based on toggle
       if (RSVP_MODE === 'page') {
         // Navigate to new RSVP page
@@ -496,8 +512,10 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   };
 
   // Get button disable state
-  const isGoingButtonDisabled = (currentUser && (rsvpStatus === 'going' || rsvpStatus === 'waitlisted')) || getRSVPButtonState() !== 'active';
-  const isNotGoingButtonDisabled = (currentUser && rsvpStatus === 'not-going') || getRSVPButtonState() !== 'active';
+  // Check if user is approved for RSVP
+  const isUserApprovedForRSVP = currentUser ? isUserApproved(currentUser) : false;
+  const isGoingButtonDisabled = !isUserApprovedForRSVP || (currentUser && (rsvpStatus === 'going' || rsvpStatus === 'waitlisted')) || getRSVPButtonState() !== 'active';
+  const isNotGoingButtonDisabled = !isUserApprovedForRSVP || (currentUser && rsvpStatus === 'not-going') || getRSVPButtonState() !== 'active';
   
   // Check if event is sold out (at capacity regardless of waitlist availability) - for watermark only
   const isSoldOutForWatermark = capacityState.isAtCapacity;
@@ -667,6 +685,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                   handleQuickRSVP('going');
                 }}
                 disabled={isGoingButtonDisabled}
+                title={!isUserApprovedForRSVP && currentUser ? 'Account pending approval - cannot RSVP yet' : undefined}
                 className={`flex items-center gap-1 px-2 py-2 rounded-lg font-medium transition-all duration-200 text-xs relative z-50 pointer-events-auto ${
                   rsvpStatus === 'going'
                     ? 'bg-green-100 text-green-700 cursor-not-allowed'
@@ -679,6 +698,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
               >
                 {isUpdating ? (
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                ) : !isUserApprovedForRSVP && currentUser ? (
+                  <Lock className="w-3 h-3" />
                 ) : (
                   <ThumbsUp className="w-3 h-3" />
                 )}
@@ -688,24 +709,27 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
               </motion.button>
 
               {/* Not Going Button */}
-                             <motion.button
-                 whileHover={!isNotGoingButtonDisabled ? { scale: 1.05 } : {}}
-                 whileTap={!isNotGoingButtonDisabled ? { scale: 0.95 } : {}}
-                 onClick={(e) => {
-                   e.stopPropagation();
-                   handleQuickRSVP('not-going');
-                 }}
-                 disabled={isNotGoingButtonDisabled}
-                 className={`flex items-center gap-1 px-2 py-2 rounded-lg font-medium transition-all duration-200 text-xs relative z-50 pointer-events-auto ${
-                   rsvpStatus === 'not-going'
-                     ? 'bg-red-100 text-red-700 cursor-not-allowed'
-                     : isNotGoingButtonDisabled
-                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                     : 'bg-red-600 text-white hover:bg-red-700'
-                 }`}
-               >
+              <motion.button
+                whileHover={!isNotGoingButtonDisabled ? { scale: 1.05 } : {}}
+                whileTap={!isNotGoingButtonDisabled ? { scale: 0.95 } : {}}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleQuickRSVP('not-going');
+                }}
+                disabled={isNotGoingButtonDisabled}
+                title={!isUserApprovedForRSVP && currentUser ? 'Account pending approval - cannot RSVP yet' : undefined}
+                className={`flex items-center gap-1 px-2 py-2 rounded-lg font-medium transition-all duration-200 text-xs relative z-50 pointer-events-auto ${
+                  rsvpStatus === 'not-going'
+                    ? 'bg-red-100 text-red-700 cursor-not-allowed'
+                    : isNotGoingButtonDisabled
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-red-600 text-white hover:bg-red-700'
+                }`}
+              >
                 {isUpdating ? (
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                ) : !isUserApprovedForRSVP && currentUser ? (
+                  <Lock className="w-3 h-3" />
                 ) : (
                   <ThumbsDown className="w-3 h-3" />
                 )}
@@ -749,6 +773,22 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
                   <Edit className="w-4 h-4" />
                 </motion.button>
               )}
+
+              {/* Delete Button (Admin Only) */}
+              {currentUser?.role === 'admin' && onDelete && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    safeCall(onDelete);
+                  }}
+                  className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Delete event"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </motion.button>
+              )}
             </div>
           </div>
         </div>
@@ -787,12 +827,4 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onClick }) => {
   );
 };
 
-// Wrap with ErrorBoundary to catch any crashes
-const EventCardNewWithErrorBoundary = withErrorBoundary(
-  EventCardNew,
-  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-    <p className="text-yellow-800">Event card failed to load</p>
-  </div>
-);
-
-export default EventCardNewWithErrorBoundary;
+export default EventCardNew;

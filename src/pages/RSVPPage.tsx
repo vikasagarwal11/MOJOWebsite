@@ -182,8 +182,11 @@ const RSVPPage: React.FC = () => {
   );
   const { familyMembers } = useFamilyMembers();
 
-  // Real-time waitlist positions - safe fallback for null event
-  const { positions: waitlistPositions, myPosition: waitlistPosition, waitlistCount } = useWaitlistPositions(event?.id || '', currentUser?.id);
+  // Real-time waitlist positions - ONLY when waitlist is enabled
+  const { positions: waitlistPositions, myPosition: waitlistPosition, waitlistCount } = useWaitlistPositions(
+    event?.waitlistEnabled ? (event?.id || '') : '', 
+    event?.waitlistEnabled ? currentUser?.id : undefined
+  );
 
   // Define types and helper functions
   type BulkRow = {

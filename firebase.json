@@ -76,6 +76,7 @@
     "trailingSlash": false
   },
   "extensions": {
+    "firestore-vector-search": "googlecloud/firestore-vector-search@0.0.9",
     "storage-resize-images": "firebase/storage-resize-images@0.2.10"
   }
 }

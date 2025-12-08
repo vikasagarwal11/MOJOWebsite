@@ -2,8 +2,11 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Heart, Users, Mail, Instagram, CheckCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const About: React.FC = () => {
+  const { currentUser } = useAuth();
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-amber-50">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -200,14 +203,16 @@ const About: React.FC = () => {
           <p className="text-center mt-8 text-lg opacity-95">
             Join us — and be part of a community built for moms, with moms, and by moms.
           </p>
-          <div className="flex justify-center mt-8">
-            <Link
-              to="/register"
-              className="px-8 py-4 bg-white text-[#F25129] font-semibold rounded-full hover:bg-gray-100 transition-all duration-200 transform hover:scale-105 shadow-lg"
-            >
-              Join MOJO
-            </Link>
-          </div>
+          {!currentUser && (
+            <div className="flex justify-center mt-8">
+              <Link
+                to="/register"
+                className="px-8 py-4 bg-white text-[#F25129] font-semibold rounded-full hover:bg-gray-100 transition-all duration-200 transform hover:scale-105 shadow-lg"
+              >
+                Join MOJO
+              </Link>
+            </div>
+          )}
         </motion.div>
       </div>
     </div>

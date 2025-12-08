@@ -33,6 +33,7 @@ import { auth, db, USING_EMULATORS } from '../config/firebase';
 import { User } from '../types';
 import toast from 'react-hot-toast';
 import { getRecaptchaConfig } from '../utils/recaptcha';
+import { AccountApprovalService } from '../services/accountApprovalService';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -47,7 +48,20 @@ interface AuthContextType {
     phoneNumber: string,
     isLogin?: boolean
   ) => Promise<void>;
-  checkIfUserExists: (phoneNumber: string) => Promise<boolean>;
+  verifyPhoneCode: (confirmationResult: ConfirmationResult, code: string) => Promise<any>;
+  createPendingUser: (data: {
+    userId: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phoneNumber: string;
+    location?: string;
+    howDidYouHear?: string;
+    howDidYouHearOther?: string;
+    referredBy?: string;
+    referralNotes?: string;
+  }) => Promise<void>;
+  checkIfUserExists: (phoneNumber: string) => Promise<boolean | { exists: boolean; canReapply?: boolean; message?: string; reapplyDate?: string; daysRemaining?: number; userStatus?: string }>;
   checkSMSDeliveryStatus: (phoneNumber: string, verificationId: string) => Promise<any>;
   logout: () => Promise<void>;
   // kept for compatibility; the argument is ignored
@@ -220,7 +234,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const unsubDoc = onSnapshot(
         userRef,
-        (snap) => {
+        async (snap) => {
           console.log('🔍 AuthContext: onSnapshot callback fired', {
             exists: snap.exists(),
             hasData: !!snap.data(),
@@ -237,6 +251,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else {
             console.log('🔍 AuthContext: Document exists, loading full user data');
             const d = snap.data() as any;
+            // 🔥 CRITICAL FIX: Default to 'pending' if status is missing. Legacy users must be migrated explicitly.
+            // This prevents new users who skip the status field from being auto-approved.
+            const status = d.status || 'pending';
+            
+            // NOTE: We allow pending/rejected users to remain logged in
+            // - During registration, they need to stay logged in to see pending approval page
+            // - After registration, Layout component redirects them to status pages
+            // - Status is only checked during LOGIN attempts (see verifyCode function)
+            // - This allows pending users to access /pending-approval page
+            
             const fullUser = {
               id: fbUser.uid,
               email: d.email || fbUser.email || '',
@@ -246,6 +270,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               phoneNumber: d.phoneNumber || fbUser.phoneNumber || '',
               photoURL: d.photoURL || fbUser.photoURL || undefined,
               role: (d.role || 'member') as 'member' | 'admin' | 'trainer',
+              status: status as 'pending' | 'approved' | 'rejected' | 'needs_clarification',
               canEditExercises: !!d.canEditExercises,
               createdAt: d.createdAt?.toDate ? d.createdAt.toDate() : new Date(),
               updatedAt: d.updatedAt?.toDate ? d.updatedAt.toDate() : new Date(),
@@ -440,7 +465,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const checkIfUserExists = async (phoneNumber: string): Promise<boolean> => {
+  const checkIfUserExists = async (phoneNumber: string): Promise<boolean | { exists: boolean; canReapply?: boolean; message?: string; reapplyDate?: string; daysRemaining?: number; userStatus?: string }> => {
     console.log('🔍 AuthContext: checkIfUserExists called with:', phoneNumber);
     
     try {
@@ -451,25 +476,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('🔍 AuthContext: Calling Cloud Function to check phone number...');
       const result = await checkPhoneNumber({ phoneNumber });
       
-      const exists = (result.data as any)?.exists || false;
-      console.log('🔍 AuthContext: Cloud Function result:', { phoneNumber, exists });
+      const response = result.data as any;
+      const exists = response?.exists || false;
+      console.log('🔍 AuthContext: Cloud Function result:', { phoneNumber, exists, response });
       
-      if (exists) {
-        return true;
+      // If Cloud Function returns detailed info (for rejected users), return it
+      if (response && typeof response === 'object' && 'canReapply' in response) {
+        return response;
       }
       
-      // Fallback: Check Firestore directly
-      console.log('🔍 AuthContext: Cloud Function says not found, checking Firestore directly...');
-      const usersQuery = query(
-        collection(db, 'users'),
-        where('phoneNumber', '==', phoneNumber)
-      );
-      const usersSnapshot = await getDocs(usersQuery);
-      
-      const firestoreExists = !usersSnapshot.empty;
-      console.log('🔍 AuthContext: Firestore direct check result:', { phoneNumber, firestoreExists, count: usersSnapshot.size });
-      
-      return firestoreExists;
+      // Otherwise, return boolean for backward compatibility
+      return exists;
       
     } catch (error) {
       console.error('🚨 AuthContext: Error checking phone number:', error);
@@ -561,77 +578,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('🔍 AuthContext: isLogin =', isLogin, ', document exists =', snap.exists());
 
       if (!snap.exists()) {
-        // Only create user document if we have valid data (not empty strings)
-        if (firstName.trim() && lastName.trim()) {
-          console.log('🔍 AuthContext: Creating new user document...');
-          // Create new user with all fields
-          const displayName = `${firstName} ${lastName}`.trim();
-          const userData = {
-            email: fbUser.email || '',
-            firstName: firstName,
-            lastName: lastName,
-            displayName: displayName,
-            phoneNumber: phoneNumber,
-            role: 'member',
-            blockedFromRsvp: false,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          };
-          console.log('🔍 AuthContext: New user data to save:', userData);
-          
-          try {
-            await setDoc(userRef, userData);
-            console.log('🔍 AuthContext: New user document created successfully');
-            toast.success('Account created successfully!');
-          } catch (docError: any) {
-            console.error('🚨 AuthContext: Failed to create user document:', {
-              error: docError,
-              errorCode: docError?.code,
-              errorMessage: docError?.message,
-              errorStack: docError?.stack,
-              userId: fbUser.uid,
-              userData
-            });
-            
-            // Handle Firestore permission errors specifically
-            if (docError?.code === 'permission-denied') {
-              const permissionMsg = 'Permission denied: Unable to create user profile. Please contact support.';
-              console.error('🚨 AuthContext: Firestore permission denied when creating user document');
-              toast.error(permissionMsg);
-              throw new Error(permissionMsg);
-            }
-            
-            // Re-throw other errors to be handled by outer catch
-            throw docError;
-          }
-        } else {
-          console.log('🔍 AuthContext: No user document exists and no valid data provided');
-          console.log('🔍 AuthContext: firstName =', firstName, ', lastName =', lastName);
-          console.log('🔍 AuthContext: This appears to be a new user trying to login - redirecting to registration');
-          // For new users, we should redirect them to registration
-          // Don't set them as logged in without a profile
-          throw new Error('No account found. Please register first.');
-        }
-      } else if (isLogin) {
+        // 🔥 CRITICAL FIX: If user doc is missing, this is an incomplete registration or an attack.
+        // It must NOT create a minimal user doc here. It must throw.
+        // Registration flow should use verifyPhoneCode() + createPendingUser() instead.
+        console.log('🚨 AuthContext: User doc is missing. Throwing "No account found" to redirect to registration.');
+        // Sign out the new Firebase user immediately to prevent temporary access
+        await signOut(auth);
+        throw new Error('No account found. Please register first.');
+      } 
+      
+      // Existing user: check status
+      if (isLogin) {
         console.log('🔍 AuthContext: Login detected - NOT updating existing user document');
-        console.log('🔍 AuthContext: Existing user data will be loaded via onSnapshot');
-        toast.success('Welcome back!');
-      } else {
-        console.log('🔍 AuthContext: Updating existing user document...');
-        // Update existing user (only for registration updates)
-        const displayName = `${firstName} ${lastName}`.trim();
-        const updateData = { 
-          firstName: firstName,
-          lastName: lastName,
-          displayName: displayName,
-          phoneNumber: phoneNumber,
-          updatedAt: serverTimestamp()
-        };
-        console.log('🔍 AuthContext: Update data:', updateData);
+        console.log('🔍 AuthContext: Checking user status...');
         
-        await updateDoc(userRef, updateData);
-        console.log('🔍 AuthContext: User document updated successfully');
-        toast.success('Profile updated successfully!');
+        // Get user status for informational purposes (not blocking login)
+        const userData = snap.data() as any;
+        const status = userData?.status || 'pending';
+        
+        console.log('🔍 AuthContext: User status check:', { status, userId: fbUser.uid });
+        
+        // 🔥 FIX: Allow ALL users to log in, including pending/rejected users
+        // Layout.tsx will handle routing based on status (Hybrid Security Model)
+        // We don't block authentication here - we let authorization happen at the route level
+        
+        if (status === 'approved') {
+          console.log('🔍 AuthContext: User status approved - login successful');
+          toast.success('Welcome back!');
+        } else if (status === 'pending' || status === 'needs_clarification') {
+          console.log('🔍 AuthContext: User is pending - login successful, Layout will route to /pending-approval');
+          toast.success('Login successful. Checking approval status...');
+          // Don't block or sign out - let Layout.tsx handle routing
+        } else if (status === 'rejected') {
+          console.log('🔍 AuthContext: User is rejected - login successful, Layout will route to /account-rejected');
+          toast.success('Login successful. Checking account status...');
+          // Don't block or sign out - let Layout.tsx handle routing
+        }
+      } else {
+        // This should only happen for re-authenticating an existing approved user, or old flow users
+        console.log('🔍 AuthContext: Non-login successful verification for existing user. Proceeding.');
       }
       console.log('🔍 AuthContext: verifyCode completed successfully, onSnapshot will update UI');
       // onSnapshot updates UI
@@ -649,10 +634,148 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         msg = 'Verification code expired. Request a new one.';
       else if (error?.code === 'permission-denied')
         msg = error?.message || 'Permission denied. Unable to complete registration. Please contact support.';
-      else if (error?.message)
+      else if (error?.message) {
+        // Re-throw specific pending/rejected errors for Login.tsx to handle redirect
+        if (error.message.includes('pending approval') || error.message.includes('No account found')) {
+          throw error;
+        }
         msg = error.message;
+      }
       toast.error(msg);
       throw error;
+    }
+  };
+
+  // Verify phone code only (for new registration flow - step 2)
+  // 🔥 CRITICAL FIX: Used by RegisterNew.tsx to get the Firebase User object without creating a profile yet
+  const verifyPhoneCode = async (
+    confirmationResult: ConfirmationResult,
+    code: string
+  ): Promise<FirebaseUser> => {
+    try {
+      const cred = await confirmationResult.confirm(code);
+      return cred.user;
+    } catch (error: any) {
+      console.error('🚨 AuthContext: Phone code verification error:', error);
+      throw error;
+    }
+  };
+
+  // Create user with pending status and approval request (for new registration flow - step 3)
+  const createPendingUser = async (data: {
+    userId: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phoneNumber: string;
+    location?: string;
+    howDidYouHear?: string;
+    howDidYouHearOther?: string;
+    referredBy?: string;
+    referralNotes?: string;
+  }): Promise<void> => {
+    console.log('🔍 AuthContext: createPendingUser called with:', { userId: data.userId, email: data.email });
+    
+    try {
+      const userRef = doc(db, 'users', data.userId);
+      const userSnap = await getDoc(userRef);
+      const displayName = `${data.firstName} ${data.lastName}`.trim();
+      
+      // Check if user already exists (e.g., rejected user reapplying)
+      if (userSnap.exists()) {
+        const existingData = userSnap.data();
+        console.log('🔍 AuthContext: User document already exists, updating for reapplication...', {
+          existingStatus: existingData.status,
+          userId: data.userId
+        });
+        
+        // Update existing user document (preserve history like rejectedAt)
+        const updateData: any = {
+          email: data.email,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          displayName: displayName,
+          phoneNumber: data.phoneNumber,
+          status: 'pending' as const, // Change from 'rejected' to 'pending'
+          approvalRequestedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+        
+        // Preserve rejectedAt for history (don't overwrite)
+        if (existingData.rejectedAt) {
+          // Keep rejectedAt - don't include it in update, it will be preserved
+        }
+        
+        // Preserve createdAt (don't overwrite original creation date)
+        // Don't include createdAt in update
+        
+        console.log('🔍 AuthContext: Updating existing user document for reapplication...');
+        await updateDoc(userRef, updateData);
+        console.log('✅ AuthContext: User document updated successfully for reapplication');
+      } else {
+        // New user - create document
+        const userData = {
+          email: data.email,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          displayName: displayName,
+          phoneNumber: data.phoneNumber,
+          role: 'member',
+          status: 'pending' as const,
+          blockedFromRsvp: false,
+          approvalRequestedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+
+        console.log('🔍 AuthContext: Creating new user document...');
+        await setDoc(userRef, userData);
+        console.log('✅ AuthContext: User document created successfully');
+      }
+
+      // Create account approval request
+      console.log('🔍 AuthContext: Creating account approval request...');
+      await AccountApprovalService.createApprovalRequest({
+        userId: data.userId,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        phoneNumber: data.phoneNumber,
+        location: data.location,
+        howDidYouHear: data.howDidYouHear,
+        howDidYouHearOther: data.howDidYouHearOther,
+        referredBy: data.referredBy,
+        referralNotes: data.referralNotes,
+      });
+      console.log('✅ AuthContext: Account approval request created successfully');
+
+      console.log('✅ AuthContext: Pending user and approval request created successfully');
+    } catch (error: any) {
+      console.error('🚨 AuthContext: Error creating pending user:', {
+        error,
+        errorCode: error?.code,
+        errorMessage: error?.message,
+        errorStack: error?.stack,
+        userId: data.userId
+      });
+      
+      if (error?.code === 'permission-denied') {
+        const permissionMsg = 'Permission denied: Unable to create user profile. Please contact support.';
+        console.error('🚨 AuthContext: Permission denied - check Firestore rules');
+        toast.error(permissionMsg);
+        throw new Error(permissionMsg);
+      }
+      
+      // Provide more specific error messages
+      let errorMsg = 'Failed to complete registration. Please try again.';
+      if (error?.message) {
+        errorMsg = error.message;
+      } else if (error?.code) {
+        errorMsg = `Registration failed: ${error.code}. Please contact support.`;
+      }
+      
+      toast.error(errorMsg);
+      throw new Error(errorMsg);
     }
   };
 
@@ -674,7 +797,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const value = useMemo<AuthContextType>(
-    () => ({ currentUser, loading, listenersReady, sendVerificationCode, verifyCode, checkIfUserExists, checkSMSDeliveryStatus, logout, setupRecaptcha }),
+    () => ({ 
+      currentUser, 
+      loading, 
+      listenersReady, 
+      sendVerificationCode, 
+      verifyCode, 
+      verifyPhoneCode,
+      createPendingUser,
+      checkIfUserExists, 
+      checkSMSDeliveryStatus, 
+      logout, 
+      setupRecaptcha 
+    }),
     [currentUser, loading, listenersReady]
   );
 

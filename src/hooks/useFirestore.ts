@@ -147,18 +147,28 @@ function hasOrderByField(constraints: QueryConstraint[], field: string) {
  * - posts  : where(isPublic == true), default orderBy(createdAt desc)
  * - events : where(public == true),   default orderBy(startAt  asc)
  * - media  : where(isPublic == true), default orderBy(createdAt desc)
+ * 
+ * Non-approved users (pending/rejected) are treated like logged-out users and only see public content
  */
 function enforceGuestPolicy(
   collectionName: string,
-  isAuthed: boolean,
+  isApproved: boolean,
   userConstraints: QueryConstraint[]
 ): QueryConstraint[] {
-  if (isAuthed) return userConstraints;
+  // Only approved users bypass guest filtering - pending/rejected users are treated like guests
+  if (isApproved) return userConstraints;
 
   const out = [...userConstraints];
 
   if (collectionName === 'posts') {
     if (!hasWhereEquals(out, 'isPublic', true)) out.unshift(where('isPublic', '==', true));
+    // Filter out pending posts (only show approved or no moderation status)
+    // Note: Admins and authors can see their own pending posts via Firestore rules
+    if (!hasWhereEquals(out, 'moderationStatus', 'approved') && 
+        !hasWhereEquals(out, 'moderationStatus', null)) {
+      // Add filter to only show approved posts or posts without moderation status
+      // We'll handle this in the client-side filter since Firestore doesn't support OR queries easily
+    }
     if (!hasAnyOrderBy(out) && !hasOrderByField(out, 'createdAt')) {
       out.push(orderBy('createdAt', 'desc'));
     }
@@ -329,8 +339,9 @@ export const useFirestore = () => {
         userId: currentUser?.id 
       });
       
-      const authed = !!currentUser;
-      let safeConstraints = enforceGuestPolicy(collectionName, authed, queryConstraints);
+      // Check if user is approved (approved users or legacy users without status field)
+      const isApproved = currentUser && (currentUser.status === 'approved' || !currentUser.status);
+      let safeConstraints = enforceGuestPolicy(collectionName, !!isApproved, queryConstraints);
       
       debugLog('🔍 [useFirestore] Guest policy enforced:', { 
         collectionName, 
@@ -339,10 +350,12 @@ export const useFirestore = () => {
       });
       
       // Special handling for events collection to ensure proper constraints
-      if (collectionName === 'events' && authed) {
+      // Only for approved users - non-approved users are already filtered by enforceGuestPolicy
+      if (collectionName === 'events' && isApproved) {
         debugLog('🔍 [useFirestore] Processing events collection constraints:', { 
           collectionName, 
-          userRole: currentUser?.role 
+          userRole: currentUser?.role,
+          isApproved 
         });
         
         // Simplified constraint logic to prevent Firebase assertion failures
@@ -366,12 +379,9 @@ export const useFirestore = () => {
             debugLog('🔍 [useFirestore] Admin user - no additional constraints');
             // Admin can see all events - no additional constraints needed
           } else {
-            debugLog('🔍 [useFirestore] Non-admin user - adding public visibility constraint');
-            // For non-admin users, only show public events to prevent assertion failures
-            safeConstraints = [
-              ...safeConstraints,
-              where('visibility', '==', 'public')
-            ];
+            debugLog('🔍 [useFirestore] Non-admin approved user - allowing public/members events');
+            // Approved non-admin users can see public and members events
+            // The enforceGuestPolicy already handled this, so no additional constraints needed
           }
         }
       }
@@ -379,11 +389,12 @@ export const useFirestore = () => {
       // Debug logging for events collection
       if (collectionName === 'events') {
         debugLog('🔍 Events query constraints:', {
-          isAuthed: authed,
+          isAuthed: !!currentUser,
+          isApproved: isApproved,
           originalConstraints: queryConstraints,
           safeConstraints: safeConstraints,
           userRole: currentUser?.role,
-          enforcedConstraints: collectionName === 'events' && authed
+          enforcedConstraints: collectionName === 'events' && !!currentUser
         });
       }
 
@@ -476,7 +487,29 @@ export const useFirestore = () => {
       const unsubscribe = onSnapshot(
         q,
         (snapshot) => {
-          const rows = snapshot.docs.map(d => normalizeDoc({ id: d.id, ...d.data() }));
+          let rows = snapshot.docs.map(d => normalizeDoc({ id: d.id, ...d.data() }));
+          
+          // Filter out pending content (except for admins and authors)
+          const isAdmin = currentUser?.role === 'admin';
+          if (!isAdmin && (collectionName === 'posts' || collectionName === 'media')) {
+            rows = rows.filter((doc: any) => {
+              // Show if no moderation status (legacy content) or approved
+              if (!doc.moderationStatus || doc.moderationStatus === 'approved') {
+                return true;
+              }
+              // Show if user is the author
+              if (currentUser) {
+                if (collectionName === 'posts' && doc.authorId === currentUser.id) {
+                  return true;
+                }
+                if (collectionName === 'media' && doc.uploadedBy === currentUser.id) {
+                  return true;
+                }
+              }
+              // Hide pending/rejected content from others
+              return false;
+            });
+          }
           setData(rows);
           setLoading(false);
         },
@@ -492,7 +525,7 @@ export const useFirestore = () => {
           if (error?.code === 'failed-precondition') {
             toast.error('This query needs a Firestore composite index. Use the console link in devtools to create it.');
           } else if (error?.code === 'permission-denied') {
-            if (!authed) {
+            if (!currentUser) {
               toast.error('Sign in to view private items (or filter to public content).');
             } else {
               toast.error('You do not have permission to read these documents.');

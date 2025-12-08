@@ -138,12 +138,15 @@ export function normalizeEvent(rawEvent: any): EventDoc {
   }
 
   // CRITICAL: Add comprehensive data validation to prevent all TypeError issues
-  console.log('🚨🚨🚨 NORMALIZE EVENT CALLED 🚨🚨🚨', rawEvent.id, {
-    hasRecurrence: !!rawEvent.recurrence,
-    recurrenceType: typeof rawEvent.recurrence,
-    recurrenceValue: rawEvent.recurrence,
-    allKeys: Object.keys(rawEvent)
-  });
+  // Only log in development mode
+  if (import.meta.env.DEV) {
+    console.log('🚨🚨🚨 NORMALIZE EVENT CALLED 🚨🚨🚨', rawEvent.id, {
+      hasRecurrence: !!rawEvent.recurrence,
+      recurrenceType: typeof rawEvent.recurrence,
+      recurrenceValue: rawEvent.recurrence,
+      allKeys: Object.keys(rawEvent)
+    });
+  }
 
   try {
     const normalized: EventDoc = {
@@ -189,7 +192,10 @@ export function normalizeEvent(rawEvent: any): EventDoc {
       ageGroup: String(rawEvent.ageGroup || ''),
     };
 
-    console.log('✅ normalizeEvent: Successfully normalized event:', rawEvent.id);
+    // Only log in development mode
+    if (import.meta.env.DEV) {
+      console.log('✅ normalizeEvent: Successfully normalized event:', rawEvent.id);
+    }
     return normalized as EventDoc;
   } catch (error) {
     console.error('❌ normalizeEvent: Error normalizing event:', rawEvent.id, error);

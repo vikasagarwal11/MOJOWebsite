@@ -6,6 +6,8 @@ import { useFirestore } from '../hooks/useFirestore';
 import { Post } from '../types';
 import PostCard from '../components/posts/PostCard';
 import CreatePostModal from '../components/posts/CreatePostModal';
+import { isUserApproved } from '../utils/userUtils';
+import toast from 'react-hot-toast';
 
 const Posts: React.FC = () => {
   const { currentUser } = useAuth();
@@ -32,10 +34,11 @@ const Posts: React.FC = () => {
           Share your journey and connect with fellow moms
         </p>
         
-        {currentUser && (
+        {/* Only show button for approved users - hide for non-approved to keep consistent with Media page */}
+        {currentUser && isUserApproved(currentUser) && (
           <button
             onClick={() => setIsCreateModalOpen(true)}
-            className="flex items-center px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 shadow-lg mx-auto"
+            className="flex items-center px-6 py-3 font-semibold rounded-full transition-all duration-300 transform shadow-lg mx-auto bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white hover:from-[#E0451F] hover:to-[#E55A2A] hover:scale-105"
           >
             <Plus className="w-5 h-5 mr-2" />
             Share Post
@@ -60,10 +63,11 @@ const Posts: React.FC = () => {
           <p className="text-gray-400 mb-6">
             Be the first to share your fitness journey with the community!
           </p>
-          {currentUser && (
+          {/* Only show button for approved users - hide for non-approved to keep consistent */}
+          {currentUser && isUserApproved(currentUser) && (
             <button
               onClick={() => setIsCreateModalOpen(true)}
-              className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105"
+              className="px-6 py-3 font-semibold rounded-full transition-all duration-300 transform bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white hover:from-[#E0451F] hover:to-[#E55A2A] hover:scale-105"
             >
               Create First Post
             </button>

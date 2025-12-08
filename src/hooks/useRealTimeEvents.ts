@@ -10,6 +10,7 @@ interface UseRealTimeEventsOptions {
   enableNotifications?: boolean;
   enableRealTimeUpdates?: boolean;
   userId?: string;
+  isApproved?: boolean; // Whether user is approved (non-approved users see only public events)
 }
 
 interface UseRealTimeEventsResult {
@@ -22,7 +23,7 @@ interface UseRealTimeEventsResult {
 }
 
 export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRealTimeEventsResult {
-  const { enableNotifications = true, enableRealTimeUpdates = true, userId } = options;
+  const { enableNotifications = true, enableRealTimeUpdates = true, userId, isApproved = false } = options;
   
   const [events, setEvents] = useState<EventDoc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,13 +50,15 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
     }
   }, [events]); // Trigger on events update
 
-  // Build queries based on user authentication
+  // Build queries based on user authentication and approval status
+  // Non-approved users (pending/rejected) are treated like logged-out users and only see public events
   const buildQueries = useCallback(() => {
     const nowTs = Timestamp.fromMillis(Date.now());
     const eventsRef = collection(db, 'events');
     
-    if (!userId) {
-      // Public events only for guests
+    // Treat non-approved users like logged-out users (only show public events)
+    if (!userId || !isApproved) {
+      // Public events only for guests and non-approved users
       return [
         query(
           eventsRef,
@@ -66,7 +69,7 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
       ];
     }
 
-    // Multiple queries for authenticated users
+    // Multiple queries for approved authenticated users
     return [
       query(
         eventsRef,
@@ -87,7 +90,7 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
         orderBy('startAt', 'asc')
       )
     ];
-  }, [userId]);
+  }, [userId, isApproved]);
 
   // Handle real-time updates
   const handleSnapshot = useCallback((snapshot: any) => {

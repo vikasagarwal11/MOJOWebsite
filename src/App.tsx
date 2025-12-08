@@ -7,13 +7,17 @@ import { setupGlobalErrorHandling } from './utils/globalErrorHandler';
 // import { OrganizationSchema } from './components/seo/StructuredData';
 import Layout from './components/layout/Layout';
 import PopupAlertHandler from './components/notifications/PopupAlertHandler';
+import { PushNotificationInitializer } from './components/notifications/PushNotificationInitializer';
+import ScrollToTop from './components/common/ScrollToTop';
 import Home from './pages/Home';
 import Events from './pages/Events';
 import Media from './pages/Media';
 import Posts from './pages/Posts';
 import Sponsors from './pages/Sponsors';
 import Login from './components/auth/Login';
-import Register from './components/auth/Register';
+import Register from './components/auth/RegisterNew';
+import PendingApproval from './pages/PendingApproval';
+import AccountRejected from './pages/AccountRejected';
 import Profile from './pages/Profile';
 import FamilyManagement from './pages/FamilyManagement';
 import Founder from './pages/Founder';
@@ -26,9 +30,9 @@ import EventsReadOnly from './pages/EventsReadOnly';
 import EventDetailsPage from './pages/EventDetailsPage';
 import RSVPPage from './pages/RSVPPage';
 import ShareYourStory from './pages/ShareYourStory';
-import Workouts from './pages/Workouts';
-import Challenges from './pages/Challenges';
-import ChallengeDetail from './pages/ChallengeDetail';
+// import Workouts from './pages/Workouts'; // Hidden for now
+// import Challenges from './pages/Challenges'; // Hidden for now
+// import ChallengeDetail from './pages/ChallengeDetail'; // Hidden for now
 import AdminConsole from './pages/AdminConsole';
 
 function AppContent() {
@@ -36,10 +40,16 @@ function AppContent() {
   
   return (
     <Router>
+      {/* Scroll to top on route change */}
+      <ScrollToTop />
+      
       {/* Global Popup Alert Handler */}
       {currentUser && (
         <PopupAlertHandler userId={currentUser.id} />
       )}
+      
+      {/* Push Notification Initializer */}
+      <PushNotificationInitializer />
       
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
         {/* Global SEO Structured Data - Temporarily disabled */}
@@ -76,6 +86,8 @@ function AppContent() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/pending-approval" element={<PendingApproval />} />
+          <Route path="/account-rejected" element={<AccountRejected />} />
           <Route path="/" element={<Layout />}>
             <Route index element={<Home />} />
             <Route path="events" element={<Events />} />
@@ -97,9 +109,9 @@ function AppContent() {
             <Route path="press" element={<Press />} />
             <Route path="community-guidelines" element={<CommunityGuidelines />} />
             <Route path="share-your-story" element={<ShareYourStory />} />
-            <Route path="workouts" element={<Workouts />} />
-            <Route path="challenges" element={<Challenges />} />
-            <Route path="challenges/:id" element={<ChallengeDetail />} />
+            {/* <Route path="workouts" element={<Workouts />} /> */} {/* Hidden for now */}
+            {/* <Route path="challenges" element={<Challenges />} /> */} {/* Hidden for now */}
+            {/* <Route path="challenges/:id" element={<ChallengeDetail />} /> */} {/* Hidden for now */}
           </Route>
         </Routes>
       </div>

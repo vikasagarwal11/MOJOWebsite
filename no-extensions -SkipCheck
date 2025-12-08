@@ -1,0 +1,114 @@
+[1mdiff --git a/functions/src/assistant.ts b/functions/src/assistant.ts[m
+[1mindex 8a3d755..a2fe8a9 100644[m
+[1m--- a/functions/src/assistant.ts[m
+[1m+++ b/functions/src/assistant.ts[m
+[36m@@ -85,13 +85,15 @@[m [mYour primary role is to answer questions using the provided Knowledge Base (KB)[m
+ IMPORTANT - Use the KB context effectively:[m
+ 1. Brand name variations are equivalent:[m
+    - "MFM" = "Moms Fitness Mojo" = "Moms Fitness Mojo (MFM)"[m
+[31m-   - "Aina Rai" = "Aina" (the founder)[m
+[31m-   - Use context even if the question uses abbreviations or variations[m
+[32m+[m[32m   - "Aina Rai" = "Aina" = "Anina Rai" = "Anina" (the founder - handle common typos)[m
+[32m+[m[32m   - "the community" = "this community" = "the group" = "Moms Fitness Mojo" (when context is clear)[m
+[32m+[m[32m   - Use context even if the question uses abbreviations, variations, or typos[m
+ [m
+ 2. Be flexible with wording:[m
+    - If the context contains relevant information (even if worded differently), use it[m
+    - Paraphrase and synthesize information from multiple context sources[m
+    - Connect related concepts from the KB to answer the question[m
+[32m+[m[32m   - Questions about "founder" or "who started this community" refer to Aina Rai and Moms Fitness Mojo[m
+ [m
+ 3. Use ALL available context:[m
+    - Read through all provided context chunks[m
+[36m@@ -111,9 +113,22 @@[m [mWhen answering from KB context:[m
+ [m
+ Tone: encouraging, knowledgeable, moms-fitness oriented.`;[m
+ [m
+[31m-// Default prompt for general knowledge answers[m
+[32m+[m[32m// Default prompt for general knowledge answers (ONLY used when KB search fails)[m
+ const DEFAULT_GENERAL_KNOWLEDGE_PROMPT = `You are Moms Fitness Mojo Assistant, a friendly and factual guide for a fitness community of moms.[m
+ [m
+[32m+[m[32mIMPORTANT: This prompt is ONLY used when the Knowledge Base (KB) search did NOT find relevant information.[m[41m [m
+[32m+[m[32mIf KB had found information, you would be using that instead.[m
+[32m+[m
+[32m+[m[32mCRITICAL - DO NOT HALLUCINATE: Since KB search failed, you do NOT have access to specific information about:[m
+[32m+[m[32m- The founder of Moms Fitness Mojo (NEVER make up names - if you don't know, say "I don't have access to that information")[m
+[32m+[m[32m- Specific events, dates, or community details[m
+[32m+[m[32m- Member information or community history[m
+[32m+[m[32m- Any specific facts about the Moms Fitness Mojo community[m
+[32m+[m
+[32m+[m[32mIf asked about these topics, you MUST respond with: "I don't have access to that specific information. Please check the community platform or ask an admin for details."[m
+[32m+[m
+[32m+[m[32mNEVER invent names, dates, or facts. If you don't know something, say you don't have access to it.[m
+[32m+[m
+ When answering questions using general knowledge, focus exclusively on:[m
+ - Lifestyle, fitness, and general health topics[m
+ - Women's wellness and fitness[m
+[36m@@ -127,6 +142,7 @@[m [mDo NOT answer questions about:[m
+ - Specific medical conditions (refer to healthcare professionals)[m
+ - Legal or financial advice[m
+ - Topics unrelated to fitness, wellness, or lifestyle[m
+[32m+[m[32m- Specific information about Moms Fitness Mojo (founder, events, members, etc.) - say you don't have access (because KB search failed to find this information)[m
+ [m
+ Keep answers encouraging, knowledgeable, and aligned with women-focused community fitness.[m
+ If a question falls outside your scope, politely redirect to fitness/wellness topics or suggest consulting a professional.[m
+[36m@@ -190,20 +206,51 @@[m [mfunction detectAppDataIntent(question: string): AppDataIntent {[m
+ }[m
+ [m
+ // Helper: Check if question mentions brand (MFM-specific)[m
+[31m-// Only check for stable brand identifiers - event names and generic terms are handled elsewhere[m
+[31m-// This is the PRIMARY filter: non-brand questions skip KB entirely and go to general knowledge[m
+[32m+[m[32m// Used for threshold tuning only - KB-first strategy means all questions try KB first[m
+[32m+[m[32m// Brand detection adjusts similarity thresholds (more lenient for brand questions)[m
+ function isBrandQuestion(question: string): boolean {[m
+   const q = question.toLowerCase().trim();[m
+   [m
+   // REQUIRED: Must have explicit brand mention (moms fitness mojo, mfm, aina rai, aina)[m
+[31m-  const explicitBrandPattern = /\b(moms fitness mojo|mfm|aina rai|aina)\b/;[m
+[32m+[m[32m  // Also handle common typos: "anina" -> "aina"[m
+[32m+[m[32m  const explicitBrandPattern = /\b(moms fitness mojo|mfm|aina rai|aina|anina rai|anina)\b/;[m
+   const hasExplicitBrand = explicitBrandPattern.test(q);[m
+   [m
+[31m-  // If no explicit brand mention, definitely not a brand question[m
+[32m+[m[32m  // Brand context keywords that indicate brand questions even without explicit brand mention[m
+[32m+[m[32m  // These are strong indicators of questions about the community/app itself[m
+[32m+[m[32m  const strongBrandContextPatterns = [[m
+[32m+[m[32m    // Founder questions (very specific to this app) - more flexible patterns[m
+[32m+[m[32m    /\b(who is|who's|who was|tell me about|what is).*\bfounder\b/,[m
+[32m+[m[32m    /\bfounder\b.*\b(who|what|this|the|community|group|app|website)\b/,[m
+[32m+[m[32m    /\b(who|what).*\bfounder\b/,  // Simple: "who founder" or "what founder"[m
+[32m+[m[32m    // Community-specific questions[m
+[32m+[m[32m    /\b(this|the) (community|group|app|website|organization)\b.*\b(founder|mission|values|story|history|begin|start|created|founded|for|about|purpose|goal)\b/,[m
+[32m+[m[32m    /\b(founder|mission|values|story|history|begin|start|created|founded|for|about|purpose|goal).*\b(this|the) (community|group|app|website|organization)\b/,[m
+[32m+[m[32m    // Questions about what the group/community does[m
+[32m+[m[32m    /\bwhat (is|does|are|do|did|will).*\b(this|the) (group|community|app|organization)\b/,[m
+[32m+[m[32m    /\b(this|the) (group|community|app|organization).*\b(for|about|do|does|did|will)\b/,[m
+[32m+[m[32m    // Questions about events (upcoming/past)[m
+[32m+[m[32m    /\b(upcoming|past|future|previous|recent|next).*\b(event|events|activity|activities|meeting|meetings)\b/,[m
+[32m+[m[32m    /\b(event|events|activity|activities).*\b(upcoming|past|future|previous|recent|next|when|where)\b/,[m
+[32m+[m[32m    // Questions about activities/what they do[m
+[32m+[m[32m    /\bwhat (do|does|did|will).*\b(they|this|the group|the community)\b/,[m
+[32m+[m[32m    /\b(they|this|the group|the community).*\b(do|does|did|will|offer|provide)\b/,[m
+[32m+[m[32m  ];[m
+[32m+[m[41m  [m
+[32m+[m[32m  // Check for strong brand context (founder/community questions)[m
+[32m+[m[32m  const hasStrongBrandContext = strongBrandContextPatterns.some(pattern => pattern.test(q));[m
+[32m+[m[41m  [m
+[32m+[m[32m  // If we have strong brand context (founder/community questions), treat as brand question[m
+[32m+[m[32m  if (hasStrongBrandContext) {[m
+[32m+[m[32m    console.log(`[assistant.isBrandQuestion] Question: "${question}"`);[m
+[32m+[m[32m    console.log(`[assistant.isBrandQuestion] - Has strong brand context (founder/community): true`);[m
+[32m+[m[32m    console.log(`[assistant.isBrandQuestion] - Result: BRAND (strong context)`);[m
+[32m+[m[32m    return true;[m
+[32m+[m[32m  }[m
+[32m+[m[41m  [m
+[32m+[m[32m  // If no explicit brand mention and no strong context, not a brand question[m
+   if (!hasExplicitBrand) {[m
+[31m-    // Exception: "core values" + context might be brand, but too risky - require explicit brand[m
+[31m-    // "who is the founder" alone without brand is NOT a brand question[m
+[31m-    console.log(`[assistant.isBrandQuestion] ❌ NON-BRAND QUESTION - no explicit brand mention`);[m
+[32m+[m[32m    console.log(`[assistant.isBrandQuestion] NON-BRAND QUESTION - no explicit brand mention or strong context`);[m
+     return false;[m
+   }[m
+   [m
+[36m@@ -235,14 +282,17 @@[m [mfunction isBrandQuestion(question: string): boolean {

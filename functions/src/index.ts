@@ -2,9 +2,10 @@ import { setGlobalOptions } from "firebase-functions/v2";
 import { onDocumentWritten, onDocumentDeleted, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { onCall, onRequest, HttpsError, type CallableRequest, type CallableOptions } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import type { Request, Response } from "express";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue, Timestamp, DocumentData } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, Timestamp, DocumentData, type FirebaseFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { CloudTasksClient } from "@google-cloud/tasks";
 import { SpeechClient } from '@google-cloud/speech';
@@ -276,22 +277,94 @@ const sendPromotionNotifications = async (
   try {
     console.log(`📱 Sending notifications to ${promotedUsers.length} promoted users`);
     
-    // Log promotion notifications for future implementation
+    // Get event data for notification
+    const eventDoc = await db.collection('events').doc(eventId).get();
+    const eventData = eventDoc.exists() ? eventDoc.data() : null;
+    const eventTitle = eventData?.title || 'Event';
+    
     for (const user of promotedUsers) {
-      await db.collection('promotion_notifications').add({
-        eventId: eventId,
-        userId: user.userId,
-        attendeeId: user.attendeeId,
-        userName: user.name,
-        promotedFromPosition: user.promotedFromPosition,
-        message: `🎉 Congratulations! You've been promoted from the waitlist! ${user.message}`,
-        notificationType: 'promotion',
-        timestamp: new Date(),
-        sent: false // Will be processed by notification service
-      });
+      try {
+        // Get user data for phone number and preferences
+        const userDoc = await db.collection('users').doc(user.userId).get();
+        const userData = userDoc.exists() ? userDoc.data() : null;
+        
+        if (!userData) {
+          console.warn(`⚠️ User data not found for ${user.userId}`);
+          continue;
+        }
+        
+        // 1. Create in-app notification
+        await db.collection('notifications').add({
+          userId: user.userId,
+          type: 'waitlist_promotion',
+          title: '🎉 Waitlist Promotion Confirmed!',
+          message: `You've been promoted from waitlist for "${eventTitle}"`,
+          eventId: eventId,
+          read: false,
+          createdAt: FieldValue.serverTimestamp(),
+          expiresAt: Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000)), // 24 hours
+          metadata: {
+            originalPosition: user.promotedFromPosition,
+            promotionTime: new Date().toISOString()
+          }
+        });
+        
+        // 2. Send push notification (if enabled)
+        const fcmToken = userData?.fcmToken;
+        const pushEnabled = userData?.notificationPreferences?.pushEnabled !== false;
+        if (pushEnabled && fcmToken) {
+          try {
+            const { getMessaging } = await import('firebase-admin/messaging');
+            const messaging = getMessaging();
+            await messaging.send({
+              token: fcmToken,
+              notification: {
+                title: '🎉 Waitlist Promotion Confirmed!',
+                body: `You've been promoted from waitlist for "${eventTitle}"`,
+              },
+              data: {
+                type: 'waitlist_promotion',
+                eventId: eventId,
+              },
+            });
+            console.log(`✅ Push notification sent to ${user.userId}`);
+          } catch (pushError) {
+            console.warn(`⚠️ Push notification failed for ${user.userId}:`, pushError);
+          }
+        }
+        
+        // 3. Send SMS immediately (time-sensitive - user needs to RSVP within 24h)
+        const phoneNumber = userData?.phoneNumber;
+        const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
+        if (smsEnabled && phoneNumber) {
+          const smsMessage = `🎉 MOMS FITNESS MOJO: You've been promoted from waitlist! Confirm attendance at "${eventTitle}" within 24h.`;
+          const smsResult = await sendSMSViaTwilio(phoneNumber, smsMessage);
+          
+          if (smsResult.success) {
+            console.log(`✅ Immediate SMS sent to ${user.userId} for promotion`);
+          } else {
+            console.error(`❌ SMS failed for ${user.userId}:`, smsResult.error);
+          }
+        }
+        
+        // 4. Mark for popup alert on next visit
+        await db.collection('popup_alerts').add({
+          userId: user.userId,
+          type: 'promotion',
+          title: '🎉 Waitlist Promotion Confirmed!',
+          message: `Congratulations! You've been promoted from waitlist for "${eventTitle}"`,
+          eventId: eventId,
+          createdAt: FieldValue.serverTimestamp(),
+          acknowledged: false
+        });
+        
+        console.log(`✅ All notifications sent for ${user.name} (${user.userId})`);
+      } catch (userError) {
+        console.error(`❌ Failed to send notifications for ${user.userId}:`, userError);
+      }
     }
     
-    console.log(`✅ Promotion notifications logged for ${promotedUsers.length} users`);
+    console.log(`✅ Promotion notifications processed for ${promotedUsers.length} users`);
   } catch (error) {
     console.error('🚨 Error sending promotion notifications:', error);
   }
@@ -299,6 +372,59 @@ const sendPromotionNotifications = async (
 
 // Get Firestore instance - using momsfitnessmojo database
 const db = getFirestore();
+
+// ───────────────── SMS SERVICE (Twilio) ─────────────────
+
+/**
+ * Send SMS using Twilio
+ * Requires Firebase config: twilio.account_sid, twilio.auth_token, twilio.phone_number
+ * Set via: firebase functions:config:set twilio.account_sid="..." twilio.auth_token="..." twilio.phone_number="..."
+ */
+async function sendSMSViaTwilio(phoneNumber: string, message: string): Promise<{ success: boolean; error?: string; sid?: string }> {
+  try {
+    // For Firebase Functions v2, access config via runtime config
+    // Try to get from functions.config() first (for v1 compatibility), then fallback to process.env
+    let twilioAccountSid: string | undefined;
+    let twilioAuthToken: string | undefined;
+    let twilioPhoneNumber: string | undefined;
+    
+    try {
+      // Try to access via functions.config() (works with firebase functions:config:set)
+      const functions = require('firebase-functions');
+      const config = functions.config();
+      twilioAccountSid = config?.twilio?.account_sid;
+      twilioAuthToken = config?.twilio?.auth_token;
+      twilioPhoneNumber = config?.twilio?.phone_number;
+    } catch (configError) {
+      // functions.config() not available, will use process.env
+    }
+    
+    // Fallback to environment variables (for v2 direct env vars)
+    twilioAccountSid = twilioAccountSid || process.env.TWILIO_ACCOUNT_SID;
+    twilioAuthToken = twilioAuthToken || process.env.TWILIO_AUTH_TOKEN;
+    twilioPhoneNumber = twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+
+    if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
+      console.error('❌ Twilio credentials not configured');
+      return { success: false, error: 'Twilio credentials not configured. Please set twilio.account_sid, twilio.auth_token, and twilio.phone_number' };
+    }
+
+    const twilio = await import('twilio');
+    const client = twilio.default(twilioAccountSid, twilioAuthToken);
+
+    const result = await client.messages.create({
+      body: message,
+      from: twilioPhoneNumber,
+      to: phoneNumber,
+    });
+
+    console.log(`✅ SMS sent via Twilio. SID: ${result.sid}`);
+    return { success: true, sid: result.sid };
+  } catch (error: any) {
+    console.error('❌ Twilio SMS failed:', error?.message || error);
+    return { success: false, error: error?.message || 'Failed to send SMS' };
+  }
+}
 type StorageBucket = ReturnType<ReturnType<typeof getStorage>['bucket']>;
 
 // Helper
@@ -2771,13 +2897,74 @@ export const checkPhoneNumberExists = onCallWithCors({}, async (request) => {
       .limit(1)
       .get();
     
-    const exists = !usersSnapshot.empty;
-    console.log('🔍 Phone number check result:', { phoneNumber, exists, count: usersSnapshot.size });
+    if (usersSnapshot.empty) {
+      console.log('🔍 Phone number not found - new user can register');
+      return { 
+        exists: false, 
+        phoneNumber,
+        message: 'Phone number not found'
+      };
+    }
     
+    // User exists - check status
+    const userDoc = usersSnapshot.docs[0];
+    const userData = userDoc.data();
+    const userStatus = userData.status || 'pending';
+    
+    console.log('🔍 User found with status:', userStatus);
+    
+    // If user is rejected, check if cooldown period has passed
+    if (userStatus === 'rejected' && userData.rejectedAt) {
+      const rejectedAt = (userData.rejectedAt as Timestamp).toDate();
+      const cooldownDays = 30;
+      const reapplyDate = new Date(rejectedAt);
+      reapplyDate.setDate(reapplyDate.getDate() + cooldownDays);
+      const now = new Date();
+      
+      console.log('🔍 Rejected user - checking cooldown:', {
+        rejectedAt: rejectedAt.toISOString(),
+        reapplyDate: reapplyDate.toISOString(),
+        now: now.toISOString(),
+        canReapply: now >= reapplyDate
+      });
+      
+      // If cooldown has passed, allow reapplication
+      if (now >= reapplyDate) {
+        console.log('✅ Cooldown expired - user can reapply');
+        return { 
+          exists: false,  // Allow reapplication
+          phoneNumber,
+          canReapply: true,
+          message: 'You can reapply now',
+          userStatus: 'rejected'
+        };
+      } else {
+        // Still in cooldown period
+        const daysRemaining = Math.ceil((reapplyDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        console.log('⏳ Cooldown active - user cannot reapply yet', { daysRemaining });
+        return { 
+          exists: true,  // Block registration
+          phoneNumber,
+          canReapply: false,
+          reapplyDate: reapplyDate.toISOString(),
+          daysRemaining,
+          message: `You can reapply after ${reapplyDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
+          userStatus: 'rejected'
+        };
+      }
+    }
+    
+    // For all other statuses (pending, approved, needs_clarification), block registration
+    console.log('🔍 User exists with status:', userStatus, '- blocking registration');
     return { 
-      exists, 
+      exists: true, 
       phoneNumber,
-      message: exists ? 'Phone number is registered' : 'Phone number not found'
+      message: userStatus === 'pending' 
+        ? 'This phone number is already registered. Your account is pending approval.'
+        : userStatus === 'approved'
+        ? 'This phone number is already registered. Please sign in instead.'
+        : 'This phone number is already registered. Please sign in instead.',
+      userStatus
     };
     
   } catch (error) {
@@ -2790,49 +2977,114 @@ export const checkPhoneNumberExists = onCallWithCors({}, async (request) => {
   }
 });
 
-// Send notification SMS using Firebase Auth SMS (FREE!)
-export const sendNotificationSMS = onCall(async (request) => {
-  const { phoneNumber, message, userId, type } = request.data;
-  
-  console.log('📱 sendNotificationSMS called with:', { phoneNumber, message, userId, type });
-  
-  try {
-    // Use Firebase Admin Auth to trigger SMS
-    const { getAuth } = await import('firebase-admin/auth');
-    const auth = getAuth();
-    
-    // Create a temporary user (you can optimize this)
-    try {
-      // Send SMS using verification (this sends the SMS for free)
-      await auth.generatePasswordResetLink(`temp-${userId}@domain.com`);
-      
-      console.log('✅ SMS notification sent successfully via Firebase Auth');
-      return {
-        success: true,
-        message: 'SMS notification sent',
-        phoneNumber,
-        userId
-      };
-    } catch (smsError) {
-      console.error('❌ Firebase Auth SMS failed:', smsError);
-      return {
-        success: false,
-        error: 'SMS delivery failed',
-        phoneNumber,
-        userId
-      };
+// Send notification SMS using Twilio
+// SECURITY: Restricted to admins only, with validation and App Check
+export const sendNotificationSMS = onCall(
+  {
+    // App Check is now configured in Firebase Console - enforce it
+    // App Check provides additional security layer to verify legitimate app instances
+    enforceAppCheck: true, // App Check is registered - enforce it
+  },
+  async (request) => {
+    // 1. Require authentication
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'User must be authenticated to send SMS');
     }
     
-  } catch (error) {
-    console.error('❌ Error sending notification SMS:', error);
-    return {
-      success: false,
-      error: 'Failed to send SMS notification',
-      phoneNumber,
-      userId
-    };
+    // 2. App Check verification is handled automatically by Firebase when enforceAppCheck: true
+    // If App Check token is invalid or missing, the function won't be called
+    // request.app contains App Check verification result if needed for logging
+
+    const { phoneNumber, message, userId, type } = request.data;
+    
+    // 3. Validate input
+  if (!phoneNumber || typeof phoneNumber !== 'string') {
+    throw new HttpsError('invalid-argument', 'phoneNumber is required and must be a string');
   }
-});
+  
+  if (!message || typeof message !== 'string') {
+    throw new HttpsError('invalid-argument', 'message is required and must be a string');
+  }
+  
+  // Validate phone number format (E.164)
+  const phoneRegex = /^\+[1-9]\d{1,14}$/;
+  if (!phoneRegex.test(phoneNumber)) {
+    throw new HttpsError('invalid-argument', 'phoneNumber must be in E.164 format (e.g., +1234567890)');
+  }
+  
+  // Validate message length (Twilio limit is 1600 characters)
+  if (message.length > 1600) {
+    throw new HttpsError('invalid-argument', 'message must be 1600 characters or less');
+  }
+  
+  if (message.length === 0) {
+    throw new HttpsError('invalid-argument', 'message cannot be empty');
+  }
+  
+    // 4. Check user role - only admins can send SMS
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError('permission-denied', 'User not found');
+  }
+  
+  const userData = userDoc.data();
+  if (userData?.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Only admins can send SMS notifications');
+  }
+  
+    // 5. If userId provided, verify it exists and check SMS preference
+  if (userId) {
+    const targetUserDoc = await db.collection('users').doc(userId).get();
+    if (targetUserDoc.exists) {
+      const targetUserData = targetUserDoc.data();
+      const smsEnabled = targetUserData?.notificationPreferences?.smsEnabled !== false; // Default to true
+      
+      if (!smsEnabled) {
+        console.log(`⚠️ SMS disabled for user ${userId}, skipping send`);
+        return {
+          success: false,
+          error: 'SMS notifications are disabled for this user',
+          phoneNumber,
+          userId
+        };
+      }
+    }
+  }
+  
+    console.log('📱 sendNotificationSMS called by admin:', {
+      adminId: request.auth.uid,
+      phoneNumber: phoneNumber.substring(0, 4) + '***', // Partial logging for privacy
+      messageLength: message.length,
+      userId,
+      type,
+      appVerified: !!request.app
+    });
+    
+    try {
+      const result = await sendSMSViaTwilio(phoneNumber, message);
+      
+      if (result.success) {
+        return {
+          success: true,
+          message: 'SMS notification sent',
+          phoneNumber: phoneNumber.substring(0, 4) + '***', // Don't return full number
+          userId,
+          sid: result.sid
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || 'SMS delivery failed',
+          phoneNumber: phoneNumber.substring(0, 4) + '***',
+          userId
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error sending notification SMS:', error);
+      throw new HttpsError('internal', 'Failed to send SMS notification');
+    }
+  }
+);
 
 // SMS Delivery Status Checker
 export const checkSMSDeliveryStatus = onCall(async (request) => {
@@ -3829,6 +4081,11 @@ export const getDailyWorkoutSuggestion = onCallWithCors({ region: 'us-east1' }, 
 
 export const createChallenge = onCallWithCors({ region: 'us-east1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  // Only approved users can create challenges
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!userDoc.exists || (userDoc.data().status && userDoc.data().status !== 'approved')) {
+    throw new HttpsError('failed-precondition', 'Account pending approval. Please wait until your account is approved.');
+  }
   const data = request.data as {
     title: string;
     category?: 'exercise' | 'nutrition' | 'lifestyle' | 'wellness' | 'custom';
@@ -3922,6 +4179,10 @@ export const createChallenge = onCallWithCors({ region: 'us-east1' }, async (req
 
 export const joinChallenge = onCallWithCors({ region: 'us-east1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!userDoc.exists || (userDoc.data().status && userDoc.data().status !== 'approved')) {
+    throw new HttpsError('failed-precondition', 'Account pending approval. Please wait until your account is approved.');
+  }
   const { challengeId } = request.data as { challengeId: string };
   if (!challengeId) throw new HttpsError('invalid-argument', 'challengeId required');
 
@@ -4073,6 +4334,10 @@ async function applyChallengeProgressInternal(params: { userId: string; challeng
 
 export const incrementChallengeProgress = onCallWithCors({ region: 'us-east1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!userDoc.exists || (userDoc.data().status && userDoc.data().status !== 'approved')) {
+    throw new HttpsError('failed-precondition', 'Account pending approval. Please wait until your account is approved.');
+  }
   const { challengeId, count, value, sessions, minutes } = request.data as { 
     challengeId: string; 
     count?: number; 
@@ -4096,6 +4361,10 @@ export const incrementChallengeProgress = onCallWithCors({ region: 'us-east1' },
 
 export const logChallengeCheckIn = onCallWithCors({ region: 'us-east1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
+  const userDoc = await db.collection('users').doc(request.auth.uid).get();
+  if (!userDoc.exists || (userDoc.data().status && userDoc.data().status !== 'approved')) {
+    throw new HttpsError('failed-precondition', 'Account pending approval. Please wait until your account is approved.');
+  }
   const { challengeId, count, value, note } = request.data as {
     challengeId: string;
     count?: number;
@@ -4110,6 +4379,30 @@ export const logChallengeCheckIn = onCallWithCors({ region: 'us-east1' }, async 
   if (!participantSnap.exists) {
     throw new HttpsError('failed-precondition', 'Join the challenge first');
   }
+
+  // Compute streaks
+  const checkInsRef = participantRef.collection('checkIns');
+  const now = new Date();
+  const todayKey = now.toDateString();
+  const yesterdayKey = new Date(now.getTime() - 24 * 60 * 60 * 1000).toDateString();
+  const recentSnap = await checkInsRef.orderBy('createdAt', 'desc').limit(1).get();
+  let currentStreak = 0;
+  let longestStreak = participantSnap.data()?.longestStreak || 0;
+  if (!recentSnap.empty) {
+    const last = recentSnap.docs[0].data();
+    const lastDate = (last.createdAt as FirebaseFirestore.Timestamp)?.toDate() || new Date(last.createdAt);
+    const lastKey = lastDate.toDateString();
+    if (lastKey === todayKey) {
+      currentStreak = last.streak || 1;
+    } else if (lastKey === yesterdayKey) {
+      currentStreak = (last.streak || 0) + 1;
+    } else {
+      currentStreak = 1;
+    }
+  } else {
+    currentStreak = 1;
+  }
+  longestStreak = Math.max(longestStreak, currentStreak);
 
   await applyChallengeProgressInternal({
     userId: request.auth.uid,
@@ -4128,7 +4421,19 @@ export const logChallengeCheckIn = onCallWithCors({ region: 'us-east1' }, async 
     value: value ?? null,
     note: note?.trim() || null,
     createdAt: new Date(),
+    streak: currentStreak,
+    longestStreak: longestStreak,
   });
+
+  // Update participant streaks
+  await participantRef.set(
+    {
+      currentStreak,
+      longestStreak,
+      lastCheckIn: new Date(),
+    },
+    { merge: true }
+  );
 
   return { ok: true };
 });
@@ -4569,6 +4874,766 @@ Keep tone warm, empowering, and mom-to-mom. Respond with plain text only.
   return `${sanitized.slice(0, 317).trim()}…`;
 }
 
+// ───────────────── ACCOUNT APPROVALS: Notifications ─────────────────
+
+/**
+ * Helper function: Send push notification with SMS fallback for admins
+ * Strategy: Try push first, if fails or disabled, send SMS
+ */
+async function sendAdminNotificationWithFallback(
+  adminId: string,
+  adminData: any,
+  title: string,
+  body: string,
+  smsMessage: string,
+  data?: Record<string, string>
+): Promise<void> {
+  const fcmToken = adminData?.fcmToken;
+  const phoneNumber = adminData?.phoneNumber;
+  const pushEnabled = adminData?.notificationPreferences?.pushEnabled !== false; // Default to true if not set
+  
+  // Try push notification first if enabled and token exists
+  if (pushEnabled && fcmToken) {
+    try {
+      const { getMessaging } = await import('firebase-admin/messaging');
+      const messaging = getMessaging();
+      await messaging.send({
+        token: fcmToken,
+        notification: {
+          title,
+          body,
+        },
+        data: data || {},
+      });
+      console.log(`✅ Push notification sent to admin ${adminId}`);
+      return; // Success - no need for SMS
+    } catch (pushError: any) {
+      console.warn(`⚠️ Push notification failed for admin ${adminId}:`, pushError?.message || pushError);
+      // Continue to SMS fallback
+    }
+  }
+
+  // SMS Fallback: Send SMS immediately if push failed or disabled (admins need immediate notification)
+  if (phoneNumber) {
+    try {
+      const result = await sendSMSViaTwilio(phoneNumber, smsMessage);
+      if (result.success) {
+        console.log(`✅ SMS sent immediately to admin ${adminId} (push ${fcmToken && pushEnabled ? 'failed' : 'disabled'})`);
+      } else {
+        console.error(`❌ SMS failed for admin ${adminId}:`, result.error);
+      }
+    } catch (smsError) {
+      console.error(`❌ Failed to send SMS for admin ${adminId}:`, smsError);
+    }
+  } else {
+    console.warn(`⚠️ No phone number found for admin ${adminId} - cannot send SMS fallback`);
+  }
+}
+
+// Notify admins when new approval request is created
+export const onAccountApprovalCreated = onDocumentCreated(
+  {
+    document: "accountApprovals/{approvalId}",
+    region: 'us-east1'
+  },
+  async (event) => {
+  try {
+    console.log('🔔 onAccountApprovalCreated: Function triggered', {
+      approvalId: event.params.approvalId,
+      hasData: !!event.data?.data()
+    });
+
+    const approvalData = event.data?.data();
+    if (!approvalData) {
+      console.warn('⚠️ onAccountApprovalCreated: No approval data found');
+      return;
+    }
+
+    const userId = approvalData.userId;
+    const userName = `${approvalData.firstName} ${approvalData.lastName}`;
+    
+    console.log('🔔 onAccountApprovalCreated: Processing approval request', {
+      userId,
+      userName,
+      approvalId: event.params.approvalId
+    });
+    
+    // Get all admins
+    const adminsSnapshot = await db.collection('users')
+      .where('role', '==', 'admin')
+      .get();
+
+    console.log('🔔 onAccountApprovalCreated: Found admins', {
+      adminCount: adminsSnapshot.size,
+      adminIds: adminsSnapshot.docs.map(doc => doc.id)
+    });
+
+    if (adminsSnapshot.empty) {
+      console.warn('⚠️ onAccountApprovalCreated: No admins found to notify');
+      return;
+    }
+
+    // Create in-app notifications for all admins
+    const notifications = adminsSnapshot.docs.map(adminDoc => {
+      return {
+        userId: adminDoc.id,
+        type: 'account_approval_request',
+        title: 'New Account Approval Request',
+        message: `${userName} has submitted an account approval request.`,
+        createdAt: FieldValue.serverTimestamp(),
+        read: false,
+        metadata: {
+          approvalId: event.params.approvalId,
+          userId: userId,
+          userName: userName
+        }
+      };
+    });
+
+    // Batch write in-app notifications
+    const batch = db.batch();
+    notifications.forEach(notif => {
+      const notifRef = db.collection('notifications').doc();
+      batch.set(notifRef, notif);
+      console.log('🔔 onAccountApprovalCreated: Queued notification for admin', {
+        adminId: notif.userId,
+        notificationId: notifRef.id
+      });
+    });
+    await batch.commit();
+    console.log('✅ onAccountApprovalCreated: In-app notifications created successfully', {
+      notificationCount: notifications.length
+    });
+
+    // Send push notifications with SMS fallback for each admin
+    const notificationPromises = adminsSnapshot.docs.map(async (adminDoc) => {
+      const adminData = adminDoc.data();
+      const adminId = adminDoc.id;
+
+      await sendAdminNotificationWithFallback(
+        adminId,
+        adminData,
+        'New Account Approval Request',
+        `${userName} has submitted an account approval request.`,
+        `MOMS FITNESS MOJO: New account approval request from ${userName}. Check admin console.`,
+        {
+          type: 'account_approval_request',
+          approvalId: event.params.approvalId,
+          userId: userId,
+        }
+      );
+    });
+
+    const results = await Promise.allSettled(notificationPromises);
+    
+    const successCount = results.filter(r => r.status === 'fulfilled').length;
+    const failureCount = results.filter(r => r.status === 'rejected').length;
+    
+    console.log(`✅ onAccountApprovalCreated: Notified ${adminsSnapshot.size} admins`, {
+      successCount,
+      failureCount,
+      totalAdmins: adminsSnapshot.size
+    });
+    
+    if (failureCount > 0) {
+      console.error('❌ onAccountApprovalCreated: Some notifications failed', {
+        failures: results
+          .map((r, i) => r.status === 'rejected' ? { adminIndex: i, error: r.reason } : null)
+          .filter(Boolean)
+      });
+    }
+  } catch (error) {
+    console.error('❌ onAccountApprovalCreated: Error in function', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      approvalId: event.params.approvalId
+    });
+    throw error; // Re-throw to ensure Firebase logs the error
+  }
+});
+
+// Notify users when approval status changes
+export const onAccountApprovalUpdated = onDocumentWritten(
+  {
+    document: "accountApprovals/{approvalId}",
+    region: 'us-east1'
+  },
+  async (event) => {
+  try {
+    const beforeData = event.data?.before?.exists ? event.data?.before.data() : null;
+    const afterData = event.data?.after?.exists ? event.data?.after.data() : null;
+
+    if (!beforeData || !afterData) return;
+
+    const beforeStatus = beforeData.status;
+    const afterStatus = afterData.status;
+    const userId = afterData.userId;
+
+    // Only process if status changed
+    if (beforeStatus === afterStatus) return;
+
+    // Status changed to approved
+    if (afterStatus === 'approved' && beforeStatus !== 'approved') {
+      const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
+      
+      // Create in-app notification for user - capture DocumentReference to avoid race condition
+      const notificationRef = db.collection('notifications').doc();
+      await notificationRef.set({
+        userId: userId,
+        type: 'account_approved',
+        title: '🎉 Account Approved!',
+        message: 'Your account has been approved! Welcome to Moms Fitness Mojo!',
+        createdAt: FieldValue.serverTimestamp(),
+        read: false,
+        metadata: {
+          approvalId: event.params.approvalId
+        }
+      });
+      
+      const notificationId = notificationRef.id; // Use the ID directly, no query needed
+
+      // Queue SMS with 5-minute delay (cost-saving: check if notification.read before sending)
+      try {
+        const userDoc = await db.collection('users').doc(userId).get();
+        const userData = userDoc.data();
+        if (userData?.phoneNumber) {
+          // Check if user has SMS notifications enabled (default to true)
+          const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
+          
+          if (smsEnabled) {
+            
+            // Queue SMS with 5-minute delay
+            const dispatchAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now
+            await db.collection('sms_dispatch_queue').add({
+              userId: userId,
+              phoneNumber: userData.phoneNumber,
+              message: `🎉 MOMS FITNESS MOJO: Your account has been approved! Welcome ${userName}! You can now access all features.`,
+              notificationId: notificationId,
+              type: 'account_approved',
+              status: 'pending',
+              createdAt: FieldValue.serverTimestamp(),
+              dispatchAt: Timestamp.fromDate(dispatchAt),
+            });
+            console.log(`✅ SMS approval notification queued with 5-minute delay for user ${userId}`);
+          } else {
+            console.log(`ℹ️ SMS notifications disabled for user ${userId}, skipping SMS`);
+          }
+        } else {
+          console.warn(`⚠️ No phone number found for user ${userId} - cannot send SMS`);
+        }
+      } catch (smsError) {
+        console.error('❌ Failed to queue SMS for user:', smsError);
+      }
+
+      // Send push notification if user has it enabled
+      try {
+        const userDoc = await db.collection('users').doc(userId).get();
+        const userData = userDoc.data();
+        const fcmToken = userData?.fcmToken;
+        const pushEnabled = userData?.notificationPreferences?.pushEnabled !== false;
+        
+        if (pushEnabled && fcmToken) {
+          const { getMessaging } = await import('firebase-admin/messaging');
+          const messaging = getMessaging();
+          await messaging.send({
+            token: fcmToken,
+            notification: {
+              title: '🎉 Account Approved!',
+              body: 'Your account has been approved! Welcome to Moms Fitness Mojo!',
+            },
+            data: {
+              type: 'account_approved',
+              approvalId: event.params.approvalId,
+            },
+          });
+          console.log(`✅ Push notification sent to user ${userId}`);
+        }
+      } catch (pushError: any) {
+        console.warn(`⚠️ Push notification failed for user ${userId}:`, pushError?.message || pushError);
+        // Push failure is not critical - SMS and in-app notifications are enough
+      }
+    }
+
+    // Status changed to rejected
+    if (afterStatus === 'rejected' && beforeStatus !== 'rejected') {
+      const rejectionReason = afterData.rejectionReason || 'No reason provided.';
+      const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
+
+      // Create in-app notification for user
+      await db.collection('notifications').add({
+        userId: userId,
+        type: 'account_rejected',
+        title: 'Account Request Not Approved',
+        message: `Your account request was not approved. Reason: ${rejectionReason}`,
+        createdAt: FieldValue.serverTimestamp(),
+        read: false,
+        metadata: {
+          approvalId: event.params.approvalId,
+          rejectionReason: rejectionReason
+        }
+      });
+
+      // Send SMS immediately for rejections (critical, user needs to know)
+      try {
+        const userDoc = await db.collection('users').doc(userId).get();
+        const userData = userDoc.data();
+        if (userData?.phoneNumber) {
+          // Check if user has SMS notifications enabled (default to true)
+          const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
+          
+          if (smsEnabled) {
+            // Send SMS immediately (rejections are critical)
+            const smsMessage = `MOMS FITNESS MOJO: Your account request was not approved. Reason: ${rejectionReason}. You can view details and reapply after 30 days.`;
+            const result = await sendSMSViaTwilio(userData.phoneNumber, smsMessage);
+            
+            if (result.success) {
+              console.log(`✅ SMS rejection notification sent immediately to user ${userId}`);
+            } else {
+              console.error(`❌ Failed to send SMS rejection to user ${userId}:`, result.error);
+            }
+          } else {
+            console.log(`ℹ️ SMS notifications disabled for user ${userId}, skipping SMS`);
+          }
+        } else {
+          console.warn(`⚠️ No phone number found for user ${userId} - cannot send SMS`);
+        }
+      } catch (smsError) {
+        console.error('❌ Failed to send SMS for user:', smsError);
+      }
+
+      // Send push notification if user has it enabled
+      try {
+        const userDoc = await db.collection('users').doc(userId).get();
+        const userData = userDoc.data();
+        const fcmToken = userData?.fcmToken;
+        const pushEnabled = userData?.notificationPreferences?.pushEnabled !== false;
+        
+        if (pushEnabled && fcmToken) {
+          const { getMessaging } = await import('firebase-admin/messaging');
+          const messaging = getMessaging();
+          await messaging.send({
+            token: fcmToken,
+            notification: {
+              title: 'Account Request Not Approved',
+              body: `Your account request was not approved. Reason: ${rejectionReason}`,
+            },
+            data: {
+              type: 'account_rejected',
+              approvalId: event.params.approvalId,
+            },
+          });
+          console.log(`✅ Push notification sent to user ${userId}`);
+        }
+      } catch (pushError: any) {
+        console.warn(`⚠️ Push notification failed for user ${userId}:`, pushError?.message || pushError);
+        // Push failure is not critical - SMS and in-app notifications are enough
+      }
+    }
+  } catch (error) {
+    console.error('Error in onAccountApprovalUpdated:', error);
+  }
+});
+
+// Notify when approval message is created
+export const onApprovalMessageCreated = onDocumentCreated(
+  {
+    document: "approvalMessages/{messageId}",
+    region: 'us-east1'
+  },
+  async (event) => {
+  try {
+    const messageData = event.data?.data();
+    if (!messageData) return;
+
+    const approvalId = messageData.approvalId;
+    const senderRole = messageData.senderRole;
+    const senderUserId = messageData.userId;
+
+    // Get approval data
+    const approvalDoc = await db.collection('accountApprovals').doc(approvalId).get();
+    if (!approvalDoc.exists) return;
+
+    const approvalData = approvalDoc.data()!;
+    const targetUserId = senderRole === 'admin' 
+      ? approvalData.userId  // Admin sent message, notify user
+      : null; // User sent message, notify admins
+
+    if (senderRole === 'admin') {
+      // Admin asked question - notify user
+      await db.collection('notifications').add({
+        userId: approvalData.userId,
+        type: 'approval_question',
+        title: 'Admin Question',
+        message: 'An admin has a question about your account request. Please check your pending approval page.',
+        createdAt: FieldValue.serverTimestamp(),
+        read: false,
+        metadata: {
+          approvalId: approvalId,
+          messageId: event.params.messageId
+        }
+      });
+
+      // Reset user unread to ensure they see a badge
+      await db.collection('accountApprovals').doc(approvalId).update({
+        'unreadCount.user': FieldValue.increment(1),
+        awaitingResponseFrom: 'user',
+        lastMessageAt: FieldValue.serverTimestamp(),
+      });
+
+      // Send SMS to user (time-sensitive - user needs to respond)
+      try {
+        const userDoc = await db.collection('users').doc(approvalData.userId).get();
+        const userData = userDoc.data();
+        if (userData?.phoneNumber) {
+          const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false; // Default to true
+          
+          if (smsEnabled) {
+            const smsMessage = `MOMS FITNESS MOJO: An admin has a question about your account request. Please check your pending approval page to respond.`;
+            const result = await sendSMSViaTwilio(userData.phoneNumber, smsMessage);
+            
+            if (result.success) {
+              console.log(`✅ SMS question notification sent to user: ${approvalData.userId}`);
+            } else {
+              console.error(`❌ Failed to send SMS question to user ${approvalData.userId}:`, result.error);
+            }
+          } else {
+            console.log(`ℹ️ SMS notifications disabled for user ${approvalData.userId}, skipping SMS`);
+          }
+        } else {
+          console.warn(`⚠️ No phone number found for user ${approvalData.userId} - cannot send SMS`);
+        }
+      } catch (smsError) {
+        console.error('❌ Failed to send SMS question notification:', smsError);
+      }
+    } else {
+      // User responded - notify all admins with push + SMS fallback
+      const adminsSnapshot = await db.collection('users')
+        .where('role', '==', 'admin')
+        .get();
+
+      if (!adminsSnapshot.empty) {
+        // Create in-app notifications for all admins
+        const senderName = messageData.senderName || 
+                          `${approvalData.firstName || ''} ${approvalData.lastName || ''}`.trim() || 
+                          'User';
+        
+        const notifications = adminsSnapshot.docs.map(adminDoc => ({
+          userId: adminDoc.id,
+          type: 'approval_response',
+          title: 'User Response',
+          message: `${senderName} has responded to your question about their account request.`,
+          createdAt: FieldValue.serverTimestamp(),
+          read: false,
+          metadata: {
+            approvalId: approvalId,
+            messageId: event.params.messageId,
+            userId: approvalData.userId
+          }
+        }));
+
+        const batch = db.batch();
+        notifications.forEach(notif => {
+          const notifRef = db.collection('notifications').doc();
+          batch.set(notifRef, notif);
+        });
+        await batch.commit();
+        
+        // Send push notifications with SMS fallback for each admin
+        const notificationPromises = adminsSnapshot.docs.map(async (adminDoc) => {
+          const adminData = adminDoc.data();
+          const adminId = adminDoc.id;
+          
+          await sendAdminNotificationWithFallback(
+            adminId,
+            adminData,
+            'User Response',
+            `${senderName} has responded to your question about their account request.`,
+            `MOMS FITNESS MOJO: ${senderName} has responded to your question. Check admin console.`,
+            {
+              type: 'approval_response',
+              approvalId: approvalId,
+              messageId: event.params.messageId,
+              userId: approvalData.userId,
+            }
+          );
+        });
+        
+        await Promise.allSettled(notificationPromises);
+        console.log(`✅ Notified ${adminsSnapshot.size} admins of user response (push + SMS fallback)`);
+      }
+
+      // Reset admin unread to ensure admin badge clears for this message
+      await db.collection('accountApprovals').doc(approvalId).update({
+        'unreadCount.admin': FieldValue.increment(1),
+        awaitingResponseFrom: 'admin',
+        lastMessageAt: FieldValue.serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    console.error('Error in onApprovalMessageCreated:', error);
+  }
+});
+
+// ───────────────── SCHEDULED FUNCTION: Check and Dispatch Delayed SMS ─────────────────
+
+/**
+ * Scheduled function that runs every 5 minutes
+ * Checks sms_dispatch_queue for pending SMS that are ready to send
+ * Only sends SMS if the associated notification has NOT been read (cost-saving)
+ */
+export const checkAndDispatchPendingSms = onSchedule({
+  schedule: 'every 5 minutes',
+  timeZone: 'America/New_York',
+  region: 'us-east1'
+}, async (event) => {
+  try {
+    console.log('⏰ Checking for pending SMS in dispatch queue...');
+    
+    const now = new Date();
+    const nowTimestamp = Timestamp.fromDate(now);
+    
+    // Query for pending SMS that are ready to dispatch
+    // Also check for "processing" status that's been stuck > 10 minutes (recovery)
+    const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
+    const tenMinutesAgoTimestamp = Timestamp.fromDate(tenMinutesAgo);
+    
+    const pendingSmsSnapshot = await db.collection('sms_dispatch_queue')
+      .where('status', '==', 'pending')
+      .where('dispatchAt', '<=', nowTimestamp)
+      .get();
+    
+    // Also recover stuck "processing" items (in case a worker crashed)
+    const stuckProcessingSnapshot = await db.collection('sms_dispatch_queue')
+      .where('status', '==', 'processing')
+      .where('processingStartedAt', '<=', tenMinutesAgoTimestamp)
+      .get();
+    
+    // Combine both snapshots
+    const allSmsDocs = [...pendingSmsSnapshot.docs, ...stuckProcessingSnapshot.docs];
+    
+    if (allSmsDocs.length === 0) {
+      console.log('ℹ️ No pending SMS ready to dispatch');
+      return;
+    }
+    
+    console.log(`📱 Found ${pendingSmsSnapshot.size} pending and ${stuckProcessingSnapshot.size} stuck processing SMS ready to dispatch`);
+    
+    if (pendingSmsSnapshot.empty) {
+      console.log('ℹ️ No pending SMS ready to dispatch');
+      return;
+    }
+    
+    let sentCount = 0;
+    let skippedCount = 0;
+    
+    for (const smsDoc of allSmsDocs) {
+      const smsData = smsDoc.data();
+      const notificationId = smsData.notificationId;
+      const currentStatus = smsData.status;
+      
+      try {
+        const processingRef = smsDoc.ref;
+        const processingDoc = await processingRef.get();
+        const docStatus = processingDoc.data()?.status;
+        
+        // Handle stuck "processing" items - reset to pending first
+        if (currentStatus === 'processing' && docStatus === 'processing') {
+          console.log(`🔄 Recovering stuck processing SMS ${smsDoc.id}, resetting to pending`);
+          await processingRef.update({
+            status: 'pending',
+            recoveryAttemptedAt: FieldValue.serverTimestamp(),
+            previousStatus: 'processing'
+          });
+          // Re-fetch to get updated status
+          const updatedDoc = await processingRef.get();
+          if (updatedDoc.data()?.status !== 'pending') {
+            console.log(`⏭️ SMS ${smsDoc.id} status changed during recovery, skipping`);
+            continue;
+          }
+        }
+        
+        // For pending items, check status hasn't changed (another worker might have claimed it)
+        if (currentStatus === 'pending' && docStatus !== 'pending') {
+          console.log(`⏭️ SMS ${smsDoc.id} already processed by another worker (status: ${docStatus}), skipping`);
+          continue;
+        }
+        
+        // Only process if status is pending (either original or after recovery)
+        if (docStatus !== 'pending') {
+          console.log(`⏭️ SMS ${smsDoc.id} not in pending status (${docStatus}), skipping`);
+          continue;
+        }
+        
+        // Atomically mark as processing
+        await processingRef.update({
+          status: 'processing',
+          processingStartedAt: FieldValue.serverTimestamp(),
+          processingWorkerId: event.scheduleTime || 'unknown' // Use schedule time as worker ID
+        });
+        
+        // Check if notification was read
+        let shouldSkip = false;
+        
+        if (notificationId) {
+          const notificationDoc = await db.collection('notifications').doc(notificationId).get();
+          if (notificationDoc.exists()) {
+            const notificationData = notificationDoc.data();
+            if (notificationData?.read === true) {
+              // User already read the notification - skip SMS to save cost
+              await processingRef.update({
+                status: 'skipped_seen',
+                skippedAt: FieldValue.serverTimestamp(),
+                reason: 'Notification was read before SMS dispatch'
+              });
+              skippedCount++;
+              console.log(`⏭️ Skipped SMS for ${smsData.userId} - notification already read`);
+              shouldSkip = true;
+            }
+          }
+        }
+        
+        if (!shouldSkip) {
+          // Send SMS
+          const result = await sendSMSViaTwilio(smsData.phoneNumber, smsData.message);
+          
+          if (result.success) {
+            await processingRef.update({
+              status: 'dispatched_sms',
+              dispatchedAt: FieldValue.serverTimestamp(),
+              twilioSid: result.sid
+            });
+            sentCount++;
+            console.log(`✅ SMS dispatched to ${smsData.userId} (SID: ${result.sid})`);
+          } else {
+            await processingRef.update({
+              status: 'failed',
+              failedAt: FieldValue.serverTimestamp(),
+              error: result.error
+            });
+            console.error(`❌ SMS dispatch failed for ${smsData.userId}:`, result.error);
+          }
+        }
+      } catch (error: any) {
+        console.error(`❌ Error processing SMS dispatch for ${smsData.userId}:`, error);
+        // Reset to pending on error so it can be retried
+        try {
+          await smsDoc.ref.update({
+            status: 'pending',
+            error: error?.message || 'Unknown error',
+            failedAt: FieldValue.serverTimestamp()
+          });
+        } catch (updateError) {
+          console.error(`❌ Failed to reset SMS status on error:`, updateError);
+        }
+      }
+    }
+    
+    console.log(`✅ SMS dispatch check complete: ${sentCount} sent, ${skippedCount} skipped (read), ${pendingSmsSnapshot.size - sentCount - skippedCount} failed`);
+  } catch (error) {
+    console.error('❌ Error in checkAndDispatchPendingSms:', error);
+  }
+});
+
+// Grandfather existing users - set all to approved status
+export const grandfatherExistingUsers = onCallWithCors({ region: 'us-east1' }, async (request) => {
+  try {
+    console.log('grandfatherExistingUsers: Starting...');
+    
+    // Ensure admin only
+    if (!request.auth || !request.auth.uid) {
+      console.log('grandfatherExistingUsers: No auth');
+      throw new HttpsError('unauthenticated', 'Authentication required');
+    }
+
+    console.log('grandfatherExistingUsers: Checking admin status for user:', request.auth.uid);
+    const adminDoc = await db.collection('users').doc(request.auth.uid).get();
+    if (!adminDoc.exists || adminDoc.data()?.role !== 'admin') {
+      console.log('grandfatherExistingUsers: Not admin', { exists: adminDoc.exists, role: adminDoc.data()?.role });
+      throw new HttpsError('permission-denied', 'Admin access required');
+    }
+
+    console.log('grandfatherExistingUsers: Admin verified, fetching users...');
+    // Get all users without status field or with status null
+    // Process in batches to avoid timeout
+    let updated = 0;
+    let batch = db.batch();
+    let batchCount = 0;
+    const BATCH_SIZE = 500;
+    const QUERY_BATCH_SIZE = 1000; // Fetch users in batches
+    let lastDoc: FirebaseFirestore.DocumentSnapshot | null = null;
+    let hasMore = true;
+
+    while (hasMore) {
+      let query = db.collection('users').limit(QUERY_BATCH_SIZE);
+      if (lastDoc) {
+        query = query.startAfter(lastDoc);
+      }
+      
+      const usersSnapshot = await query.get();
+      console.log(`grandfatherExistingUsers: Fetched ${usersSnapshot.docs.length} users in this batch`);
+      
+      if (usersSnapshot.empty) {
+        hasMore = false;
+        break;
+      }
+
+      for (const userDoc of usersSnapshot.docs) {
+        const userData = userDoc.data();
+        
+        // Only update if status is missing or null
+        if (!userData.status || userData.status === null || userData.status === undefined) {
+          batch.update(userDoc.ref, {
+            status: 'approved',
+            updatedAt: FieldValue.serverTimestamp()
+          });
+          updated++;
+          batchCount++;
+
+          // Commit batch every 500 updates and create new batch
+          if (batchCount >= BATCH_SIZE) {
+            console.log(`grandfatherExistingUsers: Committing batch of ${batchCount} updates (total: ${updated})`);
+            await batch.commit();
+            batch = db.batch(); // Create new batch for next set of updates
+            batchCount = 0;
+          }
+        }
+      }
+
+      // Check if we have more users to process
+      if (usersSnapshot.docs.length < QUERY_BATCH_SIZE) {
+        hasMore = false;
+      } else {
+        lastDoc = usersSnapshot.docs[usersSnapshot.docs.length - 1];
+      }
+    }
+
+    // Commit remaining updates
+    if (batchCount > 0) {
+      console.log(`grandfatherExistingUsers: Committing final batch of ${batchCount} updates`);
+      await batch.commit();
+    }
+
+    console.log(`grandfatherExistingUsers: Complete! Updated ${updated} users`);
+    return {
+      success: true,
+      updatedCount: updated,
+      message: `Updated ${updated} users to approved status`
+    };
+  } catch (error: any) {
+    console.error('Error in grandfatherExistingUsers:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error code:', error.code);
+    console.error('Error details:', error.details);
+    
+    // Return more specific error if possible
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    
+    throw new HttpsError('internal', error.message || 'Failed to grandfather users');
+  }
+});
+
 export { chatAsk, transcribeAudio, synthesizeSpeech } from './assistant';
 export {
   syncPostToKnowledgeBase,
@@ -4576,3 +5641,5 @@ export {
   syncChallengeToKnowledgeBase,
   removeKnowledgeChunksOnDelete,
 } from './knowledgeBase';
+
+export { moderateContent } from './contentModeration';

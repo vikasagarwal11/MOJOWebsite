@@ -506,8 +506,8 @@ const Home: React.FC = () => {
                     (t) => (
                       <div className="flex flex-col gap-3" style={{ minWidth: '320px' }}>
                         <div>
-                          <span className="font-semibold text-gray-900 block mb-1">Please sign in to share your story</span>
-                          <p className="text-sm text-gray-600">Create an account or log in to publish your testimonial.</p>
+                          <span className="font-semibold text-white block mb-1">Please sign in to share your story</span>
+                          <p className="text-sm text-gray-200">Create an account or log in to publish your testimonial.</p>
                         </div>
                         <div className="flex gap-2">
                           <button
@@ -517,7 +517,7 @@ const Home: React.FC = () => {
                               toast.dismiss(t.id);
                               navigate('/login');
                             }}
-                            className="flex-1 px-4 py-2 bg-[#F25129] text-white rounded-lg text-sm font-medium hover:bg-[#E0451F] transition-colors"
+                            className="flex-1 px-4 py-2 bg-white text-[#F25129] rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
                           >
                             Sign In
                           </button>
@@ -528,7 +528,7 @@ const Home: React.FC = () => {
                               toast.dismiss(t.id);
                               navigate('/register');
                             }}
-                            className="flex-1 px-4 py-2 border border-[#F25129] text-[#F25129] rounded-lg text-sm font-medium hover:bg-[#F25129]/10 transition-colors"
+                            className="flex-1 px-4 py-2 border-2 border-white text-white rounded-lg text-sm font-medium hover:bg-white/20 transition-colors"
                           >
                             Join MOJO
                           </button>
@@ -536,12 +536,18 @@ const Home: React.FC = () => {
                       </div>
                     ),
                     {
-                      duration: 10000,
+                      duration: Infinity, // Keep open until user dismisses
                       position: 'top-center',
                       style: {
+                        background: '#1F2937', // Dark gray background
+                        color: '#fff',
                         padding: '20px',
                         maxWidth: '400px',
+                        borderRadius: '12px',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
                       },
+                      // Allow dismiss on click outside
+                      onClick: (t) => toast.dismiss(t.id),
                     }
                   );
                 }}

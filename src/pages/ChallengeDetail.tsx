@@ -4,6 +4,8 @@ import { useFirestore } from '../hooks/useFirestore';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 import { joinChallenge, generateChallengeShareCard, logChallengeCheckIn } from '../services/challengeService';
+import { collection, query, where, orderBy, limit as limitQuery, onSnapshot } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 export default function ChallengeDetail() {
   const { id } = useParams();
@@ -18,6 +20,8 @@ export default function ChallengeDetail() {
   const [sharing, setSharing] = useState(false);
   const [loggingProgress, setLoggingProgress] = useState(false);
   const [progressInput, setProgressInput] = useState<number>(1);
+  const [checkIns, setCheckIns] = useState<Array<{ id: string; createdAt: Date; note?: string; value?: number; count?: number }>>([]);
+  const [streakInfo, setStreakInfo] = useState<{ current: number; longest: number; lastCheckIn?: Date } | null>(null);
 
   const isValueBasedChallenge = (ch?: any) => {
     if (!ch) return false;
@@ -173,6 +177,10 @@ export default function ChallengeDetail() {
       toast.error('Sign in to join challenges');
       return;
     }
+    if (currentUser.status && currentUser.status !== 'approved') {
+      toast.error('Your account is pending approval. You cannot join challenges yet.');
+      return;
+    }
     if (!id) return;
     setJoining(true);
     try {
@@ -240,6 +248,37 @@ export default function ChallengeDetail() {
     }
   };
 
+  // Load recent check-ins for the current user
+  useEffect(() => {
+    if (!id || !currentUser) return;
+    const checkInsRef = collection(db, 'challenges', id, 'participants', currentUser.id, 'checkIns');
+    const qCheckIns = query(checkInsRef, orderBy('createdAt', 'desc'), limitQuery(10));
+    const unsub = onSnapshot(qCheckIns, (snap) => {
+      const rows = snap.docs.map((d) => {
+        const data: any = d.data();
+        return {
+          id: d.id,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
+          note: data.note || '',
+          value: data.value,
+          count: data.count,
+          streak: data.streak,
+          longestStreak: data.longestStreak,
+        };
+      });
+      setCheckIns(rows);
+      if (rows.length) {
+        const latest = rows[0];
+        setStreakInfo({
+          current: latest.streak || 0,
+          longest: latest.longestStreak || latest.streak || 0,
+          lastCheckIn: latest.createdAt,
+        });
+      }
+    });
+    return () => unsub();
+  }, [id, currentUser]);
+
   const handleBack = () => navigate('/challenges');
 
   return (
@@ -287,7 +326,14 @@ export default function ChallengeDetail() {
         <div className="rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-green-50 px-6 py-4 mb-6 shadow-sm">
           <div className="flex items-center justify-between mb-2">
             <div className="text-base font-bold text-emerald-800">Your Journey</div>
-            <div className="text-lg font-bold text-emerald-700">{percentComplete}%</div>
+            <div className="text-lg font-bold text-emerald-700 flex items-center gap-2">
+              <span>{percentComplete}%</span>
+              {streakInfo?.current ? (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-orange-100 text-orange-800">
+                  🔥 Streak {streakInfo.current} {streakInfo.longest && streakInfo.longest > streakInfo.current ? `(best ${streakInfo.longest})` : ''}
+                </span>
+              ) : null}
+            </div>
           </div>
           <div className="text-sm text-emerald-700 mb-3">
             {progressString}
@@ -334,6 +380,35 @@ export default function ChallengeDetail() {
             >
               {loggingProgress ? 'Saving...' : 'Log Progress'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {isParticipant && checkIns.length > 0 && (
+        <div className="rounded-xl border bg-white/70 p-6 shadow-sm mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="text-lg font-semibold text-gray-900">Recent Check-ins</div>
+              {streakInfo?.lastCheckIn && (
+                <div className="text-sm text-gray-600">
+                  Last check-in: {streakInfo.lastCheckIn.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="space-y-3 max-h-64 overflow-y-auto">
+            {checkIns.map((ci) => (
+              <div key={ci.id} className="p-3 rounded-lg border border-gray-200 bg-gray-50">
+                <div className="text-sm font-semibold text-gray-900">
+                  {ci.value ?? ci.count ?? 0} {challenge?.unit || 'units'}
+                </div>
+                {ci.note && <div className="text-sm text-gray-700 mt-1">{ci.note}</div>}
+                <div className="text-xs text-gray-500 mt-1">
+                  {ci.createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{' '}
+                  {ci.createdAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

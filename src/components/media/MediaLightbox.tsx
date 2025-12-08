@@ -379,26 +379,17 @@ export default function MediaLightbox({
   const handleDownloadMedia = async () => {
     if (isDownloading) return;
     
-    const toastId = 'watermark-download';
     try {
       setIsDownloading(true);
       
-      // Show loading toast for first-time generation
-      toast.loading('Preparing watermarked download...', { id: toastId });
-      
-      const { url, isCached } = await requestWatermarkedDownload(item.id);
+      // Silently prepare watermarked download (no toast messages)
+      const { url } = await requestWatermarkedDownload(item.id);
       
       // Build filename with _watermarked suffix
       const originalFilename = item.filePath?.split('/').pop() || `${item.title || 'media'}`;
       const ext = originalFilename.includes('.') ? originalFilename.substring(originalFilename.lastIndexOf('.')) : '';
       const baseName = ext ? originalFilename.substring(0, originalFilename.lastIndexOf('.')) : originalFilename;
       const filename = `${baseName}_watermarked${ext}`;
-      
-      if (isCached) {
-        toast.success('Download ready!', { id: toastId, duration: 2000 });
-      } else {
-        toast.success('Watermarked copy generated!', { id: toastId, duration: 2000 });
-      }
       
       if (isMobile) {
         const anchor = document.createElement('a');
@@ -412,7 +403,7 @@ export default function MediaLightbox({
       }
     } catch (error: any) {
       console.error('Failed to download media:', error);
-      toast.error(error?.message || 'Failed to download media', { id: toastId });
+      toast.error(error?.message || 'Failed to download media');
     } finally {
       setIsDownloading(false);
     }
