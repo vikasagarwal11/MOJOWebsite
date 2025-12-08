@@ -411,7 +411,7 @@ const Home: React.FC = () => {
             {momMoments.map((moment) => (
               <div
                 key={moment.id}
-                className="group relative aspect-[4/3] overflow-hidden rounded-2xl shadow-lg transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl bg-gray-100"
+                className="group relative aspect-[4/3] overflow-hidden rounded-2xl shadow-lg transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl bg-[#FFF5F2]"
               >
                 <LazyImage src={moment.imageUrl} alt={moment.title} className="rounded-2xl" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent transition-opacity duration-300 group-hover:from-black/60" />
