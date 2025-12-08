@@ -11,6 +11,7 @@ import { ProfileRSVPAdminTab } from './ProfileRSVPAdminTab';
 import { ProfileAdminTab } from './ProfileAdminTab';
 import { AdminKnowledgeBaseTab } from './AdminKnowledgeBaseTab';
 import { ProfileNotificationsTab } from './ProfileNotificationsTab';
+import { ProfileContentTab } from './ProfileContentTab';
 import CreateEventModal from '../components/events/CreateEventModal';
 import { useUserBlocking } from '../hooks/useUserBlocking';
 import { UserBlockModal } from '../components/user/UserBlockModal';
@@ -65,7 +66,7 @@ function normalizeTag(input: string): string | null {
 }
 
 type ProfileMode = 'profile' | 'admin';
-type TabKey = 'personal' | 'events' | 'rsvp' | 'admin' | 'family' | 'knowledge' | 'notifications';
+type TabKey = 'personal' | 'events' | 'rsvp' | 'admin' | 'family' | 'knowledge' | 'notifications' | 'content';
 
 interface ProfileProps {
   mode?: ProfileMode;
@@ -130,6 +131,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         show: mode === 'profile',
       },
       { key: 'notifications' as TabKey, label: 'Notifications', show: mode === 'profile' },
+      { key: 'content' as TabKey, label: 'My Content', show: mode === 'profile' },
       { key: 'rsvp' as TabKey, label: 'RSVP Management', show: isAdmin && mode === 'admin' },
       { key: 'family' as TabKey, label: 'Family Management', show: mode === 'profile' },
       { key: 'admin' as TabKey, label: 'Admin Tools', show: isAdmin && mode === 'admin' },
@@ -1127,6 +1129,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         )}
         {activeTab === 'notifications' && currentUser && (
           <ProfileNotificationsTab userId={currentUser.id} />
+        )}
+        {activeTab === 'content' && currentUser && (
+          <ProfileContentTab />
         )}
         {activeTab === 'family' && (
           <div className="space-y-6">

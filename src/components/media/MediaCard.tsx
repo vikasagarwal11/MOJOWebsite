@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Heart, MessageCircle, Tag, Play, Download, MoreHorizontal, EyeOff, Eye, Trash2, Check } from 'lucide-react';
+import { Heart, MessageCircle, Tag, Play, /* Download, */ MoreHorizontal, EyeOff, Eye, Trash2, Check } from 'lucide-react';
 import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../config/firebase';
@@ -13,7 +13,8 @@ import toast from 'react-hot-toast';
 import ConfirmDialog from '../ConfirmDialog';
 import { useImageOrientation } from '../../utils/imageOrientation';
 import { getResponsiveThumbnailSrcSet, isFirebaseStorageUrl, getThumbnailUrl } from '../../utils/thumbnailUtils';
-import { requestWatermarkedDownload } from '../../services/mediaDownloadService';
+// Download feature temporarily disabled - uncomment to re-enable
+// import { requestWatermarkedDownload } from '../../services/mediaDownloadService';
 import { isUserApproved } from '../../utils/userUtils';
 
 export default function MediaCard({ 
@@ -53,7 +54,8 @@ export default function MediaCard({
   const [isMobile, setIsMobile] = useState(() => 
     typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false
   );
-  const [isDownloading, setIsDownloading] = useState(false);
+  // Download feature temporarily disabled - uncomment to re-enable
+  // const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -328,6 +330,8 @@ export default function MediaCard({
     }
   };
 
+  // Download feature temporarily disabled - uncomment to re-enable
+  /*
   const handleDownloadMedia = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     if (isDownloading) return;
@@ -361,6 +365,7 @@ export default function MediaCard({
       setIsDownloading(false);
     }
   };
+  */
 
   // Real-time sync for likes count to prevent stale data
   useEffect(() => {
@@ -639,6 +644,8 @@ export default function MediaCard({
         )}
         {previewEl}
         <div className="absolute top-3 right-3 flex gap-2">
+          {/* Download feature temporarily disabled - uncomment to re-enable */}
+          {/*
           <button
             onClick={handleDownloadMedia}
             disabled={isDownloading}
@@ -647,6 +654,7 @@ export default function MediaCard({
           >
             <Download className={`w-4 h-4 ${isDownloading ? 'text-gray-400 animate-pulse' : 'text-gray-700'}`} />
           </button>
+          */}
           {canModerate && (
             <div className="relative admin-menu">
               <button onClick={(e) => {

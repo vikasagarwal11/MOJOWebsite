@@ -344,6 +344,8 @@ service cloud.firestore {
         resource.data.startAt < request.time ||
         // Public events: readable by everyone (including events with missing fields)
         (('visibility' in resource.data) && resource.data.visibility == 'public') ||
+        // Members-only events: visible to everyone (but only members can RSVP)
+        (('visibility' in resource.data) && resource.data.visibility == 'members') ||
         // Legacy support: old 'public' field
         (('public' in resource.data) && resource.data.public == true) ||
         // Authenticated users can see events they're allowed to access
@@ -352,8 +354,6 @@ service cloud.firestore {
           resource.data.createdBy == request.auth.uid ||
           // Admin can see all events
           isAdmin() ||
-          // Only approved members can see members-only events (non-approved users treated like guests)
-          (isMember() && isApprovedUser() && (('visibility' in resource.data) && resource.data.visibility == 'members')) ||
           // Invited users can see private events (handle missing fields)
           (('invitedUserIds' in resource.data) && request.auth.uid in resource.data.invitedUserIds) ||
           // Legacy support: old invitedUsers field
@@ -384,8 +384,10 @@ service cloud.firestore {
           request.resource.data.userId == userId &&
           // Simple permission check: allow RSVP if user can see the event
           (
-            // Public events: anyone can RSVP
+            // Public events: approved members can RSVP
             get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+            // Members-only events: only approved members can RSVP (non-members can see but not RSVP)
+            (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members' && isMember() && isApprovedUser()) ||
             // Event creator can always RSVP
             request.auth.uid == get(/databases/$(database)/documents/events/$(eventId)).data.createdBy ||
             // Invited users can RSVP to private events
@@ -453,8 +455,8 @@ service cloud.firestore {
               (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
                (!('visibility' in get(/databases/$(database)/documents/events/$(eventId)).data) && 
                 get(/databases/$(database)/documents/events/$(eventId)).data.public == true)) ||
-              // Members can add attendees to members-only events
-              (isMember() && get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members') ||
+              // Members can add attendees to members-only events (only approved members can RSVP)
+              (isMember() && isApprovedUser() && get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members') ||
               // Invited users can add attendees to private events
               (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'private' && 
                request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds) ||
@@ -585,17 +587,25 @@ service cloud.firestore {
       }
       
       match /comments/{commentId} {
-        allow read: if true;
+        allow read: if 
+          // Admins can see all comments
+          isAdmin() ||
+          // Authors can see their own comments (even if pending)
+          (isSignedIn() && resource.data.authorId == request.auth.uid) ||
+          // Others can only see approved comments
+          (!('moderationStatus' in resource.data) || resource.data.moderationStatus == 'approved');
         allow create: if isSignedIn() && 
           isApprovedUser() &&
           request.auth.uid == request.resource.data.authorId && 
           (isNonEmptyString(request.resource.data.text) || ('mediaUrls' in request.resource.data && request.resource.data.mediaUrls is list)) && 
           (!('text' in request.resource.data) || request.resource.data.text.size() <= 1000) && 
-          request.resource.data.keys().hasOnly(['authorId','authorName','text','mediaUrls','createdAt','threadLevel','parentCommentId','replyCount']) &&
+          request.resource.data.keys().hasOnly(['authorId','authorName','text','mediaUrls','createdAt','threadLevel','parentCommentId','replyCount','moderationStatus','requiresApproval','moderationReason','moderationDetectedIssues']) &&
+          (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus in ['pending', 'approved']) &&
           !isUserBlockedFromRsvp(request.auth.uid);
         allow update: if isSignedIn() && 
           (request.auth.uid == resource.data.authorId || isAdmin()) && 
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['text','updatedAt']);
+          (request.resource.data.diff(resource.data).changedKeys().hasOnly(['text','updatedAt']) ||
+           (isAdmin() && request.resource.data.diff(resource.data).changedKeys().hasOnly(['moderationStatus','requiresApproval','moderationReason','moderationDetectedIssues','moderatedAt','moderatedBy'])));
         allow delete: if isSignedIn() && 
           (request.auth.uid == resource.data.authorId || isAdmin());
         
@@ -745,16 +755,24 @@ service cloud.firestore {
       }
       
       match /comments/{commentId} {
-        allow read: if true;
+        allow read: if 
+          // Admins can see all comments
+          isAdmin() ||
+          // Authors can see their own comments (even if pending)
+          (isSignedIn() && resource.data.authorId == request.auth.uid) ||
+          // Others can only see approved comments
+          (!('moderationStatus' in resource.data) || resource.data.moderationStatus == 'approved');
         allow create: if isSignedIn() && isApprovedUser() &&
           request.auth.uid == request.resource.data.authorId && 
           (isNonEmptyString(request.resource.data.text) || ('mediaUrls' in request.resource.data && request.resource.data.mediaUrls is list)) && 
           (!('text' in request.resource.data) || request.resource.data.text.size() <= 1000) && 
-          request.resource.data.keys().hasOnly(['authorId','authorName','text','mediaUrls','createdAt','threadLevel','parentCommentId','replyCount']) &&
+          request.resource.data.keys().hasOnly(['authorId','authorName','text','mediaUrls','createdAt','threadLevel','parentCommentId','replyCount','moderationStatus','requiresApproval','moderationReason','moderationDetectedIssues']) &&
+          (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus in ['pending', 'approved']) &&
           !isUserBlockedFromRsvp(request.auth.uid);
         allow update: if isSignedIn() && 
           (request.auth.uid == resource.data.authorId || isAdmin()) && 
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['text','updatedAt']);
+          (request.resource.data.diff(resource.data).changedKeys().hasOnly(['text','updatedAt']) ||
+           (isAdmin() && request.resource.data.diff(resource.data).changedKeys().hasOnly(['moderationStatus','requiresApproval','moderationReason','moderationDetectedIssues','moderatedAt','moderatedBy'])));
         allow delete: if isSignedIn() && 
           (request.auth.uid == resource.data.authorId || isAdmin());
         

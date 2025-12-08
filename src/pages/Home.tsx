@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Instagram,
   Facebook,
+  X,
 } from 'lucide-react';
 import { orderBy, where, limit } from 'firebase/firestore';
 import { useInView } from 'react-intersection-observer';
@@ -21,7 +22,6 @@ import HeroCarousel from '../components/hero/HeroCarousel';
 import TestimonialCarousel from '../components/home/TestimonialCarousel';
 import { useTestimonials } from '../hooks/useTestimonials';
 import { useFirestore } from '../hooks/useFirestore';
-import { getThumbnailUrl } from '../utils/thumbnailUtils';
 
 const LazyImage: React.FC<{ src: string; alt: string; className?: string }> = ({ src, alt, className }) => {
   const { ref, inView } = useInView({
@@ -39,7 +39,7 @@ const LazyImage: React.FC<{ src: string; alt: string; className?: string }> = ({
           alt={alt}
           loading="lazy"
           onLoad={() => setIsLoaded(true)}
-          className={`h-full w-full object-cover transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${className ?? ''}`}
+          className={`h-full w-full object-contain transition-opacity duration-500 ${isLoaded ? 'opacity-100' : 'opacity-0'} ${className ?? ''}`}
         />
       )}
     </div>
@@ -147,8 +147,10 @@ const Home: React.FC = () => {
     return momMediaRaw
       .slice(0, 6)
       .map((media: any) => {
+        // Use original URL instead of thumbnail to avoid cropping faces
+        // Thumbnails are square (400x400, 800x800, 1200x1200) which crops images
         const rawUrl = media.url || media.thumbnailUrl || '';
-        const imageUrl = rawUrl ? getThumbnailUrl(rawUrl, 'large') : '';
+        const imageUrl = rawUrl; // Use original image, not thumbnail
         const displayTitle =
           media.eventTitle ||
           media.title ||
@@ -166,7 +168,7 @@ const Home: React.FC = () => {
 
         return {
           id: media.id,
-          imageUrl: imageUrl || rawUrl,
+          imageUrl: imageUrl,
           title: displayTitle,
           subtitle: displaySubtitleParts.join(' • '),
         };
@@ -235,8 +237,8 @@ const Home: React.FC = () => {
           {/* ROW 1: Logo + "Where Fitness meets Friendship" */}
           <div className="grid items-center gap-8 lg:grid-cols-2 mb-12">
             {/* Left: Logo */}
-            <div className="flex justify-center lg:justify-start">
-              <div className="relative max-w-lg aspect-[2/1.5] rounded-2xl overflow-hidden shadow-lg bg-[#F25129] flex items-center justify-center p-2 sm:p-3">
+            <div className="flex justify-center lg:justify-start w-full">
+              <div className="relative w-full sm:w-auto sm:max-w-lg aspect-[2/1.5] min-w-[280px] sm:min-w-0 rounded-2xl overflow-hidden shadow-lg bg-[#F25129] flex items-center justify-center p-4 sm:p-6 md:p-3">
                 <img 
                   src="/assets/logo/mfm-logo-updated-tagline-2.svg" 
                   alt="Moms Fitness Mojo" 
@@ -378,7 +380,7 @@ const Home: React.FC = () => {
             tabIndex={-1}
             data-section-heading
           >
-            Mom Moments
+            Mom's Moments
           </h2>
           <p className="text-xl text-gray-600 readable mb-4">
             Real snapshots from our recent workouts, socials, and celebrations—see what the community is up to right now.
@@ -396,7 +398,7 @@ const Home: React.FC = () => {
             {Array.from({ length: 3 }).map((_, index) => (
               <div
                 key={index}
-                className="h-56 rounded-2xl bg-gray-200 animate-pulse"
+                className="aspect-[4/3] rounded-2xl bg-gray-200 animate-pulse"
               />
             ))}
           </div>
@@ -409,7 +411,7 @@ const Home: React.FC = () => {
             {momMoments.map((moment) => (
               <div
                 key={moment.id}
-                className="group relative h-56 overflow-hidden rounded-2xl shadow-lg transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl"
+                className="group relative aspect-[4/3] overflow-hidden rounded-2xl shadow-lg transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl bg-gray-100"
               >
                 <LazyImage src={moment.imageUrl} alt={moment.title} className="rounded-2xl" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent transition-opacity duration-300 group-hover:from-black/60" />
@@ -504,7 +506,19 @@ const Home: React.FC = () => {
                 onClick={() => {
                   toast(
                     (t) => (
-                      <div className="flex flex-col gap-3" style={{ minWidth: '320px' }}>
+                      <div className="flex flex-col gap-3 relative" style={{ minWidth: '320px' }}>
+                        {/* Close button */}
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toast.dismiss(t.id);
+                          }}
+                          className="absolute top-0 right-0 text-white/70 hover:text-white transition-colors p-1"
+                          aria-label="Close"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
                         <div>
                           <span className="font-semibold text-white block mb-1">Please sign in to share your story</span>
                           <p className="text-sm text-gray-200">Create an account or log in to publish your testimonial.</p>
@@ -533,6 +547,16 @@ const Home: React.FC = () => {
                             Join MOJO
                           </button>
                         </div>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toast.dismiss(t.id);
+                          }}
+                          className="w-full px-4 py-2 text-white/80 hover:text-white text-sm font-medium transition-colors"
+                        >
+                          Cancel
+                        </button>
                       </div>
                     ),
                     {
@@ -546,8 +570,6 @@ const Home: React.FC = () => {
                         borderRadius: '12px',
                         boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
                       },
-                      // Allow dismiss on click outside
-                      onClick: (t) => toast.dismiss(t.id),
                     }
                   );
                 }}

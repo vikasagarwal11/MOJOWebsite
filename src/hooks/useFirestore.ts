@@ -176,13 +176,17 @@ function enforceGuestPolicy(
     // For events, we need to be more flexible with field types
     // Check if user has provided specific constraints
     const hasPublicField = hasWhereEquals(out, 'public', true);
-    const hasVisibilityField = hasWhereEquals(out, 'visibility', 'public');
+    const hasVisibilityField = hasWhereEquals(out, 'visibility', 'public') || hasWhereEquals(out, 'visibility', 'members');
+    const hasVisibilityIn = out.some((c: any) => 
+      c?.type === 'where' && 
+      c?.field?.toString?.() === 'visibility' && 
+      c?.opStr === 'in'
+    );
     
-    if (!hasPublicField && !hasVisibilityField) {
-      // For guests, only show public events
-      // Try visibility field first (newer events), then fallback to public field (legacy)
-      // Note: Firestore doesn't support OR queries easily, so we'll use visibility as primary
-      out.unshift(where('visibility', '==', 'public'));
+    if (!hasPublicField && !hasVisibilityField && !hasVisibilityIn) {
+      // For guests, show both public and members-only events (members-only events are visible to everyone)
+      // Members-only events are visible to everyone, but only members can RSVP
+      out.unshift(where('visibility', 'in', ['public', 'members']));
     }
     
     // Add default ordering if none provided

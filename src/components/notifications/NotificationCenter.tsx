@@ -6,7 +6,7 @@ import { Bell, X } from 'lucide-react';
 interface Notification {
   id: string;
   userId: string;
-  type: 'waitlist_promotion' | 'event_reminder' | 'rsvp_confirmation' | 'general' | 'account_approval_request' | 'account_approved' | 'approval_question' | 'approval_response';
+  type: 'waitlist_promotion' | 'event_reminder' | 'rsvp_confirmation' | 'general' | 'account_approval_request' | 'account_approved' | 'approval_question' | 'approval_response' | 'content_approved' | 'content_rejected';
   title: string;
   message: string;
   eventId?: string;

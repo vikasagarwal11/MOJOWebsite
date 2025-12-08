@@ -2,6 +2,7 @@ import { addDoc, collection, serverTimestamp, updateDoc, doc, deleteDoc, deleteF
 import { db } from '../config/firebase';
 import type { TestimonialStatus } from '../types';
 import { classifyTestimonialTone } from './testimonialAIService';
+import { ContentModerationService } from './contentModerationService';
 
 export interface SubmitTestimonialInput {
   userId: string;
@@ -49,6 +50,46 @@ export async function submitTestimonial(input: SubmitTestimonialInput) {
     }
   } catch (error) {
     console.warn('[testimonialsService] Tone classification failed, continuing without tone label.', error);
+  }
+
+  // Run content moderation
+  try {
+    const moderationResult = await ContentModerationService.moderateContent(
+      quote + (highlight ? ' ' + highlight : ''),
+      'testimonial',
+      userId
+    );
+
+    // If content is blocked, throw error
+    if (moderationResult.isBlocked) {
+      throw new Error(moderationResult.reason || 'Your testimonial was blocked due to inappropriate content.');
+    }
+
+    // Set status based on moderation result
+    // 'pending' if requires approval, otherwise keep as 'pending' (admin will review)
+    // We use 'pending' status for testimonials that need approval
+    if (moderationResult.requiresApproval) {
+      payload.status = 'pending';
+    } else {
+      // Auto-approved testimonials can be set to 'pending' for admin review anyway
+      // or you could set to 'published' if you want auto-publish
+      payload.status = 'pending'; // Keep as pending for admin review
+    }
+
+    // Add moderation metadata
+    payload.moderationStatus = moderationResult.requiresApproval ? 'pending' : 'approved';
+    payload.requiresApproval = moderationResult.requiresApproval;
+    payload.moderationReason = moderationResult.reason;
+    payload.moderationDetectedIssues = moderationResult.detectedIssues;
+  } catch (error: any) {
+    // If it's a blocked content error, re-throw it
+    if (error.message && error.message.includes('blocked')) {
+      throw error;
+    }
+    console.warn('[testimonialsService] Moderation failed, continuing with pending status.', error);
+    // Default to pending if moderation fails
+    payload.status = 'pending';
+    payload.moderationStatus = 'pending';
   }
 
   await addDoc(collection(db, 'testimonials'), payload);

@@ -56,13 +56,13 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
     const nowTs = Timestamp.fromMillis(Date.now());
     const eventsRef = collection(db, 'events');
     
-    // Treat non-approved users like logged-out users (only show public events)
+    // Members-only events are now visible to everyone, but only members can RSVP
     if (!userId || !isApproved) {
-      // Public events only for guests and non-approved users
+      // Show both public and members-only events to everyone (non-members can see but not RSVP)
       return [
         query(
           eventsRef,
-          where('visibility', '==', 'public'),
+          where('visibility', 'in', ['public', 'members']),
           where('startAt', '>=', nowTs),
           orderBy('startAt', 'asc')
         )
