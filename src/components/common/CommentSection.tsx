@@ -728,6 +728,9 @@ const CommentSection: React.FC<CommentSectionProps> = ({
       return;
     }
 
+    const text = replyingTo ? replyText : newComment;
+    const files = replyingTo ? replyFiles : selectedFiles;
+
     if (!text && files.length === 0) {
       toast.error('Please enter a comment or select a file');
       return;
@@ -776,5 +779,104 @@ const CommentSection: React.FC<CommentSectionProps> = ({
       setUploading(false);
     }
   };
+
+  const openLightbox = (mediaUrls: string[], startIndex: number) => {
+    setLightboxMediaUrls(mediaUrls);
+    setLightboxCurrentIndex(startIndex);
+    setLightboxOpen(true);
+  };
+
+  const handleReply = (commentId: string) => {
+    setReplyingTo(commentId);
+  };
+
+  const handleToggleExpanded = (commentId: string) => {
+    // This is handled by the useThreadedComments hook
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Comment Form */}
+      {isApprovedUser && (
+        <form onSubmit={handleSubmitComment} className="bg-white rounded-lg p-4 border border-gray-200">
+          <textarea
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            placeholder="Write a comment..."
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent resize-none"
+            rows={3}
+            maxLength={500}
+          />
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                id="comment-file-input"
+                multiple
+                accept="image/*,video/*"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  setSelectedFiles(files);
+                }}
+                className="hidden"
+              />
+              <label
+                htmlFor="comment-file-input"
+                className="px-3 py-2 text-sm text-gray-600 hover:text-[#F25129] cursor-pointer border border-gray-300 rounded-lg hover:border-[#F25129] transition-colors"
+              >
+                <Image className="w-4 h-4 inline mr-1" />
+                Attach
+              </label>
+              {selectedFiles.length > 0 && (
+                <span className="text-sm text-gray-600">{selectedFiles.length} file(s) selected</span>
+              )}
+            </div>
+            <button
+              type="submit"
+              disabled={uploading || (!newComment.trim() && selectedFiles.length === 0)}
+              className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {uploading ? 'Posting...' : 'Post Comment'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Comments List */}
+      <div className="space-y-2">
+        {comments.comments.map((comment) => (
+          <CommentItem
+            key={comment.id}
+            comment={comment}
+            collectionPath={collectionPath}
+            threadLevel={0}
+            onReply={handleReply}
+            onToggleExpanded={handleToggleExpanded}
+            isExpanded={true}
+            replyingTo={replyingTo}
+            replyText={replyText}
+            setReplyText={setReplyText}
+            handleSubmitReply={handleSubmitComment}
+            setReplyingTo={setReplyingTo}
+            replyFiles={replyFiles}
+            setReplyFiles={setReplyFiles}
+            uploading={uploading}
+            openLightbox={openLightbox}
+          />
+        ))}
+      </div>
+
+      {/* Media Lightbox */}
+      {lightboxOpen && (
+        <CommentMediaLightbox
+          mediaUrls={lightboxMediaUrls}
+          currentIndex={lightboxCurrentIndex}
+          onClose={() => setLightboxOpen(false)}
+          onNavigate={(index) => setLightboxCurrentIndex(index)}
+        />
+      )}
+    </div>
+  );
+};
 
 export default CommentSection;

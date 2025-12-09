@@ -78,9 +78,6 @@ async function handleModeration(job: ModerationJob) {
   if (job.mediaPath && !isAdmin && !isInTrustedList) {
     // User is not admin and not in trusted list - analyze image
     mediaVerdict = await analyzeMediaSafeSearch(job.mediaPath);
-    if (isInTrustedList) {
-      console.log('💰 [ModerationTriggers] Skipping image analysis - user in trusted list');
-    }
   } else if (job.mediaPath && (isAdmin || isInTrustedList)) {
     // Skip image analysis for admins and trusted users
     console.log(`💰 [ModerationTriggers] Skipping image analysis - ${isAdmin ? 'admin user' : 'user in trusted list'}`);

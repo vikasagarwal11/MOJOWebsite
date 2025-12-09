@@ -210,6 +210,29 @@ if (-not $SkipChecks) {
     Write-Host "SUCCESS: All pre-deployment checks passed!" -ForegroundColor Green
 }
 
+# Check if node_modules exists, install if missing
+if (-not (Test-Path "node_modules")) {
+    Write-Host "node_modules not found. Installing dependencies..." -ForegroundColor Yellow
+    npm install
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to install dependencies!" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "[OK] Dependencies installed successfully" -ForegroundColor Green
+} else {
+    # Check if vite is available
+    $vitePath = Join-Path (Join-Path "node_modules" ".bin") "vite"
+    if (-not (Test-Path $vitePath)) {
+        Write-Host "vite not found in node_modules. Installing dependencies..." -ForegroundColor Yellow
+        npm install
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "ERROR: Failed to install dependencies!" -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "[OK] Dependencies installed successfully" -ForegroundColor Green
+    }
+}
+
 # Build the project for production
 Write-Host "Building project for production..." -ForegroundColor Yellow
 npm run build:prod
