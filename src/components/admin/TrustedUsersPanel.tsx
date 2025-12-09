@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { collection, doc, getDoc, getDocs, query, where, addDoc, deleteDoc, onSnapshot, orderBy, serverTimestamp } from 'firebase/firestore';
+import React, { useState, useEffect, useRef } from 'react';
+import { collection, doc, getDoc, getDocs, query, where, addDoc, deleteDoc, onSnapshot, orderBy, serverTimestamp, limit } from 'firebase/firestore';
 import { db } from '../../config/firebase';
-import { Search, UserPlus, X, Shield, Loader2, CheckCircle } from 'lucide-react';
+import { Search, UserPlus, X, Shield, Loader2, CheckCircle, User, Mail, Phone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDebounce } from 'use-debounce';
 
 interface TrustedUser {
   id: string;
@@ -19,9 +20,13 @@ export const TrustedUsersPanel: React.FC = () => {
   const [trustedUsers, setTrustedUsers] = useState<TrustedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery] = useDebounce(searchQuery, 500); // Increased to 500ms for better performance
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [addingUserId, setAddingUserId] = useState<string | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Load trusted users list
   useEffect(() => {
@@ -52,58 +57,264 @@ export const TrustedUsersPanel: React.FC = () => {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Search for users to add
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      toast.error('Please enter a search query');
-      return;
-    }
+  // Optimized type-ahead search with smart query strategy
+  useEffect(() => {
+    let cancelled = false;
+    
+    const performSearch = async () => {
+      const trimmedQuery = debouncedSearchQuery.trim();
+      
+      // Require minimum 3 characters for search (reduces unnecessary queries)
+      if (!trimmedQuery || trimmedQuery.length < 3) {
+        setSearchResults([]);
+        setShowDropdown(false);
+        setIsSearching(false);
+        return;
+      }
 
-    setIsSearching(true);
-    try {
-      // Search by email or display name
-      const usersRef = collection(db, 'users');
-      const emailQuery = query(
-        usersRef,
-        where('email', '>=', searchQuery.trim().toLowerCase()),
-        where('email', '<=', searchQuery.trim().toLowerCase() + '\uf8ff'),
-        limit(10)
-      );
-
-      const nameQuery = query(
-        usersRef,
-        where('displayName', '>=', searchQuery.trim()),
-        where('displayName', '<=', searchQuery.trim() + '\uf8ff'),
-        limit(10)
-      );
-
-      const [emailSnapshot, nameSnapshot] = await Promise.all([
-        getDocs(emailQuery),
-        getDocs(nameQuery)
-      ]);
-
-      const results: any[] = [];
-      const seenIds = new Set<string>();
-
-      // Combine results, avoiding duplicates
-      [...emailSnapshot.docs, ...nameSnapshot.docs].forEach(doc => {
-        if (!seenIds.has(doc.id)) {
-          seenIds.add(doc.id);
-          results.push({
-            id: doc.id,
-            ...doc.data()
-          });
+      setIsSearching(true);
+      setShowDropdown(true);
+      
+      try {
+        const usersRef = collection(db, 'users');
+        const searchTerm = trimmedQuery.toLowerCase();
+        const normalizedPhone = searchTerm.replace(/\D/g, ''); // Remove non-digits
+        
+        // Smart query strategy: Start with most common searches first
+        // Priority: Email > DisplayName > FirstName/LastName > Phone
+        
+        const queries: any[] = [];
+        const isEmailSearch = searchTerm.includes('@');
+        const isPhoneSearch = normalizedPhone.length >= 3 && /^\d+$/.test(normalizedPhone);
+        
+        // Strategy 1: If it looks like an email, search email first
+        if (isEmailSearch) {
+          queries.push(
+            query(
+              usersRef,
+              where('email', '>=', searchTerm),
+              where('email', '<=', searchTerm + '\uf8ff'),
+              limit(20) // Get more results for better matching
+            )
+          );
         }
-      });
+        // Strategy 2: If it looks like a phone number, search phone AND names
+        // (because "333333" could match phone "+13333333333" or name "333")
+        else if (isPhoneSearch) {
+          // Search for phone numbers starting with normalized digits (without +)
+          queries.push(
+            query(
+              usersRef,
+              where('phoneNumber', '>=', normalizedPhone),
+              where('phoneNumber', '<=', normalizedPhone + '\uf8ff'),
+              limit(20)
+            )
+          );
+          
+          // Also search for phone numbers with + prefix
+          if (normalizedPhone.length >= 3) {
+            queries.push(
+              query(
+                usersRef,
+                where('phoneNumber', '>=', '+' + normalizedPhone),
+                where('phoneNumber', '<=', '+' + normalizedPhone + '\uf8ff'),
+                limit(20)
+              )
+            );
+          }
+          
+          // Also search name fields (in case it's a name, not a phone)
+          // Search displayName
+          queries.push(
+            query(
+              usersRef,
+              where('displayName', '>=', searchTerm),
+              where('displayName', '<=', searchTerm + '\uf8ff'),
+              limit(20)
+            )
+          );
+          
+          // Search firstName
+          const capitalizedTerm = searchTerm.charAt(0).toUpperCase() + searchTerm.slice(1);
+          queries.push(
+            query(
+              usersRef,
+              where('firstName', '>=', capitalizedTerm),
+              where('firstName', '<=', capitalizedTerm + '\uf8ff'),
+              limit(20)
+            )
+          );
+          
+          // Search lastName if query is longer
+          if (searchTerm.length >= 4) {
+            queries.push(
+              query(
+                usersRef,
+                where('lastName', '>=', capitalizedTerm),
+                where('lastName', '<=', capitalizedTerm + '\uf8ff'),
+                limit(20)
+              )
+            );
+          }
+        }
+        // Strategy 3: Otherwise, search by name fields (most common case)
+        else {
+          // Search displayName (most likely to have full name)
+          queries.push(
+            query(
+              usersRef,
+              where('displayName', '>=', searchTerm),
+              where('displayName', '<=', searchTerm + '\uf8ff'),
+              limit(20)
+            )
+          );
+          
+          // Also search firstName (common for first name searches)
+          const capitalizedTerm = searchTerm.charAt(0).toUpperCase() + searchTerm.slice(1);
+          queries.push(
+            query(
+              usersRef,
+              where('firstName', '>=', capitalizedTerm),
+              where('firstName', '<=', capitalizedTerm + '\uf8ff'),
+              limit(20)
+            )
+          );
+          
+          // Search lastName if query is longer (likely last name)
+          if (searchTerm.length >= 4) {
+            queries.push(
+              query(
+                usersRef,
+                where('lastName', '>=', capitalizedTerm),
+                where('lastName', '<=', capitalizedTerm + '\uf8ff'),
+                limit(20)
+              )
+            );
+          }
+        }
+        
+        // Always include email search as fallback (if not already included)
+        if (!isEmailSearch) {
+          queries.push(
+            query(
+              usersRef,
+              where('email', '>=', searchTerm),
+              where('email', '<=', searchTerm + '\uf8ff'),
+              limit(10)
+            )
+          );
+        }
 
-      setSearchResults(results);
-    } catch (error: any) {
-      console.error('Error searching users:', error);
-      toast.error('Failed to search users');
-    } finally {
-      setIsSearching(false);
-    }
-  };
+        // Execute queries in parallel (but limit to 3-4 queries max)
+        const snapshots = await Promise.all(
+          queries.slice(0, 4).map(q => 
+            getDocs(q).catch((err) => {
+              console.warn('Query failed:', err);
+              return { docs: [] };
+            })
+          )
+        );
+
+        if (cancelled) return;
+
+        const results: any[] = [];
+        const seenIds = new Set<string>();
+
+        // Combine and filter results client-side for better matching
+        snapshots.forEach(snapshot => {
+          snapshot.docs.forEach(doc => {
+            if (!seenIds.has(doc.id)) {
+              seenIds.add(doc.id);
+              const data = doc.data();
+              
+              // Client-side filtering for better matching (handles partial matches)
+              // Normalize phone numbers for comparison (remove all non-digits)
+              const userPhoneNormalized = data.phoneNumber?.replace(/\D/g, '') || '';
+              const searchPhoneNormalized = normalizedPhone;
+              
+              const matchesSearch = 
+                (data.email?.toLowerCase().includes(searchTerm)) ||
+                (data.displayName?.toLowerCase().includes(searchTerm)) ||
+                (data.firstName?.toLowerCase().includes(searchTerm)) ||
+                (data.lastName?.toLowerCase().includes(searchTerm)) ||
+                (userPhoneNormalized.includes(searchPhoneNormalized) && searchPhoneNormalized.length >= 3) ||
+                (data.phoneNumber?.toLowerCase().includes(searchTerm.toLowerCase()));
+              
+              if (matchesSearch) {
+                results.push({
+                  id: doc.id,
+                  ...data
+                });
+              }
+            }
+          });
+        });
+
+        if (cancelled) return;
+
+        // Sort results by relevance (exact/starts-with matches first)
+        results.sort((a, b) => {
+          const aEmail = a.email?.toLowerCase() || '';
+          const bEmail = b.email?.toLowerCase() || '';
+          const aName = `${a.firstName || ''} ${a.lastName || ''}`.toLowerCase().trim();
+          const bName = `${b.firstName || ''} ${b.lastName || ''}`.toLowerCase().trim();
+          const aDisplayName = a.displayName?.toLowerCase() || '';
+          const bDisplayName = b.displayName?.toLowerCase() || '';
+          
+          // Exact match gets highest priority
+          const aExact = aEmail === searchTerm || aName === searchTerm || aDisplayName === searchTerm;
+          const bExact = bEmail === searchTerm || bName === searchTerm || bDisplayName === searchTerm;
+          if (aExact && !bExact) return -1;
+          if (!aExact && bExact) return 1;
+          
+          // Then starts-with matches
+          const aStartsWith = aEmail.startsWith(searchTerm) || aName.startsWith(searchTerm) || aDisplayName.startsWith(searchTerm);
+          const bStartsWith = bEmail.startsWith(searchTerm) || bName.startsWith(searchTerm) || bDisplayName.startsWith(searchTerm);
+          if (aStartsWith && !bStartsWith) return -1;
+          if (!aStartsWith && bStartsWith) return 1;
+          
+          return 0;
+        });
+
+        setSearchResults(results.slice(0, 10)); // Limit to top 10 results
+      } catch (error: any) {
+        if (!cancelled) {
+          console.error('Error searching users:', error);
+          setSearchResults([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSearching(false);
+        }
+      }
+    };
+
+    performSearch();
+    
+    // Cleanup function to cancel in-flight requests
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearchQuery]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node) &&
+        searchInputRef.current &&
+        !searchInputRef.current.contains(event.target as Node)
+      ) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Add user to trusted list
   const addToTrustedList = async (user: any) => {
@@ -129,6 +340,7 @@ export const TrustedUsersPanel: React.FC = () => {
       toast.success(`${user.displayName || user.email} added to trusted list`);
       setSearchQuery('');
       setSearchResults([]);
+      setShowDropdown(false);
     } catch (error: any) {
       console.error('Error adding trusted user:', error);
       toast.error('Failed to add user to trusted list');
@@ -173,81 +385,125 @@ export const TrustedUsersPanel: React.FC = () => {
       {/* Add User Section */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Add User to Trusted List</h3>
-        <div className="flex gap-2 mb-4">
+        <div className="relative">
           <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 z-10" />
             <input
+              ref={searchInputRef}
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Search by name or email..."
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowDropdown(true);
+              }}
+              onFocus={() => {
+                if (searchResults.length > 0) {
+                  setShowDropdown(true);
+                }
+              }}
+              placeholder="Type at least 3 characters to search (name, email, or phone)..."
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
             />
-          </div>
-          <button
-            onClick={handleSearch}
-            disabled={isSearching}
-            className="px-6 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {isSearching ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Searching...
-              </>
-            ) : (
-              <>
-                <Search className="w-4 h-4" />
-                Search
-              </>
+            {isSearching && (
+              <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 animate-spin text-gray-400" />
             )}
-          </button>
-        </div>
-
-        {/* Search Results */}
-        {searchResults.length > 0 && (
-          <div className="mt-4 space-y-2">
-            <h4 className="text-sm font-medium text-gray-700">Search Results:</h4>
-            {searchResults.map((user) => {
-              const alreadyTrusted = isUserTrusted(user.id);
-              return (
-                <div
-                  key={user.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
-                >
-                  <div>
-                    <p className="font-medium text-gray-900">{user.displayName || 'No name'}</p>
-                    <p className="text-sm text-gray-600">{user.email}</p>
-                  </div>
-                  {alreadyTrusted ? (
-                    <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium flex items-center gap-1">
-                      <CheckCircle className="w-4 h-4" />
-                      Already Trusted
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => addToTrustedList(user)}
-                      disabled={addingUserId === user.id}
-                      className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      {addingUserId === user.id ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Adding...
-                        </>
-                      ) : (
-                        <>
-                          <UserPlus className="w-4 h-4" />
-                          Add to Trusted
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
           </div>
-        )}
+
+          {/* Type-ahead Dropdown */}
+          {showDropdown && searchQuery.length >= 3 && (
+            <div
+              ref={dropdownRef}
+              className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-96 overflow-y-auto"
+            >
+              {isSearching ? (
+                <div className="p-4 text-center text-gray-500">
+                  <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+                  <p className="text-sm">Searching...</p>
+                </div>
+              ) : searchResults.length > 0 ? (
+                <div className="py-2">
+                  {searchResults.map((user) => {
+                    const alreadyTrusted = isUserTrusted(user.id);
+                    const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.displayName || 'No name';
+                    return (
+                      <div
+                        key={user.id}
+                        className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                        onClick={() => {
+                          if (!alreadyTrusted) {
+                            addToTrustedList(user);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <User className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                              <p className="font-medium text-gray-900 truncate">{fullName}</p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 ml-6">
+                              {user.email && (
+                                <div className="flex items-center gap-1">
+                                  <Mail className="w-3 h-3" />
+                                  <span className="truncate">{user.email}</span>
+                                </div>
+                              )}
+                              {user.phoneNumber && (
+                                <div className="flex items-center gap-1">
+                                  <Phone className="w-3 h-3" />
+                                  <span>{user.phoneNumber}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {alreadyTrusted ? (
+                            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium flex items-center gap-1 flex-shrink-0 ml-2">
+                              <CheckCircle className="w-3 h-3" />
+                              Trusted
+                            </span>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToTrustedList(user);
+                              }}
+                              disabled={addingUserId === user.id}
+                              className="px-3 py-1 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 text-sm flex-shrink-0 ml-2"
+                            >
+                              {addingUserId === user.id ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  Adding...
+                                </>
+                              ) : (
+                                <>
+                                  <UserPlus className="w-3 h-3" />
+                                  Add
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-4 text-center text-gray-500">
+                  <p className="text-sm">No users found matching "{searchQuery}"</p>
+                  <p className="text-xs mt-1">Try searching by first name, last name, email, or phone number</p>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Show hint when typing but less than 3 characters */}
+          {searchQuery.length > 0 && searchQuery.length < 3 && (
+            <div className="absolute z-50 w-full mt-1 bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
+              Type at least 3 characters to search...
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Trusted Users List */}

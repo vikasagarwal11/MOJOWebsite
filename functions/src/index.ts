@@ -5330,85 +5330,15 @@ export const onAccountApprovalUpdated = onDocumentWritten(
   }
 });
 
-// Server-side moderation triggers - CRITICAL: Re-moderate all content server-side to prevent bypass
-export const onPostCreated = onDocumentCreated(
-  {
-    document: "posts/{postId}",
-    region: 'us-east1'
-  },
-  async (event) => {
-    try {
-      const postData = event.data?.data();
-      if (!postData) return;
+// NOTE: Server-side moderation triggers are now handled by contentModerationTriggers.ts
+// The old onPostCreated and onMediaCreated triggers have been removed to prevent duplicate processing.
+// See: onPostCreatedModeration, onMediaCreatedModeration in contentModerationTriggers.ts
 
-      const postId = event.params.postId;
-      const postRef = event.data?.ref;
+// REMOVED: Duplicate onPostCreated trigger (lines 5334-5410)
+// REMOVED: Duplicate onMediaCreated trigger (lines 5412-5626)
+// These were causing double processing. Use the Moderation versions from contentModerationTriggers.ts instead.
 
-      console.log('🔍 [ServerModeration] Re-moderating post:', postId);
-
-      // Always re-moderate server-side, regardless of client-side decision
-      const contentToModerate = `${postData.title || ''} ${postData.content || ''}`.trim();
-      
-      // Import and call moderation function
-      // Note: We need to call the Cloud Function, not import directly
-      const { getFunctions, httpsCallable } = await import('firebase/functions');
-      const functions = getFunctions(undefined, 'us-east1');
-      const moderateContentCallable = httpsCallable(functions, 'moderateContent');
-      
-      // Call moderation via HTTP (since we're in a Cloud Function, we can call it)
-      // Actually, we should use the direct function import since we're server-side
-      const moderationModule = await import('./contentModeration');
-      // The moderateContent is exported as a callable, but we need the underlying logic
-      // For now, we'll call it as a callable from within the function
-      // Better approach: Extract the moderation logic into a shared function
-      
-      // Temporary: Use the AI service directly
-      const { analyzeContentWithGemini } = await import('./contentModeration');
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error('GEMINI_API_KEY not configured');
-      }
-      
-      const moderationResult = await analyzeContentWithGemini(
-        contentToModerate || 'No content provided',
-        'post',
-        apiKey
-      );
-
-      // Update moderation status server-side (overrides client decision)
-      const serverModerationStatus = moderationResult.isBlocked 
-        ? 'rejected' 
-        : (moderationResult.requiresApproval ? 'pending' : 'approved');
-
-      await postRef.update({
-        moderationStatus: serverModerationStatus,
-        requiresApproval: moderationResult.requiresApproval,
-        moderationReason: moderationResult.reason || 'Server-side moderation',
-        moderationDetectedIssues: moderationResult.detectedIssues || [],
-        moderatedAt: FieldValue.serverTimestamp(),
-        moderatedBy: 'system',
-        serverModerated: true // Flag to indicate server moderation
-      });
-
-      console.log(`✅ [ServerModeration] Post ${postId} moderated: ${serverModerationStatus}`);
-    } catch (error: any) {
-      console.error('❌ [ServerModeration] Error moderating post:', error);
-      // On error, set to pending for manual review (safer than auto-approve)
-      try {
-        const postRef = event.data?.ref;
-        await postRef.update({
-          moderationStatus: 'pending',
-          moderationReason: 'Server moderation failed - requires manual review',
-          serverModerated: true,
-          moderationError: error.message
-        });
-      } catch (updateError) {
-        console.error('❌ [ServerModeration] Failed to update post on error:', updateError);
-      }
-    }
-  }
-);
-
+/* REMOVED - Duplicate trigger
 export const onMediaCreated = onDocumentCreated(
   {
     document: "media/{mediaId}",
@@ -5624,6 +5554,7 @@ export const onMediaCreated = onDocumentCreated(
     }
   }
 );
+*/
 
 /**
  * Analyze image/video content using Gemini Vision API

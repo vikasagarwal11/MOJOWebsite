@@ -1147,69 +1147,100 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                   const failedQualities = media.failedQualities || [];
                   const bgSummary = media.backgroundProcessingSummary;
                   
+                  // Get thumbnail URL - prefer thumbnailUrl, fallback to url for images
+                  const thumbnailUrl = media.thumbnailUrl || (media.type === 'image' ? media.url : null);
+                  
                   return (
                     <div key={media.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-2 flex-1">
-                          {media.type === 'video' ? (
-                            <Video className="w-5 h-5 text-[#F25129]" />
+                      <div className="flex items-start gap-4">
+                        {/* Thumbnail - Always visible */}
+                        <div className="flex-shrink-0">
+                          {thumbnailUrl ? (
+                            <div className="relative w-24 h-24 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
+                              {media.type === 'video' ? (
+                                <>
+                                  <img 
+                                    src={thumbnailUrl} 
+                                    alt="Video thumbnail" 
+                                    className="w-full h-full object-cover"
+                                  />
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30">
+                                    <Video className="w-6 h-6 text-white" />
+                                  </div>
+                                </>
+                              ) : (
+                                <img 
+                                  src={thumbnailUrl} 
+                                  alt="Image thumbnail" 
+                                  className="w-full h-full object-cover"
+                                />
+                              )}
+                            </div>
                           ) : (
-                            <Image className="w-5 h-5 text-green-500" />
+                            <div className="w-24 h-24 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                              {media.type === 'video' ? (
+                                <Video className="w-8 h-8 text-gray-400" />
+                              ) : (
+                                <Image className="w-8 h-8 text-gray-400" />
+                              )}
+                            </div>
                           )}
-                          <span className="text-sm font-medium capitalize">{media.type}</span>
-                          <span className="text-xs text-gray-500">ID: {media.id.substring(0, 8)}...</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setExpandedMediaId(isExpanded ? null : media.id)}
-                            className="p-1 text-gray-500 hover:bg-gray-100 rounded"
-                            title={isExpanded ? "Hide details" : "Show details"}
-                          >
-                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          </button>
-                          <button
-                            onClick={() => handleDeleteMedia(media.id, media)}
-                            className="p-1 text-red-500 hover:bg-red-50 rounded"
-                            title="Delete media"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                        {media.thumbnailUrl && (
-                          <div className="md:col-span-1">
-                            <img 
-                              src={media.thumbnailUrl} 
-                              alt="Media thumbnail" 
-                              className="w-full h-32 object-cover rounded"
-                            />
+                        
+                        {/* Media Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2 flex-1">
+                              {media.type === 'video' ? (
+                                <Video className="w-4 h-4 text-[#F25129]" />
+                              ) : (
+                                <Image className="w-4 h-4 text-green-500" />
+                              )}
+                              <span className="text-sm font-medium capitalize">{media.type}</span>
+                              <span className="text-xs text-gray-500">ID: {media.id.substring(0, 8)}...</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setExpandedMediaId(isExpanded ? null : media.id)}
+                                className="p-1 text-gray-500 hover:bg-gray-100 rounded"
+                                title={isExpanded ? "Hide details" : "Show details"}
+                              >
+                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteMedia(media.id, media)}
+                                className="p-1 text-red-500 hover:bg-red-50 rounded"
+                                title="Delete media"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
-                        )}
-                        <div className={`text-sm text-gray-600 space-y-1 ${!media.thumbnailUrl ? 'md:col-span-3' : 'md:col-span-2'}`}>
-                          <div className="flex items-center gap-2">
-                            <strong>Status:</strong>
-                            <span className={`px-2 py-1 rounded text-xs font-medium ${
-                              media.transcodeStatus === 'ready' ? 'bg-green-100 text-green-800' :
-                              media.transcodeStatus === 'processing' ? 'bg-yellow-100 text-yellow-800' :
-                              media.transcodeStatus === 'failed' ? 'bg-red-100 text-red-800' :
-                              'bg-gray-100 text-gray-800'
-                            }`}>
-                              {media.transcodeStatus || 'pending'}
-                            </span>
-                            {media.transcodeStatus === 'ready' && media.sources?.hls && (
-                              <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">HLS Ready</span>
+                          
+                          <div className="text-sm text-gray-600 space-y-1">
+                            <div className="flex items-center gap-2">
+                              <strong>Status:</strong>
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                media.transcodeStatus === 'ready' ? 'bg-green-100 text-green-800' :
+                                media.transcodeStatus === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                                media.transcodeStatus === 'failed' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {media.transcodeStatus || 'pending'}
+                              </span>
+                              {media.transcodeStatus === 'ready' && media.sources?.hls && (
+                                <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">HLS Ready</span>
+                              )}
+                            </div>
+                            <p><strong>Uploaded by:</strong> {userNames[media.uploadedBy] || 'Unknown'}</p>
+                            <p><strong>Created:</strong> {media.createdAt?.toLocaleDateString() || 'Unknown'}</p>
+                            {media.fileSize && (
+                              <p><strong>Size:</strong> {(media.fileSize / 1024 / 1024).toFixed(2)} MB</p>
+                            )}
+                            {media.transcodingMessage && (
+                              <p className="text-xs text-gray-500 italic">{media.transcodingMessage}</p>
                             )}
                           </div>
-                          <p><strong>Uploaded by:</strong> {userNames[media.uploadedBy] || 'Unknown'}</p>
-                          <p><strong>Created:</strong> {media.createdAt?.toLocaleDateString() || 'Unknown'}</p>
-                          {media.fileSize && (
-                            <p><strong>Size:</strong> {(media.fileSize / 1024 / 1024).toFixed(2)} MB</p>
-                          )}
-                          {media.transcodingMessage && (
-                            <p className="text-xs text-gray-500 italic">{media.transcodingMessage}</p>
-                          )}
                         </div>
                       </div>
 
