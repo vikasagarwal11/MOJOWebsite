@@ -569,7 +569,13 @@ service cloud.firestore {
       allow create: if isSignedIn() && 
         isApprovedUser() &&
         request.auth.uid == request.resource.data.authorId &&
-        !isUserBlockedFromRsvp(request.auth.uid);
+        !isUserBlockedFromRsvp(request.auth.uid) &&
+        // CRITICAL: Client cannot set moderationStatus to 'approved' - only server can
+        // Client can set 'pending' or leave it unset (server will set it)
+        (!('moderationStatus' in request.resource.data) || 
+         request.resource.data.moderationStatus == 'pending') &&
+        // Client cannot set serverModerated flag
+        !('serverModerated' in request.resource.data);
       
       allow update, delete: if isSignedIn() && 
         (request.auth.uid == resource.data.authorId || isAdmin());
@@ -737,7 +743,13 @@ service cloud.firestore {
         // Others can only see approved media
         (!('moderationStatus' in resource.data) || resource.data.moderationStatus == 'approved');
       allow create: if isSignedIn() && isApprovedUser() &&
-        request.auth.uid == request.resource.data.uploadedBy;
+        request.auth.uid == request.resource.data.uploadedBy &&
+        // CRITICAL: Client cannot set moderationStatus to 'approved' - only server can
+        // Client can set 'pending' or leave it unset (server will set it)
+        (!('moderationStatus' in request.resource.data) || 
+         request.resource.data.moderationStatus == 'pending') &&
+        // Client cannot set serverModerated flag
+        !('serverModerated' in request.resource.data);
       allow update, delete: if isSignedIn() && 
         (request.auth.uid == resource.data.uploadedBy || isAdmin()) ||
         // Allow view counter updates for all users (including guests)
