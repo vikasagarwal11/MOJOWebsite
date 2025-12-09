@@ -13,7 +13,6 @@ import AdminThreadDeletionModal from './AdminThreadDeletionModal';
 import toast from 'react-hot-toast';
 import { createPortal } from 'react-dom';
 import { isUserApproved } from '../../utils/userUtils';
-import { ContentModerationService } from '../../services/contentModerationService';
 
 function usePopoverPosition(anchorRef: React.RefObject<HTMLElement>, open: boolean) {
   const [pos, setPos] = React.useState<{top:number; left:number}>({ top: 0, left: 0 });
@@ -718,402 +717,64 @@ const CommentSection: React.FC<CommentSectionProps> = ({
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('💬 [CommentSection] Comment submission started');
     
     if (!currentUser) {
-      console.log('❌ [CommentSection] No current user');
       toast.error('Please log in to comment');
       return;
     }
-    if (!isApprovedUser) {
-      toast.error('Your account is pending approval. You can browse comments but cannot post yet.');
+    
+    if (!isUserApproved(currentUser)) {
+      toast.error('Your account is pending approval. You cannot comment yet.');
       return;
     }
 
-    const text = newComment.trim();
-    const files = replyingTo ? replyFiles : selectedFiles;
-    
-    console.log('💬 [CommentSection] Comment data:', {
-      text: text,
-      files: files.length,
-      replyingTo: replyingTo,
-      threadLevel: replyingTo ? 1 : 0
-    });
-    
     if (!text && files.length === 0) {
-      console.log('❌ [CommentSection] No text or files provided');
       toast.error('Please enter a comment or select a file');
       return;
     }
 
-    if (text && text.length > 500) {
-      console.log('❌ [CommentSection] Comment too long');
+    if (text.length > 500) {
       toast.error('Comment must be 500 characters or less');
       return;
     }
-
+    
     setUploading(true);
     try {
-      console.log('💬 [CommentSection] Starting comment submission...');
+      console.log('?? [CommentSection] Starting comment submission...');
+      const mediaUrls = await uploadFiles(files);
       
-      // Run content moderation before saving
-      if (text) {
-        const moderationResult = await ContentModerationService.moderateContent(
-          text,
-          'comment',
-          currentUser.id
-        );
+      const commentData = {
+        text: text || '',
+        mediaUrls,
+        authorId: currentUser.id,
+        authorName: currentUser.displayName || 'Member',
+        createdAt: serverTimestamp(),
+        parentCommentId: replyingTo || null,
+        threadLevel: replyingTo ? 1 : 0,
+        replyCount: 0,
+        moderationStatus: 'pending',
+        requiresApproval: true,
+        moderationReason: 'Awaiting automated moderation review',
+        moderationDetectedIssues: [],
+        moderationPipeline: 'auto_pending',
+      };
+      
+      console.log('?? [CommentSection] Submitting comment to Firestore:', commentData);
+      const docRef = await addDoc(collection(db, collectionPath), commentData);
+      console.log('? [CommentSection] Comment submitted successfully with ID:', docRef.id);
 
-        // If content is blocked, don't save it
-        if (moderationResult.isBlocked) {
-          toast.error(moderationResult.reason || 'Your comment was blocked due to inappropriate content.');
-          setUploading(false);
-          return;
-        }
-
-        // Determine moderation status
-        const moderationStatus = moderationResult.requiresApproval ? 'pending' : 'approved';
-
-        const mediaUrls = await uploadFiles(files);
-        
-        const commentData = {
-          text,
-          mediaUrls: mediaUrls,
-          authorId: currentUser.id,
-          authorName: currentUser.displayName || 'Member',
-          createdAt: serverTimestamp(),
-          parentCommentId: replyingTo || null,
-          threadLevel: replyingTo ? 1 : 0,
-          replyCount: 0,
-          moderationStatus, // New field
-          requiresApproval: moderationResult.requiresApproval, // New field
-          moderationReason: moderationResult.reason, // New field
-          moderationDetectedIssues: moderationResult.detectedIssues, // New field
-        };
-        
-        console.log('💬 [CommentSection] Submitting comment to Firestore:', commentData);
-        const docRef = await addDoc(collection(db, collectionPath), commentData);
-        console.log('✅ [CommentSection] Comment submitted successfully with ID:', docRef.id);
-
-        setNewComment('');
-        setSelectedFiles([]);
-        setReplyFiles([]);
-        setReplyingTo(null);
-        setReplyText('');
-        
-        if (moderationStatus === 'pending') {
-          toast.success('Your comment has been submitted for review and will appear shortly after approval.');
-        } else {
-          toast.success('Comment posted!');
-        }
-      } else {
-        // If no text, just upload media (media-only comments don't need moderation)
-        const mediaUrls = await uploadFiles(files);
-        
-        const commentData = {
-          text: '',
-          mediaUrls: mediaUrls,
-          authorId: currentUser.id,
-          authorName: currentUser.displayName || 'Member',
-          createdAt: serverTimestamp(),
-          parentCommentId: replyingTo || null,
-          threadLevel: replyingTo ? 1 : 0,
-          replyCount: 0,
-          moderationStatus: 'approved', // Media-only comments auto-approved
-        };
-        
-        console.log('💬 [CommentSection] Submitting comment to Firestore:', commentData);
-        const docRef = await addDoc(collection(db, collectionPath), commentData);
-        console.log('✅ [CommentSection] Comment submitted successfully with ID:', docRef.id);
-
-        setNewComment('');
-        setSelectedFiles([]);
-        setReplyFiles([]);
-        setReplyingTo(null);
-        setReplyText('');
-        toast.success('Comment posted!');
-      }
+      setNewComment('');
+      setSelectedFiles([]);
+      setReplyFiles([]);
+      setReplyingTo(null);
+      setReplyText('');
+      toast.success('Your comment has been submitted for review and will appear once approved.');
     } catch (error: any) {
-      console.error('❌ [CommentSection] Comment submission failed:', error);
-      toast.error('Failed to post comment: ' + error.message);
+      console.error('? [CommentSection] Error submitting comment:', error);
+      toast.error(error?.message || 'Failed to post comment');
     } finally {
       setUploading(false);
     }
   };
-
-  const handleSubmitReply = async (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log('💬 [CommentSection] Reply submission started');
-    
-    if (!currentUser || !replyingTo) {
-      console.log('❌ [CommentSection] No current user or replyingTo');
-      toast.error('Please log in to reply');
-      return;
-    }
-    if (!isApprovedUser) {
-      toast.error('Your account is pending approval. You can browse comments but cannot post yet.');
-      return;
-    }
-
-    const text = replyText?.trim() || '';
-    const files = replyFiles || [];
-    
-    console.log('💬 [CommentSection] Reply data:', {
-      text: text,
-      files: files.length,
-      replyingTo: replyingTo,
-      threadLevel: 1
-    });
-    
-    if (!text && files.length === 0) {
-      console.log('❌ [CommentSection] No text or files provided for reply');
-      toast.error('Please enter a reply or select a file');
-      return;
-    }
-
-    if (text && text.length > 500) {
-      console.log('❌ [CommentSection] Reply too long');
-      toast.error('Reply must be 500 characters or less');
-      return;
-    }
-
-    setUploading(true);
-    try {
-      console.log('💬 [CommentSection] Starting reply submission...');
-      
-      // Run content moderation before saving
-      if (text) {
-        const moderationResult = await ContentModerationService.moderateContent(
-          text,
-          'comment',
-          currentUser.id
-        );
-
-        // If content is blocked, don't save it
-        if (moderationResult.isBlocked) {
-          toast.error(moderationResult.reason || 'Your reply was blocked due to inappropriate content.');
-          setUploading(false);
-          return;
-        }
-
-        // Determine moderation status
-        const moderationStatus = moderationResult.requiresApproval ? 'pending' : 'approved';
-
-        const mediaUrls = await uploadFiles(files);
-        
-        const replyData = {
-          text,
-          mediaUrls: mediaUrls,
-          authorId: currentUser.id,
-          authorName: currentUser.displayName || 'Member',
-          createdAt: serverTimestamp(),
-          parentCommentId: replyingTo,
-          threadLevel: 1,
-          replyCount: 0,
-          moderationStatus, // New field
-          requiresApproval: moderationResult.requiresApproval, // New field
-          moderationReason: moderationResult.reason, // New field
-          moderationDetectedIssues: moderationResult.detectedIssues, // New field
-        };
-        
-        console.log('💬 [CommentSection] Submitting reply to Firestore:', replyData);
-        const docRef = await addDoc(collection(db, collectionPath), replyData);
-        console.log('✅ [CommentSection] Reply submitted successfully with ID:', docRef.id);
-
-        setReplyText('');
-        setReplyFiles([]);
-        setReplyingTo(null);
-        
-        if (moderationStatus === 'pending') {
-          toast.success('Your reply has been submitted for review and will appear shortly after approval.');
-        } else {
-          toast.success('Reply posted!');
-        }
-      } else {
-        // If no text, just upload media (media-only replies don't need moderation)
-        const mediaUrls = await uploadFiles(files);
-        
-        const replyData = {
-          text: '',
-          mediaUrls: mediaUrls,
-          authorId: currentUser.id,
-          authorName: currentUser.displayName || 'Member',
-          createdAt: serverTimestamp(),
-          parentCommentId: replyingTo,
-          threadLevel: 1,
-          replyCount: 0,
-          moderationStatus: 'approved', // Media-only replies auto-approved
-        };
-        
-        console.log('💬 [CommentSection] Submitting reply to Firestore:', replyData);
-        const docRef = await addDoc(collection(db, collectionPath), replyData);
-        console.log('✅ [CommentSection] Reply submitted successfully with ID:', docRef.id);
-
-        setReplyText('');
-        setReplyFiles([]);
-        setReplyingTo(null);
-        toast.success('Reply posted!');
-      }
-    } catch (error: any) {
-      console.error('❌ [CommentSection] Reply submission failed:', error);
-      toast.error('Failed to post reply: ' + error.message);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleReply = (commentId: string) => {
-    if (!isApprovedUser) {
-      toast.error('Your account is pending approval. You can browse comments but cannot post yet.');
-      return;
-    }
-    setReplyingTo(commentId);
-    setReplyText('');
-  };
-
-  const openLightbox = (mediaUrls: string[], startIndex: number = 0) => {
-    setLightboxMediaUrls(mediaUrls);
-    setLightboxCurrentIndex(startIndex);
-    setLightboxOpen(true);
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Comments Toggle */}
-      <button
-        onClick={() => comments.setOpen(!comments.open)}
-        className="flex items-center space-x-2 text-gray-500 hover:text-[#F25129] transition-colors"
-      >
-        <MessageCircle className="w-5 h-5" />
-        <span className="text-sm font-medium">{comments.commentsCount} comments</span>
-      </button>
-
-      {/* Comments Section */}
-      {comments.open && (
-        <div className="space-y-4">
-          {/* Comments List */}
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {comments.comments.map((comment) => (
-              <CommentItem
-                key={comment.id}
-                comment={comment}
-                collectionPath={collectionPath}
-                threadLevel={0}
-                onReply={handleReply}
-                onToggleExpanded={comments.toggleExpanded}
-                isExpanded={comments.expandedComments.has(comment.id)}
-                replyingTo={replyingTo}
-                replyText={replyText}
-                setReplyText={setReplyText}
-                handleSubmitReply={handleSubmitReply}
-                setReplyingTo={setReplyingTo}
-                replyFiles={replyFiles}
-                setReplyFiles={setReplyFiles}
-                uploading={uploading}
-                openLightbox={openLightbox}
-              />
-            ))}
-          </div>
-
-          {/* Load More */}
-          {comments.hasMore && (
-            <button
-              onClick={comments.loadMore}
-              className="text-sm text-[#F25129] hover:text-[#E0451F] transition-colors"
-            >
-              Load more comments
-            </button>
-          )}
-
-          {/* Typing Indicator */}
-          {isTyping && (
-            <div className="flex items-center space-x-2 text-sm text-gray-500 py-2">
-              <div className="flex space-x-1">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-              </div>
-              <span>{currentUser?.displayName || 'Someone'} is typing...</span>
-            </div>
-          )}
-
-          {/* Main Comment Form */}
-          <div className="space-y-2">
-            {/* File Preview */}
-            {selectedFiles.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {selectedFiles.map((file, index) => (
-                  <div key={index} className="flex items-center gap-2 bg-gray-100 px-3 py-2 rounded-lg">
-                    <Image className="w-4 h-4 text-gray-600" />
-                    <span className="text-sm text-gray-700 truncate max-w-32">{file.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== index))}
-                      className="text-gray-500 hover:text-red-500"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            <form onSubmit={handleSubmitComment} className="space-y-2">
-              <div className="flex space-x-2">
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => {
-                    setNewComment(e.target.value);
-                    // handleTyping(e.target.value, false);
-                  }}
-                  placeholder="Add a comment..."
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
-                />
-                <input
-                  type="file"
-                  id="comment-file"
-                  multiple
-                  accept="image/*,video/*"
-                  onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
-                  className="hidden"
-                />
-                <label
-                  htmlFor="comment-file"
-                  className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer flex items-center"
-                >
-                  <Image className="w-4 h-4 text-gray-600" />
-                </label>
-                <button
-                  type="submit"
-                  disabled={(!newComment.trim() && selectedFiles.length === 0) || uploading}
-                  className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                >
-                  {uploading ? 'Posting...' : 'Post'}
-                </button>
-              </div>
-              {newComment.trim().length > 0 && (
-                <div className="text-xs text-gray-500 text-right">
-                  <span className={newComment.trim().length > 500 ? 'text-red-600' : ''}>
-                    {newComment.trim().length}/500 chars
-                  </span>
-                </div>
-              )}
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Media Lightbox */}
-        <CommentMediaLightbox
-          isOpen={lightboxOpen}
-          onClose={() => setLightboxOpen(false)}
-          mediaUrls={lightboxMediaUrls}
-          currentIndex={lightboxCurrentIndex}
-          onIndexChange={setLightboxCurrentIndex}
-        />
-    </div>
-  );
-};
 
 export default CommentSection;

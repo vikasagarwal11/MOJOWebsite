@@ -41,9 +41,10 @@ export async function moderateContentWithAI(
   } catch (error: any) {
     console.error('❌ [ContentModerationAI] Error calling moderation function:', error);
     
-    // Fallback to keyword-based moderation on error
+    // CRITICAL: On error, require approval instead of auto-approving
+    // This prevents malicious content from slipping through during outages
     return {
-      requiresApproval: false,
+      requiresApproval: true, // Changed from false - require approval on error
       isBlocked: false,
       sentiment: 'neutral',
       confidence: 0.3,
