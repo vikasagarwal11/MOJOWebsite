@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, limit, writeBatch } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, updateDoc, doc, limit } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from '../../config/firebase';
 import { Bell, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 interface Notification {
   id: string;
@@ -70,34 +72,23 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ userId, onNavig
 
   const markAllAsRead = async () => {
     try {
-      const unreadNotifications = notifications.filter(n => !n.read);
+      // Use server-side callable to mark all notifications as read
+      // This is more efficient than loading all notifications client-side
+      const functions = getFunctions(undefined, 'us-east1');
+      const markAllAsReadCallable = httpsCallable(functions, 'markAllNotificationsAsRead');
       
-      if (unreadNotifications.length === 0) return;
+      const result = await markAllAsReadCallable();
+      const data = result.data as { success: boolean; count: number; message: string };
       
-      // Use Firestore batch writes (max 500 operations per batch)
-      const batch = writeBatch(db);
-      const BATCH_SIZE = 500; // Firestore batch limit
-      
-      for (let i = 0; i < unreadNotifications.length && i < BATCH_SIZE; i++) {
-        const notification = unreadNotifications[i];
-        const notificationRef = doc(db, 'notifications', notification.id);
-        batch.update(notificationRef, {
-          read: true,
-          readAt: new Date()
-        });
+      if (data.success) {
+        toast.success(data.message || 'All notifications marked as read');
+        console.log(`✅ Marked ${data.count} notifications as read`);
+      } else {
+        toast.error('Failed to mark all notifications as read');
       }
-      
-      await batch.commit();
-      
-      // If there are more than 500, process in additional batches
-      if (unreadNotifications.length > BATCH_SIZE) {
-        console.warn(`⚠️ More than ${BATCH_SIZE} notifications to mark as read. Only first ${BATCH_SIZE} processed.`);
-        // Could implement pagination here if needed
-      }
-      
-      console.log(`✅ Marked ${Math.min(unreadNotifications.length, BATCH_SIZE)} notifications as read`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error marking all notifications as read:', error);
+      toast.error(error?.message || 'Failed to mark all notifications as read');
     }
   };
 

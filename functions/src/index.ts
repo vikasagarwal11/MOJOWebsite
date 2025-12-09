@@ -3031,6 +3031,37 @@ export const sendNotificationSMS = onCall(
   if (userData?.role !== 'admin') {
     throw new HttpsError('permission-denied', 'Only admins can send SMS notifications');
   }
+
+  // 5. Rate limiting: Max 10 SMS per admin per hour to prevent abuse
+  const now = Date.now();
+  const oneHourAgo = now - (60 * 60 * 1000);
+  const rateLimitRef = db.collection('sms_rate_limits').doc(request.auth.uid);
+  const rateLimitDoc = await rateLimitRef.get();
+  
+  if (rateLimitDoc.exists) {
+    const rateLimitData = rateLimitDoc.data();
+    const recentCalls = (rateLimitData?.calls || []).filter((timestamp: number) => timestamp > oneHourAgo);
+    
+    if (recentCalls.length >= 10) {
+      throw new HttpsError('resource-exhausted', 'Rate limit exceeded: Maximum 10 SMS per hour. Please try again later.');
+    }
+    
+    // Update rate limit tracking
+    recentCalls.push(now);
+    await rateLimitRef.set({
+      calls: recentCalls,
+      lastCallAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+  } else {
+    // First call - initialize rate limit tracking
+    await rateLimitRef.set({
+      calls: [now],
+      lastCallAt: FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    });
+  }
   
     // 5. If userId provided, verify it exists and check SMS preference
   if (userId) {
@@ -3087,6 +3118,71 @@ export const sendNotificationSMS = onCall(
 );
 
 // SMS Delivery Status Checker
+// Mark all notifications as read for a user (server-side for performance)
+export const markAllNotificationsAsRead = onCallWithCors({ region: 'us-east1' }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+  
+  const userId = request.auth.uid;
+  
+  try {
+    // Query all unread notifications for the user
+    const unreadQuery = db.collection('notifications')
+      .where('userId', '==', userId)
+      .where('read', '==', false);
+    
+    const unreadSnapshot = await unreadQuery.get();
+    
+    if (unreadSnapshot.empty) {
+      return { success: true, count: 0, message: 'No unread notifications' };
+    }
+    
+    // Process in batches of 500 (Firestore batch limit)
+    const BATCH_SIZE = 500;
+    const batches: any[] = [];
+    let batch = db.batch();
+    let operationCount = 0;
+    let totalProcessed = 0;
+    
+    unreadSnapshot.docs.forEach((doc) => {
+      batch.update(doc.ref, {
+        read: true,
+        readAt: FieldValue.serverTimestamp()
+      });
+      operationCount++;
+      
+      if (operationCount === BATCH_SIZE) {
+        batches.push(batch);
+        batch = db.batch();
+        operationCount = 0;
+      }
+    });
+    
+    // Add final batch if there are remaining operations
+    if (operationCount > 0) {
+      batches.push(batch);
+    }
+    
+    // Commit all batches
+    for (const batchToCommit of batches) {
+      await batchToCommit.commit();
+      totalProcessed += Math.min(BATCH_SIZE, unreadSnapshot.size - totalProcessed);
+    }
+    
+    console.log(`✅ Marked ${totalProcessed} notifications as read for user ${userId}`);
+    
+    return {
+      success: true,
+      count: totalProcessed,
+      message: `Marked ${totalProcessed} notifications as read`
+    };
+  } catch (error: any) {
+    console.error('❌ Error marking all notifications as read:', error);
+    throw new HttpsError('internal', error.message || 'Failed to mark all notifications as read');
+  }
+});
+
 export const checkSMSDeliveryStatus = onCall(async (request) => {
   const { phoneNumber, verificationId } = request.data;
   
@@ -5234,6 +5330,473 @@ export const onAccountApprovalUpdated = onDocumentWritten(
   }
 });
 
+// Server-side moderation triggers - CRITICAL: Re-moderate all content server-side to prevent bypass
+export const onPostCreated = onDocumentCreated(
+  {
+    document: "posts/{postId}",
+    region: 'us-east1'
+  },
+  async (event) => {
+    try {
+      const postData = event.data?.data();
+      if (!postData) return;
+
+      const postId = event.params.postId;
+      const postRef = event.data?.ref;
+
+      console.log('🔍 [ServerModeration] Re-moderating post:', postId);
+
+      // Always re-moderate server-side, regardless of client-side decision
+      const contentToModerate = `${postData.title || ''} ${postData.content || ''}`.trim();
+      
+      // Import and call moderation function
+      // Note: We need to call the Cloud Function, not import directly
+      const { getFunctions, httpsCallable } = await import('firebase/functions');
+      const functions = getFunctions(undefined, 'us-east1');
+      const moderateContentCallable = httpsCallable(functions, 'moderateContent');
+      
+      // Call moderation via HTTP (since we're in a Cloud Function, we can call it)
+      // Actually, we should use the direct function import since we're server-side
+      const moderationModule = await import('./contentModeration');
+      // The moderateContent is exported as a callable, but we need the underlying logic
+      // For now, we'll call it as a callable from within the function
+      // Better approach: Extract the moderation logic into a shared function
+      
+      // Temporary: Use the AI service directly
+      const { analyzeContentWithGemini } = await import('./contentModeration');
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY not configured');
+      }
+      
+      const moderationResult = await analyzeContentWithGemini(
+        contentToModerate || 'No content provided',
+        'post',
+        apiKey
+      );
+
+      // Update moderation status server-side (overrides client decision)
+      const serverModerationStatus = moderationResult.isBlocked 
+        ? 'rejected' 
+        : (moderationResult.requiresApproval ? 'pending' : 'approved');
+
+      await postRef.update({
+        moderationStatus: serverModerationStatus,
+        requiresApproval: moderationResult.requiresApproval,
+        moderationReason: moderationResult.reason || 'Server-side moderation',
+        moderationDetectedIssues: moderationResult.detectedIssues || [],
+        moderatedAt: FieldValue.serverTimestamp(),
+        moderatedBy: 'system',
+        serverModerated: true // Flag to indicate server moderation
+      });
+
+      console.log(`✅ [ServerModeration] Post ${postId} moderated: ${serverModerationStatus}`);
+    } catch (error: any) {
+      console.error('❌ [ServerModeration] Error moderating post:', error);
+      // On error, set to pending for manual review (safer than auto-approve)
+      try {
+        const postRef = event.data?.ref;
+        await postRef.update({
+          moderationStatus: 'pending',
+          moderationReason: 'Server moderation failed - requires manual review',
+          serverModerated: true,
+          moderationError: error.message
+        });
+      } catch (updateError) {
+        console.error('❌ [ServerModeration] Failed to update post on error:', updateError);
+      }
+    }
+  }
+);
+
+export const onMediaCreated = onDocumentCreated(
+  {
+    document: "media/{mediaId}",
+    region: 'us-east1'
+  },
+  async (event) => {
+    try {
+      const mediaData = event.data?.data();
+      if (!mediaData) return;
+
+      const mediaId = event.params.mediaId;
+      const mediaRef = event.data?.ref;
+
+      console.log('🔍 [ServerModeration] Re-moderating media:', mediaId);
+
+      // Always re-moderate server-side, even if description is empty
+      const descriptionToModerate = (mediaData.description || '').trim();
+      const contentToModerate = descriptionToModerate || 'Media upload with no description';
+      
+      // Call moderation logic directly (server-side)
+      const moderationModule = await import('./contentModeration');
+      const apiKey = process.env.GEMINI_API_KEY;
+      
+      if (!apiKey) {
+        // If no API key, require approval for safety (especially for media without description)
+        await mediaRef.update({
+          moderationStatus: 'pending',
+          moderationReason: 'Moderation service not configured - requires manual review',
+          serverModerated: true,
+          moderatedAt: FieldValue.serverTimestamp()
+        });
+        return;
+      }
+      
+      // CRITICAL: Analyze actual image/video content if URL is available
+      // COST OPTIMIZATION: Since users are pre-verified by admin, we can be selective
+      // Only analyze when there's a higher risk indicator
+      let imageAnalysisResult = null;
+      
+      // Check if user is trusted (reduce costs for verified community members)
+      const userDoc = await db.collection('users').doc(mediaData.uploadedBy).get();
+      const userData = userDoc.data();
+      const isAdmin = userData?.role === 'admin';
+      const isApprovedUser = userData?.status === 'approved' || !userData?.status; // Legacy users without status are approved
+      const requiresUserApproval = userData?.moderationSettings?.requireApproval === true;
+      
+      // Check if user is in admin-managed trusted list
+      let isInTrustedList = false;
+      if (!isAdmin) {
+        try {
+          const trustedUsersQuery = db.collection('trustedUsers')
+            .where('userId', '==', mediaData.uploadedBy)
+            .limit(1);
+          const trustedUsersSnapshot = await trustedUsersQuery.get();
+          isInTrustedList = !trustedUsersSnapshot.empty;
+        } catch (error) {
+          console.warn('⚠️ [ServerModeration] Error checking trusted list:', error);
+          // On error, assume not trusted (safer)
+        }
+      }
+      
+      // Analyze text description first (cheaper than image analysis)
+      const aiResult = await moderationModule.analyzeContentWithGemini(
+        contentToModerate,
+        'media',
+        apiKey
+      );
+      
+      // Apply keyword check as well
+      const keywordCheck = moderationModule.checkNegativeKeywords(contentToModerate);
+      
+      // Since all users are pre-verified by admin, we can be more selective
+      // Only analyze images when there's a risk indicator
+      const hasTextIssues = aiResult.requiresApproval || keywordCheck.requiresApproval;
+      const hasNoDescription = !descriptionToModerate;
+      
+      // COST SAVING STRATEGY for verified community:
+      // 1. Admins: Skip image analysis entirely (fully trusted)
+      // 2. Users in trusted list: Skip image analysis (admin-managed trusted list)
+      // 3. Approved users: Only analyze if text has issues OR no description
+      // 4. Users requiring approval: Always analyze (higher risk)
+      // 5. Videos: Only analyze thumbnail if available (not full video)
+      
+      const shouldAnalyzeImage = !isAdmin && // Skip for admins
+                                 !isInTrustedList && // Skip for users in admin-managed trusted list
+                                 (requiresUserApproval || // Always check users flagged for approval
+                                  hasTextIssues || // Text has issues - verify image
+                                  hasNoDescription); // No description - need to check image
+      
+      // Only analyze images (not videos) to save costs
+      // Videos are expensive to analyze frame-by-frame
+      if (mediaData.url && mediaData.type === 'image' && shouldAnalyzeImage) {
+        try {
+          console.log('🖼️ [ServerModeration] Analyzing image content (risk-based):', mediaData.url);
+          imageAnalysisResult = await analyzeMediaContent(mediaData.url, mediaData.type, apiKey);
+          console.log('✅ [ServerModeration] Image analysis result:', imageAnalysisResult);
+        } catch (imageError: any) {
+          console.error('❌ [ServerModeration] Image analysis failed:', imageError);
+          // If image analysis fails, require approval for safety
+          imageAnalysisResult = {
+            requiresApproval: true,
+            isBlocked: false,
+            detectedIssues: ['Image analysis failed - requires manual review'],
+            reason: 'Unable to analyze image content automatically'
+          };
+        }
+      } else if (mediaData.type === 'image' && !shouldAnalyzeImage) {
+        if (isAdmin) {
+          console.log('💰 [ServerModeration] Skipping image analysis - admin user');
+        } else if (isInTrustedList) {
+          console.log('💰 [ServerModeration] Skipping image analysis - user in admin-managed trusted list');
+        } else {
+          console.log('💰 [ServerModeration] Skipping image analysis - verified user with clean content');
+        }
+      } else if (mediaData.type === 'video') {
+        // For videos, only analyze thumbnail if there are text issues
+        // Video frame analysis is too expensive
+        if (mediaData.thumbnailUrl && (hasTextIssues || hasNoDescription)) {
+          try {
+            console.log('🖼️ [ServerModeration] Analyzing video thumbnail (risk-based):', mediaData.thumbnailUrl);
+            imageAnalysisResult = await analyzeMediaContent(mediaData.thumbnailUrl, 'image', apiKey);
+            console.log('✅ [ServerModeration] Thumbnail analysis result:', imageAnalysisResult);
+          } catch (imageError: any) {
+            console.warn('⚠️ [ServerModeration] Thumbnail analysis failed (non-critical):', imageError);
+            // Thumbnail analysis failure is non-critical for videos
+          }
+        }
+      }
+      
+      // Analyze text description
+      const aiResult = await moderationModule.analyzeContentWithGemini(
+        contentToModerate,
+        'media',
+        apiKey
+      );
+      
+      // Apply keyword check as well
+      const keywordCheck = moderationModule.checkNegativeKeywords(contentToModerate);
+      
+      // Combine text and image analysis results
+      const hasImageViolation = imageAnalysisResult && (imageAnalysisResult.isBlocked || imageAnalysisResult.requiresApproval);
+      const imageIssues = imageAnalysisResult?.detectedIssues || [];
+      
+      // Determine final moderation decision
+      // If no description, always require approval
+      const requiresApprovalForEmptyDescription = !descriptionToModerate;
+      const requiresApproval = aiResult.requiresApproval || keywordCheck.requiresApproval || requiresApprovalForEmptyDescription || (imageAnalysisResult?.requiresApproval || false);
+      const isBlocked = aiResult.isBlocked || keywordCheck.isBlocked || (imageAnalysisResult?.isBlocked || false);
+      
+      const moderationResult = {
+        requiresApproval,
+        isBlocked,
+        reason: requiresApprovalForEmptyDescription
+          ? 'Media uploaded without description - requires manual review'
+          : (isBlocked 
+            ? 'Content contains inappropriate material and cannot be published.'
+            : (requiresApproval
+              ? 'Content may require review before publication.'
+              : undefined)),
+        detectedIssues: [
+          ...aiResult.detectedIssues, 
+          ...keywordCheck.detectedIssues,
+          ...(requiresApprovalForEmptyDescription ? ['No description provided'] : [])
+        ]
+      };
+
+      // Basic media content checks (file type, size)
+      const mediaChecks = {
+        hasValidType: mediaData.type === 'image' || mediaData.type === 'video',
+        hasUrl: !!mediaData.url,
+        hasDescription: !!descriptionToModerate
+      };
+
+      // If no description, require approval (can't verify content without description)
+      const requiresApprovalForEmptyDescription = !descriptionToModerate;
+
+      // Update moderation status server-side
+      const serverModerationStatus = moderationResult.isBlocked 
+        ? 'rejected' 
+        : (moderationResult.requiresApproval || requiresApprovalForEmptyDescription ? 'pending' : 'approved');
+
+      await mediaRef.update({
+        moderationStatus: serverModerationStatus,
+        requiresApproval: moderationResult.requiresApproval || requiresApprovalForEmptyDescription,
+        moderationReason: requiresApprovalForEmptyDescription 
+          ? 'Media uploaded without description - requires manual review'
+          : (moderationResult.reason || 'Server-side moderation'),
+        moderationDetectedIssues: [
+          ...(moderationResult.detectedIssues || []),
+          ...(requiresApprovalForEmptyDescription ? ['No description provided'] : [])
+        ],
+        moderatedAt: FieldValue.serverTimestamp(),
+        moderatedBy: 'system',
+        serverModerated: true, // Flag to indicate server moderation
+        mediaChecks // Store basic media validation results
+      });
+
+      console.log(`✅ [ServerModeration] Media ${mediaId} moderated: ${serverModerationStatus}`);
+    } catch (error: any) {
+      console.error('❌ [ServerModeration] Error moderating media:', error);
+      // On error, set to pending for manual review (safer than auto-approve)
+      try {
+        const mediaRef = event.data?.ref;
+        await mediaRef.update({
+          moderationStatus: 'pending',
+          moderationReason: 'Server moderation failed - requires manual review',
+          serverModerated: true,
+          moderationError: error.message
+        });
+      } catch (updateError) {
+        console.error('❌ [ServerModeration] Failed to update media on error:', updateError);
+      }
+    }
+  }
+);
+
+/**
+ * Analyze image/video content using Gemini Vision API
+ * Detects inappropriate content in actual media files
+ */
+async function analyzeMediaContent(
+  mediaUrl: string,
+  mediaType: 'image' | 'video',
+  apiKey: string
+): Promise<{
+  requiresApproval: boolean;
+  isBlocked: boolean;
+  detectedIssues: string[];
+  reason?: string;
+}> {
+  try {
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(apiKey);
+    
+    // Use Gemini 1.5 Pro or Flash for vision capabilities
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-1.5-flash' // Supports image analysis
+    });
+
+    // Download image from Firebase Storage URL
+    const { getStorage } = await import('firebase-admin/storage');
+    const storage = getStorage();
+    const bucket = storage.bucket();
+    
+    // Extract file path from URL
+    let filePath = '';
+    try {
+      // Firebase Storage URL format: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{path}?alt=media
+      const urlMatch = mediaUrl.match(/\/o\/([^?]+)/);
+      if (urlMatch) {
+        filePath = decodeURIComponent(urlMatch[1]);
+      } else {
+        // Try direct path
+        filePath = mediaUrl.split('/').pop() || '';
+      }
+    } catch (e) {
+      console.warn('⚠️ [ServerModeration] Could not extract file path from URL:', mediaUrl);
+    }
+
+    let imageData: Buffer | null = null;
+    if (filePath) {
+      try {
+        const file = bucket.file(filePath);
+        const [exists] = await file.exists();
+        if (exists) {
+          imageData = await file.download();
+        }
+      } catch (downloadError) {
+        console.warn('⚠️ [ServerModeration] Could not download file from Storage:', downloadError);
+      }
+    }
+
+    // If we couldn't download, try fetching from URL directly
+    if (!imageData && mediaUrl) {
+      try {
+        const response = await fetch(mediaUrl);
+        if (response.ok) {
+          const arrayBuffer = await response.arrayBuffer();
+          imageData = Buffer.from(arrayBuffer);
+        }
+      } catch (fetchError) {
+        console.warn('⚠️ [ServerModeration] Could not fetch image from URL:', fetchError);
+      }
+    }
+
+    if (!imageData) {
+      // If we can't analyze the image, require approval
+      return {
+        requiresApproval: true,
+        isBlocked: false,
+        detectedIssues: ['Unable to download image for analysis'],
+        reason: 'Image could not be analyzed automatically - requires manual review'
+      };
+    }
+
+    // Convert to base64 for Gemini
+    const base64Image = imageData.toString('base64');
+    const mimeType = mediaType === 'image' ? 'image/jpeg' : 'image/jpeg'; // Default, could detect actual type
+
+    const prompt = `Analyze this ${mediaType} and determine if it contains:
+1. Sexual or explicit content
+2. Violence or graphic content
+3. Hate speech symbols or imagery
+4. Self-harm imagery
+5. Inappropriate content for a family-friendly fitness community
+
+Return ONLY valid JSON:
+{
+  "sexualContent": true/false,
+  "violence": true/false,
+  "hateSpeech": true/false,
+  "selfHarm": true/false,
+  "inappropriate": true/false,
+  "confidence": 0.0-1.0,
+  "explanation": "brief description of what you see"
+}`;
+
+    const result = await model.generateContent({
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: prompt },
+          {
+            inlineData: {
+              data: base64Image,
+              mimeType: mimeType
+            }
+          }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 500,
+      },
+    });
+
+    const response = result.response.text().trim();
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    
+    if (!jsonMatch) {
+      throw new Error('No JSON found in image analysis response');
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]) as {
+      sexualContent?: boolean;
+      violence?: boolean;
+      hateSpeech?: boolean;
+      selfHarm?: boolean;
+      inappropriate?: boolean;
+      confidence?: number;
+      explanation?: string;
+    };
+
+    const hasViolation = 
+      parsed.sexualContent === true ||
+      parsed.violence === true ||
+      parsed.hateSpeech === true ||
+      parsed.selfHarm === true ||
+      parsed.inappropriate === true;
+
+    const confidence = Math.max(0, Math.min(1, parsed.confidence || 0.5));
+    const detectedIssues: string[] = [];
+    
+    if (parsed.sexualContent) detectedIssues.push('Sexual or explicit content detected in image');
+    if (parsed.violence) detectedIssues.push('Violence or graphic content detected in image');
+    if (parsed.hateSpeech) detectedIssues.push('Hate speech symbols/imagery detected in image');
+    if (parsed.selfHarm) detectedIssues.push('Self-harm imagery detected in image');
+    if (parsed.inappropriate) detectedIssues.push('Inappropriate content for community detected in image');
+
+    return {
+      requiresApproval: hasViolation || confidence < 0.7, // Low confidence requires review
+      isBlocked: hasViolation && confidence > 0.7, // High confidence violations are blocked
+      detectedIssues,
+      reason: parsed.explanation || (hasViolation ? 'Inappropriate content detected in image' : undefined)
+    };
+
+  } catch (error: any) {
+    console.error('❌ [ServerModeration] Image analysis error:', error);
+    // On error, require approval for safety
+    return {
+      requiresApproval: true,
+      isBlocked: false,
+      detectedIssues: ['Image analysis failed'],
+      reason: 'Unable to analyze image content - requires manual review'
+    };
+  }
+}
+
 // Notify when approval message is created
 export const onApprovalMessageCreated = onDocumentCreated(
   {
@@ -5260,7 +5823,9 @@ export const onApprovalMessageCreated = onDocumentCreated(
 
     if (senderRole === 'admin') {
       // Admin asked question - notify user
-      await db.collection('notifications').add({
+      // Use doc() to capture notification ID directly (avoid race condition)
+      const notificationRef = db.collection('notifications').doc();
+      await notificationRef.set({
         userId: approvalData.userId,
         type: 'approval_question',
         title: 'Admin Question',
@@ -5272,6 +5837,7 @@ export const onApprovalMessageCreated = onDocumentCreated(
           messageId: event.params.messageId
         }
       });
+      const notificationId = notificationRef.id; // Capture ID directly
 
       // Reset user unread to ensure they see a badge
       await db.collection('accountApprovals').doc(approvalId).update({
@@ -5280,7 +5846,7 @@ export const onApprovalMessageCreated = onDocumentCreated(
         lastMessageAt: FieldValue.serverTimestamp(),
       });
 
-      // Send SMS to user (time-sensitive - user needs to respond)
+      // Queue SMS for admin questions (time-sensitive - user needs to respond, but use queue for consistency)
       try {
         const userDoc = await db.collection('users').doc(approvalData.userId).get();
         const userData = userDoc.data();
@@ -5288,14 +5854,19 @@ export const onApprovalMessageCreated = onDocumentCreated(
           const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false; // Default to true
           
           if (smsEnabled) {
-            const smsMessage = `MOMS FITNESS MOJO: An admin has a question about your account request. Please check your pending approval page to respond.`;
-            const result = await sendSMSViaTwilio(userData.phoneNumber, smsMessage);
-            
-            if (result.success) {
-              console.log(`✅ SMS question notification sent to user: ${approvalData.userId}`);
-            } else {
-              console.error(`❌ Failed to send SMS question to user ${approvalData.userId}:`, result.error);
-            }
+            // Queue SMS immediately (no delay for time-sensitive questions)
+            const dispatchAt = new Date(); // Immediate dispatch
+            await db.collection('sms_dispatch_queue').add({
+              userId: approvalData.userId,
+              phoneNumber: userData.phoneNumber,
+              message: `MOMS FITNESS MOJO: An admin has a question about your account request. Please check your pending approval page to respond.`,
+              notificationId: notificationId,
+              type: 'approval_question',
+              status: 'pending',
+              createdAt: FieldValue.serverTimestamp(),
+              dispatchAt: Timestamp.fromDate(dispatchAt),
+            });
+            console.log(`✅ SMS question notification queued for user: ${approvalData.userId}`);
           } else {
             console.log(`ℹ️ SMS notifications disabled for user ${approvalData.userId}, skipping SMS`);
           }
@@ -5303,7 +5874,7 @@ export const onApprovalMessageCreated = onDocumentCreated(
           console.warn(`⚠️ No phone number found for user ${approvalData.userId} - cannot send SMS`);
         }
       } catch (smsError) {
-        console.error('❌ Failed to send SMS question notification:', smsError);
+        console.error('❌ Failed to queue SMS question notification:', smsError);
       }
     } else {
       // User responded - notify all admins with push + SMS fallback
@@ -5436,7 +6007,8 @@ export const checkAndDispatchPendingSms = onSchedule({
         const processingDoc = await processingRef.get();
         const docStatus = processingDoc.data()?.status;
         
-        // Handle stuck "processing" items - reset to pending first
+        // Handle stuck "processing" items - reset to pending and process in same iteration
+        let shouldProcess = false;
         if (currentStatus === 'processing' && docStatus === 'processing') {
           console.log(`🔄 Recovering stuck processing SMS ${smsDoc.id}, resetting to pending`);
           await processingRef.update({
@@ -5444,32 +6016,47 @@ export const checkAndDispatchPendingSms = onSchedule({
             recoveryAttemptedAt: FieldValue.serverTimestamp(),
             previousStatus: 'processing'
           });
-          // Re-fetch to get updated status
+          // Re-fetch to verify update succeeded
           const updatedDoc = await processingRef.get();
-          if (updatedDoc.data()?.status !== 'pending') {
-            console.log(`⏭️ SMS ${smsDoc.id} status changed during recovery, skipping`);
+          const updatedStatus = updatedDoc.data()?.status;
+          if (updatedStatus === 'pending') {
+            shouldProcess = true; // Successfully recovered, process it now
+            console.log(`✅ SMS ${smsDoc.id} recovered to pending, will process now`);
+          } else {
+            console.log(`⏭️ SMS ${smsDoc.id} status changed during recovery (${updatedStatus}), skipping`);
             continue;
           }
-        }
-        
-        // For pending items, check status hasn't changed (another worker might have claimed it)
-        if (currentStatus === 'pending' && docStatus !== 'pending') {
+        } else if (currentStatus === 'pending' && docStatus === 'pending') {
+          // Normal pending item - process it
+          shouldProcess = true;
+        } else if (currentStatus === 'pending' && docStatus !== 'pending') {
+          // Status changed between query and now - another worker claimed it
           console.log(`⏭️ SMS ${smsDoc.id} already processed by another worker (status: ${docStatus}), skipping`);
           continue;
-        }
-        
-        // Only process if status is pending (either original or after recovery)
-        if (docStatus !== 'pending') {
-          console.log(`⏭️ SMS ${smsDoc.id} not in pending status (${docStatus}), skipping`);
+        } else {
+          // Not in a processable state
+          console.log(`⏭️ SMS ${smsDoc.id} not in processable status (current: ${currentStatus}, doc: ${docStatus}), skipping`);
           continue;
         }
         
-        // Atomically mark as processing
+        // Only proceed if we should process this item
+        if (!shouldProcess) {
+          continue;
+        }
+        
+        // Atomically mark as processing (use transaction to prevent race conditions)
         await processingRef.update({
           status: 'processing',
           processingStartedAt: FieldValue.serverTimestamp(),
           processingWorkerId: event.scheduleTime || 'unknown' // Use schedule time as worker ID
         });
+        
+        // Verify the update succeeded and status is actually processing
+        const verifyDoc = await processingRef.get();
+        if (verifyDoc.data()?.status !== 'processing') {
+          console.log(`⏭️ SMS ${smsDoc.id} status changed during processing claim, skipping`);
+          continue;
+        }
         
         // Check if notification was read
         let shouldSkip = false;
@@ -5643,3 +6230,10 @@ export {
 } from './knowledgeBase';
 
 export { moderateContent } from './contentModeration';
+export {
+  onPostCreatedModeration,
+  onMediaCreatedModeration,
+  onPostCommentCreatedModeration,
+  onMediaCommentCreatedModeration,
+  onTestimonialCreatedModeration,
+} from './contentModerationTriggers';

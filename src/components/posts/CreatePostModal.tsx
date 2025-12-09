@@ -12,7 +12,6 @@ import { stripUndefined } from '../../utils/firestore';
 import toast from 'react-hot-toast';
 import { generatePostSuggestionsV2 as generatePostSuggestions } from '../../services/postAIService';
 import { isUserApproved } from '../../utils/userUtils';
-import { ContentModerationService } from '../../services/contentModerationService';
 
 const postSchema = z.object({
   title: z.string()
@@ -141,30 +140,12 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
 
     setIsLoading(true);
     try {
-      // Run content moderation before saving
-      const contentToModerate = `${data.title.trim()} ${data.content.trim()}`.trim();
-      const moderationResult = await ContentModerationService.moderateContent(
-        contentToModerate,
-        'post',
-        currentUser.id
-      );
-
-      // If content is blocked, don't save it
-      if (moderationResult.isBlocked) {
-        toast.error(moderationResult.reason || 'Your post cannot be published due to inappropriate content.');
-        setIsLoading(false);
-        return;
-      }
-
       // optional image upload
       let uploadedUrl: string | undefined;
       if (selectedFile) {
         const imagePath = getStoragePath('posts', selectedFile.name);
         uploadedUrl = await uploadFile(selectedFile, imagePath);
       }
-
-      // Determine moderation status
-      const moderationStatus = moderationResult.requiresApproval ? 'pending' : 'approved';
 
       // Build post doc safely (NO undefined values)
       const postData = stripUndefined({
@@ -174,11 +155,12 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
         authorId: currentUser.id,
         authorName: currentUser.displayName || 'Member',
         authorPhoto: currentUser.photoURL || undefined,
-        isPublic,                          // visibility flag
-        moderationStatus,                  // 'pending' | 'approved' | 'rejected'
-        requiresApproval: moderationResult.requiresApproval,
-        moderationReason: moderationResult.reason,
-        moderationDetectedIssues: moderationResult.detectedIssues,
+        isPublic,
+        moderationStatus: 'pending',
+        requiresApproval: true,
+        moderationReason: 'Awaiting automated moderation review',
+        moderationDetectedIssues: [],
+        moderationPipeline: 'auto_pending',
         likes: [] as string[],
         comments: [] as any[],
         likesCount: 0,
@@ -189,12 +171,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
 
       await addDocument('posts', postData);
       
-      // Show appropriate message based on moderation result
-      if (moderationResult.requiresApproval) {
-        toast.success('Post submitted! It will be reviewed before being published.');
-      } else {
-        toast.success('Post published!');
-      }
+      toast.success('Post submitted! It will be reviewed before being published.');
       
       onPostCreated();
     } catch (error: any) {
