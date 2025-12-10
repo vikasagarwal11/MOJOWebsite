@@ -56,6 +56,8 @@ coverage/
 .firebase/
 firebase-debug.log
 firestore-debug.log
+# Firebase messaging service worker (contains public config - optional to ignore)
+ public/firebase-messaging-sw.js
 
 # Temporary folders
 tmp/

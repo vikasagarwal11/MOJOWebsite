@@ -111,13 +111,26 @@ export const TrustedUsersPanel: React.FC = () => {
             )
           );
           
-          // Also search for phone numbers with + prefix
+          // Search for phone numbers with + prefix
           if (normalizedPhone.length >= 3) {
             queries.push(
               query(
                 usersRef,
                 where('phoneNumber', '>=', '+' + normalizedPhone),
                 where('phoneNumber', '<=', '+' + normalizedPhone + '\uf8ff'),
+                limit(20)
+              )
+            );
+          }
+          
+          // Search for US numbers with +1 prefix (common case: "908745" should match "+19087459405")
+          // This handles the case where user searches without +1 but number is stored with +1
+          if (normalizedPhone.length >= 3) {
+            queries.push(
+              query(
+                usersRef,
+                where('phoneNumber', '>=', '+1' + normalizedPhone),
+                where('phoneNumber', '<=', '+1' + normalizedPhone + '\uf8ff'),
                 limit(20)
               )
             );
@@ -205,9 +218,10 @@ export const TrustedUsersPanel: React.FC = () => {
           );
         }
 
-        // Execute queries in parallel (but limit to 3-4 queries max)
+        // Execute queries in parallel (but limit to 5-6 queries max for phone searches)
+        const maxQueries = isPhoneSearch ? 6 : 4;
         const snapshots = await Promise.all(
-          queries.slice(0, 4).map(q => 
+          queries.slice(0, maxQueries).map(q => 
             getDocs(q).catch((err) => {
               console.warn('Query failed:', err);
               return { docs: [] };
@@ -232,12 +246,18 @@ export const TrustedUsersPanel: React.FC = () => {
               const userPhoneNormalized = data.phoneNumber?.replace(/\D/g, '') || '';
               const searchPhoneNormalized = normalizedPhone;
               
+              // Phone number matching: check if normalized phone contains the search digits
+              // This handles cases like "908745" matching "+19087459405" (normalized: "19087459405")
+              const phoneMatches = searchPhoneNormalized.length >= 3 && 
+                userPhoneNormalized.length > 0 &&
+                userPhoneNormalized.includes(searchPhoneNormalized);
+              
               const matchesSearch = 
                 (data.email?.toLowerCase().includes(searchTerm)) ||
                 (data.displayName?.toLowerCase().includes(searchTerm)) ||
                 (data.firstName?.toLowerCase().includes(searchTerm)) ||
                 (data.lastName?.toLowerCase().includes(searchTerm)) ||
-                (userPhoneNormalized.includes(searchPhoneNormalized) && searchPhoneNormalized.length >= 3) ||
+                phoneMatches ||
                 (data.phoneNumber?.toLowerCase().includes(searchTerm.toLowerCase()));
               
               if (matchesSearch) {
