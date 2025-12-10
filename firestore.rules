@@ -885,6 +885,22 @@ service cloud.firestore {
       allow create: if true; // Server-side writes don't use client auth
     }
     
+    // --- Trusted Users (admin managed) ---
+    match /trustedUsers/{trustedUserId} {
+      allow read: if isAdmin(); // Only admins can view trusted users list
+      allow create: if isAdmin(); // Only admins can add users to trusted list
+      allow update: if isAdmin(); // Only admins can update trusted user entries
+      allow delete: if isAdmin(); // Only admins can remove users from trusted list
+    }
+    
+    // --- Moderation Log (admin managed) ---
+    match /moderationLog/{logId} {
+      allow read: if isAdmin(); // Only admins can view moderation history
+      allow create: if isAdmin() || request.auth != null; // Admins and authenticated users (for service logging)
+      allow update: if isAdmin(); // Only admins can update moderation logs
+      allow delete: if isAdmin(); // Only admins can delete moderation logs
+    }
+    
     // --- PUSH NOTIFICATION QUEUE ---
     match /push_notification_queue/{messageId} {
       // Allow authenticated users to read their own queued messages

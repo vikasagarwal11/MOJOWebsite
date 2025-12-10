@@ -233,6 +233,73 @@ if (-not (Test-Path "node_modules")) {
     }
 }
 
+# Generate firebase-messaging-sw.js from environment variables
+Write-Host "Generating firebase-messaging-sw.js from .env.production..." -ForegroundColor Yellow
+if (Test-Path ".env.production") {
+    # Read environment variables from .env.production
+    $envContent = Get-Content ".env.production" -Raw
+    $apiKey = ($envContent | Select-String -Pattern "VITE_FIREBASE_API_KEY=(.+)" | ForEach-Object { $_.Matches.Groups[1].Value }).Trim()
+    $authDomain = ($envContent | Select-String -Pattern "VITE_FIREBASE_AUTH_DOMAIN=(.+)" | ForEach-Object { $_.Matches.Groups[1].Value }).Trim()
+    $projectId = ($envContent | Select-String -Pattern "VITE_FIREBASE_PROJECT_ID=(.+)" | ForEach-Object { $_.Matches.Groups[1].Value }).Trim()
+    $storageBucket = ($envContent | Select-String -Pattern "VITE_FIREBASE_STORAGE_BUCKET=(.+)" | ForEach-Object { $_.Matches.Groups[1].Value }).Trim() -replace '^gs://', ''
+    $messagingSenderId = ($envContent | Select-String -Pattern "VITE_FIREBASE_MESSAGING_SENDER_ID=(.+)" | ForEach-Object { $_.Matches.Groups[1].Value }).Trim()
+    $appId = ($envContent | Select-String -Pattern "VITE_FIREBASE_APP_ID=(.+)" | ForEach-Object { $_.Matches.Groups[1].Value }).Trim()
+    
+    # Generate the service worker file
+    $swContent = @"
+// Firebase Cloud Messaging Service Worker
+// This file is required by Firebase Cloud Messaging SDK
+// It handles background push notifications when the app is not in focus
+
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
+
+// Firebase configuration - Generated from .env.production during deployment
+const firebaseConfig = {
+  apiKey: '$apiKey',
+  authDomain: '$authDomain',
+  projectId: '$projectId',
+  storageBucket: '$storageBucket',
+  messagingSenderId: '$messagingSenderId',
+  appId: '$appId'
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+
+// Retrieve an instance of Firebase Messaging so that it can handle background messages
+const messaging = firebase.messaging();
+
+// Handle background messages
+messaging.onBackgroundMessage((payload) => {
+  console.log('[firebase-messaging-sw.js] Received background message ', payload);
+  
+  const notificationTitle = payload.notification?.title || 'Moms Fitness Mojo';
+  const notificationOptions = {
+    body: payload.notification?.body || 'You have a new notification',
+    icon: payload.notification?.icon || '/logo-small.png',
+    badge: '/logo-small.png',
+    data: payload.data || {},
+    ...payload.notification
+  };
+
+  return self.registration.showNotification(notificationTitle, notificationOptions);
+});
+"@
+    
+    # Ensure public directory exists
+    if (-not (Test-Path "public")) {
+        New-Item -ItemType Directory -Path "public" | Out-Null
+    }
+    
+    # Write the file
+    $swContent | Out-File -FilePath "public\firebase-messaging-sw.js" -Encoding UTF8 -NoNewline
+    Write-Host "[OK] firebase-messaging-sw.js generated successfully" -ForegroundColor Green
+} else {
+    Write-Host "[WARNING] .env.production not found. firebase-messaging-sw.js will not be generated!" -ForegroundColor Yellow
+    Write-Host "[WARNING] FCM push notifications may not work without this file." -ForegroundColor Yellow
+}
+
 # Build the project for production
 Write-Host "Building project for production..." -ForegroundColor Yellow
 npm run build:prod
