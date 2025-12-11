@@ -85,6 +85,23 @@ export async function adminUpdateTestimonial(testimonialId: string, updates: Adm
     payload.reviewedBy = updates.reviewerId ?? null;
     payload.reviewedAt = serverTimestamp();
     payload.publishedAt = updates.status === 'published' ? serverTimestamp() : null;
+    
+    // Update moderation fields based on status
+    if (updates.status === 'published') {
+      payload.moderationStatus = 'approved';
+      payload.requiresApproval = false;
+      payload.moderationReason = null;
+    } else if (updates.status === 'rejected') {
+      payload.moderationStatus = 'rejected';
+      payload.requiresApproval = false;
+      // Keep existing moderationReason if present, or set default
+      if (!('moderationReason' in payload)) {
+        payload.moderationReason = 'Testimonial rejected by admin review';
+      }
+    } else if (updates.status === 'pending') {
+      payload.moderationStatus = 'pending';
+      payload.requiresApproval = true;
+    }
   }
 
   if (typeof updates.featured === 'boolean') {

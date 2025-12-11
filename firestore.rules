@@ -138,8 +138,16 @@ service cloud.firestore {
     // =========================
     // Event attendees (row-level): events/{eventId}/attendees/{userId}
     // =========================
+    // Note: attendee document IDs may not equal the userId (e.g., random IDs). For collectionGroup queries,
+    // allow if the stored userId matches the requester as well.
     match /events/{eventId}/attendees/{userId} {
-      allow read: if isAdmin() || isEventOrganizer(eventId) || (isSignedIn() && request.auth.uid == userId);
+      allow read: if
+        isAdmin() ||
+        isEventOrganizer(eventId) ||
+        (isSignedIn() && (
+          request.auth.uid == userId ||          // doc id equals user id
+          resource.data.userId == request.auth.uid // doc data userId equals requester (collectionGroup-friendly)
+        ));
       // Writes can be stricter; for now allow user to write their own RSVP, organizer/admin full control
       allow write: if (isSignedIn() && request.auth.uid == userId) || isAdmin() || isEventOrganizer(eventId);
     }
@@ -665,7 +673,12 @@ service cloud.firestore {
           'avatarUrl',
           'toneLabel',
           'toneConfidence',
-          'toneKeywords'
+          'toneKeywords',
+          'moderationStatus',
+          'requiresApproval',
+          'moderationReason',
+          'moderationDetectedIssues',
+          'moderationPipeline'
         ])
         && request.resource.data.userId == request.auth.uid
         && isNonEmptyString(request.resource.data.displayName)
@@ -682,7 +695,12 @@ service cloud.firestore {
         && (!('highlight' in request.resource.data) || (request.resource.data.highlight is string && request.resource.data.highlight.size() <= 120))
         && (!('toneLabel' in request.resource.data) || (request.resource.data.toneLabel is string && request.resource.data.toneLabel.size() <= 40))
         && (!('toneConfidence' in request.resource.data) || (request.resource.data.toneConfidence is number && request.resource.data.toneConfidence >= 0 && request.resource.data.toneConfidence <= 1))
-        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 5));
+        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 5))
+        && (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus is string)
+        && (!('requiresApproval' in request.resource.data) || request.resource.data.requiresApproval is bool)
+        && (!('moderationReason' in request.resource.data) || request.resource.data.moderationReason is string)
+        && (!('moderationDetectedIssues' in request.resource.data) || request.resource.data.moderationDetectedIssues is list)
+        && (!('moderationPipeline' in request.resource.data) || request.resource.data.moderationPipeline is string);
 
       allow update: if isSignedIn() && isAdmin()
         && request.resource.data.keys().hasOnly([
@@ -701,7 +719,12 @@ service cloud.firestore {
           'publishedAt',
           'toneLabel',
           'toneConfidence',
-          'toneKeywords'
+          'toneKeywords',
+          'moderationStatus',
+          'requiresApproval',
+          'moderationReason',
+          'moderationDetectedIssues',
+          'moderationPipeline'
         ])
         && request.resource.data.userId == resource.data.userId
         && request.resource.data.createdAt == resource.data.createdAt
@@ -719,7 +742,12 @@ service cloud.firestore {
         && (!('publishedAt' in request.resource.data) || request.resource.data.publishedAt == null || request.resource.data.publishedAt is timestamp)
         && (!('toneLabel' in request.resource.data) || (request.resource.data.toneLabel is string && request.resource.data.toneLabel.size() <= 40))
         && (!('toneConfidence' in request.resource.data) || (request.resource.data.toneConfidence is number && request.resource.data.toneConfidence >= 0 && request.resource.data.toneConfidence <= 1))
-        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 5));
+        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 5))
+        && (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus is string)
+        && (!('requiresApproval' in request.resource.data) || request.resource.data.requiresApproval is bool)
+        && (!('moderationReason' in request.resource.data) || request.resource.data.moderationReason is string)
+        && (!('moderationDetectedIssues' in request.resource.data) || request.resource.data.moderationDetectedIssues is list)
+        && (!('moderationPipeline' in request.resource.data) || request.resource.data.moderationPipeline is string);
 
       allow delete: if isSignedIn() && (
         isAdmin() ||
@@ -1065,6 +1093,115 @@ service cloud.firestore {
       
       // Only admins can delete messages
       allow delete: if isSignedIn() && isAdmin();
+    }
+    
+    // =========================
+    // Exercises: exercises/{exerciseId}
+    // --- SUPPORT TOOLS ---
+    
+    // Helper function to get category document
+    function getSupportToolCategory(categoryId) {
+      return get(/databases/$(database)/documents/supportToolCategories/$(categoryId)).data;
+    }
+    
+    // Helper function to check if category allows public read
+    function categoryAllowsPublicRead(categoryId) {
+      let cat = getSupportToolCategory(categoryId);
+      return cat != null && cat.allowPublicRead == true;
+    }
+    
+    // Support Tool Categories (admin managed)
+    match /supportToolCategories/{categoryId} {
+      allow read: if true; // Everyone can read categories (needed to check allowPublicRead)
+      allow create, update, delete: if isSignedIn() && isAdmin();
+    }
+    
+    // Support Tools
+    match /supportTools/{toolId} {
+      allow read: if 
+        // Admins can see all tools (including pending/rejected)
+        (isSignedIn() && isAdmin()) ||
+        // Authors can see their own tools (even if pending/rejected)
+        (isSignedIn() && resource.data.authorId == request.auth.uid) ||
+        // Others can only see approved tools
+        ((!('moderationStatus' in resource.data) || resource.data.moderationStatus == 'approved') &&
+         // Check if category allows public read OR user is approved member
+         (categoryAllowsPublicRead(resource.data.categoryId) || 
+          (isSignedIn() && isApprovedUser())));
+      
+      allow create: if isSignedIn() && 
+        // Only approved users can create
+        isApprovedUser() &&
+        // Must be the author
+        request.auth.uid == request.resource.data.authorId &&
+        // Cannot be blocked
+        !isUserBlockedFromRsvp(request.auth.uid) &&
+        // Cannot set moderationStatus to 'approved' (only server can)
+        (!('moderationStatus' in request.resource.data) || 
+         request.resource.data.moderationStatus == 'pending') &&
+        // Must include categoryId
+        ('categoryId' in request.resource.data);
+      
+      allow update: if isSignedIn() && 
+        // Author or admin can update
+        (request.auth.uid == resource.data.authorId || isAdmin()) &&
+        // Cannot change moderationStatus to 'approved' (only server can)
+        (!('moderationStatus' in request.resource.data) ||
+         request.resource.data.moderationStatus == resource.data.moderationStatus ||
+         request.resource.data.moderationStatus == 'pending' ||
+         isAdmin());
+      
+      allow delete: if isSignedIn() && 
+        (request.auth.uid == resource.data.authorId || isAdmin());
+      
+      // Likes subcollection (same pattern as Posts)
+      match /likes/{userId} {
+        allow read: if true;
+        allow create: if isSignedIn() && 
+          isApprovedUser() &&
+          request.auth.uid == userId && 
+          request.resource.data.keys().hasOnly(['userId','createdAt']) && 
+          request.resource.data.userId == userId;
+        allow update: if false;
+        allow delete: if isSignedIn() && 
+          (request.auth.uid == userId || isAdmin());
+      }
+      
+      // Comments subcollection (same pattern as Posts)
+      match /comments/{commentId} {
+        allow read: if 
+          isAdmin() ||
+          (isSignedIn() && resource.data.authorId == request.auth.uid) ||
+          (!('moderationStatus' in resource.data) || resource.data.moderationStatus == 'approved');
+        allow create: if isSignedIn() && 
+          isApprovedUser() &&
+          request.auth.uid == request.resource.data.authorId &&
+          (!('moderationStatus' in request.resource.data) || 
+           request.resource.data.moderationStatus == 'pending');
+        allow update, delete: if isSignedIn() && 
+          (request.auth.uid == resource.data.authorId || isAdmin());
+      }
+    }
+    
+    // =========================
+    match /exercises/{exerciseId} {
+      // Public read access for published exercises
+      allow read: if true;
+      
+      // Only admins and trainers can write exercises
+      allow write: if isSignedIn() && (isAdmin() || isTrainer() || (userDoc() != null && userDoc().canEditExercises == true));
+    }
+    
+    // --- CollectionGroup Queries Support ---
+    // Allow users to read their own attendees via collectionGroup queries
+    // This is needed for queries like: collectionGroup('attendees').where('userId', '==', currentUser.id)
+    match /{path=**}/attendees/{attendeeId} {
+      allow read: if isSignedIn() && (
+        // Users can read their own attendees
+        resource.data.userId == request.auth.uid ||
+        // Admins can read all attendees
+        isAdmin()
+      );
     }
     
     // --- Default Security: Deny all unknown collections ---

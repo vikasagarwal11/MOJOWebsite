@@ -111,6 +111,12 @@ export function useTestimonials(options: UseTestimonialsOptions = {}): UseTestim
             reviewedBy: data.reviewedBy ?? undefined,
             reviewedAt: data.reviewedAt?.toDate?.() ?? undefined,
             publishedAt: data.publishedAt?.toDate?.() ?? undefined,
+            // Moderation fields
+            moderationStatus: data.moderationStatus ?? undefined,
+            requiresApproval: typeof data.requiresApproval === 'boolean' ? data.requiresApproval : undefined,
+            moderationReason: data.moderationReason ?? undefined,
+            moderationDetectedIssues: Array.isArray(data.moderationDetectedIssues) ? data.moderationDetectedIssues : undefined,
+            moderationPipeline: data.moderationPipeline ?? undefined,
           };
         });
 
