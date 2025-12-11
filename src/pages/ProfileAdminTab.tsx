@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
-import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, Dumbbell, Settings, UserCheck, Shield, ShieldCheck } from 'lucide-react';
+import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, Dumbbell, Settings, UserCheck, Shield, ShieldCheck, FolderTree } from 'lucide-react';
 import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc, getDoc, setDoc, Timestamp, updateDoc, DocumentReference } from 'firebase/firestore';
 import { ref, listAll } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
@@ -13,6 +13,7 @@ import { AssistantConfigPanel } from '../components/admin/AssistantConfigPanel';
 import { KBGapsPanel } from '../components/admin/KBGapsPanel';
 import { ContentModerationPanel } from '../components/admin/ContentModerationPanel';
 import { TrustedUsersPanel } from '../components/admin/TrustedUsersPanel';
+import { SupportToolCategoriesPanel } from '../components/admin/SupportToolCategoriesPanel';
 import { useTestimonials } from '../hooks/useTestimonials';
 import { adminUpdateTestimonial, deleteTestimonial } from '../services/testimonialsService';
 import { ModerationService } from '../services/moderationService';
@@ -82,7 +83,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
-  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig' | 'kbGaps' | 'accountApprovals' | 'moderation' | 'trustedUsers'>('events');
+  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig' | 'kbGaps' | 'accountApprovals' | 'moderation' | 'trustedUsers' | 'supportToolCategories'>('events');
   const { currentUser } = useAuth();
   
   // Media management state
@@ -778,6 +779,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         >
           <ShieldCheck className="w-4 h-4 inline mr-2" />
           Trusted Users
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('supportToolCategories')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'supportToolCategories'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <FolderTree className="w-4 h-4 inline mr-2" />
+          Support Tool Categories
         </button>
       </div>
 
@@ -1910,6 +1922,11 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       {/* Trusted Users Section */}
       {activeAdminSection === 'trustedUsers' && (
         <TrustedUsersPanel />
+      )}
+
+      {/* Support Tool Categories Section */}
+      {activeAdminSection === 'supportToolCategories' && (
+        <SupportToolCategoriesPanel />
       )}
     </div>
   );

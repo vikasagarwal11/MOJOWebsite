@@ -133,6 +133,12 @@ export interface Testimonial {
   reviewedBy?: string;
   reviewedAt?: Date;
   publishedAt?: Date;
+  // Moderation fields
+  moderationStatus?: 'pending' | 'approved' | 'rejected';
+  requiresApproval?: boolean;
+  moderationReason?: string;
+  moderationDetectedIssues?: string[];
+  moderationPipeline?: string;
 }
 
 export interface TestimonialAIPrompts {
