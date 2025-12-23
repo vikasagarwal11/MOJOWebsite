@@ -80,5 +80,5 @@ Write-Host "   npm run deploy:dev" -ForegroundColor Cyan
 Write-Host "4. Test production deployment:" -ForegroundColor White
 Write-Host "   npm run deploy:prod" -ForegroundColor Cyan
 
-Write-Host "`n📚 For detailed instructions, see DEPLOYMENT_GUIDE.md" -ForegroundColor Yellow
+Write-Host "`n📚 For detailed instructions, see the docs/ directory" -ForegroundColor Yellow
 

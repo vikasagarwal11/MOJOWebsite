@@ -28,7 +28,7 @@ const Posts: React.FC = () => {
       {/* Header */}
       <div className="text-center mb-12">
         <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">
-          Community Posts
+          MFM Stories
         </h1>
         <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-6">
           Share your journey and connect with fellow moms
@@ -41,7 +41,7 @@ const Posts: React.FC = () => {
             className="flex items-center px-6 py-3 font-semibold rounded-full transition-all duration-300 transform shadow-lg mx-auto bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white hover:from-[#E0451F] hover:to-[#E55A2A] hover:scale-105"
           >
             <Plus className="w-5 h-5 mr-2" />
-            Share Post
+            Share your Stories
           </button>
         )}
       </div>

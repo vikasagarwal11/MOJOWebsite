@@ -8,11 +8,7 @@ All documentation has been moved to the [`docs/`](./docs/) directory.
 
 **Quick Links:**
 - [Getting Started Guide](./docs/README.md) - Installation and setup
-- [Deployment Guide](./docs/DEPLOYMENT_GUIDE.md) - How to deploy to different environments
-- [Database Setup](./docs/DATABASE_SETUP_GUIDE.md) - Firebase configuration
-- [Dependencies](./docs/DEPENDENCIES.md) - Complete dependency list
-- [Production Setup](./docs/PRODUCTION_INSTALLATION_GUIDE.md) - Production environment setup
-- [Testing Setup](./docs/TESTING_SETUP.md) - Testing and development setup
+- [Project Backlog](./docs/PROJECT_BACKLOG.md) - Feature planning and roadmap
 
 ## 🚀 Quick Start
 

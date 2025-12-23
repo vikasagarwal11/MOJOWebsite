@@ -149,7 +149,7 @@ if ($DryRun) {
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Cyan
     Write-Host "1. Run grandfatherExistingUsers function" -ForegroundColor White
-    Write-Host "   (See scripts/grandfather-users-browser.js or docs/DEPLOYMENT_ACCOUNT_APPROVAL.md)" -ForegroundColor Gray
+    Write-Host "   (See scripts/grandfather-users-browser.js)" -ForegroundColor Gray
     Write-Host "2. Test the registration flow" -ForegroundColor White
     Write-Host "3. Check Firebase Console for index suggestions" -ForegroundColor White
     Write-Host ""

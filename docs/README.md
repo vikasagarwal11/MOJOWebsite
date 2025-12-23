@@ -22,7 +22,7 @@ A modern, responsive web application built for the Mom's Fitness Mojo community.
 - **Routing**: React Router v7
 - **PWA**: Vite PWA Plugin
 
-> 📋 **For complete dependency list and production setup, see [DEPENDENCIES.md](./DEPENDENCIES.md) in the docs directory**
+> 📋 **For project planning and feature roadmap, see [PROJECT_BACKLOG.md](./PROJECT_BACKLOG.md) in the docs directory**
 
 ## 🚀 Getting Started
 

@@ -89,5 +89,5 @@ echo "   npm run deploy:dev"
 echo "4. Test production deployment:"
 echo "   npm run deploy:prod"
 echo ""
-echo "📚 For detailed instructions, see DEPLOYMENT_GUIDE.md"
+echo "📚 For detailed instructions, see the docs/ directory"
 

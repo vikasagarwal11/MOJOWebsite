@@ -71,7 +71,7 @@ Write-Host ""
 Write-Host "⚠️  Note: This requires authentication. You need to:" -ForegroundColor Yellow
 Write-Host "   1. Be logged in as an admin user" -ForegroundColor Yellow
 Write-Host "   2. Have the admin role in Firestore" -ForegroundColor Yellow
-Write-Host "   3. Call this from the browser console (see docs/DEPLOYMENT_ACCOUNT_APPROVAL.md)" -ForegroundColor Yellow
+Write-Host "   3. Call this from the browser console" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Or use Firebase Console:" -ForegroundColor Cyan
 Write-Host "   1. Go to Firebase Console → Functions" -ForegroundColor White
@@ -95,6 +95,6 @@ Write-Host "Next Steps:" -ForegroundColor Cyan
 Write-Host "================================================" -ForegroundColor Cyan
 Write-Host "1. Open your app in browser (as admin user)" -ForegroundColor White
 Write-Host "2. Open Developer Console (F12)" -ForegroundColor White
-Write-Host "3. Run the code from docs/DEPLOYMENT_ACCOUNT_APPROVAL.md" -ForegroundColor White
+Write-Host "3. Run the grandfather function (see scripts/grandfather-users-browser.js)" -ForegroundColor White
 Write-Host ""
 
