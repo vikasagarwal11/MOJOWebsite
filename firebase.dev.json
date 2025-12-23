@@ -11,6 +11,7 @@
     "runtime": "nodejs22"
   },
   "hosting": {
+    "site": "momsfitnessmojo",
     "public": "dist",
     "ignore": [
       "firebase.json",

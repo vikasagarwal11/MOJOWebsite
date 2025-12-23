@@ -12,6 +12,7 @@
     "region": "us-central1"
   },
   "hosting": {
+    "site": "momsfitnessmojostage",
     "public": "dist",
     "ignore": [
       "firebase.json",

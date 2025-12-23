@@ -12,6 +12,7 @@
     "region": "us-east1"
   },
   "hosting": {
+    "site": "momsfitnessmojo-65d00",
     "public": "dist",
     "ignore": [
       "firebase.json",
