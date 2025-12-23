@@ -276,6 +276,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
   }, [event.startAt, currentTime]);
 
   // Handle view event details click
+  // This should ALWAYS navigate to the read-only event details page for ALL users
+  // (pending approval users can view details but cannot RSVP)
   const handleViewEventDetails = (e: React.SyntheticEvent) => {
     e.stopPropagation();
     console.log('🔍 View Event Details clicked for event:', {
@@ -285,27 +287,15 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
       currentUser: currentUser?.id
     });
     
+    // If custom onClick handler is provided, use it
     if (safeCall(onClick)) {
       // onClick was called safely
-    } else if (isEventPast) {
-      setShowPastEventModal(true);
-    } else if (currentUser) {
-      if (!isUserApproved(currentUser)) {
-        toast.error('Your account is pending approval. You can browse events but cannot RSVP yet.');
-        return;
-      }
-      // User is logged in - flexible RSVP handling based on toggle
-      if (RSVP_MODE === 'page') {
-        // Navigate to new RSVP page
-        navigate(`/events/${event.id}/rsvp`);
-      } else {
-        // Use original modal (revert option)
-        setShowRSVPModal(true);
-      }
-    } else {
-      // User is not logged in - show teaser modal
-      setShowTeaserModal(true);
+      return;
     }
+    
+    // Always navigate to read-only event details page
+    // This is accessible to all users (including pending approval users)
+    navigate(`/events-readonly/${event.id}`);
   };
 
   // Quick RSVP handlers using new attendee system

@@ -59,10 +59,17 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
     // Members-only events are now visible to everyone, but only members can RSVP
     if (!userId || !isApproved) {
       // Show both public and members-only events to everyone (non-members can see but not RSVP)
+      // Use separate queries instead of 'in' operator - Firestore security rules can't evaluate 'in' queries efficiently
       return [
         query(
           eventsRef,
-          where('visibility', 'in', ['public', 'members']),
+          where('visibility', '==', 'public'),
+          where('startAt', '>=', nowTs),
+          orderBy('startAt', 'asc')
+        ),
+        query(
+          eventsRef,
+          where('visibility', '==', 'members'),
           where('startAt', '>=', nowTs),
           orderBy('startAt', 'asc')
         )
@@ -70,10 +77,17 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
     }
 
     // Multiple queries for approved authenticated users
+    // Use separate queries instead of 'in' operator for better security rule evaluation
     return [
       query(
         eventsRef,
-        where('visibility', 'in', ['public', 'members']),
+        where('visibility', '==', 'public'),
+        where('startAt', '>=', nowTs),
+        orderBy('startAt', 'asc')
+      ),
+      query(
+        eventsRef,
+        where('visibility', '==', 'members'),
         where('startAt', '>=', nowTs),
         orderBy('startAt', 'asc')
       ),
