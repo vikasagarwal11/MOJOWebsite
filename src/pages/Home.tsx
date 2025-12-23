@@ -114,7 +114,7 @@ const Home: React.FC = () => {
     },
     {
       icon: <Heart className="w-8 h-8" />,
-      title: 'Not in your area',
+      title: 'Our Current Communities',
       description:
         'Currently in Short Hills, Millburn, Livingston, Summit, Maplewood & Springfield — and expanding. Reach out and let’s bring Moms Fitness Mojo to you!',
     },
