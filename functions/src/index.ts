@@ -1,20 +1,20 @@
-import { setGlobalOptions } from "firebase-functions/v2";
-import { onDocumentWritten, onDocumentDeleted, onDocumentCreated } from "firebase-functions/v2/firestore";
-import { onObjectFinalized } from "firebase-functions/v2/storage";
-import { onCall, onRequest, HttpsError, type CallableRequest, type CallableOptions } from "firebase-functions/v2/https";
-import { onSchedule } from "firebase-functions/v2/scheduler";
-import type { Request, Response } from "express";
-import { initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue, Timestamp, DocumentData, type FirebaseFirestore } from "firebase-admin/firestore";
-import { getStorage } from "firebase-admin/storage";
-import { CloudTasksClient } from "@google-cloud/tasks";
-import { SpeechClient } from '@google-cloud/speech';
-import * as path from 'node:path';
-import * as os from 'node:os';
-import * as fs from 'node:fs';
-import ffmpeg from 'fluent-ffmpeg';
-import ffmpegStatic from 'ffmpeg-static';
 import ffprobe from '@ffprobe-installer/ffprobe';
+import { SpeechClient } from '@google-cloud/speech';
+import { CloudTasksClient } from "@google-cloud/tasks";
+import type { Request, Response } from "express";
+import ffmpegStatic from 'ffmpeg-static';
+import { initializeApp } from "firebase-admin/app";
+import { DocumentData, FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
+import { setGlobalOptions } from "firebase-functions/v2";
+import { onDocumentCreated, onDocumentDeleted, onDocumentWritten } from "firebase-functions/v2/firestore";
+import { HttpsError, onCall, onRequest, type CallableOptions, type CallableRequest } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onObjectFinalized } from "firebase-functions/v2/storage";
+import ffmpeg from 'fluent-ffmpeg';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 const fsp = fs.promises;
@@ -92,16 +92,15 @@ initializeApp();
 const tasksClient = new CloudTasksClient();
 const speechClient = new SpeechClient();
 
-import { onAttendeeChange, manualRecalculateCount, bulkAttendeeOperation } from './attendeeCounts';
+import { bulkAttendeeOperation, manualRecalculateCount, onAttendeeChange } from './attendeeCounts';
 import { manualRecalculateWaitlistPositions as _manualRecalcWaitlist } from './autoPromotionService';
-import { manualUpsertKnowledgeSource, manualDeleteKnowledgeSource, type KnowledgeVisibilityLevel } from './knowledgeBase';
-import { ensureAdmin } from './utils/admin';
-import { ensureChunkEmbedding, backfillKnowledgeBaseEmbeddings, getKnowledgeEmbeddingStatus, retryFailedKnowledgeEmbeddings } from './kbEmbeddingWorker';
+import { backfillKnowledgeBaseEmbeddings, ensureChunkEmbedding, getKnowledgeEmbeddingStatus, retryFailedKnowledgeEmbeddings } from './kbEmbeddingWorker';
+import { manualDeleteKnowledgeSource, manualUpsertKnowledgeSource, type KnowledgeVisibilityLevel } from './knowledgeBase';
 import { syncStaticKnowledgeEntries } from './staticContent';
+import { ensureAdmin } from './utils/admin';
 
 // Export the new attendee count management functions
-export { onAttendeeChange, manualRecalculateCount, bulkAttendeeOperation };
-export { ensureChunkEmbedding, backfillKnowledgeBaseEmbeddings, getKnowledgeEmbeddingStatus, retryFailedKnowledgeEmbeddings };
+export { backfillKnowledgeBaseEmbeddings, bulkAttendeeOperation, ensureChunkEmbedding, getKnowledgeEmbeddingStatus, manualRecalculateCount, onAttendeeChange, retryFailedKnowledgeEmbeddings };
 
 // Auto-Promotion Cloud Function - triggers when someone cancels RSVP
 export const onAttendeeCancellation = onDocumentWritten(
@@ -279,14 +278,14 @@ const sendPromotionNotifications = async (
     
     // Get event data for notification
     const eventDoc = await db.collection('events').doc(eventId).get();
-    const eventData = eventDoc.exists() ? eventDoc.data() : null;
+    const eventData = eventDoc.exists ? eventDoc.data() : null;
     const eventTitle = eventData?.title || 'Event';
     
     for (const user of promotedUsers) {
       try {
         // Get user data for phone number and preferences
         const userDoc = await db.collection('users').doc(user.userId).get();
-        const userData = userDoc.exists() ? userDoc.data() : null;
+        const userData = userDoc.exists ? userDoc.data() : null;
         
         if (!userData) {
           console.warn(`⚠️ User data not found for ${user.userId}`);
@@ -4179,7 +4178,7 @@ export const createChallenge = onCallWithCors({ region: 'us-east1' }, async (req
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
   // Only approved users can create challenges
   const userDoc = await db.collection('users').doc(request.auth.uid).get();
-  if (!userDoc.exists || (userDoc.data().status && userDoc.data().status !== 'approved')) {
+  if (!userDoc.exists || (userDoc.data()?.status && userDoc.data()?.status !== 'approved')) {
     throw new HttpsError('failed-precondition', 'Account pending approval. Please wait until your account is approved.');
   }
   const data = request.data as {
@@ -4276,7 +4275,7 @@ export const createChallenge = onCallWithCors({ region: 'us-east1' }, async (req
 export const joinChallenge = onCallWithCors({ region: 'us-east1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
   const userDoc = await db.collection('users').doc(request.auth.uid).get();
-  if (!userDoc.exists || (userDoc.data().status && userDoc.data().status !== 'approved')) {
+  if (!userDoc.exists || (userDoc.data()?.status && userDoc.data()?.status !== 'approved')) {
     throw new HttpsError('failed-precondition', 'Account pending approval. Please wait until your account is approved.');
   }
   const { challengeId } = request.data as { challengeId: string };
@@ -4431,7 +4430,7 @@ async function applyChallengeProgressInternal(params: { userId: string; challeng
 export const incrementChallengeProgress = onCallWithCors({ region: 'us-east1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
   const userDoc = await db.collection('users').doc(request.auth.uid).get();
-  if (!userDoc.exists || (userDoc.data().status && userDoc.data().status !== 'approved')) {
+  if (!userDoc.exists || (userDoc.data()?.status && userDoc.data()?.status !== 'approved')) {
     throw new HttpsError('failed-precondition', 'Account pending approval. Please wait until your account is approved.');
   }
   const { challengeId, count, value, sessions, minutes } = request.data as { 
@@ -4458,7 +4457,7 @@ export const incrementChallengeProgress = onCallWithCors({ region: 'us-east1' },
 export const logChallengeCheckIn = onCallWithCors({ region: 'us-east1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
   const userDoc = await db.collection('users').doc(request.auth.uid).get();
-  if (!userDoc.exists || (userDoc.data().status && userDoc.data().status !== 'approved')) {
+  if (!userDoc.exists || (userDoc.data()?.status && userDoc.data()?.status !== 'approved')) {
     throw new HttpsError('failed-precondition', 'Account pending approval. Please wait until your account is approved.');
   }
   const { challengeId, count, value, note } = request.data as {
@@ -5605,7 +5604,8 @@ async function analyzeMediaContent(
         const file = bucket.file(filePath);
         const [exists] = await file.exists();
         if (exists) {
-          imageData = await file.download();
+          const [buffer] = await file.download();
+          imageData = buffer;
         }
       } catch (downloadError) {
         console.warn('⚠️ [ServerModeration] Could not download file from Storage:', downloadError);
@@ -5994,7 +5994,7 @@ export const checkAndDispatchPendingSms = onSchedule({
         
         if (notificationId) {
           const notificationDoc = await db.collection('notifications').doc(notificationId).get();
-          if (notificationDoc.exists()) {
+          if (notificationDoc.exists) {
             const notificationData = notificationDoc.data();
             if (notificationData?.read === true) {
               // User already read the notification - skip SMS to save cost
@@ -6152,19 +6152,14 @@ export const grandfatherExistingUsers = onCallWithCors({ region: 'us-east1' }, a
   }
 });
 
-export { chatAsk, transcribeAudio, synthesizeSpeech } from './assistant';
+export { chatAsk, synthesizeSpeech, transcribeAudio } from './assistant';
 export {
-  syncPostToKnowledgeBase,
-  syncEventToKnowledgeBase,
-  syncChallengeToKnowledgeBase,
-  removeKnowledgeChunksOnDelete,
+  removeKnowledgeChunksOnDelete, syncChallengeToKnowledgeBase, syncEventToKnowledgeBase, syncPostToKnowledgeBase
 } from './knowledgeBase';
 
 export { moderateContent } from './contentModeration';
 export {
-  onPostCreatedModeration,
-  onMediaCreatedModeration,
-  onPostCommentCreatedModeration,
-  onMediaCommentCreatedModeration,
-  onTestimonialCreatedModeration,
+  onMediaCommentCreatedModeration, onMediaCreatedModeration,
+  onPostCommentCreatedModeration, onPostCreatedModeration, onTestimonialCreatedModeration
 } from './contentModerationTriggers';
+

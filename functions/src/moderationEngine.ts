@@ -1,6 +1,6 @@
-import { getStorage } from 'firebase-admin/storage';
 import vision from '@google-cloud/vision';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 
 export type ModerationContentType = 'post' | 'media' | 'comment' | 'testimonial';
 
@@ -44,7 +44,7 @@ const TEXT_MODEL_PREFERENCE = [
   'gemini-pro',
 ];
 
-let cachedVisionClient: vision.ImageAnnotatorClient | null = null;
+let cachedVisionClient: any | null = null;
 
 function getVisionClient() {
   if (!cachedVisionClient) {
