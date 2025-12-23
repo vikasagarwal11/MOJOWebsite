@@ -71,12 +71,16 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
     
     if (!currentUser || !isApproved) {
       // Show both public and members-only events to everyone (non-members can see but not RSVP)
+      // Use separate queries instead of 'in' operator - Firestore security rules can't evaluate 'in' queries efficiently
       return [
-        query(eventsRef, where('visibility', 'in', ['public', 'members']), where('startAt', '>=', nowTs), orderBy('startAt', 'asc'))
+        query(eventsRef, where('visibility', '==', 'public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+        query(eventsRef, where('visibility', '==', 'members'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc'))
       ];
     }
     return [
-      query(eventsRef, where('visibility', 'in', ['public', 'members']), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+      // Use separate queries instead of 'in' operator for better security rule evaluation
+      query(eventsRef, where('visibility', '==', 'public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+      query(eventsRef, where('visibility', '==', 'members'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
       query(eventsRef, where('createdBy', '==', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
       // Check for both new and legacy field names
       query(eventsRef, where('invitedUserIds', 'array-contains', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
