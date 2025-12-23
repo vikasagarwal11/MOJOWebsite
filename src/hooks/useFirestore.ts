@@ -522,20 +522,34 @@ export const useFirestore = () => {
             collectionName, 
             error: error.message,
             code: error.code,
-            stack: error.stack 
+            stack: error.stack,
+            constraints: queryConstraints.length
           });
           setLoading(false);
 
+          // Only show toast for critical errors, not all errors
           if (error?.code === 'failed-precondition') {
-            toast.error('This query needs a Firestore composite index. Use the console link in devtools to create it.');
+            const indexUrl = error.message?.match(/https:\/\/console\.firebase\.google\.com[^\s]+/)?.[0];
+            if (indexUrl) {
+              console.error('🔗 Firestore index required. Create it here:', indexUrl);
+              toast.error('This query needs a Firestore composite index. Check console for the link to create it.');
+            } else {
+              toast.error('This query needs a Firestore composite index. Use the console link in devtools to create it.');
+            }
           } else if (error?.code === 'permission-denied') {
             if (!currentUser) {
-              toast.error('Sign in to view private items (or filter to public content).');
+              // Don't show error toast for unauthenticated users - this is expected
+              console.warn('⚠️ [useFirestore] Permission denied - user not authenticated');
             } else {
               toast.error('You do not have permission to read these documents.');
             }
-          } else {
-            toast.error('Failed to load data.');
+          } else if (error?.code === 'unavailable' || error?.code === 'deadline-exceeded') {
+            // Network errors - don't show toast, just log
+            console.warn('⚠️ [useFirestore] Network error:', error.code);
+          } else if (error?.code !== 'cancelled') {
+            // Only show toast for unexpected errors, not cancelled operations
+            console.error('❌ [useFirestore] Unexpected error:', error);
+            // Don't show toast for every error to avoid spam
           }
         }
       );

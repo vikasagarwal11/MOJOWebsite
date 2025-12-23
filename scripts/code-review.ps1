@@ -16,7 +16,7 @@ if (!(Get-Command cursor -ErrorAction SilentlyContinue)) {
 }
 
 # Create temporary files for review results
-$reviewFile = "temp-code-review.md"
+$reviewFile = "docs/temp-code-review.md"
 $issuesFile = "temp-issues.json"
 
 try {

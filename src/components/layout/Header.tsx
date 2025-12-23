@@ -59,6 +59,7 @@ const Header: React.FC = () => {
     // { name: 'Workouts', href: '/workouts' }, // Hidden for now
     // { name: 'Challenges', href: '/challenges' }, // Hidden for now
     { name: 'Posts', href: '/posts' },
+    { name: 'Support Tools', href: '/support-tools' },
     { name: 'About Us', href: '/about' },
     { name: 'Founder', href: '/founder' },
     // { name: 'Press', href: '/press' }, // Hidden for now

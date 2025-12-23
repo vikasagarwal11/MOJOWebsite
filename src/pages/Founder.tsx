@@ -20,7 +20,7 @@ const Founder: React.FC = () => {
 
   const founderData = {
     name: 'Aina Rai',
-    title: 'Founder & CEO',
+    title: 'Founder & Chairperson',
     subtitle: 'Moms Fitness Mojo',
     location: 'Short Hills, NJ',
     joinedLabel: 'January 2025',

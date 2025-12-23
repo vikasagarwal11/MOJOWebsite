@@ -1,8 +1,0 @@
-﻿python.exe : ERROR: (gcloud.logging.read) INVALID_ARGUMENT: Unparseable filter: syntax error at line 1, column 99, 
-token '"'
-At C:\InstalledSoftware\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.ps1:114 char:3
-+   & "$cloudsdk_python" $run_args_array
-+   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (ERROR: (gcloud....n 99, token '"':String) [], RemoteException
-    + FullyQualifiedErrorId : NativeCommandError
- 
