@@ -9,7 +9,7 @@ import { StatusBanner } from '../common/StatusBanner';
 // Public routes that don't require authentication or approval (available to everyone, including logged-out users)
 // These routes are accessible WITHOUT login, so pending/rejected users can still see them
 // Note: /events, /posts, and /media pages handle their own filtering (public vs private content)
-const PUBLIC_ROUTES = ['/', '/events', '/events-readonly', '/posts', '/media', '/sponsors', '/founder', '/contact', '/about', '/press', '/community-guidelines', /* '/challenges', '/workouts', */ '/pending-approval', '/account-rejected']; // Challenges and Workouts hidden for now
+const PUBLIC_ROUTES = ['/', '/events', '/events-readonly', '/posts', '/media', '/sponsors', '/founder', '/contact', '/about', '/press', '/community-guidelines', '/support-tools', /* '/challenges', '/workouts', */ '/pending-approval', '/account-rejected']; // Challenges and Workouts hidden for now
 
 // Protected routes that require approved status (create/edit actions within these pages are still protected)
 const PROTECTED_ROUTES = ['/profile', '/admin', '/family-management'];

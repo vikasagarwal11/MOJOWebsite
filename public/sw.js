@@ -45,7 +45,11 @@ self.addEventListener('install', (event) => {
       // Cache static assets
       caches.open(STATIC_CACHE).then((cache) => {
         console.log('Service Worker: Caching static files');
-        return cache.addAll(urlsToCache);
+        return cache.addAll(urlsToCache).catch((error) => {
+          console.warn('Service Worker: Some static files failed to cache', error);
+          // Continue even if some files fail
+          return Promise.resolve();
+        });
       }),
       // Pre-cache critical resources
       caches.open(CACHE_NAME).then((cache) => {
@@ -53,14 +57,21 @@ self.addEventListener('install', (event) => {
         return cache.addAll([
           '/',
           '/manifest.json'
-        ]);
+        ]).catch((error) => {
+          console.warn('Service Worker: Some critical resources failed to cache', error);
+          // Continue even if some files fail
+          return Promise.resolve();
+        });
       })
     ]).catch((error) => {
       console.error('Service Worker: Cache installation failed', error);
+      // Don't fail the installation - allow SW to activate even if caching fails
     })
   );
   // Force activation of new service worker
-  self.skipWaiting();
+  self.skipWaiting().catch((error) => {
+    console.warn('Service Worker: Error skipping waiting during install', error);
+  });
 });
 
 self.addEventListener('activate', (event) => {
@@ -73,14 +84,26 @@ self.addEventListener('activate', (event) => {
           cacheNames.map((cacheName) => {
             if (!CACHE_WHITELIST.includes(cacheName)) {
               console.log('Service Worker: Deleting old cache', cacheName);
-              return caches.delete(cacheName);
+              return caches.delete(cacheName).catch((error) => {
+                console.warn(`Service Worker: Failed to delete cache ${cacheName}`, error);
+                // Continue even if cache deletion fails
+                return Promise.resolve();
+              });
             }
+            return Promise.resolve();
           })
         );
       }),
       // Take control of all clients immediately
-      self.clients.claim()
-    ])
+      self.clients.claim().catch((error) => {
+        console.warn('Service Worker: Error claiming clients', error);
+        // Continue activation even if claiming fails
+        return Promise.resolve();
+      })
+    ]).catch((error) => {
+      console.error('Service Worker: Activation failed', error);
+      // Allow activation to complete even if cleanup fails
+    })
   );
 });
 
@@ -212,20 +235,35 @@ async function cacheFirstStrategy(request, cacheName) {
     return cachedResponse;
   }
   
-  const networkResponse = await fetch(request);
-  // Only cache successful responses that are not partial (206) and not HLS segments
-  const isHLSSegment = url.pathname.endsWith('.ts') || url.pathname.endsWith('.m3u8') || url.pathname.includes('/hls/');
-  
-  if (networkResponse.ok && networkResponse.status !== 206 && !isHLSSegment) {
-    try {
-      cache.put(request, networkResponse.clone());
-    } catch (cacheError) {
-      // Ignore cache errors (e.g., partial responses)
-      console.log('Service Worker: Cache put failed (expected for some content)', cacheError);
+  try {
+    const networkResponse = await fetch(request);
+    // Only cache successful responses that are not partial (206) and not HLS segments
+    const isHLSSegment = url.pathname.endsWith('.ts') || url.pathname.endsWith('.m3u8') || url.pathname.includes('/hls/');
+    
+    if (networkResponse.ok && networkResponse.status !== 206 && !isHLSSegment) {
+      // Clone response before caching (must be done before reading body)
+      const responseClone = networkResponse.clone();
+      
+      // Try to cache, but don't block on it
+      cache.put(request, responseClone).catch((cacheError) => {
+        // Silently ignore cache errors - these are expected for:
+        // - Large files that exceed quota
+        // - Opaque responses from CORS issues
+        // - Network errors during caching
+        // - Responses that can't be cloned
+        console.debug('Service Worker: Cache put failed (non-critical)', cacheError.message);
+      });
     }
+    
+    return networkResponse;
+  } catch (fetchError) {
+    // If fetch fails, try to return cached response
+    const cachedResponse = await cache.match(request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    throw fetchError;
   }
-  
-  return networkResponse;
 }
 
 // Network-first strategy for dynamic content
@@ -243,12 +281,18 @@ async function networkFirstStrategy(request, cacheName) {
     const isHLSSegment = url.pathname.endsWith('.ts') || url.pathname.endsWith('.m3u8') || url.pathname.includes('/hls/');
     
     if (networkResponse.ok && networkResponse.status !== 206 && !isHLSSegment) {
-      try {
-        cache.put(request, networkResponse.clone());
-      } catch (cacheError) {
-        // Ignore cache errors (e.g., partial responses)
-        console.log('Service Worker: Cache put failed (expected for some content)', cacheError);
-      }
+      // Clone response before caching (must be done before reading body)
+      const responseClone = networkResponse.clone();
+      
+      // Try to cache, but don't block on it
+      cache.put(request, responseClone).catch((cacheError) => {
+        // Silently ignore cache errors - these are expected for:
+        // - Large files that exceed quota
+        // - Opaque responses from CORS issues
+        // - Network errors during caching
+        // - Responses that can't be cloned
+        console.debug('Service Worker: Cache put failed (non-critical)', cacheError.message);
+      });
     }
     return networkResponse;
   } catch (error) {
@@ -371,22 +415,34 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('message', (event) => {
   console.log('Service Worker: Received message', event.data);
   
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-  
-  if (event.data && event.data.type === 'CACHE_URLS') {
-    event.waitUntil(
-      cacheUrls(event.data.urls)
-    );
-  }
-  
-  // Send response back to main thread
-  if (event.ports && event.ports[0]) {
-    event.ports[0].postMessage({ 
-      type: 'MESSAGE_RECEIVED', 
-      data: event.data 
-    });
+  try {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+      self.skipWaiting().catch((error) => {
+        console.warn('Service Worker: Error skipping waiting', error);
+      });
+    }
+    
+    if (event.data && event.data.type === 'CACHE_URLS') {
+      event.waitUntil(
+        cacheUrls(event.data.urls).catch((error) => {
+          console.error('Service Worker: Error caching URLs', error);
+        })
+      );
+    }
+    
+    // Send response back to main thread
+    if (event.ports && event.ports[0]) {
+      try {
+        event.ports[0].postMessage({ 
+          type: 'MESSAGE_RECEIVED', 
+          data: event.data 
+        });
+      } catch (portError) {
+        console.warn('Service Worker: Error posting message to port', portError);
+      }
+    }
+  } catch (error) {
+    console.error('Service Worker: Error handling message', error);
   }
 });
 

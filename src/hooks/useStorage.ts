@@ -94,7 +94,7 @@ export const useStorage = () => {
   };
 
   // Helper function to generate storage paths
-  const getStoragePath = (type: 'media' | 'profiles' | 'events' | 'sponsors' | 'posts', fileName: string) => {
+  const getStoragePath = (type: 'media' | 'profiles' | 'events' | 'sponsors' | 'posts' | 'support-tools', fileName: string) => {
     if (!currentUser) return '';
     
     switch (type) {
@@ -115,7 +115,7 @@ export const useStorage = () => {
   };
 
   // Helper function to get storage folder path for cleanup
-  const getStorageFolder = (type: 'media' | 'profiles' | 'events' | 'sponsors' | 'posts') => {
+  const getStorageFolder = (type: 'media' | 'profiles' | 'events' | 'sponsors' | 'posts' | 'support-tools') => {
     if (!currentUser) return '';
     
     switch (type) {
@@ -130,6 +130,8 @@ export const useStorage = () => {
         return `sponsors/`;
       case 'posts':
         return `posts/`;
+      case 'support-tools':
+        return `support-tools/${currentUser.id}/`;
       default:
         return `misc/`;
     }

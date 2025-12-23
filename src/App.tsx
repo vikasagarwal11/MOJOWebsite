@@ -30,6 +30,7 @@ import EventsReadOnly from './pages/EventsReadOnly';
 import EventDetailsPage from './pages/EventDetailsPage';
 import RSVPPage from './pages/RSVPPage';
 import ShareYourStory from './pages/ShareYourStory';
+import SupportTools from './pages/SupportTools';
 // import Workouts from './pages/Workouts'; // Hidden for now
 // import Challenges from './pages/Challenges'; // Hidden for now
 // import ChallengeDetail from './pages/ChallengeDetail'; // Hidden for now
@@ -98,6 +99,8 @@ function AppContent() {
             <Route path="media" element={<Media />} />  {/* UPDATED VERSION WITH LIVE UPLOAD */}
           {/* <Route path="media" element={<MediaGallery />} />  OLD VERSION - COMMENTED OUT */}
             <Route path="posts" element={<Posts />} />
+            <Route path="support-tools" element={<SupportTools />} />
+            <Route path="support-tools/:categorySlug" element={<SupportTools />} />
             <Route path="sponsors" element={<Sponsors />} />
             <Route path="profile" element={<Profile mode="profile" />} />
             <Route path="admin" element={<AdminConsole />} />

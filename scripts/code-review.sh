@@ -49,7 +49,7 @@ if ! command -v cursor &> /dev/null; then
 fi
 
 # Create temporary files for review results
-REVIEW_FILE="temp-code-review.md"
+REVIEW_FILE="docs/temp-code-review.md"
 ISSUES_FILE="temp-issues.json"
 
 # Cleanup function

@@ -117,3 +117,8 @@ export const CategorySeo: React.FC<CategorySeoProps> = ({
   );
 };
 
+
+
+
+
+

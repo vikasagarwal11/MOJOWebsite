@@ -352,7 +352,15 @@ switch ($Component.ToLower()) {
     }
     "no-extensions" {
         Write-Host "Deploying everything except extensions..." -ForegroundColor Cyan
-        firebase deploy --only "hosting,firestore,functions,storage" --project=momsfitnessmojo-65d00 --config=firebase.prod.json
+        $deployResult = firebase deploy --only "hosting,firestore,functions,storage" --project=momsfitnessmojo-65d00 --config=firebase.prod.json 2>&1
+        if ($LASTEXITCODE -ne 0 -and $deployResult -match "409.*index already exists") {
+            Write-Host "  [INFO] Index already exists in Firebase (indexes are already deployed and working)" -ForegroundColor Yellow
+            Write-Host "  Retrying deployment without indexes..." -ForegroundColor Cyan
+            firebase deploy --only "hosting,firestore:rules,functions,storage" --project=momsfitnessmojo-65d00 --config=firebase.prod.json
+        } elseif ($LASTEXITCODE -ne 0) {
+            Write-Host $deployResult
+            exit 1
+        }
     }
     "all" {
         Write-Host "Deploying everything..." -ForegroundColor Cyan
