@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Phone, Shield, User, Clock, X } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import type { ConfirmationResult } from 'firebase/auth';
+import { Clock, Phone, Shield, User, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { Link, useNavigate } from 'react-router-dom';
+import { z } from 'zod';
+import { useAuth } from '../../contexts/AuthContext';
 import { normalizeUSPhoneToE164OrNull } from '../../utils/phone';
 
 const phoneSchema = z.object({
@@ -406,7 +406,16 @@ const Register: React.FC = () => {
                 <div className="flex space-x-3">
                   <button
                     type="button"
-                    onClick={() => setStep('phone')}
+                    onClick={() => {
+                      // Clear confirmation result to prevent stuck state in Safari
+                      setConfirmationResult(null);
+                      setIsLoading(false);
+                      setError(null);
+                      setTimeLeft(0);
+                      setCodeExpiryTime(null);
+                      codeForm.reset({ verificationCode: '' });
+                      setStep('phone');
+                    }}
                     className="flex-1 py-3 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
                   >
                     Back

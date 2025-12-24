@@ -1,24 +1,24 @@
+import { collection, deleteDoc, doc, DocumentReference, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { listAll, ref } from 'firebase/storage';
+import { Calendar, CheckCircle, ChevronDown, ChevronUp, Dumbbell, Eye, FolderTree, Image, Loader2, MessageSquare, RefreshCw, Search, Settings, Shield, ShieldCheck, Star, Trash2, UserCheck, Users, Video, XCircle } from 'lucide-react';
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
-import { Calendar, MessageSquare, Eye, Search, Video, Image, Trash2, CheckCircle, XCircle, Star, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, Dumbbell, Settings, UserCheck, Shield, ShieldCheck, FolderTree } from 'lucide-react';
-import { getDocs, collection, query, where, limit, writeBatch, serverTimestamp, orderBy, deleteDoc, doc, getDoc, setDoc, Timestamp, updateDoc, DocumentReference } from 'firebase/firestore';
-import { ref, listAll } from 'firebase/storage';
-import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
-import EventCardNew from '../components/events/EventCardNew';
-import ContactMessagesAdmin from '../components/admin/ContactMessagesAdmin';
 import AccountApprovalsAdmin from '../components/admin/AccountApprovalsAdmin';
+import { AssistantConfigPanel } from '../components/admin/AssistantConfigPanel';
 import BulkAttendeesPanel from '../components/admin/BulkAttendeesPanel';
 import CleanupToolPanel from '../components/admin/CleanupToolPanel';
-import { AssistantConfigPanel } from '../components/admin/AssistantConfigPanel';
-import { KBGapsPanel } from '../components/admin/KBGapsPanel';
+import ContactMessagesAdmin from '../components/admin/ContactMessagesAdmin';
 import { ContentModerationPanel } from '../components/admin/ContentModerationPanel';
-import { TrustedUsersPanel } from '../components/admin/TrustedUsersPanel';
+import { KBGapsPanel } from '../components/admin/KBGapsPanel';
 import { SupportToolCategoriesPanel } from '../components/admin/SupportToolCategoriesPanel';
-import { useTestimonials } from '../hooks/useTestimonials';
-import { adminUpdateTestimonial, deleteTestimonial } from '../services/testimonialsService';
-import { ModerationService } from '../services/moderationService';
-import type { Testimonial, TestimonialStatus, TestimonialAIPrompts, PostAIPrompts } from '../types';
+import { TrustedUsersPanel } from '../components/admin/TrustedUsersPanel';
+import EventCardNew from '../components/events/EventCardNew';
+import { db, storage } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { useTestimonials } from '../hooks/useTestimonials';
+import { ModerationService } from '../services/moderationService';
+import { adminUpdateTestimonial, deleteTestimonial } from '../services/testimonialsService';
+import type { PostAIPrompts, Testimonial, TestimonialAIPrompts, TestimonialStatus } from '../types';
 
 const ExercisesAdminLazy = React.lazy(() => import('./admin/ExercisesAdmin'));
 

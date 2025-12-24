@@ -1,7 +1,6 @@
-import { doc, deleteDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
-import { ref, deleteObject } from 'firebase/storage';
+import { collection, deleteDoc, doc, getDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { deleteObject, ref } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
-import toast from 'react-hot-toast';
 
 export interface EventDeletionResult {
   success: boolean;
@@ -38,7 +37,7 @@ export class EventDeletionService {
 
       // 1. Get event data first to check for associated media
       const eventRef = doc(db, 'events', eventId);
-      const eventDoc = await eventRef.get();
+      const eventDoc = await getDoc(eventRef);
       
       if (!eventDoc.exists()) {
         result.errors.push('Event not found');

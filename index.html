@@ -24,6 +24,20 @@
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
+    <!-- Preload hero logo for Safari first-load fix -->
+    <link rel="preload" href="/assets/logo/mfm-logo-new-hero.svg" as="image" type="image/svg+xml" />
+    <link rel="preload" href="/assets/logo/mfm-logo-800.png" as="image" type="image/png" />
+    
+    <!-- Safari & iOS Specific Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="format-detection" content="telephone=no" />
+    
+    <!-- Cache Control for Safari to prevent auto-login issues -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    
     <!-- SEO Meta Tags -->
     <title>Moms Fitness Mojo - Fitness Community for Moms</title>
     <meta name="description" content="Join Moms Fitness Mojo - a supportive community for moms to connect, share fitness journeys, and grow together. Find local fitness events, share media, and build lasting friendships." />

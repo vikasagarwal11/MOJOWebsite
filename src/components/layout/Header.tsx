@@ -1,10 +1,9 @@
+import { Facebook, Instagram, LogOut, Menu, X } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Dumbbell, LogOut, Instagram, Facebook } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import NotificationCenter from '../notifications/NotificationCenter';
-import PopupAlertHandler from '../notifications/PopupAlertHandler';
 import { isUserPending } from '../../utils/userUtils';
+import NotificationCenter from '../notifications/NotificationCenter';
 
 function initialsFromName(name?: string) {
   if (!name) return 'MM';
@@ -89,15 +88,20 @@ const Header: React.FC = () => {
     <header className="bg-[#F25129] backdrop-blur-lg border-b border-[#F25129]/30 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Row: Brand | Center nav | User area */}
-        <div className="flex items-center gap-4 h-16">
-          {/* Center nav (kept stable; user area won't push this) */}
+        <div className="flex items-center gap-2 sm:gap-4 h-14 sm:h-16">
+          {/* Logo - visible on all devices for better branding */}
+          <Link to="/" className="flex items-center gap-2 shrink-0 md:hidden">
+            <img src="/logo.png" alt="Moms Fitness Mojo" className="h-8 w-8 rounded-full object-cover" />
+          </Link>
+
+          {/* Center nav (desktop only; mobile uses hamburger menu) */}
           <nav className="hidden md:flex flex-1 justify-center min-w-0" aria-label="Primary">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 lg:gap-2">
               {navigation.map((item) => (
                 <Link
                   key={item.name}
                   to={item.href}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  className={`px-2 lg:px-3 py-2 rounded-lg text-xs lg:text-sm font-medium transition-all duration-200 ${
                     isActive(item.href)
                       ? 'bg-white/20 text-white'
                       : 'text-white/90 hover:text-white hover:bg-white/10'
@@ -107,7 +111,7 @@ const Header: React.FC = () => {
                 </Link>
               ))}
               {/* Social Media Icons */}
-              <div className="flex items-center gap-2 ml-2 pl-2 border-l border-white/20">
+              <div className="hidden lg:flex items-center gap-2 ml-2 pl-2 border-l border-white/20">
                 <a
                   href="https://www.instagram.com/momsfitnessmojo/"
                   target="_blank"
@@ -116,7 +120,7 @@ const Header: React.FC = () => {
                   aria-label="Follow us on Instagram"
                   title="Follow us on Instagram"
                 >
-                  <Instagram className="w-5 h-5" />
+                  <Instagram className="w-4 h-4 xl:w-5 xl:h-5" />
                 </a>
                 <a
                   href="https://www.facebook.com/momsfitnessmojo"
@@ -126,14 +130,14 @@ const Header: React.FC = () => {
                   aria-label="Follow us on Facebook"
                   title="Follow us on Facebook"
                 >
-                  <Facebook className="w-5 h-5" />
+                  <Facebook className="w-4 h-4 xl:w-5 xl:h-5" />
                 </a>
               </div>
             </div>
           </nav>
 
           {/* User area (notifications + avatar; bounded; cache-busted) */}
-          <div className="hidden md:flex items-center gap-3 shrink-0" ref={menuRef}>
+          <div className="hidden md:flex items-center gap-2 lg:gap-3 shrink-0" ref={menuRef}>
             {/* Notification Center */}
             {currentUser && (
               <NotificationCenter 
@@ -149,13 +153,13 @@ const Header: React.FC = () => {
                 <button
                   ref={buttonRef}
                   onClick={() => setUserMenuOpen((o) => !o)}
-                  className="group/avatar relative flex items-center gap-2 pl-1 pr-2 py-1 rounded-full border border-[#F25129]/20 hover:bg-[#F25129]/10 transition-colors"
+                  className="group/avatar relative flex items-center gap-1 lg:gap-2 pl-1 pr-1 lg:pr-2 py-1 rounded-full border border-[#F25129]/20 hover:bg-[#F25129]/10 transition-colors touch-target"
                   aria-haspopup="menu"
                   aria-expanded={userMenuOpen}
                   aria-controls="user-menu"
                   title={`${displayName}${email ? `\n${email}` : ''}`}
                 >
-                  <div className="w-9 h-9 rounded-full overflow-hidden ring-1 ring-[#F25129]/30 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center">
+                  <div className="w-8 h-8 lg:w-9 lg:h-9 rounded-full overflow-hidden ring-1 ring-[#F25129]/30 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center">
                     {avatarSrc ? (
                       <img src={avatarSrc} alt={displayName} className="w-full h-full object-cover" />
                     ) : (
@@ -169,13 +173,13 @@ const Header: React.FC = () => {
                 {userMenuOpen && (
                   <div
                     id="user-menu"
-                    className="absolute right-0 mt-2 w-56 rounded-xl border bg-white shadow-lg overflow-hidden"
+                    className="absolute right-0 mt-2 w-56 sm:w-64 rounded-xl border bg-white shadow-lg overflow-hidden"
                     role="menu"
                     aria-labelledby="user-menu-button"
                   >
                     <div className="px-4 py-3 border-b">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full overflow-hidden ring-1 ring-[#F25129]/30 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden ring-1 ring-[#F25129]/30 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center">
                           {avatarSrc ? (
                             <img src={avatarSrc} alt={displayName} className="w-full h-full object-cover" />
                           ) : (
@@ -248,16 +252,16 @@ const Header: React.FC = () => {
                 )}
               </div>
             ) : (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 lg:gap-3">
                 <Link
                   to="/login"
-                  className="px-4 py-2 text-sm font-medium text-white/90 hover:text-white transition-colors"
+                  className="px-3 lg:px-4 py-2 text-xs lg:text-sm font-medium text-white/90 hover:text-white transition-colors touch-target"
                 >
                   Login
                 </Link>
                 <Link
                   to="/register"
-                  className="px-4 py-2 text-sm font-medium bg-white text-[#F25129] rounded-lg hover:bg-gray-100 transition-all duration-200 border border-white/20"
+                  className="px-3 lg:px-4 py-2 text-xs lg:text-sm font-medium bg-white text-[#F25129] rounded-lg hover:bg-gray-100 transition-all duration-200 border border-white/20 touch-target"
                 >
                   Join MOJO
                 </Link>
@@ -265,10 +269,10 @@ const Header: React.FC = () => {
             )}
           </div>
 
-          {/* Mobile menu button */}
+          {/* Mobile menu button - improved touch target */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden p-2 rounded-lg text-white/90 hover:bg-white/10 transition-colors ml-auto"
+            className="md:hidden p-2 rounded-lg text-white/90 hover:bg-white/10 transition-colors ml-auto touch-target"
             aria-label="Toggle menu"
             aria-expanded={isMobileMenuOpen}
           >
@@ -276,16 +280,16 @@ const Header: React.FC = () => {
           </button>
         </div>
 
-        {/* Mobile Navigation */}
+        {/* Mobile Navigation - improved responsiveness */}
         {isMobileMenuOpen && (
-          <div className="md:hidden border-t border-white/20 py-4">
-            <div className="flex flex-col space-y-2">
+          <div className="md:hidden border-t border-white/20 py-4 max-h-[calc(100vh-4rem)] overflow-y-auto">
+            <div className="flex flex-col space-y-1">
               {navigation.map((item) => (
                 <Link
                   key={item.name}
                   to={item.href}
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  className={`px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 touch-target ${
                     isActive(item.href)
                       ? 'bg-white/20 text-white'
                       : 'text-white/90 hover:text-white hover:bg-white/10'
@@ -296,13 +300,13 @@ const Header: React.FC = () => {
               ))}
               
               {/* Social Media Icons - Mobile */}
-              <div className="flex items-center gap-3 pt-2 border-t border-white/20 mt-2">
+              <div className="flex items-center gap-3 pt-3 border-t border-white/20 mt-2">
                 <a
                   href="https://www.instagram.com/momsfitnessmojo/"
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white/90 hover:text-white hover:bg-white/10 transition-all duration-200"
+                  className="flex items-center gap-2 px-3 py-3 rounded-lg text-sm font-medium text-white/90 hover:text-white hover:bg-white/10 transition-all duration-200 flex-1 touch-target"
                   aria-label="Follow us on Instagram"
                 >
                   <Instagram className="w-5 h-5" />
@@ -313,7 +317,7 @@ const Header: React.FC = () => {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white/90 hover:text-white hover:bg-white/10 transition-all duration-200"
+                  className="flex items-center gap-2 px-3 py-3 rounded-lg text-sm font-medium text-white/90 hover:text-white hover:bg-white/10 transition-all duration-200 flex-1 touch-target"
                   aria-label="Follow us on Facebook"
                 >
                   <Facebook className="w-5 h-5" />
@@ -322,9 +326,9 @@ const Header: React.FC = () => {
               </div>
 
               {currentUser ? (
-                <div className="pt-4 border-t border-[#F25129]/20 mt-4">
+                <div className="pt-4 border-t border-white/20 mt-4">
                   <div className="flex items-center gap-3 px-3 py-2">
-                    <div className="w-8 h-8 rounded-full overflow-hidden ring-1 ring-[#F25129]/30 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full overflow-hidden ring-1 ring-white/30 bg-gradient-to-br from-white to-white/80 flex items-center justify-center">
                       {avatarSrc ? (
                         <img src={avatarSrc} alt={displayName} className="w-full h-full object-cover" />
                       ) : (
@@ -333,19 +337,19 @@ const Header: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-700 truncate">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-white truncate">
                         {displayName}
                       </div>
                       {currentUser.role === 'admin' && (
-                        <div className="text-xs text-[#F25129]">Admin</div>
+                        <div className="text-xs text-white/80">Admin</div>
                       )}
                     </div>
                   </div>
                   <Link
                     to="/profile"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="block w-full mt-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-[#F25129]/10 rounded-lg transition-colors"
+                    className="block w-full mt-2 px-3 py-3 text-left text-sm text-white/90 hover:bg-white/10 rounded-lg transition-colors touch-target"
                   >
                     My Profile
                   </Link>
@@ -353,7 +357,7 @@ const Header: React.FC = () => {
                     <Link
                       to="/admin"
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className="block w-full mt-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-[#F25129]/10 rounded-lg transition-colors"
+                      className="block w-full mt-1 px-3 py-3 text-left text-sm text-white/90 hover:bg-white/10 rounded-lg transition-colors touch-target"
                     >
                       Admin Console
                     </Link>
@@ -363,24 +367,24 @@ const Header: React.FC = () => {
                       await handleLogout();
                       setIsMobileMenuOpen(false);
                     }}
-                    className="w-full mt-1 px-3 py-2 text-left text-sm text-gray-700 hover:bg-[#F25129]/10 rounded-lg transition-colors"
+                    className="w-full mt-1 px-3 py-3 text-left text-sm text-white/90 hover:bg-white/10 rounded-lg transition-colors touch-target"
                   >
                     Logout
                   </button>
                 </div>
               ) : (
-                <div className="pt-4 border-t border-[#F25129]/20 mt-4 space-y-2">
+                <div className="pt-4 border-t border-white/20 mt-4 space-y-2">
                   <Link
                     to="/login"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="block px-3 py-2 text-sm font-medium text-[#F25129] hover:bg-[#F25129]/10 rounded-lg transition-colors"
+                    className="block px-3 py-3 text-sm font-medium text-white hover:bg-white/10 rounded-lg transition-colors touch-target"
                   >
                     Login
                   </Link>
                   <Link
                     to="/register"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="block px-3 py-2 text-sm font-medium bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white rounded-lg hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-200"
+                    className="block px-3 py-3 text-sm font-medium bg-white text-[#F25129] rounded-lg hover:bg-gray-100 transition-all duration-200 touch-target"
                   >
                     Join MOJO
                   </Link>

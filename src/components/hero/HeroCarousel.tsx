@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface HeroCarouselProps {
   imagesDirectory: string;
@@ -71,14 +71,14 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({
       console.log('HeroCarousel: No images loaded, showing fallback');
     }
     return (
-      <div className="aspect-[4/3] rounded-2xl overflow-hidden shadow-lg bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center">
-        <div className="text-center text-white">
+      <div className="aspect-[4/3] sm:aspect-[3/2] lg:aspect-[2/1] rounded-lg sm:rounded-xl lg:rounded-2xl overflow-hidden shadow-lg bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center">
+        <div className="text-center text-white px-4">
           <img 
             src="/assets/logo/homepageslide.svg" 
             alt="Moms Fitness Mojo Logo" 
-            className="h-24 w-24 mx-auto mb-4 filter brightness-0 invert" 
+            className="h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24 mx-auto mb-4 filter brightness-0 invert" 
           />
-          <p className="text-sm">Loading carousel...</p>
+          <p className="text-xs sm:text-sm">Loading carousel...</p>
         </div>
       </div>
     );
@@ -89,7 +89,7 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({
   }
 
   return (
-    <div className="aspect-[2/1.5] rounded-2xl overflow-hidden shadow-lg bg-gray-100 relative">
+    <div className="aspect-[4/3] sm:aspect-[3/2] lg:aspect-[2/1.5] rounded-lg sm:rounded-xl lg:rounded-2xl overflow-hidden shadow-lg bg-gray-100 relative">
       {/* Show current image directly - no complex CSS */}
       {images.length > 0 && (
         <img
@@ -117,11 +117,11 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({
       
       {/* Fallback when no images are available */}
       {images.length === 0 && (
-        <div className="absolute inset-0 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center p-8">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center p-4 sm:p-6 lg:p-8">
           <div className="text-center text-white">
-            <div className="text-4xl mb-4">🏃‍♀️</div>
-            <div className="text-lg font-semibold">Moms Fitness Mojo</div>
-            <div className="text-sm opacity-90">Community Activities</div>
+            <div className="text-3xl sm:text-4xl mb-4">🏃‍♀️</div>
+            <div className="text-base sm:text-lg lg:text-xl font-semibold">Moms Fitness Mojo</div>
+            <div className="text-xs sm:text-sm opacity-90">Community Activities</div>
           </div>
         </div>
       )}

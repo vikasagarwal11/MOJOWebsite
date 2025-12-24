@@ -1,76 +1,99 @@
-type Variant = "square" | "wide";
+type Variant = "square" | "wide" | "compact";
 
 interface ResponsiveLogoProps {
   className?: string;
   variant?: Variant;          // choose container aspect
   priority?: boolean;         // eager load when true (hero)
   hiddenH1?: boolean;         // optional hidden H1 for SEO
+  showDescription?: boolean;  // show description text below logo
 }
 
 /**
- * Responsive logo component that uses modern image formats
- * with proper fallbacks and accessibility features
+ * Responsive logo component that works perfectly on all devices
+ * - Optimized for Mac, Windows, mobile (iOS & Android)
+ * - Proper aspect ratios and sizing
+ * - SVG with PNG fallback for maximum compatibility
+ * - Responsive scaling based on screen size
  */
 export function ResponsiveLogo({
   className = "",
   variant = "wide",
   priority = true,
   hiddenH1 = false,
+  showDescription = true,
 }: ResponsiveLogoProps) {
-  // Container aspect based on variant - optimized for logo with text
-  const aspect = variant === "square" ? "aspect-square" : "aspect-[3/2]";
+  // Container aspect and sizing based on variant
+  const containerClasses = {
+    square: "aspect-square max-w-xs sm:max-w-sm md:max-w-md",
+    wide: "aspect-[4/3] max-w-sm sm:max-w-md md:max-w-lg lg:max-w-xl",
+    compact: "aspect-[3/2] max-w-xs sm:max-w-sm"
+  };
   
-  // Asset paths - these will be fingerprinted by the bundler
-  const logoSvg = "/assets/logo/mfm-logo-new-hero.svg";
-  const logoPng1x = "/assets/logo/mfm-logo-800.png";
-  const logoPng2x = "/assets/logo/mfm-logo-1600.png";
-  const fallbackSvg = "/assets/logo/mfm-mark.svg";
+  // Padding based on variant for optimal logo display
+  const paddingClasses = {
+    square: "p-6 sm:p-8 md:p-10",
+    wide: "p-8 sm:p-10 md:p-12 lg:p-14 xl:p-16",
+    compact: "p-6 sm:p-8"
+  };
+  
+  // Asset paths
+  const logoSvg = "/assets/logo/mfm-logo-updated-tagline-2.svg";
+  const fallbackPng = "/logo.png";
 
   return (
-    <div className={`mx-auto max-w-3xl md:max-w-4xl ${className}`}>
-      <div className={`mx-auto ${aspect} w-72 sm:w-96 md:w-[28rem] lg:w-[36rem] xl:w-[40rem] max-w-full`}>
-        <picture>
-          {/* SVG as primary source for modern browsers */}
-          <source type="image/svg+xml" srcSet={logoSvg} />
-          {/* PNG fallback for older browsers */}
+    <div className={`mx-auto w-full ${className}`}>
+      {/* Logo container with gradient background */}
+      <div className={`${containerClasses[variant]} mx-auto rounded-xl sm:rounded-2xl shadow-xl bg-gradient-to-r from-[#F25129] to-[#FFC107] overflow-hidden`}>
+        <div className={`w-full h-full ${paddingClasses[variant]} flex items-center justify-center`}>
           <img
-            src={logoPng1x}
-            srcSet={`${logoPng1x} 1x, ${logoPng2x} 2x`}
-            sizes="(min-width: 1280px) 40rem, (min-width: 1024px) 36rem, (min-width: 768px) 28rem, 90vw"
-            alt="Moms Fitness Mojo logo"
-            decoding="async"
+            src={logoSvg}
+            alt="Moms Fitness Mojo - Where Fitness meets Friendship"
+            className="w-full h-full max-w-full max-h-full object-contain select-none"
             loading={priority ? "eager" : "lazy"}
-            // Chrome hint for LCP image
-            {...(priority ? { fetchpriority: "high" as any } : {})}
-            width={800} 
-            height={600} 
-            className="h-full w-full object-contain drop-shadow-[0_6px_24px_rgba(0,0,0,0.25)] select-none pointer-events-none safari-logo-fix"
+            fetchpriority={priority ? "high" : "auto"}
+            decoding="async"
+            width="800"
+            height="600"
+            style={{
+              objectFit: 'contain',
+              objectPosition: 'center',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              width: 'auto',
+              height: 'auto'
+            }}
             draggable={false}
-            onError={(e) => { 
-              // Final fallback to mark SVG
-              (e.currentTarget as HTMLImageElement).src = fallbackSvg; 
+            onError={(e) => {
+              const target = e.currentTarget as HTMLImageElement;
+              // Fallback to PNG if SVG fails (for older browsers or rendering issues)
+              if (target.src.includes('.svg')) {
+                console.warn('SVG logo failed to load, using PNG fallback');
+                target.src = fallbackPng;
+              }
             }}
           />
-        </picture>
+        </div>
       </div>
 
       {/* Optional accessible heading for SEO, visually hidden */}
       {hiddenH1 && (
         <h1 className="sr-only">
-          Moms Fitness Mojo – Fit, Fierce, and Fabulous – Together
+          Moms Fitness Mojo – Where Fitness meets Friendship
         </h1>
       )}
 
-      <div className="mt-2 text-sm sm:text-base md:text-lg text-white/90 max-w-4xl mx-auto text-center leading-relaxed space-y-4">
-        <p>
-          Moms Fitness Mojo is more than a moms fitness group — it's a lifestyle and a circle of strength for moms. We bring together health, wellness, and fun while balancing family, careers, and social life.
-        </p>
-        
-        <p>
-          From fitness activities and events like workouts, hikes, tennis, dance, and active meetups to social events like brunches, dinners, cocktail nights, and celebrating festivals together — it's where fitness meets friendship.
-        </p>
-        
-      </div>
+      {/* Optional description text */}
+      {showDescription && (
+        <div className="mt-4 sm:mt-6 text-sm sm:text-base md:text-lg text-gray-700 max-w-3xl mx-auto text-center leading-relaxed space-y-3 sm:space-y-4 px-4">
+          <p>
+            Moms Fitness Mojo is more than a moms fitness group — it's a lifestyle and a circle of strength for moms. We bring together health, wellness, and fun while balancing family, careers, and social life.
+          </p>
+          
+          <p className="hidden sm:block">
+            From fitness activities and events like workouts, hikes, tennis, dance, and active meetups to social events like brunches, dinners, cocktail nights, and celebrating festivals together — it's where fitness meets friendship.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

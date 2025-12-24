@@ -1,20 +1,19 @@
+import { deleteDoc, doc, orderBy, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { useFirestore } from '../hooks/useFirestore';
-import { orderBy } from 'firebase/firestore';
 import toast from 'react-hot-toast';
-import { generateWorkoutPlan, getDailyWorkoutSuggestion, PlanIntake } from '../services/workoutService';
-import { db } from '../config/firebase';
-import { serverTimestamp, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { Link } from 'react-router-dom';
+import ExercisePreviewCard from '../components/exercise/ExercisePreviewCard';
 import SessionHistoryModal from '../components/workouts/SessionHistoryModal';
 import SessionPlayer from '../components/workouts/SessionPlayer';
+import { db } from '../config/firebase';
+import { useAuth } from '../contexts/AuthContext';
+import { useFirestore } from '../hooks/useFirestore';
 import { useLogging } from '../hooks/useLogging';
 import { applyAdaptiveProgression } from '../services/adaptiveService';
-import { applySessionToActiveChallenges } from '../services/userChallengeService';
 import { resolveExerciseByName } from '../services/exerciseService';
+import { applySessionToActiveChallenges } from '../services/userChallengeService';
+import { generateWorkoutPlan, getDailyWorkoutSuggestion, PlanIntake } from '../services/workoutService';
 import { stripPrescription } from '../utils/exerciseName';
-import ExercisePreviewCard from '../components/exercise/ExercisePreviewCard';
 import { isUserApproved } from '../utils/userUtils';
 
 const MAX_NOTES_LENGTH = 500;
