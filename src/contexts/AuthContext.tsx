@@ -1,39 +1,37 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
 import {
-  User as FirebaseUser,
-  onAuthStateChanged,
-  signOut,
-  RecaptchaVerifier,
-  signInWithPhoneNumber,
-  ConfirmationResult,
+    ConfirmationResult,
+    User as FirebaseUser,
+    onAuthStateChanged,
+    RecaptchaVerifier,
+    signInWithPhoneNumber,
+    signOut,
 } from 'firebase/auth';
 import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-  onSnapshot,
-  Unsubscribe,
-  collection,
-  query,
-  where,
-  getDocs,
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    onSnapshot,
+    query,
+    serverTimestamp,
+    setDoc,
+    Unsubscribe,
+    updateDoc,
+    where,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import app from '../config/firebase';
-import { auth, db, USING_EMULATORS } from '../config/firebase';
-import { User } from '../types';
+import React, {
+    createContext,
+    useContext,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from 'react';
 import toast from 'react-hot-toast';
-import { getRecaptchaConfig } from '../utils/recaptcha';
+import app, { auth, db, USING_EMULATORS } from '../config/firebase';
 import { AccountApprovalService } from '../services/accountApprovalService';
+import { User } from '../types';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -619,6 +617,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('🔍 AuthContext: Non-login successful verification for existing user. Proceeding.');
       }
       console.log('🔍 AuthContext: verifyCode completed successfully, onSnapshot will update UI');
+      // Clear reCAPTCHA after successful verification (Safari fix)
+      clearRecaptcha();
       // onSnapshot updates UI
     } catch (error: any) {
       console.error('🚨 AuthContext: Code verification error:', {
@@ -627,6 +627,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         errorMessage: error?.message,
         errorStack: error?.stack
       });
+      // Clear reCAPTCHA on error to allow retry (Safari fix)
+      clearRecaptcha();
       let msg = 'Invalid verification code';
       if (error?.code === 'auth/invalid-verification-code')
         msg = 'Invalid verification code. Please try again.';

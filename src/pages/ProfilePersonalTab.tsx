@@ -1,5 +1,5 @@
-import React from 'react';
 import { Camera, X as IconX } from 'lucide-react';
+import React from 'react';
 
 type Address = {
   street?: string;

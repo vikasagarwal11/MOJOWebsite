@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Helmet } from 'react-helmet-async';
 import { motion } from 'framer-motion';
-import { ArrowLeft, CheckCircle, Clock, MessageSquare, Star, HelpCircle, Lightbulb } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { ArrowLeft, CheckCircle, Clock, HelpCircle, Lightbulb, MessageSquare, Star } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Helmet } from 'react-helmet-async';
+import { Link, useNavigate } from 'react-router-dom';
 import { TestimonialSubmissionForm } from '../components/home/TestimonialSubmissionForm';
+import { useAuth } from '../contexts/AuthContext';
 
 const ShareYourStory: React.FC = () => {
   const isBrowser = typeof window !== 'undefined';

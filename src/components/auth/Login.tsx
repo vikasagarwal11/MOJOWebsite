@@ -1,14 +1,14 @@
 // src/components/auth/Login.tsx
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Phone, Shield } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
 import type { ConfirmationResult } from 'firebase/auth';
-import { normalizeUSPhoneToE164OrNull } from '../../utils/phone';
+import { Phone, Shield } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
+import { Link, useNavigate } from 'react-router-dom';
+import { z } from 'zod';
+import { useAuth } from '../../contexts/AuthContext';
+import { normalizeUSPhoneToE164OrNull } from '../../utils/phone';
 
 // Keep the schema loose; we’ll do real normalization/validation in submit
 const phoneSchema = z.object({
@@ -31,6 +31,15 @@ const Login: React.FC = () => {
 
   const phoneForm = useForm<PhoneFormData>({ resolver: zodResolver(phoneSchema) });
   const codeForm  = useForm<CodeFormData>({ resolver: zodResolver(codeSchema) });
+
+  // Safari fix: Clear any stale confirmation results on mount
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount to prevent Safari from caching
+      setConfirmationResult(null);
+      setIsLoading(false);
+    };
+  }, []);
 
   const onPhoneSubmit = async (data: PhoneFormData) => {
     // Normalize to E.164 (+1XXXXXXXXXX) for Firebase
@@ -152,26 +161,26 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen flex items-center justify-center px-4 py-8 sm:py-12">
       <div className="max-w-md w-full">
-        <div className="bg-white/80 backdrop-blur-lg rounded-2xl shadow-xl p-8 border border-[#F25129]/20">
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1">
+        <div className="bg-white/80 backdrop-blur-lg rounded-xl sm:rounded-2xl shadow-xl p-6 sm:p-8 border border-[#F25129]/20">
+          <div className="text-center mb-6 sm:mb-8">
+            <h2 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1">
               Welcome Back
             </h2>
-            <p className="text-gray-600 mt-2">
+            <p className="text-sm sm:text-base text-gray-600 mt-2">
               {step === 'phone'
                 ? 'Enter your phone number to sign in'
                 : 'Enter the verification code sent to your phone'}
             </p>
             {step === 'phone' && (
-              <div className="text-sm text-gray-500 mt-2 space-y-1">
+              <div className="text-xs sm:text-sm text-gray-500 mt-2 space-y-1">
                 <p>
                   Don't have an account?{' '}
                   <button
                     type="button"
                     onClick={() => navigate('/register')}
-                    className="text-[#F25129] hover:text-[#FFC107] font-medium underline"
+                    className="text-[#F25129] hover:text-[#FFC107] font-medium underline touch-target"
                   >
                     Register here
                   </button>
@@ -184,7 +193,7 @@ const Login: React.FC = () => {
           </div>
 
           {step === 'phone' ? (
-            <form onSubmit={phoneForm.handleSubmit(onPhoneSubmit)} className="space-y-6">
+            <form onSubmit={phoneForm.handleSubmit(onPhoneSubmit)} className="space-y-5 sm:space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Phone Number
@@ -196,10 +205,10 @@ const Login: React.FC = () => {
                     type="tel"
                     inputMode="tel"
                     autoComplete="tel"
-                    className={`w-full pl-10 pr-4 py-3 rounded-lg border ${
+                    className={`w-full pl-10 pr-4 py-3 sm:py-3.5 rounded-lg border text-base ${
                       phoneForm.formState.errors.phoneNumber ? 'border-red-300' : 'border-gray-300'
                     } focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
-                    placeholder="e.g. 212 555 0123, (212) 555-0123, or 2125550123"
+                    placeholder="e.g. 212 555 0123"
                   />
                 </div>
                 {phoneForm.formState.errors.phoneNumber && (
@@ -212,13 +221,13 @@ const Login: React.FC = () => {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-medium hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3 sm:py-3.5 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-medium hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed touch-target text-sm sm:text-base"
               >
                 {isLoading ? 'Sending Code...' : 'Send Verification Code'}
               </button>
             </form>
           ) : (
-            <form onSubmit={codeForm.handleSubmit(onCodeSubmit)} className="space-y-6">
+            <form onSubmit={codeForm.handleSubmit(onCodeSubmit)} className="space-y-5 sm:space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Verification Code
@@ -235,7 +244,7 @@ const Login: React.FC = () => {
                       const t = e.currentTarget;
                       t.value = t.value.replace(/\D/g, '').slice(0, 6);
                     }}
-                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200 text-center text-2xl font-mono tracking-widest"
+                    className="w-full pl-10 pr-4 py-3 sm:py-3.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200 text-center text-xl sm:text-2xl font-mono tracking-widest"
                     placeholder="000000"
                   />
                 </div>
@@ -246,21 +255,25 @@ const Login: React.FC = () => {
                 )}
               </div>
 
-              <div className="flex space-x-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   type="button"
                   onClick={() => {
+                    // Clear confirmation result to prevent stuck state in Safari
+                    setConfirmationResult(null);
+                    setIsLoading(false);
+                    codeForm.reset({ verificationCode: '' });
                     setStep('phone');
                     requestAnimationFrame(() => phoneForm.setFocus('phoneNumber'));
                   }}
-                  className="flex-1 py-3 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                  className="flex-1 py-3 sm:py-3.5 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors touch-target text-sm sm:text-base"
                 >
                   Back
                 </button>
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="flex-1 py-3 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-medium hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 py-3 sm:py-3.5 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-medium hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed touch-target text-sm sm:text-base"
                 >
                   {isLoading ? 'Verifying...' : 'Verify Code'}
                 </button>
@@ -268,12 +281,12 @@ const Login: React.FC = () => {
             </form>
           )}
 
-          <div className="mt-6 text-center">
-            <p className="text-gray-600">
+          <div className="mt-5 sm:mt-6 text-center">
+            <p className="text-sm sm:text-base text-gray-600">
               Don't have an account?{' '}
               <Link
                 to="/register"
-                className="text-[#F25129] hover:text-[#E0451F] font-medium transition-colors"
+                className="text-[#F25129] hover:text-[#E0451F] font-medium transition-colors touch-target"
               >
                 Join our MOJO
               </Link>

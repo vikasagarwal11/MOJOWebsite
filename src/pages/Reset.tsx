@@ -1,6 +1,6 @@
+import { CheckCircle, Clock, Download, Heart, Users } from 'lucide-react';
 import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { Download, Clock, Heart, Users, CheckCircle } from 'lucide-react';
 
 const Reset: React.FC = () => {
   const [email, setEmail] = useState('');

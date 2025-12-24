@@ -1,43 +1,43 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   AlertTriangle,
   Calendar,
-  UserPlus,
-  Users,
   ChevronDown,
   Heart,
   QrCode,
+  UserPlus,
+  Users,
 } from 'lucide-react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { EventDoc } from '../hooks/useEvents';
-import { useAuth } from '../contexts/AuthContext';
-import { useUserBlocking } from '../hooks/useUserBlocking';
-import { useAttendees } from '../hooks/useAttendees';
-import { useFamilyMembers } from '../hooks/useFamilyMembers';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { AttendeeList } from '../components/events/AttendeeList';
 import { LoadingButton } from '../components/ui/LoadingSpinner';
-import { CreateAttendeeData, AttendeeStatus, AgeGroup, Relationship } from '../types/attendee';
+import { useAuth } from '../contexts/AuthContext';
+import { useAttendees } from '../hooks/useAttendees';
+import { EventDoc } from '../hooks/useEvents';
+import { useFamilyMembers } from '../hooks/useFamilyMembers';
+import { useUserBlocking } from '../hooks/useUserBlocking';
+import { AgeGroup, AttendeeStatus, CreateAttendeeData, Relationship } from '../types/attendee';
 import { FamilyMember } from '../types/family';
 
-import toast from 'react-hot-toast';
 import { doc, onSnapshot } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 import { db } from '../config/firebase';
 // Import hooks
-import { useEventDates } from '../components/events/RSVPModalNew/hooks/useEventDates';
 import { useCapacityState } from '../components/events/RSVPModalNew/hooks/useCapacityState';
+import { useEventDates } from '../components/events/RSVPModalNew/hooks/useEventDates';
 import { getCapacityBadgeClasses } from '../components/events/RSVPModalNew/rsvpUi';
 import { useWaitlistPositions } from '../hooks/useWaitlistPositions';
 // Import components
-import { Header } from '../components/events/RSVPModalNew/components/Header';
-import { EventDetails } from '../components/events/RSVPModalNew/components/EventDetails';
-import { AttendeeInputRowMemo } from '../components/events/RSVPModalNew/components/AttendeeInputRow';
-import { QRCodeTab } from '../components/events/QRCodeTab';
-import { PaymentSection } from '../components/events/PaymentSection';
-import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
+import { Helmet } from 'react-helmet-async';
 import { AutoPromotionManager } from '../components/admin/AutoPromotionManager';
 import { EventImage } from '../components/events/EventImage';
-import { Helmet } from 'react-helmet-async';
+import { PaymentSection } from '../components/events/PaymentSection';
+import { QRCodeTab } from '../components/events/QRCodeTab';
+import { AttendeeInputRowMemo } from '../components/events/RSVPModalNew/components/AttendeeInputRow';
+import { EventDetails } from '../components/events/RSVPModalNew/components/EventDetails';
+import { Header } from '../components/events/RSVPModalNew/components/Header';
+import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
 import { createEventCanonicalUrl } from '../utils/seo';
 
 const RSVPPage: React.FC = () => {
@@ -167,6 +167,9 @@ const RSVPPage: React.FC = () => {
   // Check if current user is the event creator (admin) or has admin role
   const isEventCreator = currentUser?.id === event?.createdBy;
   const isAdmin = currentUser?.role === 'admin' || isEventCreator;
+  
+  // Check if members are allowed to add attendees
+  const canAddAttendees = isAdmin || (event?.allowMembersToAddAttendees === true);
   
   // Use our new date hook - safe fallback for null event
   const emptyEvent = useMemo(() => ({} as EventDoc), []);
@@ -313,7 +316,8 @@ const RSVPPage: React.FC = () => {
 
   // Helper functions (not hooks, but must be defined before early returns)
   const handleClose = useCallback(() => {
-    navigate(-1); // Go back to previous page
+    // Always navigate to main events page for consistent UX across all devices
+    navigate('/events');
   }, [navigate]);
 
   // Available family members (not a hook, but computed value)
@@ -643,7 +647,7 @@ const RSVPPage: React.FC = () => {
                 }`}
               >
                 <Users className="w-4 h-4" />
-                Attendees
+                Your RSVP
               </button>
               <button
                 onClick={() => setActiveTab('qr')}
@@ -669,7 +673,7 @@ const RSVPPage: React.FC = () => {
                 }`}
               >
                 <Users className="w-4 h-4" />
-                Guest List
+                Event Guests List
               </button>
             </div>
           </div>
@@ -768,28 +772,42 @@ const RSVPPage: React.FC = () => {
                   </div>
                 )}
 
+                  {/* Add Attendees Section - Show based on event settings */}
                   <div className="bg-[#F25129]/10 border border-[#F25129]/20 rounded-lg mb-4">
                     <motion.button
                       id="add-attendees-trigger"
                       aria-expanded={!isAddSectionCollapsed}
                       aria-controls="add-attendees-panel"
-                      onClick={() => setIsAddSectionCollapsed((v) => !v)}
-                      className="w-full p-3 flex items-center justify-between hover:bg-[#F25129]/20 transition-colors"
+                      onClick={() => canAddAttendees && setIsAddSectionCollapsed((v) => !v)}
+                      disabled={!canAddAttendees}
+                      className={`w-full p-3 flex items-center justify-between transition-colors ${
+                        canAddAttendees ? 'hover:bg-[#F25129]/20 cursor-pointer' : 'opacity-50 cursor-not-allowed'
+                      }`}
                       aria-label={`${isAddSectionCollapsed ? 'Expand' : 'Collapse'} Add Attendees section`}
+                      title={!canAddAttendees ? 'Only admins can add attendees for this event' : undefined}
                     >
                       <div className="flex items-center gap-2">
                         <UserPlus className="w-4 h-4 text-[#F25129]" />
                         <h4 className="font-medium text-gray-900 text-[13px]">Add Attendees</h4>
-                        <span className="text-[12px] text-gray-500">
-                          ({readyToAddCount} ready to add)
-                        </span>
+                        {!canAddAttendees && (
+                          <span className="text-[11px] text-gray-600 bg-gray-200 px-2 py-0.5 rounded">
+                            Admin Only
+                          </span>
+                        )}
+                        {canAddAttendees && (
+                          <span className="text-[12px] text-gray-500">
+                            ({readyToAddCount} ready to add)
+                          </span>
+                        )}
                       </div>
-                      <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.2 }}>
-                        <ChevronDown className="w-5 h-5 text-gray-500" />
-                      </motion.div>
+                      {canAddAttendees && (
+                        <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.2 }}>
+                          <ChevronDown className="w-5 h-5 text-gray-500" />
+                        </motion.div>
+                      )}
                     </motion.button>
 
-                    {!isAddSectionCollapsed && (
+                    {!isAddSectionCollapsed && canAddAttendees && (
                       <div className="px-4 pt-2">
                         {capacityState.isNearlyFull && (
                           <div className={`mb-3 p-3 rounded-lg text-sm ${getCapacityBadgeClasses(capacityState.state)}`}>

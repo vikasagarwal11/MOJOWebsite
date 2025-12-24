@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
-import { Calendar, Eye, EyeOff } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
-import { auth } from '../config/firebase';
+import { Calendar, Eye, EyeOff } from 'lucide-react';
+import React, { useState } from 'react';
 import EventCardNew from '../components/events/EventCardNew';
+import { auth, db } from '../config/firebase';
 import { EventDoc } from '../hooks/useEvents';
 
 type ProfileRSVPAdminTabProps = {

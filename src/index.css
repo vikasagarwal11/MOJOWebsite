@@ -4,9 +4,39 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===== RESPONSIVE BASE STYLES ===== */
+
 /* Stabilize scrollbar across all routes to prevent layout shift */
 html {
   scrollbar-gutter: stable both-edges;
+  /* Enable smooth scrolling for better UX */
+  scroll-behavior: smooth;
+  /* Prevent text size adjustment on orientation change (iOS) */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Responsive body setup */
+body {
+  /* Prevent horizontal overflow on mobile */
+  overflow-x: hidden;
+  /* Better font rendering on all devices */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Ensure all containers respect viewport bounds */
+* {
+  box-sizing: border-box;
+}
+
+/* Prevent zoom on input focus (iOS Safari) */
+@media screen and (max-width: 767px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
 }
 
 /* Typography Enhancement */
@@ -17,7 +47,7 @@ html {
 }
 
 .subtle-subtitle { 
-  @apply uppercase tracking-widest text-sm; 
+  @apply uppercase tracking-widest text-xs sm:text-sm; 
 }
 
 .readable { 
@@ -28,12 +58,133 @@ html {
   @apply leading-loose; 
 }
 
+/* ===== RESPONSIVE UTILITIES ===== */
+
+/* Responsive container with safe padding */
+.container-responsive {
+  @apply w-full mx-auto px-4 sm:px-6 lg:px-8;
+  max-width: 100%;
+}
+
+/* Touch-friendly button/clickable elements */
+.touch-target {
+  @apply min-h-[44px] min-w-[44px] inline-flex items-center justify-center;
+}
+
+/* Responsive text sizing */
+.text-responsive-xs {
+  @apply text-xs sm:text-sm;
+}
+
+.text-responsive-sm {
+  @apply text-sm sm:text-base;
+}
+
+.text-responsive-base {
+  @apply text-base sm:text-lg;
+}
+
+.text-responsive-lg {
+  @apply text-lg sm:text-xl md:text-2xl;
+}
+
+.text-responsive-xl {
+  @apply text-xl sm:text-2xl md:text-3xl;
+}
+
+.text-responsive-2xl {
+  @apply text-2xl sm:text-3xl md:text-4xl lg:text-5xl;
+}
+
+/* Responsive spacing utilities */
+.space-y-responsive {
+  @apply space-y-4 sm:space-y-6 lg:space-y-8;
+}
+
+.gap-responsive {
+  @apply gap-3 sm:gap-4 lg:gap-6;
+}
+
+/* Responsive padding utilities */
+.p-responsive {
+  @apply p-4 sm:p-6 lg:p-8;
+}
+
+.px-responsive {
+  @apply px-4 sm:px-6 lg:px-8;
+}
+
+.py-responsive {
+  @apply py-4 sm:py-6 lg:py-8;
+}
+
+/* Responsive grid layouts */
+.grid-responsive-2 {
+  @apply grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6;
+}
+
+.grid-responsive-3 {
+  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6;
+}
+
+.grid-responsive-4 {
+  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6;
+}
+
 /* Mobile full-screen friendly Lightbox root - see enhanced version below */
 
 /* EXIF rotation handled by server-side processing, CSS as fallback */
 img {
   image-orientation: from-image;
   -webkit-image-orientation: from-image;
+}
+
+/* ===== LOGO DISPLAY FIXES FOR ALL BROWSERS ===== */
+
+/* Ensure logos display correctly on all platforms */
+.logo-container img,
+[src*="/logo"],
+[src*="mfm-logo"] {
+  /* Prevent layout shift during load */
+  display: block;
+  /* Ensure proper rendering */
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  /* Prevent blur on retina displays */
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  /* Smooth edges */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* SVG logo specific fixes for cross-browser compatibility */
+img[src$=".svg"] {
+  /* Better SVG rendering */
+  shape-rendering: geometricPrecision;
+  /* Prevent SVG scaling issues on Windows */
+  max-width: 100%;
+  height: auto;
+}
+
+/* Fix for Safari SVG rendering issues */
+@supports (-webkit-appearance: none) {
+  img[src$=".svg"] {
+    /* Force hardware acceleration */
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    /* Improve rendering quality */
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+}
+
+/* Fix for Firefox SVG rendering */
+@-moz-document url-prefix() {
+  img[src$=".svg"] {
+    image-rendering: -moz-crisp-edges;
+  }
 }
 
 /* ===== MOBILE LIGHTBOX: TikTok-Style Full Screen ===== */

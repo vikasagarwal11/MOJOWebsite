@@ -1,18 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { format } from 'date-fns';
+import { addDoc, collection, doc, getDocs, limit, query, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { motion } from 'framer-motion';
+import { Calendar, Clock, DollarSign, FileText, Loader2, MapPin, QrCode, Search, Tag, Users, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import toast from 'react-hot-toast';
 import { z } from 'zod';
-import { X, Calendar, Clock, MapPin, Users, FileText, Tag, QrCode, DollarSign, Search, Loader2 } from 'lucide-react';
+import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStorage } from '../../hooks/useStorage';
-import { addDoc, collection, doc, updateDoc, serverTimestamp, query, where, limit, getDocs, Timestamp } from 'firebase/firestore';
-import { db } from '../../config/firebase';
-import toast from 'react-hot-toast';
-import { format } from 'date-fns';
-import { safeFormat, safeISODate } from '../../utils/dateUtils';
 import { PaymentService } from '../../services/paymentService';
 import { EventPricing } from '../../types/payment';
+import { safeFormat, safeISODate } from '../../utils/dateUtils';
 
 // Firestore shouldn't see undefined fields
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
@@ -46,6 +46,7 @@ const eventSchema = z.object({
   waitlistCount: z.string().optional(),
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
   attendanceEnabled: z.boolean().optional(),
+  allowMembersToAddAttendees: z.boolean().optional(),
   // Payment fields
   requiresPayment: z.boolean().optional(),
   adultPrice: z.string().optional(),
@@ -57,21 +58,27 @@ const eventSchema = z.object({
   refundDeadline: z.string().optional(),
   isReadOnly: z.boolean().optional(),
 }).refine((data) => {
-  // Custom validation for timed events
-  if (!data.isAllDay) {
-    if (!data.endTime || !data.endDate) {
+  // Custom validation: if endTime is provided, endDate must also be provided
+  if (data.endTime && !data.endDate) {
+    return false;
+  }
+  
+  // If both endTime and endDate are provided, validate they're after start
+  if (data.endTime && data.endDate && data.time && data.date) {
+    // Safari-safe: Add seconds to ISO 8601 format
+    const startDateTime = new Date(`${data.date}T${data.time}:00`);
+    const endDateTime = new Date(`${data.endDate}T${data.endTime}:00`);
+    
+    if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
       return false;
     }
     
-    // Check if end time is after start time
-    const startDateTime = new Date(`${data.date}T${data.time}`);
-    const endDateTime = new Date(`${data.endDate}T${data.endTime}`);
-    
     return endDateTime > startDateTime;
   }
+  
   return true;
 }, {
-  message: "For timed events, end date and time are required and must be after start time",
+  message: "End date and time must be after start date and time",
   path: ["endTime"]
 });
 
@@ -107,6 +114,9 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   
   // Read-only state
   const [isReadOnly, setIsReadOnly] = useState(false);
+  
+  // Allow members to add attendees state
+  const [allowMembersToAddAttendees, setAllowMembersToAddAttendees] = useState(false);
   
   // Address autocomplete state
   const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
@@ -172,15 +182,19 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     waitlistCount: eventToEdit.waitlistCount?.toString() || '0',
     imageUrl: eventToEdit.imageUrl || '',
     attendanceEnabled: eventToEdit.attendanceEnabled || false,
+    allowMembersToAddAttendees: eventToEdit.allowMembersToAddAttendees || false,
     // Payment fields
     requiresPayment: eventToEdit.pricing?.requiresPayment || false,
     adultPrice: eventToEdit.pricing?.adultPrice ? (eventToEdit.pricing.adultPrice / 100).toString() : '',
     currency: eventToEdit.pricing?.currency || 'USD',
     refundAllowed: eventToEdit.pricing?.refundPolicy?.allowed === true,
   } : {
+    date: safeFormat(new Date(), 'yyyy-MM-dd'), // Default to today
+    time: safeFormat(new Date(), 'HH:mm'), // Default to current time
     isAllDay: false, // Default to false for new events
     duration: '1', // Default 1 hour duration
     attendanceEnabled: false, // Default to false for new events
+    allowMembersToAddAttendees: false, // Default to false for new events
     requiresPayment: false, // Default to free events
     currency: 'USD', // Default currency
     refundAllowed: false, // Default no refunds
@@ -197,21 +211,21 @@ const watchedDuration = watch('duration');
 
 // Smart defaults: Set end date to start date when start date changes
 useEffect(() => {
-  if (watchedDate && !watchedEndDate && !isEditing) {
+  if (watchedDate && !watchedEndDate && !isEditing && !isManuallyOverridden) {
     setValue('endDate', watchedDate);
   }
-}, [watchedDate, watchedEndDate, setValue, isEditing]);
+}, [watchedDate, watchedEndDate, setValue, isEditing, isManuallyOverridden]);
 
 // Smart defaults: Set end time to start time + 1 hour when start time changes
 useEffect(() => {
-  if (watchedTime && !watchedEndTime && !isEditing) {
+  if (watchedTime && !watchedEndTime && !isEditing && !isManuallyOverridden) {
     const [hours, minutes] = watchedTime.split(':').map(Number);
     const endTime = new Date();
     endTime.setHours(hours + 1, minutes, 0, 0);
     const endTimeString = endTime.toTimeString().slice(0, 5);
     setValue('endTime', endTimeString);
   }
-}, [watchedTime, watchedEndTime, setValue, isEditing]);
+}, [watchedTime, watchedEndTime, setValue, isEditing, isManuallyOverridden]);
 
 // Clear end date/time when switching to all-day
 useEffect(() => {
@@ -224,30 +238,27 @@ useEffect(() => {
 
 // Duration calculation: Auto-calculate end time when duration changes
 useEffect(() => {
-  if (watchedDuration && watchedDate && watchedTime && !watchedIsAllDay && !isEditing) {
+  if (watchedDuration && watchedDate && watchedTime && !watchedIsAllDay && !isEditing && !isManuallyOverridden) {
     const durationHours = parseFloat(watchedDuration);
     if (!isNaN(durationHours) && durationHours > 0) {
+      // Parse start date and time properly for Safari
       const [hours, minutes] = watchedTime.split(':').map(Number);
-      const startDateTime = new Date();
-      startDateTime.setHours(hours, minutes, 0, 0);
+      const startDateTime = new Date(watchedDate + 'T' + watchedTime + ':00');
       
-      // Add duration
+      // Add duration in milliseconds
       const endDateTime = new Date(startDateTime.getTime() + (durationHours * 60 * 60 * 1000));
       
       // Format end time
       const endTimeString = endDateTime.toTimeString().slice(0, 5);
       
-      // Check if we need to move to next day
-      const endDate = new Date(watchedDate);
-      if (endDateTime.getHours() < hours || (endDateTime.getHours() === hours && endDateTime.getMinutes() < minutes)) {
-        endDate.setDate(endDate.getDate() + 1);
-      }
+      // Format end date
+      const endDateString = safeFormat(endDateTime, 'yyyy-MM-dd');
       
       setValue('endTime', endTimeString);
-      setValue('endDate', safeISODate(endDate));
+      setValue('endDate', endDateString);
     }
   }
-}, [watchedDuration, watchedDate, watchedTime, watchedIsAllDay, setValue, isEditing]);
+}, [watchedDuration, watchedDate, watchedTime, watchedIsAllDay, setValue, isEditing, isManuallyOverridden]);
 
   // Load existing event data for editing
   useEffect(() => {
@@ -262,6 +273,8 @@ useEffect(() => {
       setValue('waitlistLimit', eventToEdit.waitlistLimit?.toString() || '');
       setValue('waitlistCount', eventToEdit.waitlistCount?.toString() || '0');
       setValue('attendanceEnabled', eventToEdit.attendanceEnabled || false);
+      setValue('allowMembersToAddAttendees', eventToEdit.allowMembersToAddAttendees || false);
+      setAllowMembersToAddAttendees(eventToEdit.allowMembersToAddAttendees || false);
       
       // Set read-only state
       setIsReadOnly(eventToEdit.isReadOnly || false);
@@ -656,7 +669,7 @@ useEffect(() => {
     let endAt: Date | undefined;
     
     if (data.isAllDay) {
-      // All-day event: start at midnight of start date
+      // All-day event: start at midnight of start date (Safari-safe)
       startAt = new Date(`${data.date}T00:00:00`);
       
       // For all-day events, end date is required
@@ -670,13 +683,13 @@ useEffect(() => {
         endAt.setDate(endAt.getDate() + 1);
       }
     } else {
-      // Timed event: use start time
-      startAt = new Date(`${data.date}T${data.time || '00:00'}`);
+      // Timed event: use start time (Safari-safe with ISO 8601 format)
+      startAt = new Date(`${data.date}T${data.time || '00:00'}:00`);
       
       // Handle end time with optional end date for multi-day events
       if (data.endTime) {
         const endDateStr = data.endDate || data.date; // default to same day if no end date
-        endAt = new Date(`${endDateStr}T${data.endTime}`);
+        endAt = new Date(`${endDateStr}T${data.endTime}:00`);
         
         // Validate end date/time
         if (Number.isNaN(endAt.getTime())) {
@@ -769,7 +782,7 @@ useEffect(() => {
         if (data.refundAllowed) {
           pricing.refundPolicy = {
             allowed: true,
-            deadline: data.refundDeadline ? Timestamp.fromDate(new Date(data.refundDeadline)) : undefined,
+            deadline: data.refundDeadline ? Timestamp.fromDate(new Date(data.refundDeadline + 'T00:00:00')) : undefined,
             feePercentage: 5 // Default 5% refund fee
           };
         } else {
@@ -799,6 +812,7 @@ useEffect(() => {
         waitlistLimit: data.waitlistLimit ? Number(data.waitlistLimit) : undefined,
         waitlistCount: data.waitlistCount ? Number(data.waitlistCount) : undefined,
         attendanceEnabled: data.attendanceEnabled || false,
+        allowMembersToAddAttendees: data.allowMembersToAddAttendees || false,
         tags: tags.length > 0 ? tags : undefined,
         createdBy: isEditing ? (eventToEdit?.createdBy || currentUser.id) : currentUser.id,
         visibility: eventVisibility,
@@ -1423,6 +1437,33 @@ useEffect(() => {
                 </div>
                 <p className="text-xs text-blue-700">
                   Enable QR code scanning for event check-ins. Attendees can scan a QR code to automatically record their attendance.
+                </p>
+              </div>
+            </div>
+          </div>
+            
+          {/* Allow Members to Add Attendees */}
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <Users className="w-5 h-5 text-purple-600 mt-0.5" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-purple-900">
+                    Allow Members to Add Attendees
+                  </label>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      {...register('allowMembersToAddAttendees')}
+                      type="checkbox"
+                      checked={allowMembersToAddAttendees}
+                      onChange={(e) => setAllowMembersToAddAttendees(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+                <p className="text-xs text-purple-700">
+                  When enabled, regular members can add additional attendees when they RSVP. When disabled, only admins and the event creator can add attendees.
                 </p>
               </div>
             </div>
