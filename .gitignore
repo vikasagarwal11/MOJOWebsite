@@ -66,3 +66,7 @@ temp/
 # Bolt specific
 .bolt/
 scripts/log-reader-key.json
+
+# Documentation files (local reference only)
+*.md
+!README.md

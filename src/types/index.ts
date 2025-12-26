@@ -133,6 +133,9 @@ export interface Testimonial {
   reviewedBy?: string;
   reviewedAt?: Date;
   publishedAt?: Date;
+  // Smart metadata for search and filtering
+  tags?: string[];
+  searchText?: string;
   // Moderation fields
   moderationStatus?: 'pending' | 'approved' | 'rejected';
   requiresApproval?: boolean;

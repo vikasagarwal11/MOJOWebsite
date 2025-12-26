@@ -362,6 +362,83 @@ async function getAssistantConfig(): Promise<{
   }
 }
 
+/**
+ * Normalize text for search/ranking
+ */
+function norm(s?: string) {
+  return (s || '')
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[^a-z0-9\s'-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Smart relevance scoring for testimonials
+ */
+function scoreTestimonial(t: any, qRaw: string) {
+  const q = norm(qRaw);
+  if (!q) return 0;
+
+  const hayQuote = norm(t.quote || '');
+  const hayName = norm(t.displayName || '');
+  const hayHighlight = norm(t.highlight || '');
+  const tags = Array.isArray(t.tags) ? t.tags : [];
+  const toneKeywords = Array.isArray(t.toneKeywords) ? t.toneKeywords : [];
+  const toneLabel = norm(t.toneLabel || '');
+
+  let score = 0;
+
+  // Hard matches
+  if (hayQuote.includes(q)) score += 50;
+  if (hayHighlight.includes(q)) score += 35;
+  if (hayName.includes(q)) score += 25;
+
+  // Token-level boosting
+  const qTokens = q.split(' ').filter((w) => w.length >= 3);
+  for (const tok of qTokens) {
+    if (hayQuote.includes(tok)) score += 8;
+    if (hayHighlight.includes(tok)) score += 6;
+    if (hayName.includes(tok)) score += 4;
+    if (toneLabel && toneLabel.includes(tok)) score += 5;
+
+    if (tags.some((x: string) => norm(x) === tok || norm(x).includes(tok))) score += 7;
+    if (toneKeywords.some((x: string) => norm(x) === tok || norm(x).includes(tok))) score += 7;
+  }
+
+  // Tie-breakers
+  if (t.featured) score += 4;
+  if (typeof t.rating === 'number') score += Math.max(0, Math.min(5, t.rating)) * 0.5;
+
+  const ts = t.createdAt instanceof Date ? t.createdAt.getTime() : t.createdAt?.toMillis?.() || 0;
+  if (ts) score += Math.min(3, (Date.now() - ts) / (1000 * 60 * 60 * 24 * 120)); // small recency signal
+
+  return score;
+}
+
+/**
+ * Build testimonials context for AI chatbot
+ */
+function buildTestimonialsContext(question: string, testimonials: any[], max = 6) {
+  const ranked = testimonials
+    .map((t) => ({ t, s: scoreTestimonial(t, question) }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, max)
+    .map((x) => x.t);
+
+  if (ranked.length === 0) return '';
+
+  const lines = ranked.map((t, i) => {
+    const who = t.displayName || 'MFM Member';
+    const mood = t.toneLabel ? ` (mood: ${t.toneLabel})` : '';
+    return `${i + 1}. "${t.quote}" — ${who}${mood}`;
+  });
+
+  return `Moms Fitness Mojo testimonials (most relevant):\n${lines.join('\n')}\n`;
+}
+
 async function answerQuestion(question: string, context: string, profileSummary: string, allowGeneralKnowledge = false, conversationHistory?: string) {
   const hasContext = context && context.trim().length > 0;
   
@@ -1341,6 +1418,46 @@ export const chatAsk = onCall(
 
         const context = buildContextFromDocs(dedupedDocs, 2500);
 
+        // Add testimonials context if question might benefit from it
+        let testimonialsContext = '';
+        try {
+          const testimonialsSnapshot = await db
+            .collection('testimonials')
+            .where('status', '==', 'published')
+            .limit(50)
+            .get();
+          
+          if (!testimonialsSnapshot.empty) {
+            const testimonials = testimonialsSnapshot.docs.map((doc) => {
+              const data = doc.data();
+              return {
+                id: doc.id,
+                quote: data.quote || '',
+                displayName: data.displayName || 'MFM Member',
+                highlight: data.highlight || '',
+                rating: data.rating || 0,
+                featured: data.featured || false,
+                toneLabel: data.toneLabel || '',
+                toneKeywords: data.toneKeywords || [],
+                tags: data.tags || [],
+                createdAt: data.createdAt?.toDate?.() || new Date(),
+                publishedAt: data.publishedAt?.toDate?.() || data.createdAt?.toDate?.() || new Date(),
+              };
+            });
+
+            // Use smart ranking to find relevant testimonials
+            testimonialsContext = buildTestimonialsContext(question, testimonials, 6);
+          }
+        } catch (testimonialError: any) {
+          console.warn('[assistant.chatAsk] Failed to fetch testimonials context:', testimonialError?.message);
+          // Continue without testimonials context
+        }
+
+        // Combine KB context with testimonials context
+        const combinedContext = testimonialsContext
+          ? `${context}\n\n${testimonialsContext}`
+          : context;
+
         const profileSummary = userProfile
           ? [
               userProfile.environment ? `Prefers ${userProfile.environment} workouts.` : '',
@@ -1352,7 +1469,7 @@ export const chatAsk = onCall(
           : '';
 
         // Phase 6: Get KB answer and detect NO_KB_ANSWER sentinel
-        const rawAnswer = await answerQuestion(question, context, profileSummary, false, conversationHistory);
+        const rawAnswer = await answerQuestion(question, combinedContext, profileSummary, false, conversationHistory);
         const trimmed = (rawAnswer || '').trim();
         const lowerTrimmed = trimmed.toLowerCase();
 
