@@ -394,7 +394,7 @@ const Home: React.FC = () => {
             tabIndex={-1}
             data-section-heading
           >
-            Mom's Moments
+            Mom's Moment
           </h2>
           <p className="text-xl text-gray-600 readable mb-4">
             Real snapshots from our recent workouts, socials, and celebrations—see what the community is up to right now.
