@@ -8,9 +8,8 @@ import {
   Image as ImageIcon,
   Instagram,
   MessageSquare,
-  UploadCloud,
   Users,
-  X,
+  X
 } from 'lucide-react';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
@@ -507,9 +506,6 @@ const Home: React.FC = () => {
           </div>
         </section>
       )}
-          </div>
-        </div>
-      </section>
 
       {/* Testimonials */}
       <section id="stories" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 lg:py-12 -mt-4 space-y-6 sm:space-y-10">
