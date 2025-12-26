@@ -238,11 +238,25 @@ const Home: React.FC = () => {
           <div className="grid items-center gap-8 lg:grid-cols-2 mb-12">
             {/* Left: Logo */}
             <div className="flex justify-center lg:justify-start w-full">
-              <div className="relative w-full sm:w-auto sm:max-w-lg aspect-[2/1.5] min-w-[280px] sm:min-w-0 rounded-2xl overflow-hidden shadow-lg bg-[#F25129] flex items-center justify-center p-4 sm:p-6 md:p-3">
+              <div className="relative w-full sm:w-auto sm:max-w-lg aspect-[2/1.5] min-w-[280px] sm:min-w-0 rounded-2xl overflow-hidden shadow-lg bg-[#F25129] flex items-center justify-center p-1 sm:p-2 md:p-3">
                 <img 
                   src="/assets/logo/mfm-logo-updated-tagline-2.svg" 
-                  alt="Moms Fitness Mojo" 
+                  alt="Moms Fitness Mojo - Where Fitness meets Friendship" 
                   className="w-full h-full object-contain"
+                  loading="eager"
+                  fetchPriority="high"
+                  decoding="async"
+                  width="800"
+                  height="600"
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    // Fallback to PNG if SVG fails
+                    if (target.src.includes('.svg')) {
+                      console.warn('SVG logo failed to load, using PNG fallback');
+                      target.src = '/logo.png';
+                      target.removeAttribute('srcset');
+                    }
+                  }}
                 />
               </div>
             </div>
