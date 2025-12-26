@@ -53,8 +53,13 @@ function scoreTestimonial(t: Testimonial, qRaw: string) {
   if (t.featured) score += 4;
   if (typeof t.rating === 'number') score += Math.max(0, Math.min(5, t.rating)) * 0.5;
 
-  const ts = t.createdAt instanceof Date ? t.createdAt.getTime() : 0;
-  if (ts) score += Math.min(3, (Date.now() - ts) / (1000 * 60 * 60 * 24 * 120)); // small recency signal
+  // Recency boost: newer testimonials get higher scores (exponential decay)
+  const date = t.publishedAt || t.createdAt;
+  if (date instanceof Date) {
+    const daysOld = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
+    // Exponential decay: ~3 when fresh, ~0 after ~4 months
+    score += 3 * Math.exp(-daysOld / 120);
+  }
 
   return score;
 }
