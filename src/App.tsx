@@ -30,6 +30,7 @@ import EventsReadOnly from './pages/EventsReadOnly';
 import EventDetailsPage from './pages/EventDetailsPage';
 import RSVPPage from './pages/RSVPPage';
 import ShareYourStory from './pages/ShareYourStory';
+import Testimonials from './pages/Testimonials';
 // import SupportTools from './pages/SupportTools'; // Hidden for now - not rolling out in initial phase
 // import Workouts from './pages/Workouts'; // Hidden for now
 // import Challenges from './pages/Challenges'; // Hidden for now
@@ -112,6 +113,7 @@ function AppContent() {
             <Route path="press" element={<Press />} />
             <Route path="community-guidelines" element={<CommunityGuidelines />} />
             <Route path="share-your-story" element={<ShareYourStory />} />
+            <Route path="testimonials" element={<Testimonials />} />
             {/* <Route path="workouts" element={<Workouts />} /> */} {/* Hidden for now */}
             {/* <Route path="challenges" element={<Challenges />} /> */} {/* Hidden for now */}
             {/* <Route path="challenges/:id" element={<ChallengeDetail />} /> */} {/* Hidden for now */}

@@ -464,37 +464,35 @@ const Home: React.FC = () => {
        </section>
 
       {/* Stronger Together / Community */}
-      {!isAuthed && (
-        <section id="community" className="py-8 sm:py-12 -mt-4">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="rounded-2xl border border-gray-100 bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 p-4 sm:p-6 shadow-sm">
-              <h2
-                className="text-3xl font-bold tracking-tight text-[#F25129]"
-                tabIndex={-1}
-                data-section-heading
-              >
-                Stronger Together
-              </h2>
-              <p className="mt-2 text-gray-700 readable">
-                We&apos;re currently active across <strong>Short Hills</strong>, <strong>Millburn</strong>, <strong>Livingston</strong>, <strong>Summit</strong>, <strong>Maplewood</strong>, and <strong>Springfield</strong> and expanding soon! Not in your area? Reach out to start Moms Fitness Mojo near you.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                {["Short Hills", "Millburn", "Livingston", "Summit", "Maplewood", "Springfield"].map((city) => (
-                  <span key={city} className="rounded-full border border-gray-200 px-4 py-2 text-sm bg-white hover:border-[#F25129] hover:text-[#F25129] transition-colors">
-                    {city}
-                  </span>
-                ))}
-              </div>
-              <Link
-                to="/register"
-                className="mt-4 inline-flex items-center rounded-full px-5 py-3 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-all duration-300"
-              >
-                Start a Chapter
-              </Link>
+      <section id="community" className="py-8 sm:py-12 -mt-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="rounded-2xl border border-gray-100 bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 p-4 sm:p-6 shadow-sm">
+            <h2
+              className="text-3xl font-bold tracking-tight text-[#F25129]"
+              tabIndex={-1}
+              data-section-heading
+            >
+              Stronger Together
+            </h2>
+            <p className="mt-2 text-gray-700 readable">
+              We&apos;re currently active across <strong>Short Hills</strong>, <strong>Millburn</strong>, <strong>Livingston</strong>, <strong>Summit</strong>, <strong>Maplewood</strong>, and <strong>Springfield</strong> and expanding soon! Not in your area? Reach out to start Moms Fitness Mojo near you.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              {["Short Hills", "Millburn", "Livingston", "Summit", "Maplewood", "Springfield"].map((city) => (
+                <span key={city} className="rounded-full border border-gray-200 px-4 py-2 text-sm bg-white hover:border-[#F25129] hover:text-[#F25129] transition-colors">
+                  {city}
+                </span>
+              ))}
             </div>
+            <Link
+              to="/contact?inquiryType=start-a-chapter"
+              className="mt-4 inline-flex items-center rounded-full px-5 py-3 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-all duration-300"
+            >
+              Start a Chapter
+            </Link>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
       {/* Testimonials */}
       <section id="stories" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 -mt-4 space-y-10">
@@ -509,7 +507,7 @@ const Home: React.FC = () => {
             </h2>
             {isAuthed ? (
               <Link
-                to="/share-your-story"
+                to="/testimonials"
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white rounded-full font-semibold hover:from-[#E0451F] hover:to-[#E55A2B] transition-all shadow-md hover:shadow-lg transform hover:scale-105"
               >
                 <MessageSquare className="w-4 h-4" />
@@ -595,8 +593,14 @@ const Home: React.FC = () => {
             )}
           </div>
           <p className="mx-auto max-w-2xl text-base text-gray-600">
-            Real words from the women shaping Moms Fitness Mojo. Scroll through our community stories. Feeling inspired? Tap{' '}
-            <span className="font-semibold text-gray-800">&ldquo;Share Your Story.&rdquo;</span>
+            Real words from the women shaping Moms Fitness Mojo. Scroll through our community stories. Feeling inspired?{' '}
+            {isAuthed ? (
+              <Link to="/testimonials" className="font-semibold text-[#F25129] hover:underline">
+                Tap &ldquo;Share Your Story&rdquo; to add yours.
+              </Link>
+            ) : (
+              <span className="font-semibold text-gray-800">&ldquo;Share Your Story.&rdquo;</span>
+            )}
           </p>
         </div>
 
