@@ -628,7 +628,7 @@ const Home: React.FC = () => {
                </p>
 
                {/* NOTE: "My Profile" removed per your preference */}
-               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
                  <Link
                    to="/events"
                    className="flex items-center justify-center gap-2 px-5 py-4 bg-white rounded-xl border border-[#F25129]/20 hover:shadow-lg transition"
@@ -643,13 +643,14 @@ const Home: React.FC = () => {
                    <ImageIcon className="w-5 h-5 text-[#F25129]" />
                    <span>Media Gallery</span>
                  </Link>
-                 <Link
+                 {/* Posts link hidden for now - will bring back later */}
+                 {/* <Link
                    to="/posts"
                    className="flex items-center justify-center gap-2 px-5 py-4 bg-white rounded-xl border border-[#F25129]/20 hover:shadow-lg transition"
                  >
                    <UploadCloud className="w-5 h-5 text-[#F25129]" />
                    <span>Create / View Posts</span>
-                 </Link>
+                 </Link> */}
                </div>
              </div>
            </div>
