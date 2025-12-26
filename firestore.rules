@@ -674,6 +674,8 @@ service cloud.firestore {
           'toneLabel',
           'toneConfidence',
           'toneKeywords',
+          'tags',
+          'searchText',
           'moderationStatus',
           'requiresApproval',
           'moderationReason',
@@ -695,7 +697,9 @@ service cloud.firestore {
         && (!('highlight' in request.resource.data) || (request.resource.data.highlight is string && request.resource.data.highlight.size() <= 120))
         && (!('toneLabel' in request.resource.data) || (request.resource.data.toneLabel is string && request.resource.data.toneLabel.size() <= 40))
         && (!('toneConfidence' in request.resource.data) || (request.resource.data.toneConfidence is number && request.resource.data.toneConfidence >= 0 && request.resource.data.toneConfidence <= 1))
-        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 5))
+        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 8))
+        && (!('tags' in request.resource.data) || (request.resource.data.tags is list && request.resource.data.tags.size() <= 8))
+        && (!('searchText' in request.resource.data) || (request.resource.data.searchText is string && request.resource.data.searchText.size() <= 5000))
         && (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus is string)
         && (!('requiresApproval' in request.resource.data) || request.resource.data.requiresApproval is bool)
         && (!('moderationReason' in request.resource.data) || request.resource.data.moderationReason is string)
@@ -720,6 +724,8 @@ service cloud.firestore {
           'toneLabel',
           'toneConfidence',
           'toneKeywords',
+          'tags',
+          'searchText',
           'moderationStatus',
           'requiresApproval',
           'moderationReason',
@@ -742,7 +748,9 @@ service cloud.firestore {
         && (!('publishedAt' in request.resource.data) || request.resource.data.publishedAt == null || request.resource.data.publishedAt is timestamp)
         && (!('toneLabel' in request.resource.data) || (request.resource.data.toneLabel is string && request.resource.data.toneLabel.size() <= 40))
         && (!('toneConfidence' in request.resource.data) || (request.resource.data.toneConfidence is number && request.resource.data.toneConfidence >= 0 && request.resource.data.toneConfidence <= 1))
-        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 5))
+        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 8))
+        && (!('tags' in request.resource.data) || (request.resource.data.tags is list && request.resource.data.tags.size() <= 8))
+        && (!('searchText' in request.resource.data) || (request.resource.data.searchText is string && request.resource.data.searchText.size() <= 5000))
         && (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus is string)
         && (!('requiresApproval' in request.resource.data) || request.resource.data.requiresApproval is bool)
         && (!('moderationReason' in request.resource.data) || request.resource.data.moderationReason is string)

@@ -411,8 +411,19 @@ function scoreTestimonial(t: any, qRaw: string) {
   if (t.featured) score += 4;
   if (typeof t.rating === 'number') score += Math.max(0, Math.min(5, t.rating)) * 0.5;
 
-  const ts = t.createdAt instanceof Date ? t.createdAt.getTime() : t.createdAt?.toMillis?.() || 0;
-  if (ts) score += Math.min(3, (Date.now() - ts) / (1000 * 60 * 60 * 24 * 120)); // small recency signal
+  // Recency boost: newer testimonials get higher scores (exponential decay)
+  const getDate = (ts: any): Date | null => {
+    if (ts instanceof Date) return ts;
+    if (ts && typeof ts.toDate === 'function') return ts.toDate();
+    if (ts && typeof ts.toMillis === 'function') return new Date(ts.toMillis());
+    return null;
+  };
+  const date = getDate(t.publishedAt || t.createdAt);
+  if (date) {
+    const daysOld = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
+    // Exponential decay: ~3 when fresh, ~0 after ~4 months
+    score += 3 * Math.exp(-daysOld / 120);
+  }
 
   return score;
 }
@@ -1012,16 +1023,11 @@ async function handleTestimonialQuestion(
   uid: string | null
 ): Promise<AssistantResponse> {
   try {
-    // Query testimonials by createdAt desc, limit to 3
+    // Query published testimonials by createdAt desc, limit to 3
     let query = db.collection('testimonials')
+      .where('status', '==', 'published')
       .orderBy('createdAt', 'desc')
       .limit(3);
-
-    // Filter by visibility (testimonials may have isPublic or visibility field)
-    // Adjust based on your schema
-    if (allowedVisibility.length === 1 && allowedVisibility[0] === 'public') {
-      query = query.where('isPublic', '==', true) as FirebaseFirestore.Query;
-    }
 
     // Optional: Topic filter
     const topicMatch = question.match(/\b(about|related to)\s+(\w+)/i);
@@ -1070,15 +1076,32 @@ async function handleTestimonialQuestion(
       };
     }
 
-    const testimonials = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    let answer = 'Here are recent testimonials:\n\n';
+    // Map to correct schema: displayName, quote, highlight
+    const testimonials = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        displayName: data.displayName || 'MFM Member',
+        quote: data.quote || '',
+        highlight: data.highlight || '',
+        rating: typeof data.rating === 'number' ? data.rating : 0,
+        featured: Boolean(data.featured),
+        createdAt: data.createdAt?.toDate?.() || new Date(),
+        publishedAt: data.publishedAt?.toDate?.() || data.createdAt?.toDate?.() || new Date(),
+      };
+    });
+
+    let answer = 'Here are recent testimonials from Moms Fitness Mojo:\n\n';
     
     testimonials.forEach((testimonial: any) => {
-      const created = testimonial.createdAt?.toDate?.() || new Date();
-      const createdStr = created.toLocaleString('en-US', { dateStyle: 'medium' });
-      const author = testimonial.authorName || testimonial.name || 'Member';
-      const content = testimonial.content || testimonial.text || testimonial.message || '';
-      answer += `• **${author}** (${createdStr}): ${content.substring(0, 150)}${content.length > 150 ? '...' : ''}\n`;
+      const created = testimonial.publishedAt || testimonial.createdAt;
+      const createdStr = created instanceof Date 
+        ? created.toLocaleString('en-US', { dateStyle: 'medium' })
+        : new Date().toLocaleString('en-US', { dateStyle: 'medium' });
+      const author = testimonial.displayName;
+      const content = testimonial.quote || '';
+      const highlight = testimonial.highlight ? `\n  "${testimonial.highlight}"` : '';
+      answer += `• **${author}** (${createdStr}): ${content.substring(0, 150)}${content.length > 150 ? '...' : ''}${highlight}\n`;
     });
 
     const sessionRef = db.collection('chat_sessions').doc(sessionId);
@@ -1110,11 +1133,11 @@ async function handleTestimonialQuestion(
       sessionId,
       citations: testimonials.map((testimonial: any) => ({
         id: testimonial.id || 'app_data_testimonial',
-        title: `Testimonial from ${testimonial.authorName || testimonial.name || 'Member'}`,
-        url: `/testimonials/${testimonial.id}`, // Add URL if testimonials have detail pages
+        title: `Testimonial from ${testimonial.displayName || 'MFM Member'}`,
+        url: `/testimonials`, // Link to testimonials page
         sourceType: 'app_data',
         distance: undefined,
-        snippet: (testimonial.content || testimonial.text || testimonial.message || '').substring(0, 220),
+        snippet: (testimonial.quote || '').substring(0, 220),
       })),
       rawSources: testimonials,
     };
@@ -1428,20 +1451,27 @@ export const chatAsk = onCall(
             .get();
           
           if (!testimonialsSnapshot.empty) {
-            const testimonials = testimonialsSnapshot.docs.map((doc) => {
-              const data = doc.data();
+            const testimonials = testimonialsSnapshot.docs.map((docSnap) => {
+              const data = docSnap.data();
+              // Handle Admin SDK Timestamp conversion
+              const getDate = (ts: any): Date => {
+                if (ts instanceof Date) return ts;
+                if (ts && typeof ts.toDate === 'function') return ts.toDate();
+                if (ts && typeof ts.toMillis === 'function') return new Date(ts.toMillis());
+                return new Date();
+              };
               return {
-                id: doc.id,
+                id: docSnap.id,
                 quote: data.quote || '',
                 displayName: data.displayName || 'MFM Member',
                 highlight: data.highlight || '',
-                rating: data.rating || 0,
-                featured: data.featured || false,
+                rating: typeof data.rating === 'number' ? data.rating : 0,
+                featured: Boolean(data.featured),
                 toneLabel: data.toneLabel || '',
-                toneKeywords: data.toneKeywords || [],
-                tags: data.tags || [],
-                createdAt: data.createdAt?.toDate?.() || new Date(),
-                publishedAt: data.publishedAt?.toDate?.() || data.createdAt?.toDate?.() || new Date(),
+                toneKeywords: Array.isArray(data.toneKeywords) ? data.toneKeywords : [],
+                tags: Array.isArray(data.tags) ? data.tags : [],
+                createdAt: getDate(data.createdAt),
+                publishedAt: getDate(data.publishedAt || data.createdAt),
               };
             });
 

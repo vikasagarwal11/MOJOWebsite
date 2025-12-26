@@ -6,6 +6,7 @@ import {
   doc,
   deleteDoc,
   deleteField,
+  getDoc,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { TestimonialStatus } from '../types';
@@ -75,10 +76,15 @@ export interface SubmitTestimonialInput {
 export async function submitTestimonial(input: SubmitTestimonialInput) {
   const { userId, displayName, quote, rating, highlight, avatarUrl } = input;
 
-  const sanitizedRating = Math.min(5, Math.max(1, Math.round(rating)));
+  // Defensive trimming with validation
+  const safeDisplayName = (displayName || '').trim();
+  const safeQuote = (quote || '').trim();
 
-  const safeDisplayName = displayName.trim();
-  const safeQuote = quote.trim();
+  if (!safeQuote || safeQuote.length < 20) {
+    throw new Error('Testimonial quote must be at least 20 characters long.');
+  }
+
+  const sanitizedRating = Math.min(5, Math.max(1, Math.round(rating)));
 
   const payload: Record<string, any> = {
     userId,
@@ -210,8 +216,9 @@ export async function adminUpdateTestimonial(
     payload.toneKeywords = updates.toneKeywords === null ? deleteField() : updates.toneKeywords;
   }
 
-  // Recompute searchText if any of these changed
-  const shouldRebuildSearch =
+  // Rebuild smart metadata when key fields change
+  // We need to fetch current values for fields that weren't updated
+  const shouldRebuildMetadata =
     updates.quote !== undefined ||
     updates.displayName !== undefined ||
     updates.highlight !== undefined ||
@@ -219,21 +226,69 @@ export async function adminUpdateTestimonial(
     updates.toneLabel !== undefined ||
     updates.toneKeywords !== undefined;
 
-  if (shouldRebuildSearch) {
-    const displayName = updates.displayName ?? '';
-    const quote = updates.quote ?? '';
-    const highlight = updates.highlight ?? '';
-    const tags = updates.tags ?? [];
-    const toneKeywords = updates.toneKeywords ?? [];
-    const toneLabel = updates.toneLabel ?? '';
+  if (shouldRebuildMetadata) {
+    // Fetch current testimonial to get values for fields not being updated
+    const currentDoc = await getDoc(testimonialRef);
+    const currentData = currentDoc.exists() ? currentDoc.data() : {};
 
+    // Use updated values if provided, otherwise fall back to current values
+    const quote = (updates.quote !== undefined ? updates.quote : currentData.quote || '').trim();
+    const displayName = (updates.displayName !== undefined ? updates.displayName : currentData.displayName || '').trim();
+    
+    // Handle highlight: if explicitly set to null, use empty; if not provided, derive from quote if quote changed
+    let effectiveHighlight: string | undefined;
+    if (updates.highlight !== undefined) {
+      effectiveHighlight = updates.highlight === null ? undefined : updates.highlight.trim() || undefined;
+    } else if (updates.quote !== undefined && quote) {
+      // Quote changed but highlight wasn't explicitly set - derive it
+      effectiveHighlight = deriveHighlight(quote);
+    } else {
+      effectiveHighlight = currentData.highlight || undefined;
+    }
+
+    // Handle tags: if explicitly provided, use them; otherwise re-extract if quote/highlight changed
+    let effectiveTags: string[] = [];
+    if (updates.tags !== undefined) {
+      effectiveTags = updates.tags === null ? [] : (Array.isArray(updates.tags) ? updates.tags : []);
+    } else if (updates.quote !== undefined || updates.highlight !== undefined) {
+      // Quote or highlight changed - re-extract tags
+      effectiveTags = extractTags(`${quote} ${effectiveHighlight || ''}`);
+    } else {
+      effectiveTags = Array.isArray(currentData.tags) ? currentData.tags : [];
+    }
+
+    // Use updated tone fields if provided, otherwise current values
+    const toneKeywords = Array.isArray(updates.toneKeywords)
+      ? updates.toneKeywords
+      : updates.toneKeywords === null
+      ? []
+      : Array.isArray(currentData.toneKeywords)
+      ? currentData.toneKeywords
+      : [];
+    const toneLabel = typeof updates.toneLabel === 'string'
+      ? updates.toneLabel
+      : updates.toneLabel === null
+      ? ''
+      : currentData.toneLabel || '';
+
+    // Update tags if they were re-extracted or explicitly set
+    if (updates.tags !== undefined || updates.quote !== undefined || updates.highlight !== undefined) {
+      payload.tags = effectiveTags.length > 0 ? effectiveTags : deleteField();
+    }
+
+    // Update highlight if it was derived or explicitly set
+    if (updates.highlight !== undefined || (updates.quote !== undefined && effectiveHighlight)) {
+      payload.highlight = effectiveHighlight || deleteField();
+    }
+
+    // Rebuild searchText from all effective values
     payload.searchText = buildSearchText([
       displayName,
       quote,
-      highlight,
+      effectiveHighlight,
       ...toneKeywords,
       toneLabel,
-      ...(tags || []),
+      ...effectiveTags,
     ]);
   }
 
