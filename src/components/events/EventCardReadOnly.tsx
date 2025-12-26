@@ -1,9 +1,9 @@
-import React from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, MapPin, Users, Clock, Tag } from 'lucide-react';
-import { safeFormat, safeToDate } from '../../utils/dateUtils';
-import { EventDoc } from '../../hooks/useEvents';
+import { Calendar, Clock, MapPin, Tag, Users } from 'lucide-react';
+import React from 'react';
 import { Link } from 'react-router-dom';
+import { EventDoc } from '../../hooks/useEvents';
+import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { EventImage } from './EventImage';
 
 interface EventCardReadOnlyProps {
@@ -85,7 +85,7 @@ const EventCardReadOnly: React.FC<EventCardReadOnlyProps> = ({ event }) => {
       transition={{ duration: 0.3 }}
       className="group"
     >
-      <Link to={`/events-readonly/${event.id}`} className="block">
+      <Link to={`/events/${event.id}`} className="block">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 h-full">
           {/* Event Image with Smart Cropping Prevention */}
           <EventImage 
@@ -218,3 +218,4 @@ const EventCardReadOnly: React.FC<EventCardReadOnlyProps> = ({ event }) => {
 };
 
 export { EventCardReadOnly };
+

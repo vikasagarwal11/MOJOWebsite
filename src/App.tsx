@@ -1,35 +1,34 @@
 import { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { setupGlobalErrorHandling } from './utils/globalErrorHandler';
 // import { OrganizationSchema } from './components/seo/StructuredData';
+import Login from './components/auth/Login';
+import Register from './components/auth/RegisterNew';
+import ScrollToTop from './components/common/ScrollToTop';
 import Layout from './components/layout/Layout';
 import PopupAlertHandler from './components/notifications/PopupAlertHandler';
 import { PushNotificationInitializer } from './components/notifications/PushNotificationInitializer';
-import ScrollToTop from './components/common/ScrollToTop';
-import Home from './pages/Home';
-import Events from './pages/Events';
-import Media from './pages/Media';
-import Posts from './pages/Posts';
-import Sponsors from './pages/Sponsors';
-import Login from './components/auth/Login';
-import Register from './components/auth/RegisterNew';
-import PendingApproval from './pages/PendingApproval';
+import About from './pages/About';
 import AccountRejected from './pages/AccountRejected';
-import Profile from './pages/Profile';
+import CommunityGuidelines from './pages/CommunityGuidelines';
+import Contact from './pages/Contact';
+import EventDetailsPage from './pages/EventDetailsPage';
+import Events from './pages/Events';
 import FamilyManagement from './pages/FamilyManagement';
 import Founder from './pages/Founder';
-import Contact from './pages/Contact';
-import About from './pages/About';
-import Reset from './pages/Reset';
+import Home from './pages/Home';
+import Media from './pages/Media';
+import PendingApproval from './pages/PendingApproval';
+import Posts from './pages/Posts';
 import Press from './pages/Press';
-import CommunityGuidelines from './pages/CommunityGuidelines';
-import EventsReadOnly from './pages/EventsReadOnly';
-import EventDetailsPage from './pages/EventDetailsPage';
+import Profile from './pages/Profile';
+import Reset from './pages/Reset';
 import RSVPPage from './pages/RSVPPage';
 import ShareYourStory from './pages/ShareYourStory';
+import Sponsors from './pages/Sponsors';
 // import SupportTools from './pages/SupportTools'; // Hidden for now - not rolling out in initial phase
 // import Workouts from './pages/Workouts'; // Hidden for now
 // import Challenges from './pages/Challenges'; // Hidden for now
@@ -92,10 +91,8 @@ function AppContent() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Home />} />
             <Route path="events" element={<Events />} />
-            <Route path="events/:eventId" element={<Events />} />
+            <Route path="events/:eventId" element={<EventDetailsPage />} />
             <Route path="events/:eventId/rsvp" element={<RSVPPage />} />
-            <Route path="events-readonly" element={<EventsReadOnly />} />
-            <Route path="events-readonly/:eventId" element={<EventDetailsPage />} />
             <Route path="media" element={<Media />} />  {/* UPDATED VERSION WITH LIVE UPLOAD */}
           {/* <Route path="media" element={<MediaGallery />} />  OLD VERSION - COMMENTED OUT */}
             <Route path="posts" element={<Posts />} />

@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Calendar, MapPin, Clock, Users, Tag, ArrowLeft } from 'lucide-react';
-import { safeFormat, safeToDate } from '../utils/dateUtils';
-import { EventDoc } from '../hooks/useEvents';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { motion } from 'framer-motion';
+import { ArrowLeft, Calendar, Clock, MapPin, Tag, Users } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { EventImage } from '../components/events/EventImage';
 import { EventSeo } from '../components/seo/EventSeo';
+import { db } from '../config/firebase';
+import { EventDoc } from '../hooks/useEvents';
+import { safeFormat, safeToDate } from '../utils/dateUtils';
 import { createEventCanonicalUrl } from '../utils/seo';
 
 const EventDetailsPage: React.FC = () => {
@@ -126,6 +126,18 @@ const EventDetailsPage: React.FC = () => {
     );
   }
 
+  const handleBack = () => {
+    try {
+      if (window.history.length > 1) {
+        navigate(-1);
+      } else {
+        navigate('/events');
+      }
+    } catch (err) {
+      navigate('/events');
+    }
+  };
+
   if (error || !event) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
@@ -133,13 +145,13 @@ const EventDetailsPage: React.FC = () => {
           <div className="text-center">
             <h1 className="text-2xl font-bold text-gray-900 mb-4">Event Not Found</h1>
             <p className="text-gray-600 mb-6">{error}</p>
-            <Link
-              to="/events-readonly"
+            <button
+              onClick={handleBack}
               className="inline-flex items-center px-6 py-3 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors duration-200"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Events
-            </Link>
+            </button>
           </div>
         </div>
       </div>
@@ -167,13 +179,13 @@ const EventDetailsPage: React.FC = () => {
           transition={{ duration: 0.5 }}
           className="mb-6"
         >
-          <Link
-            to="/events-readonly"
+          <button
+            onClick={handleBack}
             className="inline-flex items-center text-gray-600 hover:text-[#F25129] transition-colors duration-200"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Events
-          </Link>
+          </button>
         </motion.div>
 
         {/* Event Header */}
