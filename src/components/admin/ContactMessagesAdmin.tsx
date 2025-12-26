@@ -188,7 +188,7 @@ const ContactMessagesAdmin: React.FC<ContactMessagesAdminProps> = ({ className =
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Message Type:</label>
             <div className="flex flex-wrap gap-2">
-              {(['all', 'general', 'events', 'membership', 'technical', 'partnership', 'founder_message', 'other'] as const).map((type) => (
+              {(['all', 'general', 'events', 'membership', 'technical', 'partnership', 'start-a-chapter', 'founder_message', 'other'] as const).map((type) => (
                 <button
                   key={type}
                   onClick={() => setInquiryTypeFilter(type)}
@@ -200,6 +200,7 @@ const ContactMessagesAdmin: React.FC<ContactMessagesAdminProps> = ({ className =
                 >
                   {type === 'all' ? 'All Types' : 
                    type === 'founder_message' ? '👑 Founder Messages' :
+                   type === 'start-a-chapter' ? 'Start A Chapter' :
                    type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
                 </button>
               ))}
