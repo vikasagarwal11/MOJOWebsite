@@ -707,14 +707,12 @@ service cloud.firestore {
         && (!('moderationPipeline' in request.resource.data) || request.resource.data.moderationPipeline is string);
 
       allow update: if isSignedIn() && isAdmin()
-        && request.resource.data.keys().hasOnly([
-          'userId',
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName',
           'quote',
           'rating',
           'status',
           'featured',
-          'createdAt',
           'updatedAt',
           'highlight',
           'avatarUrl',
@@ -740,12 +738,9 @@ service cloud.firestore {
         && request.resource.data.quote.size() <= 2000
         && isValidRating(request.resource.data.rating)
         && isAllowedTestimonialStatus(request.resource.data.status)
-        && request.resource.data.updatedAt is timestamp
         && (!('avatarUrl' in request.resource.data) || request.resource.data.avatarUrl == resource.data.avatarUrl || isUrlLike(request.resource.data.avatarUrl))
         && (!('highlight' in request.resource.data) || (request.resource.data.highlight is string && request.resource.data.highlight.size() <= 120))
         && (!('reviewedBy' in request.resource.data) || request.resource.data.reviewedBy == null || request.resource.data.reviewedBy is string)
-        && (!('reviewedAt' in request.resource.data) || request.resource.data.reviewedAt is timestamp)
-        && (!('publishedAt' in request.resource.data) || request.resource.data.publishedAt == null || request.resource.data.publishedAt is timestamp)
         && (!('toneLabel' in request.resource.data) || (request.resource.data.toneLabel is string && request.resource.data.toneLabel.size() <= 40))
         && (!('toneConfidence' in request.resource.data) || (request.resource.data.toneConfidence is number && request.resource.data.toneConfidence >= 0 && request.resource.data.toneConfidence <= 1))
         && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 8))
@@ -753,7 +748,7 @@ service cloud.firestore {
         && (!('searchText' in request.resource.data) || (request.resource.data.searchText is string && request.resource.data.searchText.size() <= 5000))
         && (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus is string)
         && (!('requiresApproval' in request.resource.data) || request.resource.data.requiresApproval is bool)
-        && (!('moderationReason' in request.resource.data) || request.resource.data.moderationReason is string)
+        && (!('moderationReason' in request.resource.data) || request.resource.data.moderationReason is string || request.resource.data.moderationReason == null)
         && (!('moderationDetectedIssues' in request.resource.data) || request.resource.data.moderationDetectedIssues is list)
         && (!('moderationPipeline' in request.resource.data) || request.resource.data.moderationPipeline is string);
 
