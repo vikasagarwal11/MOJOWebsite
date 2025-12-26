@@ -17,7 +17,7 @@ const contactSchema = z.object({
   phone: z.string().optional(),
   subject: z.string().min(5, 'Subject must be at least 5 characters'),
   message: z.string().min(10, 'Message must be at least 10 characters'),
-  inquiryType: z.enum(['general', 'events', 'membership', 'technical', 'partnership', 'other']),
+  inquiryType: z.enum(['general', 'events', 'membership', 'technical', 'partnership', 'start-a-chapter', 'other']),
 });
 
 type ContactFormData = z.infer<typeof contactSchema>;
@@ -28,7 +28,7 @@ const Contact: React.FC = () => {
   const [searchParams] = useSearchParams();
   
   // Get inquiry type from URL parameters
-  const urlInquiryType = searchParams.get('inquiryType') as 'general' | 'events' | 'membership' | 'technical' | 'partnership' | 'other' | null;
+  const urlInquiryType = searchParams.get('inquiryType') as 'general' | 'events' | 'membership' | 'technical' | 'partnership' | 'start-a-chapter' | 'other' | null;
 
   const {
     register,
@@ -40,7 +40,11 @@ const Contact: React.FC = () => {
     resolver: zodResolver(contactSchema),
     defaultValues: {
       inquiryType: urlInquiryType || 'general',
-      message: urlInquiryType === 'partnership' ? 'I am interested in becoming a sponsor for Moms Fitness Mojo. Please provide me with information about sponsorship opportunities, packages, and how we can collaborate to benefit your community.' : '',
+      message: urlInquiryType === 'partnership' 
+        ? 'I am interested in becoming a sponsor for Moms Fitness Mojo. Please provide me with information about sponsorship opportunities, packages, and how we can collaborate to benefit your community.'
+        : urlInquiryType === 'start-a-chapter'
+        ? 'I am interested in starting a Moms Fitness Mojo chapter in my area. Please provide me with information about how to get started, what support is available, and the requirements for starting a new chapter.'
+        : '',
     },
   });
 
@@ -51,6 +55,9 @@ const Contact: React.FC = () => {
       if (urlInquiryType === 'partnership') {
         setValue('message', 'I am interested in becoming a sponsor for Moms Fitness Mojo. Please provide me with information about sponsorship opportunities, packages, and how we can collaborate to benefit your community.');
         setValue('subject', 'Sponsorship Inquiry - Partnership Opportunities');
+      } else if (urlInquiryType === 'start-a-chapter') {
+        setValue('message', 'I am interested in starting a Moms Fitness Mojo chapter in my area. Please provide me with information about how to get started, what support is available, and the requirements for starting a new chapter.');
+        setValue('subject', 'Start A Chapter - New Chapter Inquiry');
       }
     }
   }, [urlInquiryType, setValue]);
@@ -93,6 +100,7 @@ const Contact: React.FC = () => {
     { value: 'membership', label: 'Membership Questions' },
     { value: 'technical', label: 'Technical Support' },
     { value: 'partnership', label: 'Partnership Opportunities' },
+    { value: 'start-a-chapter', label: 'Start A Chapter' },
     { value: 'other', label: 'Other' },
   ];
 

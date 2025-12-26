@@ -479,7 +479,7 @@ const Home: React.FC = () => {
       {!isAuthed && (
         <section id="community" className="py-6 sm:py-10 lg:py-12 -mt-4">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="rounded-xl sm:rounded-2xl border border-gray-100 bg-[#F25129]/10 p-5 sm:p-6 lg:p-8 shadow-sm">
+            <div className="rounded-xl sm:rounded-2xl border border-gray-100 bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 p-5 sm:p-6 lg:p-8 shadow-sm">
               <h2
                 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#F25129]"
                 tabIndex={-1}
@@ -507,6 +507,9 @@ const Home: React.FC = () => {
           </div>
         </section>
       )}
+          </div>
+        </div>
+      </section>
 
       {/* Testimonials */}
       <section id="stories" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 lg:py-12 -mt-4 space-y-6 sm:space-y-10">
@@ -522,7 +525,7 @@ const Home: React.FC = () => {
             {isAuthed ? (
               <Link
                 to="/share-your-story"
-                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-[#F25129] text-white rounded-full font-semibold hover:bg-[#E0451F] transition-all shadow-md hover:shadow-lg transform hover:scale-105 touch-target text-sm"
+                className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white rounded-full font-semibold hover:from-[#E0451F] hover:to-[#E55A2B] transition-all shadow-md hover:shadow-lg transform hover:scale-105 touch-target text-sm"
               >
                 <MessageSquare className="w-4 h-4" />
                 <span className="hidden sm:inline">Share Your Story</span>
@@ -609,8 +612,14 @@ const Home: React.FC = () => {
             )}
           </div>
           <p className="mx-auto max-w-2xl text-sm sm:text-base text-gray-600 px-4">
-            Real words from the women shaping Moms Fitness Mojo. Scroll through our community stories. Feeling inspired? Tap{' '}
-            <span className="font-semibold text-gray-800">&ldquo;Share Your Story.&rdquo;</span>
+            Real words from the women shaping Moms Fitness Mojo. Scroll through our community stories. Feeling inspired?{' '}
+            {isAuthed ? (
+              <Link to="/share-your-story" className="font-semibold text-[#F25129] hover:underline">
+                Tap &ldquo;Share Your Story&rdquo; to add yours.
+              </Link>
+            ) : (
+              <span className="font-semibold text-gray-800">&ldquo;Share Your Story.&rdquo;</span>
+            )}
           </p>
         </div>
 
@@ -653,13 +662,14 @@ const Home: React.FC = () => {
                    <ImageIcon className="w-5 h-5 text-[#F25129]" />
                    <span className="text-sm sm:text-base">Media Gallery</span>
                  </Link>
-                 <Link
+                 {/* Posts link hidden for now - will bring back later */}
+                 {/* <Link
                    to="/posts"
                    className="flex items-center justify-center gap-2 px-4 sm:px-5 py-3 sm:py-4 bg-white rounded-xl border border-[#F25129]/20 hover:shadow-lg transition touch-target"
                  >
                    <UploadCloud className="w-5 h-5 text-[#F25129]" />
                    <span className="text-sm sm:text-base">Create / View Posts</span>
-                 </Link>
+                 </Link> */}
                </div>
              </div>
            </div>

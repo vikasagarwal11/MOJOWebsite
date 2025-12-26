@@ -111,6 +111,9 @@ export function useTestimonials(options: UseTestimonialsOptions = {}): UseTestim
             reviewedBy: data.reviewedBy ?? undefined,
             reviewedAt: data.reviewedAt?.toDate?.() ?? undefined,
             publishedAt: data.publishedAt?.toDate?.() ?? undefined,
+            // Smart metadata for search and filtering
+            tags: Array.isArray(data.tags) ? data.tags : undefined,
+            searchText: data.searchText ?? undefined,
             // Moderation fields
             moderationStatus: data.moderationStatus ?? undefined,
             requiresApproval: typeof data.requiresApproval === 'boolean' ? data.requiresApproval : undefined,
