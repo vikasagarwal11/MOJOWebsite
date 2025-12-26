@@ -1,15 +1,15 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Calendar, Clock, Edit, MapPin, Share2, ThumbsDown, ThumbsUp, Trash2, Users } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, MapPin, Users, Share2, ThumbsUp, ThumbsDown, Clock, Edit, Trash2 } from 'lucide-react';
-import { safeFormat, safeToDate } from '../../utils/dateUtils';
+import { useAuth } from '../../contexts/AuthContext';
 import { EventDoc } from '../../hooks/useEvents';
-import { RSVPModalNew as RSVPModal } from './RSVPModalNew';
+import { useUserBlocking } from '../../hooks/useUserBlocking';
+import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { EventTeaserModal } from './EventTeaserModal';
 import { PastEventModal } from './PastEventModal';
-import { useAuth } from '../../contexts/AuthContext';
-import { useUserBlocking } from '../../hooks/useUserBlocking';
+import { RSVPModalNew as RSVPModal } from './RSVPModalNew';
 
 // ============================================
 // RSVP MODE TOGGLE - Easy revert option
@@ -19,18 +19,18 @@ import { useUserBlocking } from '../../hooks/useUserBlocking';
 const RSVP_MODE: 'modal' | 'page' = 'page';  // ← Change this to 'modal' to revert
 // ============================================
 
-import { useAttendees } from '../../hooks/useAttendees';
-import { CreateAttendeeData, AttendeeStatus } from '../../types/attendee';
-import { useCapacityState } from './RSVPModalNew/hooks/useCapacityState';
-import { useWaitlistPositions } from '../../hooks/useWaitlistPositions';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../config/firebase';
 import toast from 'react-hot-toast';
+import { db } from '../../config/firebase';
+import { useAttendees } from '../../hooks/useAttendees';
+import { useWaitlistPositions } from '../../hooks/useWaitlistPositions';
+import { AttendeeStatus, CreateAttendeeData } from '../../types/attendee';
 import { safeCall } from '../../utils/safeWrapper';
+import { useCapacityState } from './RSVPModalNew/hooks/useCapacityState';
 // ErrorBoundary removed - not used in this component
-import { EventImage } from './EventImage';
-import { isUserApproved } from '../../utils/userUtils';
 import { Lock } from 'lucide-react';
+import { isUserApproved } from '../../utils/userUtils';
+import { EventImage } from './EventImage';
 
 interface EventCardProps {
   event: EventDoc;
@@ -293,9 +293,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
       return;
     }
     
-    // Always navigate to read-only event details page
-    // This is accessible to all users (including pending approval users)
-    navigate(`/events-readonly/${event.id}`);
+    // Navigate to the canonical event details route
+    navigate(`/events/${event.id}`);
   };
 
   // Quick RSVP handlers using new attendee system

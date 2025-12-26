@@ -1,15 +1,15 @@
 import React, { useMemo } from 'react';
-import { Outlet, Navigate, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import Header from './Header';
-import Footer from './Footer';
 import AssistantWidget from '../assistant/AssistantWidget';
 import { StatusBanner } from '../common/StatusBanner';
+import Footer from './Footer';
+import Header from './Header';
 
 // Public routes that don't require authentication or approval (available to everyone, including logged-out users)
 // These routes are accessible WITHOUT login, so pending/rejected users can still see them
 // Note: /events, /posts, and /media pages handle their own filtering (public vs private content)
-const PUBLIC_ROUTES = ['/', '/events', '/events-readonly', '/posts', '/media', '/sponsors', '/founder', '/contact', '/about', '/press', '/community-guidelines', '/support-tools', /* '/challenges', '/workouts', */ '/pending-approval', '/account-rejected']; // Challenges and Workouts hidden for now
+const PUBLIC_ROUTES = ['/', '/events', '/posts', '/media', '/sponsors', '/founder', '/contact', '/about', '/press', '/community-guidelines', '/support-tools', /* '/challenges', '/workouts', */ '/pending-approval', '/account-rejected']; // Challenges and Workouts hidden for now
 
 // Protected routes that require approved status (create/edit actions within these pages are still protected)
 const PROTECTED_ROUTES = ['/profile', '/admin', '/family-management'];
