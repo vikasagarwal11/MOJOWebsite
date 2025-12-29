@@ -408,6 +408,10 @@ const RSVPPage: React.FC = () => {
   // All hooks are already declared above before early returns
 
   const handleBulkAddFamilyMembers = async () => {
+    if (!canAddAttendees) {
+      toast.error('Adding attendees is disabled for this event. Please contact the host.');
+      return;
+    }
     if (!currentUser || bulkFormData.familyMembers.length === 0) return;
     const validMembers = bulkFormData.familyMembers.filter((m) => m.name.trim());
     if (validMembers.length === 0) return;
@@ -482,6 +486,10 @@ const RSVPPage: React.FC = () => {
   };
 
   const handleAddFamilyMember = async (familyMember: FamilyMember) => {
+    if (!canAddAttendees) {
+      toast.error('Adding attendees is disabled for this event. Please contact the host.');
+      return;
+    }
     if (!currentUser) return;
     try {
       setIsAdding(true);
@@ -540,6 +548,10 @@ const RSVPPage: React.FC = () => {
   };
 
   const handleBulkAddFromProfile = async (members: FamilyMember[]) => {
+    if (!canAddAttendees) {
+      toast.error('Adding attendees is disabled for this event. Please contact the host.');
+      return;
+    }
     if (!currentUser || members.length === 0) return;
     try {
       setIsAdding(true);

@@ -1,12 +1,12 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
-    AlertTriangle,
-    Calendar,
-    ChevronDown,
-    Heart,
-    QrCode,
-    UserPlus,
-    Users,
+  AlertTriangle,
+  Calendar,
+  ChevronDown,
+  Heart,
+  QrCode,
+  UserPlus,
+  Users,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
@@ -275,6 +275,10 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   }, []);
 
   const handleBulkAddFamilyMembers = async () => {
+    if (!canAddAttendees) {
+      toast.error('Adding attendees is disabled for this event. Please contact the host.');
+      return;
+    }
     if (!currentUser || bulkFormData.familyMembers.length === 0) return;
     const validMembers = bulkFormData.familyMembers.filter((m) => m.name.trim());
     if (validMembers.length === 0) return;
@@ -350,6 +354,10 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   };
 
   const handleAddFamilyMember = async (familyMember: FamilyMember) => {
+    if (!canAddAttendees) {
+      toast.error('Adding attendees is disabled for this event. Please contact the host.');
+      return;
+    }
     if (!currentUser) return;
     try {
       setLoading(true);
@@ -409,6 +417,10 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   };
 
   const handleBulkAddFromProfile = async (members: FamilyMember[]) => {
+    if (!canAddAttendees) {
+      toast.error('Adding attendees is disabled for this event. Please contact the host.');
+      return;
+    }
     if (!currentUser || members.length === 0) return;
     try {
       setLoading(true);
