@@ -1,12 +1,13 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  CheckCircle,
-  ChevronDown,
-  Clock,
-  Heart,
-  Trash2,
-  Users,
-  XCircle
+    CheckCircle,
+    ChevronDown,
+    Clock,
+    Heart,
+    Hourglass,
+    Trash2,
+    Users,
+    XCircle
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 // Note: row rendering is inline for performance; no AttendeeItem import needed
@@ -17,12 +18,12 @@ import { useAttendees } from '../../hooks/useAttendees';
 import { useFamilyMembers } from '../../hooks/useFamilyMembers';
 import { familyMemberService } from '../../services/familyMemberService';
 import {
-  AgeGroup,
-  Attendee,
-  AttendeeStatus,
-  AttendeeType,
-  CreateAttendeeData,
-  Relationship
+    AgeGroup,
+    Attendee,
+    AttendeeStatus,
+    AttendeeType,
+    CreateAttendeeData,
+    Relationship
 } from '../../types/attendee';
 
 interface AttendeeListProps {
@@ -779,7 +780,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                              <div className="col-span-3">Age</div>
                              <div className="col-span-3">Status</div>
                              {event?.pricing?.requiresPayment && (
-                               <div className="col-span-2">Payment</div>
+                               <div className="col-span-2">Paid</div>
                              )}
                              <div className="col-span-2">Actions</div>
                            </div>
@@ -861,14 +862,16 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                  
                                  {/* Payment Status - Only for paid events */}
                                  {event?.pricing?.requiresPayment && (
-                                   <div className="col-span-2">
-                                     <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${
-                                       attendee.paymentStatus === 'paid'
-                                         ? 'bg-green-100 text-green-700 border border-green-300'
-                                         : 'bg-yellow-100 text-yellow-700 border border-yellow-300'
-                                     }`}>
-                                       {attendee.paymentStatus === 'paid' ? '✓ Payment Successful' : '⏳ Payment Pending'}
-                                     </span>
+                                   <div className="col-span-2 flex items-center justify-center">
+                                     {attendee.paymentStatus === 'paid' ? (
+                                       <div className="flex items-center justify-center w-7 h-7 rounded-full bg-green-500" title="Payment Successful">
+                                         <CheckCircle className="w-4 h-4 text-white" strokeWidth={2.5} />
+                                       </div>
+                                     ) : (
+                                       <div className="flex items-center justify-center w-7 h-7 rounded-full bg-amber-500" title="Payment Pending">
+                                         <Hourglass className="w-4 h-4 text-white" strokeWidth={2.5} />
+                                       </div>
+                                     )}
                                    </div>
                                  )}
                                  

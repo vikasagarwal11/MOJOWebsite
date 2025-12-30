@@ -1,24 +1,24 @@
+import { collection, collectionGroup, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, updateDoc, setDoc, deleteDoc, collection, query, where, orderBy, limit, onSnapshot, getDocs, serverTimestamp, writeBatch, collectionGroup } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
-import { NJ_CITIES } from '../data/nj-cities';
-import { ProfilePersonalTab } from './ProfilePersonalTab';
-import { ProfileEventsTab } from './ProfileEventsTab';
-import { ProfileRSVPAdminTab } from './ProfileRSVPAdminTab';
-import { ProfileAdminTab } from './ProfileAdminTab';
-import { AdminKnowledgeBaseTab } from './AdminKnowledgeBaseTab';
-import { ProfileNotificationsTab } from './ProfileNotificationsTab';
-import { ProfileContentTab } from './ProfileContentTab';
 import CreateEventModal from '../components/events/CreateEventModal';
-import { useUserBlocking } from '../hooks/useUserBlocking';
-import { UserBlockModal } from '../components/user/UserBlockModal';
 import { FamilyMemberList } from '../components/family/FamilyMemberList';
-import { normalizeEvent } from '../utils/normalizeEvent';
+import { UserBlockModal } from '../components/user/UserBlockModal';
+import { db, storage } from '../config/firebase';
+import { useAuth } from '../contexts/AuthContext';
+import { NJ_CITIES } from '../data/nj-cities';
+import { useUserBlocking } from '../hooks/useUserBlocking';
 import { sanitizeFirebaseData } from '../utils/dataSanitizer';
 import { safeISODate } from '../utils/dateUtils';
+import { normalizeEvent } from '../utils/normalizeEvent';
+import { AdminKnowledgeBaseTab } from './AdminKnowledgeBaseTab';
+import { ProfileAdminTab } from './ProfileAdminTab';
+import { ProfileContentTab } from './ProfileContentTab';
+import { ProfileEventsTab } from './ProfileEventsTab';
+import { ProfileNotificationsTab } from './ProfileNotificationsTab';
+import { ProfilePersonalTab } from './ProfilePersonalTab';
+import { ProfileRSVPAdminTab } from './ProfileRSVPAdminTab';
 
 type Address = {
   street?: string;
@@ -769,6 +769,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
                 ageGroup: attendee.ageGroup || '',
                 relationship: attendee.relationship || '',
                 rsvpStatus: attendee.status,
+                paymentStatus: attendee.paymentStatus || 'unpaid',
                 // User data
                 userId: attendee.userId,
                 firstName: userData.firstName || '',
@@ -790,6 +791,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               ageGroup: attendee.ageGroup || '',
               relationship: attendee.relationship || '',
               rsvpStatus: attendee.status,
+              paymentStatus: attendee.paymentStatus || 'unpaid',
               // User data
               userId: attendee.userId,
               firstName: 'Unknown',
@@ -811,6 +813,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               ageGroup: attendee.ageGroup || '',
               relationship: attendee.relationship || '',
               rsvpStatus: attendee.status,
+              paymentStatus: attendee.paymentStatus || 'unpaid',
               // User data
               userId: attendee.userId,
               firstName: 'Error',
@@ -833,6 +836,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         'Age Group',
         'Relationship',
         'RSVP Status',
+        'Payment Status',
         'User ID',
         'Primary User First Name',
         'Primary User Last Name',
@@ -852,6 +856,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
           attendee.ageGroup,
           attendee.relationship,
           attendee.rsvpStatus,
+          attendee.paymentStatus,
           attendee.userId,
           `"${attendee.firstName}"`,
           `"${attendee.lastName}"`,
