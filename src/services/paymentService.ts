@@ -1,25 +1,25 @@
-import { 
-  collection, 
-  doc, 
-  updateDoc, 
-  getDocs, 
-  query, 
-  where, 
-  orderBy, 
-  Timestamp,
-  writeBatch
+import {
+    collection,
+    doc,
+    getDocs,
+    orderBy,
+    query,
+    Timestamp,
+    updateDoc,
+    where,
+    writeBatch
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { 
-  PaymentTransaction, 
-  PaymentSummary, 
-  EventPricing, 
-  AgeGroupPricing,
-  PaymentStatus,
-  RefundStatus,
-  PaymentMethod
+import { AgeGroup, Attendee } from '../types/attendee';
+import {
+    AgeGroupPricing,
+    EventPricing,
+    PaymentMethod,
+    PaymentStatus,
+    PaymentSummary,
+    PaymentTransaction,
+    RefundStatus
 } from '../types/payment';
-import { Attendee, AgeGroup } from '../types/attendee';
 
 export class PaymentService {
   private static readonly TRANSACTIONS_COLLECTION = 'payment_transactions';
@@ -488,10 +488,10 @@ export class PaymentService {
       requiresPayment: false,
       adultPrice: 0,
       ageGroupPricing: [
-        { ageGroup: '0-2', price: 0, label: 'Infants (0-2)' },
-        { ageGroup: '3-5', price: 0, label: 'Children (3-5)' },
+        { ageGroup: '0-2', price: 0, label: 'Infant (0-2)' },
+        { ageGroup: '3-5', price: 0, label: 'Toddler (3-5)' },
         { ageGroup: '6-10', price: 0, label: 'Children (6-10)' },
-        { ageGroup: '11+', price: 0, label: 'Teens (11+)' },
+        { ageGroup: '11+', price: 0, label: 'Teen (11+)' },
         { ageGroup: 'adult', price: 0, label: 'Adults' }
       ],
       currency: 'USD',
@@ -510,10 +510,10 @@ export class PaymentService {
     currency: string = 'USD'
   ): EventPricing {
     const defaultPricing: AgeGroupPricing[] = [
-      { ageGroup: '0-2', price: 0, label: 'Infants (0-2)' },
-      { ageGroup: '3-5', price: Math.round(adultPrice * 0.5), label: 'Children (3-5)' },
+      { ageGroup: '0-2', price: 0, label: 'Infant (0-2)' },
+      { ageGroup: '3-5', price: Math.round(adultPrice * 0.5), label: 'Toddler (3-5)' },
       { ageGroup: '6-10', price: Math.round(adultPrice * 0.7), label: 'Children (6-10)' },
-      { ageGroup: '11+', price: Math.round(adultPrice * 0.8), label: 'Teens (11+)' },
+      { ageGroup: '11+', price: Math.round(adultPrice * 0.8), label: 'Teen (11+)' },
       { ageGroup: 'adult', price: adultPrice, label: 'Adults' }
     ];
 

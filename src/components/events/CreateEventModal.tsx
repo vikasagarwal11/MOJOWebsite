@@ -50,8 +50,9 @@ const eventSchema = z.object({
   // Payment fields
   requiresPayment: z.boolean().optional(),
   adultPrice: z.string().optional(),
-  childPrice: z.string().optional(),
   teenPrice: z.string().optional(),
+  childPrice: z.string().optional(),
+  toddlerPrice: z.string().optional(),
   infantPrice: z.string().optional(),
   currency: z.string().optional(),
   refundAllowed: z.boolean().optional(),
@@ -316,22 +317,26 @@ useEffect(() => {
       // Set payment configuration
       if (eventToEdit.pricing) {
         setValue('requiresPayment', eventToEdit.pricing.requiresPayment || false);
-        setValue('adultPrice', eventToEdit.pricing.adultPrice ? (eventToEdit.pricing.adultPrice / 100).toString() : '');
         setValue('currency', eventToEdit.pricing.currency || 'USD');
         setValue('refundAllowed', eventToEdit.pricing.refundPolicy?.allowed === true);
         
-        // Set age group pricing
+        // Set age group pricing (use ageGroupPricing as source of truth, fallback to adultPrice for backward compatibility)
         if (eventToEdit.pricing.ageGroupPricing) {
           const pricing = eventToEdit.pricing.ageGroupPricing;
           const adultPricing = pricing.find((p: any) => p.ageGroup === 'adult');
-          const childPricing = pricing.find((p: any) => p.ageGroup === '3-5');
+          const toddlerPricing = pricing.find((p: any) => p.ageGroup === '3-5');
+          const childPricing = pricing.find((p: any) => p.ageGroup === '6-10');
           const teenPricing = pricing.find((p: any) => p.ageGroup === '11+');
           const infantPricing = pricing.find((p: any) => p.ageGroup === '0-2');
           
           setValue('adultPrice', adultPricing ? (adultPricing.price / 100).toString() : '');
+          setValue('toddlerPrice', toddlerPricing ? (toddlerPricing.price / 100).toString() : '');
           setValue('childPrice', childPricing ? (childPricing.price / 100).toString() : '');
           setValue('teenPrice', teenPricing ? (teenPricing.price / 100).toString() : '');
           setValue('infantPrice', infantPricing ? (infantPricing.price / 100).toString() : '');
+        } else if (eventToEdit.pricing.adultPrice) {
+          // Fallback for old events without ageGroupPricing
+          setValue('adultPrice', (eventToEdit.pricing.adultPrice / 100).toString());
         }
         
         // Set refund deadline
@@ -766,13 +771,14 @@ useEffect(() => {
       let pricing: EventPricing | undefined;
       if (data.requiresPayment) {
         const adultPrice = data.adultPrice ? Math.round(parseFloat(data.adultPrice) * 100) : 0;
+        const toddlerPrice = data.toddlerPrice ? Math.round(parseFloat(data.toddlerPrice) * 100) : 0;
         const childPrice = data.childPrice ? Math.round(parseFloat(data.childPrice) * 100) : 0;
         const teenPrice = data.teenPrice ? Math.round(parseFloat(data.teenPrice) * 100) : 0;
         const infantPrice = data.infantPrice ? Math.round(parseFloat(data.infantPrice) * 100) : 0;
         
         pricing = PaymentService.createPaidEventPricing(adultPrice, {
           '0-2': infantPrice,
-          '3-5': childPrice,
+          '3-5': toddlerPrice,
           '6-10': childPrice,
           '11+': teenPrice,
           'adult': adultPrice
@@ -1694,9 +1700,9 @@ useEffect(() => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Teens (11+) ($)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Teen (11+) ($)</label>
                       <input
                         {...register('teenPrice')}
                         type="number"
@@ -1708,7 +1714,7 @@ useEffect(() => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Children (3-10) ($)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Children (6-10) ($)</label>
                       <input
                         {...register('childPrice')}
                         type="number"
@@ -1720,7 +1726,19 @@ useEffect(() => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Infants (0-2) ($)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Toddler (3-5) ($)</label>
+                      <input
+                        {...register('toddlerPrice')}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        disabled={isLoading}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                        placeholder="10.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Infant (0-2) ($)</label>
                       <input
                         {...register('infantPrice')}
                         type="number"

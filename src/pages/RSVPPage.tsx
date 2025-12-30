@@ -409,7 +409,7 @@ const RSVPPage: React.FC = () => {
 
   const handleBulkAddFamilyMembers = async () => {
     if (!canAddAttendees) {
-      toast.error('Adding attendees is disabled for this event. Please contact the host.');
+      toast.error('This event is restricted to members. Please contact the host.');
       return;
     }
     if (!currentUser || bulkFormData.familyMembers.length === 0) return;
@@ -487,7 +487,7 @@ const RSVPPage: React.FC = () => {
 
   const handleAddFamilyMember = async (familyMember: FamilyMember) => {
     if (!canAddAttendees) {
-      toast.error('Adding attendees is disabled for this event. Please contact the host.');
+      toast.error('This event is restricted to members. Please contact the host.');
       return;
     }
     if (!currentUser) return;
@@ -549,7 +549,7 @@ const RSVPPage: React.FC = () => {
 
   const handleBulkAddFromProfile = async (members: FamilyMember[]) => {
     if (!canAddAttendees) {
-      toast.error('Adding attendees is disabled for this event. Please contact the host.');
+      toast.error('This event is restricted to members. Please contact the host.');
       return;
     }
     if (!currentUser || members.length === 0) return;
@@ -1068,6 +1068,7 @@ const RSVPPage: React.FC = () => {
                   <div className="bg-white border border-gray-200 rounded-lg p-4">
                     <AttendeeList
                       eventId={event.id}
+                      event={event}
                       isAdmin={isAdmin}
                       waitlistPositions={waitlistPositions}
                       capacityState={capacityState}

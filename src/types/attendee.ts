@@ -54,6 +54,8 @@ export interface UpdateAttendeeData {
   promotedAt?: any;
   promotedFromWaitlist?: boolean;
   promotionNumber?: number;
+  // Payment status management
+  paymentStatus?: import('./payment').PaymentStatus;
 }
 
 export interface AttendeeCounts {

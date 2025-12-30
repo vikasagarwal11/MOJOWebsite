@@ -1,12 +1,12 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
-  AlertTriangle,
-  Calendar,
-  ChevronDown,
-  Heart,
-  QrCode,
-  UserPlus,
-  Users,
+    AlertTriangle,
+    Calendar,
+    ChevronDown,
+    Heart,
+    QrCode,
+    UserPlus,
+    Users,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
@@ -276,7 +276,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
 
   const handleBulkAddFamilyMembers = async () => {
     if (!canAddAttendees) {
-      toast.error('Adding attendees is disabled for this event. Please contact the host.');
+      toast.error('This event is restricted to members. Please contact the host.');
       return;
     }
     if (!currentUser || bulkFormData.familyMembers.length === 0) return;
@@ -355,7 +355,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
 
   const handleAddFamilyMember = async (familyMember: FamilyMember) => {
     if (!canAddAttendees) {
-      toast.error('Adding attendees is disabled for this event. Please contact the host.');
+      toast.error('This event is restricted to members. Please contact the host.');
       return;
     }
     if (!currentUser) return;
@@ -418,7 +418,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
 
   const handleBulkAddFromProfile = async (members: FamilyMember[]) => {
     if (!canAddAttendees) {
-      toast.error('Adding attendees is disabled for this event. Please contact the host.');
+      toast.error('This event is restricted to members. Please contact the host.');
       return;
     }
     if (!currentUser || members.length === 0) return;
@@ -939,6 +939,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                       <div className="bg-white border border-gray-200 rounded-lg p-4">
                         <AttendeeList
                           eventId={event.id}
+                          event={event}
                           isAdmin={isAdmin}
                           waitlistPositions={waitlistPositions}
                           capacityState={capacityState}

@@ -1,11 +1,11 @@
-import { doc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Calendar, Clock, MapPin, Tag, Users } from 'lucide-react';
+import { ArrowLeft, Calendar, CalendarCheck, Clock, MapPin, Tag, Users } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { EventImage } from '../components/events/EventImage';
 import { EventSeo } from '../components/seo/EventSeo';
-import { db } from '../config/firebase';
+import { auth, db } from '../config/firebase';
 import { EventDoc } from '../hooks/useEvents';
 import { safeFormat, safeToDate } from '../utils/dateUtils';
 import { createEventCanonicalUrl } from '../utils/seo';
@@ -16,6 +16,7 @@ const EventDetailsPage: React.FC = () => {
   const [event, setEvent] = useState<EventDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userAttendee, setUserAttendee] = useState<any>(null);
 
   useEffect(() => {
     if (!eventId) {
@@ -48,6 +49,44 @@ const EventDetailsPage: React.FC = () => {
 
     // Cleanup listener on unmount
     return () => unsubscribe();
+  }, [eventId]);
+
+  // Fetch user's attendee record for payment status
+  useEffect(() => {
+    if (!eventId) {
+      setUserAttendee(null);
+      return;
+    }
+
+    // Use auth state listener to ensure we have current user
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (!user) {
+        setUserAttendee(null);
+        return;
+      }
+
+      const attendeesRef = collection(db, 'events', eventId, 'attendees');
+      const q = query(attendeesRef, where('userId', '==', user.uid));
+
+      const unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const attendeeDoc = snapshot.docs[0];
+          const attendeeData = { id: attendeeDoc.id, ...attendeeDoc.data() };
+          console.log('User attendee data:', attendeeData);
+          setUserAttendee(attendeeData);
+        } else {
+          console.log('No attendee record found for user');
+          setUserAttendee(null);
+        }
+      }, (error) => {
+        console.error('Error fetching attendee:', error);
+        setUserAttendee(null);
+      });
+
+      return unsubscribeSnapshot;
+    });
+
+    return () => unsubscribeAuth();
   }, [eventId]);
 
   // Helper functions
@@ -283,19 +322,55 @@ const EventDetailsPage: React.FC = () => {
               {/* Price Information */}
               {event.pricing && (
                 <div className="flex items-center">
-                  <div className="w-5 h-5 mr-4 flex-shrink-0 flex items-center justify-center">
-                    <span className="text-lg font-bold text-green-600">$</span>
-                  </div>
                   <div>
                     <div className="text-xl font-bold text-green-600">
-                      {event.pricing.adultPrice ? `$${event.pricing.adultPrice}` : 'Free'}
+                      {event.pricing.adultPrice ? `$${(event.pricing.adultPrice / 100).toFixed(2)}` : 'Free'}
                     </div>
                     {event.pricing.childPrice && (
                       <div className="text-sm text-gray-600">
-                        Child: ${event.pricing.childPrice}
+                        Child: ${(event.pricing.childPrice / 100).toFixed(2)}
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Refund Deadline - Only show if refunds allowed and deadline is set */}
+              {event.pricing && event.pricing.refundPolicy?.allowed && event.pricing.refundPolicy?.deadline && (
+                <div className="flex items-center">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">Refund Deadline</div>
+                    <div className="text-sm text-gray-600">
+                      {safeFormat(safeToDate(event.pricing.refundPolicy.deadline), 'MMM d, yyyy')}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Status - Only show for paid events and if user has RSVP'd */}
+              {event.pricing && event.pricing.requiresPayment && userAttendee && userAttendee.status === 'going' && (
+                <div className="flex items-center">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-medium text-gray-700">Payment Status</span>
+                    <span className={`px-3 py-1.5 rounded-full text-sm font-semibold inline-flex items-center gap-1.5 ${
+                      userAttendee.paymentStatus === 'paid'
+                        ? 'bg-green-100 text-green-700 border border-green-300'
+                        : 'bg-yellow-100 text-yellow-700 border border-yellow-300'
+                    }`}>
+                      {userAttendee.paymentStatus === 'paid' ? '✓ Payment Successful' : '⏳ Payment Pending'}
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Debug: Show what we have */}
+              {process.env.NODE_ENV === 'development' && userAttendee && (
+                <div className="col-span-2 p-3 bg-gray-100 rounded text-xs">
+                  <div><strong>Debug Info:</strong></div>
+                  <div>User Attendee ID: {userAttendee.id}</div>
+                  <div>Status: {userAttendee.status}</div>
+                  <div>Payment Status: {userAttendee.paymentStatus || 'undefined'}</div>
+                  <div>Requires Payment: {event.pricing?.requiresPayment ? 'Yes' : 'No'}</div>
                 </div>
               )}
             </div>
@@ -321,21 +396,24 @@ const EventDetailsPage: React.FC = () => {
             )}
 
           </div>
+
+          {/* RSVP Now Button - Bottom Right */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="p-6 pt-0 flex justify-end"
+          >
+            <button
+              onClick={() => navigate(`/events/${eventId}/rsvp`)}
+              className="group inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white font-semibold text-lg rounded-xl hover:shadow-xl hover:scale-105 transition-all duration-300 ease-out"
+            >
+              <CalendarCheck className="w-6 h-6 group-hover:rotate-12 transition-transform duration-300" />
+              <span>RSVP Now</span>
+            </button>
+          </motion.div>
         </motion.div>
 
-        {/* RSVP Notice */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-          className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center"
-        >
-          <h3 className="text-lg font-semibold text-blue-900 mb-2">RSVP Functionality</h3>
-          <p className="text-blue-800">
-            RSVP and ticketing features are temporarily disabled while we finalize production deployment. 
-            Full functionality will be restored soon.
-          </p>
-        </motion.div>
       </div>
       </div>
     </>

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Calendar, Clock, Edit, MapPin, Share2, ThumbsDown, ThumbsUp, Trash2, Users } from 'lucide-react';
+import { Calendar, Clock, DollarSign, Edit, MapPin, Share2, ThumbsDown, ThumbsUp, Trash2, Users } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { useNavigate } from 'react-router-dom';
@@ -659,6 +659,26 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                 {event.maxAttendees && ` / ${event.maxAttendees} max`}
               </span>
             </div>
+
+            {/* Price - Only show if paid event */}
+            {event.pricing && event.pricing.requiresPayment && event.pricing.adultPrice && (
+              <div className="flex items-center text-gray-600">
+                <DollarSign className="w-4 h-4 mr-2 text-green-600" />
+                <span className="font-semibold text-green-600">
+                  {(event.pricing.adultPrice / 100).toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {/* Refund Deadline - Only show if refunds allowed and deadline is set */}
+            {event.pricing && event.pricing.refundPolicy?.allowed && event.pricing.refundPolicy?.deadline && (
+              <div className="flex items-center text-gray-600">
+                <Calendar className="w-4 h-4 mr-2 text-blue-600" />
+                <span className="text-xs">
+                  Refund by {formatEventDate(event.pricing.refundPolicy.deadline)}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Action Buttons - Always at bottom */}

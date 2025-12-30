@@ -54,6 +54,10 @@ export default {
         'touch': '44px',
         'touch-lg': '48px',
       },
+      // Custom grid columns for payment status tables
+      gridTemplateColumns: {
+        '14': 'repeat(14, minmax(0, 1fr))',
+      },
     },
   },
   plugins: [],

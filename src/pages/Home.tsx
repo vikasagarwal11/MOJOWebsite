@@ -475,37 +475,35 @@ const Home: React.FC = () => {
        </section>
 
       {/* Stronger Together / Community */}
-      {!isAuthed && (
-        <section id="community" className="py-6 sm:py-10 lg:py-12 -mt-4">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="rounded-xl sm:rounded-2xl border border-gray-100 bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 p-5 sm:p-6 lg:p-8 shadow-sm">
-              <h2
-                className="text-2xl sm:text-3xl font-bold tracking-tight text-[#F25129]"
-                tabIndex={-1}
-                data-section-heading
-              >
-                Stronger Together
-              </h2>
-              <p className="mt-2 sm:mt-3 text-sm sm:text-base text-gray-700 readable">
-                We&apos;re currently active across <strong>Short Hills</strong>, <strong>Millburn</strong>, <strong>Livingston</strong>, <strong>Summit</strong>, <strong>Maplewood</strong>, and <strong>Springfield</strong> and expanding soon! Not in your area? Reach out to start Moms Fitness Mojo near you.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2 sm:gap-3">
-                {["Short Hills", "Millburn", "Livingston", "Summit", "Maplewood", "Springfield"].map((city) => (
-                  <span key={city} className="rounded-full border border-gray-200 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-white hover:border-[#F25129] hover:text-[#F25129] transition-colors">
-                    {city}
-                  </span>
-                ))}
-              </div>
-              <Link
-                to="/register"
-                className="mt-4 inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-all duration-300 touch-target w-full sm:w-auto"
-              >
-                Start a Chapter
-              </Link>
+      <section id="community" className="py-6 sm:py-10 lg:py-12 -mt-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="rounded-xl sm:rounded-2xl border border-gray-100 bg-gradient-to-br from-[#F25129]/10 to-[#FFC107]/10 p-5 sm:p-6 lg:p-8 shadow-sm">
+            <h2
+              className="text-2xl sm:text-3xl font-bold tracking-tight text-[#F25129]"
+              tabIndex={-1}
+              data-section-heading
+            >
+              Stronger Together
+            </h2>
+            <p className="mt-2 sm:mt-3 text-sm sm:text-base text-gray-700 readable">
+              We&apos;re currently active across <strong>Short Hills</strong>, <strong>Millburn</strong>, <strong>Livingston</strong>, <strong>Summit</strong>, <strong>Maplewood</strong>, and <strong>Springfield</strong> and expanding soon! Not in your area? Reach out to start Moms Fitness Mojo near you.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2 sm:gap-3">
+              {["Short Hills", "Millburn", "Livingston", "Summit", "Maplewood", "Springfield"].map((city) => (
+                <span key={city} className="rounded-full border border-gray-200 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-white hover:border-[#F25129] hover:text-[#F25129] transition-colors">
+                  {city}
+                </span>
+              ))}
             </div>
+            <Link
+              to="/register"
+              className="mt-4 inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-all duration-300 touch-target w-full sm:w-auto"
+            >
+              Start a Chapter
+            </Link>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
       {/* Testimonials */}
       <section id="stories" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 lg:py-12 -mt-4 space-y-6 sm:space-y-10">

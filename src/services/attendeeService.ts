@@ -1,26 +1,23 @@
-import { 
-  collection, 
-  doc, 
-  getDocs, 
-  getDoc,
-  updateDoc, 
-  query, 
-  where, 
-  orderBy, 
-  writeBatch,
-  runTransaction,
-  onSnapshot,
-  DocumentData,
-  serverTimestamp,
-  limit,
-  startAfter
+import type { DocumentReference, Transaction } from 'firebase/firestore';
+import {
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    onSnapshot,
+    orderBy,
+    query,
+    runTransaction,
+    serverTimestamp,
+    updateDoc,
+    where,
+    writeBatch
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { AttendeeStatus } from '../types/attendee';
-import type { Attendee, CreateAttendeeData, UpdateAttendeeData, AttendeeCounts } from '../types/attendee';
-import { sanitizeFirebaseData, safeStringConversion } from '../utils/dataSanitizer';
-import type { DocumentReference, Transaction } from 'firebase/firestore';
 import { CapacityError, PermissionError } from '../errors';
+import type { Attendee, AttendeeCounts, CreateAttendeeData, UpdateAttendeeData } from '../types/attendee';
+import { AttendeeStatus } from '../types/attendee';
+import { safeStringConversion, sanitizeFirebaseData } from '../utils/dataSanitizer';
 
 const getAttendingDelta = (
   previousStatus: AttendeeStatus | null | undefined,
@@ -811,16 +808,36 @@ export const deleteAttendee = async (
   const eventRef = doc(db, 'events', eventId);
 
   await runTransaction(db, async (transaction) => {
+    // CRITICAL: All reads must happen before all writes in Firestore transactions
+    // Read both attendee and event documents first
     const attendeeSnap = await transaction.get(attendeeRef);
     if (!attendeeSnap.exists()) {
       return;
     }
 
     const attendeeData = attendeeSnap.data() as Attendee;
+    
+    // Read event document if we need to update attending count
+    let currentCount = 0;
+    let shouldUpdateCount = false;
+    
+    if (attendeeData.rsvpStatus === 'going') {
+      shouldUpdateCount = true;
+      const eventSnap = await transaction.get(eventRef);
+      if (eventSnap.exists()) {
+        currentCount = Number(eventSnap.data()?.attendingCount || 0);
+      }
+    }
+
+    // Now perform all writes
     transaction.delete(attendeeRef);
 
-    if (attendeeData.rsvpStatus === 'going') {
-      await updateEventAttendingCount(transaction, eventRef, -1);
+    if (shouldUpdateCount) {
+      const newCount = Math.max(0, currentCount - 1);
+      transaction.update(eventRef, {
+        attendingCount: newCount,
+        updatedAt: serverTimestamp()
+      });
     }
   });
 };

@@ -1,6 +1,7 @@
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { Calendar, Eye, EyeOff } from 'lucide-react';
 import React, { useState } from 'react';
+import toast from 'react-hot-toast';
 import EventCardNew from '../components/events/EventCardNew';
 import { auth, db } from '../config/firebase';
 import { EventDoc } from '../hooks/useEvents';
@@ -1106,6 +1107,42 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                   {showContactInfo[rsvp.userId] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                                   {showContactInfo[rsvp.userId] ? 'Hide' : 'Show'} Contact
                                 </button>
+                                
+                                {/* Payment Status Badge - Only show for paid events and going attendees */}
+                                {event.pricing && event.pricing.requiresPayment && rsvp.status === 'going' && (
+                                  <div className="flex items-center gap-2">
+                                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                      rsvp.paymentStatus === 'paid' 
+                                        ? 'bg-green-100 text-green-700' 
+                                        : 'bg-yellow-100 text-yellow-700'
+                                    }`}>
+                                      {rsvp.paymentStatus === 'paid' ? '✓ Payment Successful' : '⏳ Payment Pending'}
+                                    </span>
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          const newStatus = rsvp.paymentStatus === 'paid' ? 'unpaid' : 'paid';
+                                          await updateDoc(doc(db, 'events', event.id, 'attendees', rsvp.id), {
+                                            paymentStatus: newStatus,
+                                            updatedAt: serverTimestamp()
+                                          });
+                                          toast.success(
+                                            newStatus === 'paid' 
+                                              ? '✓ Marked as paid' 
+                                              : '⏳ Marked as pending payment'
+                                          );
+                                        } catch (error) {
+                                          console.error('Error updating payment status:', error);
+                                          toast.error('Failed to update payment status');
+                                        }
+                                      }}
+                                      className="px-2 py-0.5 rounded text-xs font-medium bg-[#FFC107] text-white hover:bg-[#FFA000] transition-colors"
+                                      title={rsvp.paymentStatus === 'paid' ? 'Mark as unpaid' : 'Mark as paid'}
+                                    >
+                                      {rsvp.paymentStatus === 'paid' ? '💳 Mark Unpaid' : '✓ Mark Paid'}
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                               
                               {/* Show contact info when toggled */}

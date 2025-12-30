@@ -1,29 +1,29 @@
-import React, { useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Users, 
+import { AnimatePresence, motion } from 'framer-motion';
+import {
   CheckCircle,
-  XCircle,
-  Clock,
   ChevronDown,
+  Clock,
+  Heart,
   Trash2,
-  Heart
+  Users,
+  XCircle
 } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
 // Note: row rendering is inline for performance; no AttendeeItem import needed
+import toast from 'react-hot-toast';
+import { useAuth } from '../../contexts/AuthContext';
+import { CapacityError, PermissionError } from '../../errors';
 import { useAttendees } from '../../hooks/useAttendees';
-import { 
-  Attendee, 
-  AttendeeStatus,
-  CreateAttendeeData,
-  AttendeeType,
+import { useFamilyMembers } from '../../hooks/useFamilyMembers';
+import { familyMemberService } from '../../services/familyMemberService';
+import {
   AgeGroup,
+  Attendee,
+  AttendeeStatus,
+  AttendeeType,
+  CreateAttendeeData,
   Relationship
 } from '../../types/attendee';
-import { useAuth } from '../../contexts/AuthContext';
-import { familyMemberService } from '../../services/familyMemberService';
-import { useFamilyMembers } from '../../hooks/useFamilyMembers';
-import toast from 'react-hot-toast';
-import { CapacityError, PermissionError } from '../../errors';
 
 interface AttendeeListProps {
   eventId: string;
@@ -35,6 +35,7 @@ interface AttendeeListProps {
     canWaitlist: boolean;
     isAtCapacity: boolean;
   };
+  event?: any; // Event object for payment status display
 }
 
 export const AttendeeList: React.FC<AttendeeListProps> = ({ 
@@ -42,7 +43,8 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   onAttendeeUpdate,
   isAdmin = false,
   waitlistPositions = new Map(),
-  capacityState
+  capacityState,
+  event
 }) => {
   const { currentUser } = useAuth();
   const { 
@@ -770,10 +772,15 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                     <div className="border border-gray-200 rounded-lg overflow-hidden">
                                              {/* Table Header */}
                                                <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
-                                                     <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
+                                                     <div className={`grid gap-2 text-[12px] font-medium text-gray-600 ${
+                             event?.pricing?.requiresPayment ? 'grid-cols-14' : 'grid-cols-12'
+                           }`}>
                              <div className="col-span-4">Name</div>
                              <div className="col-span-3">Age</div>
                              <div className="col-span-3">Status</div>
+                             {event?.pricing?.requiresPayment && (
+                               <div className="col-span-2">Payment</div>
+                             )}
                              <div className="col-span-2">Actions</div>
                            </div>
                          </div>
@@ -793,7 +800,9 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                    index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
                                  }`}
                                >
-                               <div className="grid grid-cols-12 gap-2 items-center">
+                               <div className={`grid gap-2 items-center ${
+                                 event?.pricing?.requiresPayment ? 'grid-cols-14' : 'grid-cols-12'
+                               }`}>
                                  {/* Name */}
                                  <div className="col-span-4">
                                    <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
@@ -849,6 +858,19 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                      </span>
                                    )}
                                  </div>
+                                 
+                                 {/* Payment Status - Only for paid events */}
+                                 {event?.pricing?.requiresPayment && (
+                                   <div className="col-span-2">
+                                     <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                                       attendee.paymentStatus === 'paid'
+                                         ? 'bg-green-100 text-green-700 border border-green-300'
+                                         : 'bg-yellow-100 text-yellow-700 border border-yellow-300'
+                                     }`}>
+                                       {attendee.paymentStatus === 'paid' ? '✓ Payment Successful' : '⏳ Payment Pending'}
+                                     </span>
+                                   </div>
+                                 )}
                                  
                                  {/* Actions */}
                                  <div className="col-span-2">
