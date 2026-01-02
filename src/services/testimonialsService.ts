@@ -1,15 +1,19 @@
 import {
   addDoc,
   collection,
-  serverTimestamp,
-  updateDoc,
-  doc,
   deleteDoc,
   deleteField,
+  doc,
   getDoc,
+  getDocs,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where,
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { TestimonialStatus } from '../types';
+import { notificationService } from './notificationService';
 import { classifyTestimonialTone } from './testimonialAIService';
 
 /**
@@ -144,7 +148,53 @@ export async function submitTestimonial(input: SubmitTestimonialInput) {
   payload.moderationDetectedIssues = [];
   payload.moderationPipeline = 'auto_pending';
 
-  await addDoc(collection(db, 'testimonials'), payload);
+  const docRef = await addDoc(collection(db, 'testimonials'), payload);
+
+  // Send notification to user
+  try {
+    await notificationService.createNotification({
+      userId,
+      type: 'general',
+      title: 'MFM Story Submitted',
+      message: 'Your story has been submitted and is awaiting admin approval. We\'ll notify you once it\'s reviewed!',
+      metadata: {
+        testimonialId: docRef.id,
+        action: 'story_submitted'
+      }
+    });
+  } catch (error) {
+    console.warn('[submitTestimonial] Failed to send user notification (non-critical):', error);
+  }
+
+  // Send notification to all admins
+  try {
+    const usersSnapshot = await getDocs(
+      query(collection(db, 'users'), where('role', '==', 'admin'))
+    );
+    
+    console.log('[submitTestimonial] Found admin users:', usersSnapshot.docs.length);
+    
+    const adminNotifications = usersSnapshot.docs.map(adminDoc => {
+      console.log('[submitTestimonial] Creating notification for admin:', adminDoc.id);
+      return notificationService.createNotification({
+        userId: adminDoc.id,
+        type: 'general',
+        title: 'New MFM Story Pending Approval',
+        message: `${safeDisplayName} has submitted a new story for approval.`,
+        metadata: {
+          testimonialId: docRef.id,
+          authorId: userId,
+          authorName: safeDisplayName,
+          action: 'story_pending_review'
+        }
+      });
+    });
+
+    const results = await Promise.allSettled(adminNotifications);
+    console.log('[submitTestimonial] Admin notification results:', results);
+  } catch (error) {
+    console.error('[submitTestimonial] Failed to send admin notifications:', error);
+  }
 }
 
 export interface AdminUpdateTestimonialInput {
@@ -293,6 +343,33 @@ export async function adminUpdateTestimonial(
   }
 
   await updateDoc(testimonialRef, payload);
+
+  // Send notification to author when story is approved or rejected
+  if (updates.status === 'published' || updates.status === 'rejected') {
+    try {
+      const testimonialDoc = await getDoc(testimonialRef);
+      const testimonialData = testimonialDoc.data();
+      
+      if (testimonialData?.userId) {
+        const isApproved = updates.status === 'published';
+        await notificationService.createNotification({
+          userId: testimonialData.userId,
+          type: isApproved ? 'content_approved' : 'content_rejected',
+          title: isApproved ? 'MFM Story Approved!' : 'MFM Story Not Approved',
+          message: isApproved 
+            ? 'Your story has been approved and is now visible to the community!' 
+            : 'Your story was not approved. Please review our community guidelines and try again with a different story.',
+          metadata: {
+            testimonialId,
+            action: isApproved ? 'story_approved' : 'story_rejected',
+            status: updates.status
+          }
+        });
+      }
+    } catch (error) {
+      console.warn('[adminUpdateTestimonial] Failed to send author notification (non-critical):', error);
+    }
+  }
 }
 
 export async function deleteTestimonial(testimonialId: string) {

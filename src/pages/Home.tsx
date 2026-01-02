@@ -223,13 +223,11 @@ const Home: React.FC = () => {
       </HelmetWrapper>
 
       {/* Hero Section - Ladder Layout */}
-      <section id="hero" className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10">
-          {/* Coral → Peach soft gradient */}
-          <div className="absolute inset-0 bg-gradient-to-b from-[#F25129]/10 via-[#FFF3EE] to-white" />
-          {/* Decorative blobs - responsive sizes */}
-          <div className="absolute -top-12 -right-12 sm:-top-24 sm:-right-24 h-48 w-48 sm:h-80 sm:w-80 rounded-full bg-[#EFD8C5] blur-3xl opacity-60" />
-          <div className="absolute -bottom-12 -left-8 sm:-bottom-24 sm:-left-16 h-40 w-40 sm:h-72 sm:w-72 rounded-full bg-[#FFE08A] blur-3xl opacity-50" />
+      <section id="hero" className="relative overflow-hidden bg-white">
+        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#FFF5F2] via-[#FFF9F7] to-white">
+          {/* Decorative accents - simplified for Safari compatibility */}
+          <div className="absolute -top-12 -right-12 sm:-top-24 sm:-right-24 h-48 w-48 sm:h-80 sm:w-80 rounded-full bg-[#F25129]/5" />
+          <div className="absolute -bottom-12 -left-8 sm:-bottom-24 sm:-left-16 h-40 w-40 sm:h-72 sm:w-72 rounded-full bg-[#FFC107]/5" />
         </div>
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 lg:py-12">
@@ -237,14 +235,14 @@ const Home: React.FC = () => {
           <div className="grid items-center gap-6 sm:gap-8 lg:grid-cols-2 mb-8 sm:mb-12">
             {/* Left: Logo */}
             <div className="flex justify-center lg:justify-start w-full">
-              {/* Logo container with responsive sizing and solid background */}
-              <div className="relative w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl rounded-xl sm:rounded-2xl shadow-lg overflow-hidden bg-[#F25129]">
-                {/* Image wrapper with responsive padding to prevent edge touching */}
-                <div className="w-full aspect-[4/3] p-8 sm:p-10 md:p-12 lg:p-14 xl:p-16 flex items-center justify-center">
+              {/* Logo container with optimized sizing and solid background */}
+              <div className="relative w-full max-w-md sm:max-w-lg aspect-[2/1.5] rounded-xl sm:rounded-2xl shadow-lg overflow-hidden" style={{ backgroundColor: '#F25129' }}>
+                {/* Image wrapper with padding to prevent edge touching */}
+                <div className="w-full h-full p-4 sm:p-6 flex items-center justify-center">
                   <img 
                     src="/assets/logo/mfm-logo-updated-tagline-2.svg" 
                     alt="Moms Fitness Mojo - Where Fitness meets Friendship" 
-                    className="w-full h-full max-w-full max-h-full object-contain"
+                    className="w-full h-full object-contain"
                     loading="eager"
                     fetchpriority="high"
                     decoding="async"
@@ -252,11 +250,8 @@ const Home: React.FC = () => {
                     height="600"
                     style={{
                       objectFit: 'contain',
-                      objectPosition: 'center',
                       maxWidth: '100%',
-                      maxHeight: '100%',
-                      width: 'auto',
-                      height: 'auto'
+                      maxHeight: '100%'
                     }}
                     onError={(e) => {
                       const target = e.currentTarget as HTMLImageElement;
@@ -274,8 +269,8 @@ const Home: React.FC = () => {
             
             {/* Right: "Where Fitness meets Friendship" */}
             <div>
-              <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold leading-tight tracking-tight text-[#F25129]">
-                <span>Where</span> <span>Fitness</span> <span>meets Friendship</span>
+              <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold leading-tight tracking-tight">
+                <span className="bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent" style={{ WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', color: '#F25129' }}>Where Fitness meets Friendship</span>
               </h2>
               <p className="mt-4 sm:mt-6 text-base sm:text-lg lg:text-xl text-gray-700 max-w-2xl readable">
                 More than a fitness group — we're a lifestyle and a circle of strength for moms balancing health, family, careers, and fun.
@@ -319,7 +314,8 @@ const Home: React.FC = () => {
             {/* Left: "Your Lifestyle, Your Circle, Your Mojo" */}
             <div>
               <h2
-                className="text-xl sm:text-2xl lg:text-3xl font-bold text-[#F25129]"
+                className="text-xl sm:text-2xl lg:text-3xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent"
+                style={{ WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', color: '#F25129' }}
                 tabIndex={-1}
                 data-section-heading
               >
@@ -348,7 +344,8 @@ const Home: React.FC = () => {
       <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 -mt-2">
         <div className="text-center mb-6 sm:mb-8">
           <h2
-            className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#F25129] mb-3 sm:mb-4"
+            className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent mb-3 sm:mb-4"
+            style={{ WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', color: '#F25129' }}
             tabIndex={-1}
             data-section-heading
           >
@@ -401,7 +398,8 @@ const Home: React.FC = () => {
       <section id="moments" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 lg:py-12 -mt-4">
         <div className="text-center mb-6 sm:mb-8">
           <h2
-            className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#F25129] mb-3 sm:mb-4"
+            className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent mb-3 sm:mb-4"
+            style={{ WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', color: '#F25129' }}
             tabIndex={-1}
             data-section-heading
           >
@@ -459,7 +457,7 @@ const Home: React.FC = () => {
          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 bg-[#F25129] rounded-xl sm:rounded-2xl">
            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 text-center">
              <div>
-               <div className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-2">180+</div>
+               <div className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-2">190+</div>
                <div className="text-sm sm:text-base text-[#FFE4D6]">Active Members</div>
              </div>
              <div>
@@ -496,7 +494,7 @@ const Home: React.FC = () => {
               ))}
             </div>
             <Link
-              to="/register"
+              to="/contact?inquiryType=start-a-chapter"
               className="mt-4 inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-all duration-300 touch-target w-full sm:w-auto"
             >
               Start a Chapter
@@ -505,12 +503,13 @@ const Home: React.FC = () => {
         </div>
       </section>
 
-      {/* Testimonials */}
+      {/* MFM Stories */}
       <section id="stories" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 lg:py-12 -mt-4 space-y-6 sm:space-y-10">
         <div className="text-center mb-4 sm:mb-6">
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-3 flex-wrap">
             <h2
               className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent"
+              style={{ WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', color: '#F25129' }}
               tabIndex={-1}
               data-section-heading
             >
@@ -545,7 +544,7 @@ const Home: React.FC = () => {
                         </button>
                         <div>
                           <span className="font-semibold text-white block mb-1 text-sm sm:text-base">Please sign in to share your story</span>
-                          <p className="text-xs sm:text-sm text-gray-200">Create an account or log in to publish your testimonial.</p>
+                          <p className="text-xs sm:text-sm text-gray-200">Create an account or log in to publish your MFM story.</p>
                         </div>
                         <div className="flex gap-2">
                           <button
@@ -630,7 +629,8 @@ const Home: React.FC = () => {
            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 lg:py-12 bg-[#F25129]/10 rounded-xl sm:rounded-2xl">
              <div className="text-center space-y-6 sm:space-y-8">
                <h2
-                 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#F25129]"
+                 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent"
+                 style={{ WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', color: '#F25129' }}
                  tabIndex={-1}
                  data-section-heading
                >
@@ -641,17 +641,17 @@ const Home: React.FC = () => {
                </p>
 
                {/* NOTE: "My Profile" removed per your preference */}
-               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 max-w-2xl mx-auto">
+               <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 max-w-2xl mx-auto">
                  <Link
                    to="/events"
-                   className="flex items-center justify-center gap-2 px-4 sm:px-5 py-3 sm:py-4 bg-white rounded-xl border border-[#F25129]/20 hover:shadow-lg transition touch-target"
+                   className="flex items-center justify-center gap-2 px-4 sm:px-5 py-3 sm:py-4 bg-white rounded-xl border border-[#F25129]/20 hover:shadow-lg transition touch-target w-full sm:w-auto"
                  >
                    <Calendar className="w-5 h-5 text-[#F25129]" />
                    <span className="text-sm sm:text-base">Upcoming Events</span>
                  </Link>
                  <Link
                    to="/media"
-                   className="flex items-center justify-center gap-2 px-4 sm:px-5 py-3 sm:py-4 bg-white rounded-xl border border-[#F25129]/20 hover:shadow-lg transition touch-target"
+                   className="flex items-center justify-center gap-2 px-4 sm:px-5 py-3 sm:py-4 bg-white rounded-xl border border-[#F25129]/20 hover:shadow-lg transition touch-target w-full sm:w-auto"
                  >
                    <ImageIcon className="w-5 h-5 text-[#F25129]" />
                    <span className="text-sm sm:text-base">Media Gallery</span>

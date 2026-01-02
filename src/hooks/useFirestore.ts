@@ -1,25 +1,25 @@
 // src/hooks/useFirestore.ts
-import { useState, useEffect } from 'react';
 import {
+  addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
   onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
+  updateDoc,
+  where,
   type QueryConstraint,
 } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
-import toast from 'react-hot-toast';
 import { sanitizeFirebaseData } from '../utils/dataSanitizer';
 
-const ENABLE_FIRESTORE_DEBUG = import.meta.env.DEV && false;
+const ENABLE_FIRESTORE_DEBUG = import.meta.env.DEV || true; // Temporarily enabled for debugging
 const debugLog = (...args: any[]) => {
   if (ENABLE_FIRESTORE_DEBUG) {
     console.log(...args);
@@ -194,7 +194,10 @@ function enforceGuestPolicy(
       out.push(orderBy('startAt', 'asc'));
     }
   } else if (collectionName === 'media') {
-    // Remove the isPublic filter - show all media
+    // For media, we can't use server-side filtering because:
+    // 1. Old media items don't have isPublic field (should be treated as public)
+    // 2. Firestore doesn't support OR queries (isPublic==true OR isPublic==null)
+    // So we fetch all media and filter client-side in useRealtimeCollection
     if (!hasAnyOrderBy(out) && !hasOrderByField(out, 'createdAt')) {
       out.push(orderBy('createdAt', 'desc'));
     }
@@ -493,15 +496,28 @@ export const useFirestore = () => {
         (snapshot) => {
           let rows = snapshot.docs.map(d => normalizeDoc({ id: d.id, ...d.data() }));
           
-          // Filter out pending content (except for admins and authors)
+          if (collectionName === 'media') {
+            console.log('📸 [MEDIA DEBUG] Raw snapshot:', {
+              collectionName,
+              totalDocs: rows.length,
+              sampleDoc: rows[0],
+              currentUser: currentUser?.id,
+              userRole: currentUser?.role,
+              userStatus: currentUser?.status,
+              isApproved
+            });
+          }
+          
+          // Filter out pending/rejected content (except for admins and authors)
           const isAdmin = currentUser?.role === 'admin';
           if (!isAdmin && (collectionName === 'posts' || collectionName === 'media')) {
+            const beforeModFilter = rows.length;
             rows = rows.filter((doc: any) => {
               // Show if no moderation status (legacy content) or approved
               if (!doc.moderationStatus || doc.moderationStatus === 'approved') {
                 return true;
               }
-              // Show if user is the author
+              // Show if user is the author (they can see their own pending content)
               if (currentUser) {
                 if (collectionName === 'posts' && doc.authorId === currentUser.id) {
                   return true;
@@ -513,7 +529,46 @@ export const useFirestore = () => {
               // Hide pending/rejected content from others
               return false;
             });
+            if (collectionName === 'media') {
+              console.log('📸 [MEDIA DEBUG] After moderation filter:', {
+                before: beforeModFilter,
+                after: rows.length,
+                filtered: beforeModFilter - rows.length,
+                sample: rows.slice(0, 2).map((d: any) => ({
+                  id: d.id,
+                  moderationStatus: d.moderationStatus,
+                  uploadedBy: d.uploadedBy,
+                  isPublic: d.isPublic
+                }))
+              });
+            }
           }
+          
+          // Filter media by isPublic for non-approved users
+          if (collectionName === 'media' && !isApproved) {
+            const beforePublicFilter = rows.length;
+            rows = rows.filter((doc: any) => {
+              // Show if isPublic is true or undefined (legacy media without isPublic field)
+              // Hide if isPublic is explicitly false
+              return doc.isPublic !== false;
+            });
+            console.log('📸 [MEDIA DEBUG] After isPublic filter:', {
+              before: beforePublicFilter,
+              after: rows.length,
+              filtered: beforePublicFilter - rows.length,
+              isApproved,
+              sampleDocs: rows.slice(0, 3).map((d: any) => ({ id: d.id, isPublic: d.isPublic, title: d.title }))
+            });
+          }
+          
+          if (collectionName === 'media') {
+            console.log('📸 [MEDIA DEBUG] Final rows:', {
+              count: rows.length,
+              ids: rows.slice(0, 5).map((r: any) => r.id),
+              allIds: rows.map((r: any) => r.id)
+            });
+          }
+          
           setData(rows);
           setLoading(false);
         },

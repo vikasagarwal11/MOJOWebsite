@@ -1,7 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Calendar, CheckCircle, Clock, DollarSign, Edit, Hourglass, MoreVertical, Share2, Tag, ThumbsDown, ThumbsUp, Trash2, Users } from 'lucide-react';
+import { Calendar, CheckCircle, Clock, DollarSign, Edit, Hourglass, Share2, Tag, ThumbsDown, ThumbsUp, Trash2, Users } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useInView } from 'react-intersection-observer';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -131,7 +130,6 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
   const [showNonRefundableModal, setShowNonRefundableModal] = useState(false);
   const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | 'waitlisted' | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   // Overflow detection for description
   const descRef = useRef<HTMLParagraphElement | null>(null);
   const [isClamped, setIsClamped] = useState(false);
@@ -149,20 +147,6 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
     setShowTeaserModal(false);
     setShowPastEventModal(false);
   }, [event.id]);
-
-  // Close options menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (showOptionsMenu) {
-        setShowOptionsMenu(false);
-      }
-    };
-    
-    if (showOptionsMenu) {
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
-    }
-  }, [showOptionsMenu]);
 
   // Real-time listener temporarily disabled to fix temporal dead zone error
   // TODO: Re-enable after fixing the underlying React setState issue
@@ -595,7 +579,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
          initial={{ opacity: 0, y: 20 }}
          animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
          transition={{ duration: 0.5 }}
-                                                                                         className="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden border border-gray-200 flex flex-col mb-4 scroll-mt-20 relative w-full max-w-lg mx-auto h-auto"
+                                                                                         className="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden border border-gray-200 flex flex-col mb-4 scroll-mt-20 relative w-full max-w-lg mx-auto"
        >
                  {/* SOLD OUT Watermark */}
                  {isSoldOutForWatermark && (
@@ -615,100 +599,34 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                      </div>
                    </div>
                  )}
-                 {/* Event Image with Smart Error Handling - Fixed height on mobile, responsive on larger screens */}
-         <div className="w-full h-48 sm:h-56 md:h-64 flex-shrink-0 relative bg-gray-100">
-           <div className="w-full h-full overflow-hidden rounded-t-xl">
-             <EventImage 
-               src={event.imageUrl} 
-               alt={event.title} 
-               fit="contain" 
-               aspect="16/9"
-               className="w-full h-full object-contain"
-               title={event.title}
-             />
-           </div>
-           
-           {/* Top Right Buttons - Outside overflow container */}
-           <div className="absolute top-3 right-3 flex gap-2 z-20">
-             {/* Share Button */}
-             <motion.button
-               whileHover={{ scale: 1.05 }}
-               whileTap={{ scale: 0.95 }}
-               onClick={(e) => {
-                 e.stopPropagation();
-                 handleShare();
-               }}
-               className="p-2 bg-white/90 backdrop-blur-sm text-gray-700 hover:text-[#F25129] hover:bg-white rounded-lg transition-all duration-200 shadow-lg"
-               title="Share event"
-             >
-               <Share2 className="w-4 h-4" />
-             </motion.button>
-             
-             {/* Three-dot Menu Button (Admin Only) */}
-             {currentUser?.role === 'admin' && (onEdit || onDelete) && (
-               <div className="relative">
-                 <motion.button
-                   whileHover={{ scale: 1.05 }}
-                   whileTap={{ scale: 0.95 }}
-                   onClick={(e) => {
-                     e.stopPropagation();
-                     setShowOptionsMenu(!showOptionsMenu);
-                   }}
-                   className="p-2 bg-white/90 backdrop-blur-sm text-gray-700 hover:text-[#F25129] hover:bg-white rounded-lg transition-all duration-200 shadow-lg"
-                   title="More options"
-                 >
-                   <MoreVertical className="w-4 h-4" />
-                 </motion.button>
-                 
-                 {/* Dropdown Menu */}
-                 <AnimatePresence>
-                   {showOptionsMenu && (
-                     <motion.div
-                       initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                       animate={{ opacity: 1, scale: 1, y: 0 }}
-                       exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                       transition={{ duration: 0.15 }}
-                       className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden z-[100]"
-                       onClick={(e) => e.stopPropagation()}
-                     >
-                       {onEdit && (
-                         <button
-                           onClick={(e) => {
-                             e.stopPropagation();
-                             setShowOptionsMenu(false);
-                             safeCall(onEdit);
-                           }}
-                           className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-green-50 text-gray-700 hover:text-green-600 transition-colors"
-                         >
-                           <Edit className="w-4 h-4" />
-                           <span className="font-medium">Edit Event</span>
-                         </button>
-                       )}
-                       {onDelete && (
-                         <button
-                           onClick={(e) => {
-                             e.stopPropagation();
-                             setShowOptionsMenu(false);
-                             safeCall(onDelete);
-                           }}
-                           className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-red-50 text-gray-700 hover:text-red-600 transition-colors border-t border-gray-100"
-                         >
-                           <Trash2 className="w-4 h-4" />
-                           <span className="font-medium">Delete Event</span>
-                         </button>
-                       )}
-                     </motion.div>
-                   )}
-                 </AnimatePresence>
-               </div>
-             )}
-           </div>
-         </div>
+                 {/* Event Image with Smart Error Handling */}
+         <EventImage 
+           src={event.imageUrl} 
+           alt={event.title} 
+           fit="contain" 
+           aspect="16/9"
+           className="transition-transform duration-300 hover:scale-105"
+           title={event.title}
+         >
+           {/* Share Button - Top Right Corner */}
+           <motion.button
+             whileHover={{ scale: 1.05 }}
+             whileTap={{ scale: 0.95 }}
+             onClick={(e) => {
+               e.stopPropagation();
+               handleShare();
+             }}
+             className="absolute top-3 right-3 p-2 bg-white/90 backdrop-blur-sm text-gray-700 hover:text-[#F25129] hover:bg-white rounded-lg transition-all duration-200 shadow-lg z-10"
+             title="Share event"
+           >
+             <Share2 className="w-4 h-4" />
+           </motion.button>
+         </EventImage>
 
         {/* Event Content - Flex to fill remaining space */}
         <div className="p-6 flex flex-col flex-1">
-                     {/* Event Title - Single line across all devices */}
-           <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 line-clamp-1 truncate flex-shrink-0">
+                     {/* Event Title - More space for longer titles */}
+           <h3 className="text-xl font-semibold text-gray-900 mb-3 line-clamp-1 sm:line-clamp-2 md:line-clamp-2 h-[32px] sm:h-[48px] md:h-[56px] flex items-start">
              {event.title}
            </h3>
 
@@ -779,39 +697,18 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                   {event.maxAttendees && ` / ${event.maxAttendees} max`}
                 </span>
               </div>
-              
-              {/* Price Display */}
               {event.pricing && event.pricing.requiresPayment && event.pricing.adultPrice ? (
-                <div className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-2.5">
-                    <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                    <span className="font-semibold text-blue-600">
-                      ${(event.pricing.adultPrice / 100).toFixed(2)}
-                    </span>
-                  </div>
-                  {event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
-                    <div className="text-xs text-gray-600 ml-7">
-                      Event Support Amt: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
-                    </div>
-                  )}
-                </div>
-              ) : event.pricing?.eventSupportAmount && event.pricing.eventSupportAmount > 0 ? (
-                <div className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-2.5">
-                    <Tag className="w-5 h-5 text-purple-600 flex-shrink-0" />
-                    <span className="font-semibold text-purple-600">
-                      Free
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-600 ml-7">
-                    Event Support Amt: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
-                  </div>
+                <div className="flex items-center gap-2.5">
+                  <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                  <span className="font-semibold text-blue-600">
+                    ${(event.pricing.adultPrice / 100).toFixed(2)}
+                  </span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2.5">
                   <Tag className="w-5 h-5 text-gray-500 flex-shrink-0" />
                   <span className="font-semibold text-gray-500">
-                    Free
+                    Unpaid
                   </span>
                 </div>
               )}
@@ -961,7 +858,37 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
 
               
 
+              {/* Edit Button (Admin Only) */}
+              {currentUser?.role === 'admin' && onEdit && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    safeCall(onEdit);
+                  }}
+                  className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                  title="Edit event"
+                >
+                  <Edit className="w-4 h-4" />
+                </motion.button>
+              )}
 
+              {/* Delete Button (Admin Only) */}
+              {currentUser?.role === 'admin' && onDelete && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    safeCall(onDelete);
+                  }}
+                  className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  title="Delete event"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </motion.button>
+              )}
             </div>
           </div>
         </div>
@@ -995,15 +922,14 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
             onClose={() => setShowPastEventModal(false)}
           />
         )}
-      </AnimatePresence>
 
-      {/* Payment Instruction Modal - Outside AnimatePresence for portal compatibility */}
-      {showPaymentInstructionModal && createPortal(
+        {/* Payment Instruction Modal */}
+        {showPaymentInstructionModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
             onClick={() => setShowPaymentInstructionModal(false)}
           >
             <motion.div
@@ -1059,17 +985,16 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                 </button>
               </div>
             </motion.div>
-          </motion.div>,
-          document.body
+          </motion.div>
         )}
 
-      {/* Non-Refundable Confirmation Modal - Outside AnimatePresence for portal compatibility */}
-      {showNonRefundableModal && createPortal(
+        {/* Non-Refundable Confirmation Modal */}
+        {showNonRefundableModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
             onClick={() => setShowNonRefundableModal(false)}
           >
             <motion.div
@@ -1126,9 +1051,9 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                 </button>
               </div>
             </motion.div>
-          </motion.div>,
-          document.body
+          </motion.div>
         )}
+      </AnimatePresence>
     </>
   );
 };

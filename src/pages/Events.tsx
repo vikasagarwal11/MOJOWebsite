@@ -1,23 +1,23 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, Calendar, TrendingUp } from 'lucide-react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Calendar, Filter, Search, TrendingUp } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 // COMMENTED OUT: Unused imports for layout testing
 // import { Share2, Plus, Tag } from 'lucide-react';
+import toast from 'react-hot-toast';
+import CreateEventModal from '../components/events/CreateEventModal';
 import EventCalendar from '../components/events/EventCalendar';
 import EventList from '../components/events/EventList';
-import CreateEventModal from '../components/events/CreateEventModal';
+import { EventsListSeo } from '../components/seo/EventsListSeo';
+import { useAuth } from '../contexts/AuthContext';
 import { useEvents } from '../hooks/useEvents';
 import { useRealTimeEvents } from '../hooks/useRealTimeEvents';
-import { useAuth } from '../contexts/AuthContext';
 import { EventDeletionService } from '../services/eventDeletionService';
-import toast from 'react-hot-toast';
-import { EventsListSeo } from '../components/seo/EventsListSeo';
 // import { useUserBlocking } from '../hooks/useUserBlocking'; // For future RSVP blocking feature
-import { EventDoc } from '../hooks/useEvents';
-import { RSVPModalNew as RSVPModal } from '../components/events/RSVPModalNew';
 import { EventTeaserModal } from '../components/events/EventTeaserModal';
 import { PastEventModal } from '../components/events/PastEventModal';
+import { RSVPModalNew as RSVPModal } from '../components/events/RSVPModalNew';
+import { EventDoc } from '../hooks/useEvents';
 // COMMENTED OUT: toast import for layout testing
 // import toast from 'react-hot-toast';
 import { useDebounce } from 'use-debounce';
@@ -58,6 +58,7 @@ const Events: React.FC = () => {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
+  const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
   const [dateRangeFilter, setDateRangeFilter] = useState<{
     startDate: string;
     endDate: string;
@@ -101,10 +102,15 @@ const Events: React.FC = () => {
     }
 
     try {
+      // Start deletion immediately (no toast, just quiet background operation)
       const result = await EventDeletionService.deleteEvent(event.id, currentUser.id);
       
       if (result.success) {
-        toast.success(`Event "${event.title}" deleted successfully`);
+        // Optimistically remove event from UI with smooth transition
+        setDeletedEventIds(prev => new Set(prev).add(event.id));
+        
+        // Show brief success message
+        toast.success(`Event deleted`, { duration: 1500 });
         console.log('✅ Event deleted:', result.deletedCounts);
       } else {
         toast.error(`Failed to delete event: ${result.errors.join(', ')}`);
@@ -148,11 +154,16 @@ const Events: React.FC = () => {
 
   // Use real-time events if available, fallback to regular events
   const baseList = useMemo(() => {
+    let events: EventDoc[];
     if (realTimeEvents.length > 0 && activeTab === 'upcoming') {
-      return realTimeEvents;
+      events = realTimeEvents;
+    } else {
+      events = activeTab === 'upcoming' ? upcomingEvents : pastEvents;
     }
-    return activeTab === 'upcoming' ? upcomingEvents : pastEvents;
-  }, [realTimeEvents, upcomingEvents, pastEvents, activeTab]);
+    
+    // Filter out optimistically deleted events
+    return events.filter(event => !deletedEventIds.has(event.id));
+  }, [realTimeEvents, upcomingEvents, pastEvents, activeTab, deletedEventIds]);
 
   // Debug logging for event data
   useEffect(() => {

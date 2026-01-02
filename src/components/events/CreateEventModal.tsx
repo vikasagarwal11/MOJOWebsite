@@ -11,7 +11,7 @@ import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStorage } from '../../hooks/useStorage';
 import { PaymentService } from '../../services/paymentService';
-import { EventPricing } from '../../types/payment';
+import { AgeGroup, EventPricing } from '../../types/payment';
 import { safeFormat, safeISODate } from '../../utils/dateUtils';
 
 // Firestore shouldn't see undefined fields
@@ -28,6 +28,36 @@ function tsToDate(v: any): Date {
   return new Date(v);
 }
 
+// Helper function to convert dollars to cents safely (avoiding floating-point errors)
+function dollarsToCents(dollars: string | number): number {
+  const dollarValue = typeof dollars === 'string' ? dollars : dollars.toString();
+  if (!dollarValue || dollarValue.trim() === '') return 0;
+  
+  // Parse the dollar value and check if valid
+  const numValue = parseFloat(dollarValue);
+  if (isNaN(numValue) || numValue < 0) return 0;
+  
+  // Convert to string with exactly 2 decimal places, then remove the decimal point
+  // This avoids floating-point arithmetic entirely
+  // Example: "50" -> "50.00" -> "5000" -> 5000
+  // Example: "50.5" -> "50.50" -> "5050" -> 5050
+  // Example: "100" -> "100.00" -> "10000" -> 10000
+  const fixedStr = numValue.toFixed(2);
+  const centsStr = fixedStr.replace('.', '');
+  return parseInt(centsStr, 10);
+}
+
+// Helper function to convert cents to dollars (for displaying values from database)
+function centsToDollars(cents: number): string {
+  if (!cents || cents === 0) return '';
+  
+  // Round to nearest cent to fix any floating-point errors in database
+  // Example: 49999 -> round(499.99) -> 500.00 -> "500.00"
+  // Example: 50000 -> round(500.00) -> 500.00 -> "500.00"
+  const dollars = Math.round(cents) / 100;
+  return dollars.toFixed(2);
+}
+
 const eventSchema = z.object({
   title: z.string().min(1, 'Event title is required'),
   description: z.string().min(200, 'Description must be at least 200 characters to ensure proper display'),
@@ -40,7 +70,10 @@ const eventSchema = z.object({
   location: z.string().optional(), // Optional for backward compatibility
   venueName: z.string().optional(),
   venueAddress: z.string().optional(),
-  maxAttendees: z.string().optional(),
+  maxAttendees: z.string().min(1, 'Max attendees is required').refine((val) => {
+    const num = parseInt(val);
+    return !isNaN(num) && num > 0;
+  }, 'Max attendees must be a positive number'),
   waitlistEnabled: z.boolean().optional(),
   waitlistLimit: z.string().optional(),
   waitlistCount: z.string().optional(),
@@ -57,6 +90,8 @@ const eventSchema = z.object({
   currency: z.string().optional(),
   refundAllowed: z.boolean().optional(),
   refundDeadline: z.string().optional(),
+  eventSupportAmountEnabled: z.boolean().optional(),
+  eventSupportAmount: z.string().optional(),
   isReadOnly: z.boolean().optional(),
 }).refine((data) => {
   // Custom validation: if endTime is provided, endDate must also be provided
@@ -108,6 +143,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const [isManuallyOverridden, setIsManuallyOverridden] = useState(false); // Track if end date/time are manually overridden
   // Payment state
   const [requiresPayment, setRequiresPayment] = useState(false);
+  const [eventSupportAmountEnabled, setEventSupportAmountEnabled] = useState(false);
   
   // Waitlist state
   const [waitlistEnabled, setWaitlistEnabled] = useState(false);
@@ -186,9 +222,11 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     allowMembersToAddAttendees: eventToEdit.allowMembersToAddAttendees || false,
     // Payment fields
     requiresPayment: eventToEdit.pricing?.requiresPayment || false,
-    adultPrice: eventToEdit.pricing?.adultPrice ? (eventToEdit.pricing.adultPrice / 100).toString() : '',
+    adultPrice: eventToEdit.pricing?.adultPrice ? centsToDollars(eventToEdit.pricing.adultPrice) : '',
     currency: eventToEdit.pricing?.currency || 'USD',
     refundAllowed: eventToEdit.pricing?.refundPolicy?.allowed === true,
+    eventSupportAmountEnabled: eventToEdit.pricing?.eventSupportAmount ? true : false,
+    eventSupportAmount: eventToEdit.pricing?.eventSupportAmount ? centsToDollars(eventToEdit.pricing.eventSupportAmount) : '',
   } : {
     date: safeFormat(new Date(), 'yyyy-MM-dd'), // Default to today
     time: safeFormat(new Date(), 'HH:mm'), // Default to current time
@@ -199,6 +237,8 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     requiresPayment: false, // Default to free events
     currency: 'USD', // Default currency
     refundAllowed: false, // Default no refunds
+    eventSupportAmountEnabled: false, // Default to no event support amount
+    eventSupportAmount: '', // Default empty
   },
 });
 
@@ -329,14 +369,14 @@ useEffect(() => {
           const teenPricing = pricing.find((p: any) => p.ageGroup === '11+');
           const infantPricing = pricing.find((p: any) => p.ageGroup === '0-2');
           
-          setValue('adultPrice', adultPricing ? (adultPricing.price / 100).toString() : '');
-          setValue('toddlerPrice', toddlerPricing ? (toddlerPricing.price / 100).toString() : '');
-          setValue('childPrice', childPricing ? (childPricing.price / 100).toString() : '');
-          setValue('teenPrice', teenPricing ? (teenPricing.price / 100).toString() : '');
-          setValue('infantPrice', infantPricing ? (infantPricing.price / 100).toString() : '');
+          setValue('adultPrice', adultPricing ? centsToDollars(adultPricing.price) : '');
+          setValue('toddlerPrice', toddlerPricing ? centsToDollars(toddlerPricing.price) : '');
+          setValue('childPrice', childPricing ? centsToDollars(childPricing.price) : '');
+          setValue('teenPrice', teenPricing ? centsToDollars(teenPricing.price) : '');
+          setValue('infantPrice', infantPricing ? centsToDollars(infantPricing.price) : '');
         } else if (eventToEdit.pricing.adultPrice) {
           // Fallback for old events without ageGroupPricing
-          setValue('adultPrice', (eventToEdit.pricing.adultPrice / 100).toString());
+          setValue('adultPrice', centsToDollars(eventToEdit.pricing.adultPrice));
         }
         
         // Set refund deadline
@@ -349,13 +389,21 @@ useEffect(() => {
         
         // Update payment state
         setRequiresPayment(eventToEdit.pricing.requiresPayment || false);
+        
+        // Set event support amount
+        if (eventToEdit.pricing.eventSupportAmount) {
+          setValue('eventSupportAmountEnabled', true);
+          setValue('eventSupportAmount', centsToDollars(eventToEdit.pricing.eventSupportAmount));
+          setEventSupportAmountEnabled(true);
+        }
       }
       
       // Update waitlist state
       setWaitlistEnabled(eventToEdit.waitlistEnabled || false);
       setWaitlistCount(eventToEdit.waitlistCount?.toString() || '0');
     }
-  }, [eventToEdit, setValue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventToEdit]); // setValue from react-hook-form is stable, no need to include in deps
 
   const addTag = (raw: string) => {
     const t = raw.trim().toLowerCase().replace(/\s+/g, '-');
@@ -770,19 +818,29 @@ useEffect(() => {
       // Create pricing configuration
       let pricing: EventPricing | undefined;
       if (data.requiresPayment) {
-        const adultPrice = data.adultPrice ? Math.round(parseFloat(data.adultPrice) * 100) : 0;
-        const toddlerPrice = data.toddlerPrice ? Math.round(parseFloat(data.toddlerPrice) * 100) : 0;
-        const childPrice = data.childPrice ? Math.round(parseFloat(data.childPrice) * 100) : 0;
-        const teenPrice = data.teenPrice ? Math.round(parseFloat(data.teenPrice) * 100) : 0;
-        const infantPrice = data.infantPrice ? Math.round(parseFloat(data.infantPrice) * 100) : 0;
+        const adultPrice = data.adultPrice ? dollarsToCents(data.adultPrice) : 0;
         
-        pricing = PaymentService.createPaidEventPricing(adultPrice, {
-          '0-2': infantPrice,
-          '3-5': toddlerPrice,
-          '6-10': childPrice,
-          '11+': teenPrice,
+        // Build age group pricing object - only include values that were actually provided
+        // This allows default percentage calculations to work for empty fields
+        const ageGroupPricing: Partial<Record<AgeGroup, number>> = {
           'adult': adultPrice
-        }, data.currency || 'USD');
+        };
+        
+        // Only add child prices if they were explicitly entered (not empty)
+        if (data.infantPrice && data.infantPrice.trim()) {
+          ageGroupPricing['0-2'] = dollarsToCents(data.infantPrice);
+        }
+        if (data.toddlerPrice && data.toddlerPrice.trim()) {
+          ageGroupPricing['3-5'] = dollarsToCents(data.toddlerPrice);
+        }
+        if (data.childPrice && data.childPrice.trim()) {
+          ageGroupPricing['6-10'] = dollarsToCents(data.childPrice);
+        }
+        if (data.teenPrice && data.teenPrice.trim()) {
+          ageGroupPricing['11+'] = dollarsToCents(data.teenPrice);
+        }
+        
+        pricing = PaymentService.createPaidEventPricing(adultPrice, ageGroupPricing, data.currency || 'USD');
         
         // Add refund policy only if user explicitly allows refunds
         if (data.refundAllowed) {
@@ -797,8 +855,20 @@ useEffect(() => {
             allowed: false
           };
         }
+        
       } else {
         pricing = PaymentService.createDefaultPricing();
+      }
+      
+      // Add event support amount if enabled (independent of payment requirement)
+      if (data.eventSupportAmountEnabled && data.eventSupportAmount) {
+        const eventSupportAmount = dollarsToCents(data.eventSupportAmount);
+        if (eventSupportAmount > 0) {
+          if (!pricing) {
+            pricing = PaymentService.createDefaultPricing();
+          }
+          pricing.eventSupportAmount = eventSupportAmount;
+        }
       }
 
       // Build event payload (no undefineds)
@@ -1227,7 +1297,9 @@ useEffect(() => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Max Attendees */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Max Attendees (Optional)</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Max Attendees <span className="text-red-500">*</span>
+                </label>
                 <div className="relative">
                   <Users className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
@@ -1238,9 +1310,12 @@ useEffect(() => {
                     inputMode="numeric"
                     disabled={isLoading}
                     className="w-full pl-8 pr-3 py-2 text-sm rounded-md border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                    placeholder="No limit"
+                    placeholder="Enter max attendees"
                   />
                 </div>
+                {errors.maxAttendees && (
+                  <p className="mt-1 text-xs text-red-500">{errors.maxAttendees.message}</p>
+                )}
               </div>
               
               {/* Waitlist Enable */}
@@ -1677,9 +1752,8 @@ useEffect(() => {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Adult Price ($)</label>
                       <input
                         {...register('adultPrice')}
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         disabled={isLoading}
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="25.00"
@@ -1705,9 +1779,8 @@ useEffect(() => {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Teen (11+) ($)</label>
                       <input
                         {...register('teenPrice')}
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         disabled={isLoading}
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="20.00"
@@ -1717,9 +1790,8 @@ useEffect(() => {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Children (6-10) ($)</label>
                       <input
                         {...register('childPrice')}
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         disabled={isLoading}
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="15.00"
@@ -1729,9 +1801,8 @@ useEffect(() => {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Toddler (3-5) ($)</label>
                       <input
                         {...register('toddlerPrice')}
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         disabled={isLoading}
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="10.00"
@@ -1741,9 +1812,8 @@ useEffect(() => {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Infant (0-2) ($)</label>
                       <input
                         {...register('infantPrice')}
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         disabled={isLoading}
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="0.00"
@@ -1775,6 +1845,61 @@ useEffect(() => {
                       />
                       <p className="text-xs text-gray-500 mt-1">Leave empty to allow refunds until event date</p>
                     </div>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          </div>
+
+          {/* Event Support Amount Section - OUTSIDE Payment Configuration */}
+          <div className="space-y-4 pt-6 border-t border-gray-200">
+            <div className="flex items-center gap-3">
+              <DollarSign className="w-5 h-5 text-purple-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Event Support Amount (Optional)</h3>
+            </div>
+            
+            <div className="space-y-3">
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={eventSupportAmountEnabled}
+                  onChange={(e) => {
+                    setEventSupportAmountEnabled(e.target.checked);
+                    setValue('eventSupportAmountEnabled', e.target.checked);
+                    if (!e.target.checked) {
+                      setValue('eventSupportAmount', '');
+                    }
+                  }}
+                  disabled={isLoading}
+                  className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Event Support Amt</span>
+                  <p className="text-xs text-gray-500">Add an additional fee for event support (independent of ticket pricing)</p>
+                </div>
+              </label>
+
+              {eventSupportAmountEnabled && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="bg-purple-50 p-4 rounded-lg border border-purple-200"
+                >
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Enter Amount ($) *</label>
+                    <input
+                      {...register('eventSupportAmount')}
+                      type="text"
+                      inputMode="decimal"
+                      min="0"
+                      required={eventSupportAmountEnabled}
+                      disabled={isLoading}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                      placeholder="5.00"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">This amount will be added to each attendee's total</p>
                   </div>
                 </motion.div>
               )}

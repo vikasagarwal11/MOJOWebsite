@@ -781,10 +781,18 @@ service cloud.firestore {
          request.resource.data.moderationStatus == 'pending') &&
         // Client cannot set serverModerated flag
         !('serverModerated' in request.resource.data);
-      allow update, delete: if isSignedIn() && 
-        (request.auth.uid == resource.data.uploadedBy || isAdmin()) ||
+      allow update: if isSignedIn() && 
+        // Allow owner to update their own media (except moderation fields)
+        (request.auth.uid == resource.data.uploadedBy && 
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['moderationStatus','requiresApproval','moderatedAt','moderatedBy','moderationReason'])) ||
+        // Allow admins to update moderation fields
+        (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['moderationStatus','requiresApproval','moderatedAt','moderatedBy','moderationReason','moderationDetectedIssues','moderationEvaluatedAt'])) ||
+        // Allow admins to update any field
+        isAdmin() ||
         // Allow view counter updates for all users (including guests)
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewsCount']));
+      allow delete: if isSignedIn() && 
+        (request.auth.uid == resource.data.uploadedBy || isAdmin());
       
       match /likes/{userId} {
         allow read: if true;
@@ -863,8 +871,14 @@ service cloud.firestore {
       allow read: if request.auth != null && 
         request.auth.uid == resource.data.userId;
       
-      // Allow admins to create notifications (for system notifications)
-      allow create: if isAdmin();
+      // Allow users to create notifications for themselves
+      // Allow admins to create notifications for anyone (for system notifications)
+      // Allow users to create notifications for admins (for story submissions, etc.)
+      allow create: if request.auth != null && (
+        request.resource.data.userId == request.auth.uid || 
+        isAdmin() ||
+        (isSignedIn() && get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.role == 'admin')
+      );
       
       // Allow users to update only their own notifications (mark as read)
       allow update: if request.auth != null && 

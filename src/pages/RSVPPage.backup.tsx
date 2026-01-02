@@ -1,13 +1,12 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   AlertTriangle,
-  ArrowLeft,
   Calendar,
   ChevronDown,
   Heart,
   QrCode,
   UserPlus,
-  Users
+  Users,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -32,10 +31,12 @@ import { useWaitlistPositions } from '../hooks/useWaitlistPositions';
 // Import components
 import { Helmet } from 'react-helmet-async';
 import { AutoPromotionManager } from '../components/admin/AutoPromotionManager';
+import { EventImage } from '../components/events/EventImage';
 import { PaymentSection } from '../components/events/PaymentSection';
 import { QRCodeTab } from '../components/events/QRCodeTab';
 import { AttendeeInputRowMemo } from '../components/events/RSVPModalNew/components/AttendeeInputRow';
 import { EventDetails } from '../components/events/RSVPModalNew/components/EventDetails';
+import { Header } from '../components/events/RSVPModalNew/components/Header';
 import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
 import { createEventCanonicalUrl } from '../utils/seo';
 
@@ -610,116 +611,115 @@ const RSVPPage: React.FC = () => {
         </Helmet>
       )}
       
-      {/* Mobile-First Design - Clean, No Nested Containers */}
-      <div className="min-h-screen bg-gray-50">
-        {/* Sticky Top Bar with Back Button */}
-        <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm">
-          <div className="max-w-2xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={handleClose}
-              className="p-1.5 sm:p-2 -ml-2 hover:bg-gray-100 rounded-lg transition-colors active:scale-95"
-              aria-label="Go back"
-            >
-              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" />
-            </button>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-gray-500 mb-0.5">RSVP</div>
-              <h1 className="text-sm sm:text-base lg:text-lg font-bold text-gray-900 truncate" title={event.title}>{event.title}</h1>
-            </div>
-          </div>
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 py-4 sm:py-8">
+        <div className="max-w-5xl mx-auto px-3 sm:px-4">
+          {/* Back Button */}
+        <button
+          onClick={handleClose}
+          className="mb-3 sm:mb-4 px-3 py-2 sm:px-0 sm:py-0 text-[#F25129] hover:text-[#E0451F] flex items-center gap-2 transition-all duration-200 font-medium text-sm sm:text-base rounded-lg sm:rounded-none hover:bg-white/50 sm:hover:bg-transparent"
+        >
+          Back to Events
+        </button>
 
-        <div className="max-w-2xl mx-auto">
-          {/* Capacity Status Banner */}
-          {capacityState.isNearlyFull && (
-            <div className={`px-3 sm:px-4 py-2.5 sm:py-3 border-b border-gray-200 ${getCapacityBadgeClasses(capacityState.state)}`}>
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-xs sm:text-sm">{capacityState.warningMessage}</div>
-                  <div className="text-xs mt-0.5 opacity-90">
-                    {waitlistPosition 
-                      ? `Waitlist position #${waitlistPosition}. ${capacityState.slotsRemainingText}`
-                      : capacityState.slotsRemainingText
-                    }
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Event Details Section */}
-          <EventDetails 
-            event={event}
-            isMobile={true}
+        {/* Main Content Card */}
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg sm:shadow-2xl w-full flex flex-col overflow-hidden border border-gray-100">
+          {/* Event Hero Image (non-cropped) */}
+          <EventImage
+            src={event.imageUrl}
+            alt={event.title || 'Event image'}
+            fit="contain"
+            aspect="16/9"
+            title={event.title}
           />
 
-          {/* Tab Navigation - Clean Mobile Design */}
-          <div className="bg-white border-b border-gray-200">
-            <div className="max-w-2xl mx-auto flex">
+          {/* Header Component */}
+          <Header 
+            event={event}
+            onClose={handleClose}
+            closeBtnRef={closeBtnRef}
+            isCompact={isMobile}
+            capacityState={capacityState}
+          />
+          
+          {/* Event Details (Mobile only) */}
+          <EventDetails 
+            event={event}
+            isMobile={isMobile}
+          />
+
+          {/* Tab Navigation */}
+          <div className="px-3 sm:px-6 py-3 border-b border-gray-200 bg-gray-50">
+            <div className="flex space-x-1 bg-white rounded-lg p-1 shadow-sm">
               <button
                 onClick={() => setActiveTab('attendees')}
-                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${
+                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2.5 sm:py-2 rounded-md text-xs sm:text-sm font-semibold transition-all duration-200 ${
                   activeTab === 'attendees'
-                    ? 'text-[#F25129] border-b-2 border-[#F25129] bg-orange-50/30'
-                    : 'text-gray-600 border-b-2 border-transparent active:bg-gray-50'
+                    ? 'bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }`}
               >
-                <Users className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="hidden xs:inline sm:inline">Your RSVP</span>
-                <span className="xs:hidden">RSVP</span>
+                <Users className="w-4 h-4" />
+                <span className="hidden sm:inline">Your RSVP</span>
+                <span className="sm:hidden">RSVP</span>
               </button>
               <button
                 onClick={() => setActiveTab('qr')}
                 disabled={!event.attendanceEnabled}
-                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${
+                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2.5 sm:py-2 rounded-md text-xs sm:text-sm font-semibold transition-all duration-200 ${
                   activeTab === 'qr'
-                    ? 'text-[#F25129] border-b-2 border-[#F25129] bg-orange-50/30'
+                    ? 'bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white shadow-md'
                     : !event.attendanceEnabled
-                      ? 'text-gray-300 cursor-not-allowed border-b-2 border-transparent'
-                      : 'text-gray-600 border-b-2 border-transparent active:bg-gray-50'
+                      ? 'text-gray-400 cursor-not-allowed'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }`}
-                title={!event.attendanceEnabled ? 'QR Code not activated' : ''}
+                title={!event.attendanceEnabled ? 'QR Code not activated for this event' : ''}
               >
-                <QrCode className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="hidden xs:inline sm:inline">QR Code</span>
-                <span className="xs:hidden">QR</span>
+                <QrCode className="w-4 h-4" />
+                <span className="hidden sm:inline">QR Code</span>
+                <span className="sm:hidden">QR</span>
               </button>
               <button
                 onClick={() => setActiveTab('whosGoing')}
-                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${
+                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2.5 sm:py-2 rounded-md text-xs sm:text-sm font-semibold transition-all duration-200 ${
                   activeTab === 'whosGoing'
-                    ? 'text-[#F25129] border-b-2 border-[#F25129] bg-orange-50/30'
-                    : 'text-gray-600 border-b-2 border-transparent active:bg-gray-50'
+                    ? 'bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white shadow-md'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                 }`}
               >
-                <Users className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span>Guests</span>
+                <Users className="w-4 h-4" />
+                <span className="hidden sm:inline">Guests</span>
+                <span className="sm:hidden">List</span>
               </button>
             </div>
           </div>
 
-          {/* Content Wrapper */}
-          <div className="bg-white">
+          <div
+            className="flex-1 min-h-0 overflow-y-auto pb-4 sm:pb-6 px-3 sm:pr-2 rsvp-modal-scrollbar modalScroll"
+            style={{ scrollbarGutter: 'stable both-edges', maxHeight: 'calc(100vh - 240px)' }}
+          >
             {activeTab === 'qr' && event.attendanceEnabled ? (
-              <div className="px-4 py-6">
+              <div className="p-3 sm:p-6">
                 <QRCodeTab 
                   event={event} 
                   onEventUpdate={() => {
+                    // Refresh event data when QR attendance is toggled
                     refreshAttendees();
                   }}
                 />
               </div>
             ) : activeTab === 'qr' && !event.attendanceEnabled ? (
-              <div className="px-4 py-12 text-center">
-                <QrCode className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-900 mb-2">QR Code Not Activated</h3>
-                <p className="text-sm text-gray-600">
+              <div className="p-4 sm:p-6 text-center">
+                <QrCode className="w-12 h-12 sm:w-16 sm:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">QR Code Not Activated</h3>
+                <p className="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">
                   QR code functionality is not enabled for this event.
+                </p>
+                <p className="text-xs sm:text-sm text-gray-500">
+                  Contact an administrator to enable QR code features.
                 </p>
               </div>
             ) : activeTab === 'whosGoing' ? (
-              <div className="px-4 py-6">
+              <div className="p-3 sm:p-6">
                 <WhosGoingTab 
                   event={event}
                   attendees={attendees}
@@ -728,31 +728,31 @@ const RSVPPage: React.FC = () => {
                 />
               </div>
             ) : isBlockedFromRSVP ? (
-              <div className="px-4 py-12 text-center">
-                <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-900 mb-2">RSVP Access Restricted</h3>
-                <p className="text-sm text-gray-600">You are currently blocked from RSVPing to events. Please contact an administrator.</p>
+              <div className="p-4 sm:p-6 text-center">
+                <AlertTriangle className="w-12 h-12 sm:w-16 sm:h-16 text-red-500 mx-auto mb-3 sm:mb-4" />
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">RSVP Access Restricted</h3>
+                <p className="text-sm sm:text-base text-gray-600">You are currently blocked from RSVPing to events. Please contact an administrator.</p>
               </div>
             ) : attendeesError ? (
-              <div className="px-4 py-12 text-center">
-                <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Error loading attendees</h3>
-                <p className="text-sm text-gray-600 mb-4">{attendeesError}</p>
+              <div className="p-4 sm:p-6 text-center">
+                <AlertTriangle className="w-12 h-12 sm:w-16 sm:h-16 text-red-500 mx-auto mb-3 sm:mb-4" />
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">Error loading attendees</h3>
+                <p className="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">{attendeesError}</p>
                 <button
                   onClick={() => refreshAttendees()}
-                  className="px-6 py-3 bg-[#F25129] text-white rounded-lg font-semibold active:scale-95 transition-transform"
+                  className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors shadow-md hover:shadow-lg text-sm sm:text-base font-semibold"
                 >
                   Retry
                 </button>
               </div>
             ) : isEventPast ? (
-              <div className="px-4 py-12 text-center">
-                <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Event Has Passed</h3>
-                <p className="text-sm text-gray-600">This event has already occurred. RSVPs are no longer accepted.</p>
+              <div className="p-4 sm:p-6 text-center">
+                <Calendar className="w-12 h-12 sm:w-16 sm:h-16 text-gray-400 mx-auto mb-3 sm:mb-4" />
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">Event Has Passed</h3>
+                <p className="text-sm sm:text-base text-gray-600">This event has already occurred. RSVPs are no longer accepted.</p>
               </div>
             ) : (
-              <div className="px-4 py-4">
+              <div className="p-3">
                 {/* Payment Section */}
                 <PaymentSection 
                   event={event}
@@ -766,60 +766,58 @@ const RSVPPage: React.FC = () => {
                 />
 
                 {isAdmin && (
-                  <div className="mb-3 sm:mb-4 bg-gray-50 rounded-lg p-2.5 sm:p-3 border border-gray-200">
-                    <h3 className="text-xs sm:text-sm font-semibold text-gray-900 mb-1.5 sm:mb-2">Manage Attendees</h3>
-                    <div className="flex flex-wrap gap-2 sm:gap-3 text-xs text-gray-600">
-                      <span className="flex items-center gap-1 sm:gap-1.5">
-                        <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-green-500 rounded-full" />
-                        <span className="font-medium">{counts.goingCount} Going</span>
-                      </span>
-                      <span className="flex items-center gap-1 sm:gap-1.5">
-                        <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full" />
-                        <span className="font-medium">{counts.notGoingCount} Not Going</span>
-                      </span>
-                      <span className="flex items-center gap-1 sm:gap-1.5">
-                        <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-purple-500 rounded-full" />
-                        <span className="font-medium">{counts.waitlistedCount} Waitlisted</span>
-                      </span>
+                  <div className="mb-4">
+                    <div className="flex items-center gap-3 mb-3">
+                      <h3 className="text-[15px] font-semibold text-gray-900">Manage Attendees</h3>
+                      <div className="flex items-center gap-2 text-[12px] text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-green-500 rounded-full" />
+                          <span>{counts.goingCount} Going</span>
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-red-500 rounded-full" />
+                          <span>{counts.notGoingCount} Not Going</span>
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-purple-500 rounded-full" />
+                          <span>{counts.waitlistedCount} Waitlisted</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )}
 
                   {/* Add Attendees Section - Show based on event settings */}
-                  <div className="bg-orange-50 border border-orange-200 rounded-lg mb-3 sm:mb-4">
+                  <div className="bg-[#F25129]/10 border border-[#F25129]/20 rounded-lg mb-4">
                     <motion.button
                       id="add-attendees-trigger"
                       aria-expanded={!isAddSectionCollapsed}
                       aria-controls="add-attendees-panel"
                       onClick={() => canAddAttendees && setIsAddSectionCollapsed((v) => !v)}
                       disabled={!canAddAttendees}
-                      className={`w-full p-3 sm:p-4 flex items-center justify-between touch-manipulation ${
-                        canAddAttendees ? 'active:bg-orange-100 cursor-pointer' : 'opacity-50 cursor-not-allowed'
+                      className={`w-full p-3 flex items-center justify-between transition-colors ${
+                        canAddAttendees ? 'hover:bg-[#F25129]/20 cursor-pointer' : 'opacity-50 cursor-not-allowed'
                       }`}
                       aria-label={`${isAddSectionCollapsed ? 'Expand' : 'Collapse'} Add Attendees section`}
                       title={!canAddAttendees ? 'Only admins can add attendees for this event' : undefined}
                     >
-                      <div className="flex items-center gap-2 sm:gap-3">
-                        <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm">
-                          <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
-                        </div>
-                        <div className="text-left">
-                          <h4 className="font-semibold text-gray-900 text-xs sm:text-sm">Add Attendees</h4>
-                          {canAddAttendees && readyToAddCount > 0 && (
-                            <span className="text-xs text-orange-600 font-medium">
-                              {readyToAddCount} ready to add
-                            </span>
-                          )}
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <UserPlus className="w-4 h-4 text-[#F25129]" />
+                        <h4 className="font-medium text-gray-900 text-[13px]">Add Attendees</h4>
                         {!canAddAttendees && (
-                          <span className="text-xs text-gray-600 bg-gray-200 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-medium">
+                          <span className="text-[11px] text-gray-600 bg-gray-200 px-2 py-0.5 rounded">
                             Admin Only
+                          </span>
+                        )}
+                        {canAddAttendees && (
+                          <span className="text-[12px] text-gray-500">
+                            ({readyToAddCount} ready to add)
                           </span>
                         )}
                       </div>
                       {canAddAttendees && (
-                        <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.3 }}>
-                          <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
+                        <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.2 }}>
+                          <ChevronDown className="w-5 h-5 text-gray-500" />
                         </motion.div>
                       )}
                     </motion.button>
@@ -827,9 +825,9 @@ const RSVPPage: React.FC = () => {
                     {!isAddSectionCollapsed && canAddAttendees && (
                       <div className="px-4 pt-2">
                         {capacityState.isNearlyFull && (
-                          <div className={`mb-2 sm:mb-3 p-2.5 sm:p-3 rounded-lg text-xs sm:text-sm ${getCapacityBadgeClasses(capacityState.state)}`}>
-                            <div className="flex items-center gap-1.5 sm:gap-2">
-                              <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          <div className={`mb-3 p-3 rounded-lg text-sm ${getCapacityBadgeClasses(capacityState.state)}`}>
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4" />
                               <span className="font-medium">{capacityState.warningMessage}</span>
                             </div>
                             <p className="mt-1 text-xs opacity-90">
@@ -855,23 +853,44 @@ const RSVPPage: React.FC = () => {
                           transition={{ duration: 0.3, ease: 'easeInOut' }}
                           className="overflow-hidden"
                         >
-                          <div className="p-4 pt-2 space-y-3">
-                            {/* Mobile-Friendly Attendee Input - No table layout */}
-                            {bulkFormData.familyMembers.map((member) => (
-                              <div 
-                                key={member.id}
-                                className="bg-white rounded-lg p-3 border border-gray-200"
-                              >
-                                <AttendeeInputRowMemo
-                                  member={member}
-                                  onUpdate={updateBulkFormField}
-                                  onRemove={removeBulkFormRow}
-                                  onAdd={addBulkFormRow}
-                                />
+                          <div className="p-2 pt-0">
+                            {/* Table Header */}
+                            <div className="border border-gray-200 rounded-lg overflow-hidden mb-2">
+                              <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
+                                <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
+                                  <div className="col-span-4">Name</div>
+                                  <div className="col-span-3">Age</div>
+                                  <div className="col-span-3">Relation</div>
+                                  <div className="col-span-2">Actions</div>
+                                </div>
                               </div>
-                            ))}
+                              
+                              {/* Table Body */}
+                              <div className="divide-y divide-gray-100">
+                                <div
+                                  className="max-h-[180px] overflow-y-auto rsvp-modal-scrollbar modalScroll"
+                                  style={{ scrollbarGutter: 'stable both-edges' }}
+                                >
+                                  {bulkFormData.familyMembers.map((member) => (
+                                    <div 
+                                      key={member.id}
+                                      className="py-2"
+                                    >
+                                      <div className="px-2.5">
+                                        <AttendeeInputRowMemo
+                                          member={member}
+                                          onUpdate={updateBulkFormField}
+                                          onRemove={removeBulkFormRow}
+                                          onAdd={addBulkFormRow}
+                                        />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
 
-                            <div className="pt-2.5 sm:pt-3 border-t border-orange-200">
+                            <div className="mt-4 pt-3 border-t border-[#F25129]/20">
                               <button
                                 onClick={handleBulkAddFamilyMembers}
                                 disabled={
@@ -879,7 +898,7 @@ const RSVPPage: React.FC = () => {
                                   bulkFormData.familyMembers.every((m) => !m.name.trim()) ||
                                   (!capacityState.canAddMore && !capacityState.canWaitlist)
                                 }
-                                className="w-full px-4 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation"
+                                className="w-full px-3.5 py-2 text-sm bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                               >
                                 {isAdding
                                   ? 'Adding...'
@@ -897,28 +916,24 @@ const RSVPPage: React.FC = () => {
                   </div>
 
                   {familyMembers.length > 0 && (
-                    <div className="bg-pink-50 border border-pink-200 rounded-lg mb-3 sm:mb-4">
+                    <div className="bg-[#F25129]/10 border border-[#F25129]/20 rounded-lg mb-4">
                       <motion.button
                         id="family-members-trigger"
                         aria-expanded={showFamilyMembers}
                         aria-controls="family-members-panel"
                         onClick={() => setShowFamilyMembers((v) => !v)}
-                        className="w-full p-3 sm:p-4 flex items-center justify-between active:bg-pink-100 transition-colors touch-manipulation"
+                        className="w-full p-3 flex items-center justify-between hover:bg-[#F25129]/20 transition-colors"
                         aria-label={`${showFamilyMembers ? 'Collapse' : 'Expand'} Family Members section`}
                       >
-                        <div className="flex items-center gap-2 sm:gap-3">
-                          <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm">
-                            <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-pink-500" />
-                          </div>
-                          <div className="text-left">
-                            <h4 className="font-semibold text-gray-900 text-xs sm:text-sm">Add from Family Profile</h4>
-                            <span className="text-xs text-pink-600 font-medium">
-                              {availableFamilyMembers.length} available · {familySizeInfo.current}/{familySizeInfo.max} used
-                            </span>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <Heart className="w-4 h-4 text-[#F25129]" />
+                          <h4 className="font-medium text-gray-900 text-[13px]">Add from Family Profile</h4>
+                          <span className="text-[12px] text-gray-500">
+                            ({availableFamilyMembers.length} available, {familySizeInfo.current}/{familySizeInfo.max} used)
+                          </span>
                         </div>
-                        <motion.div animate={{ rotate: showFamilyMembers ? 0 : 180 }} transition={{ duration: 0.3 }}>
-                          <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-pink-500" />
+                        <motion.div animate={{ rotate: showFamilyMembers ? 0 : 180 }} transition={{ duration: 0.2 }}>
+                          <ChevronDown className="w-5 h-5 text-gray-500" />
                         </motion.div>
                       </motion.button>
 
@@ -934,90 +949,104 @@ const RSVPPage: React.FC = () => {
                             transition={{ duration: 0.3, ease: 'easeInOut' }}
                             className="overflow-hidden"
                           >
-                            <div className="p-4 pt-2 space-y-3">
+                            <div className="p-4 pt-0">
                               {!familySizeInfo.canAdd && (
-                                <div className="p-2.5 sm:p-3 rounded-lg bg-amber-50 border border-amber-200">
-                                  <div className="flex items-start gap-1.5 sm:gap-2">
-                                    <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                                    <div className="flex-1">
-                                      <div className="font-semibold text-amber-900 text-xs sm:text-sm">
-                                        {familySizeInfo.current >= familySizeInfo.max 
-                                          ? `Maximum family size reached (${familySizeInfo.max} members)`
-                                          : 'Primary member must be "going" to add family'
-                                        }
-                                      </div>
-                                      <p className="mt-1 text-xs text-amber-800">
-                                        {familySizeInfo.current >= familySizeInfo.max 
-                                          ? 'You can add up to 4 family members per event.'
-                                          : 'Set your status to "going" first, then add family members.'
-                                        }
-                                      </p>
-                                    </div>
+                                <div className="mb-4 p-3 rounded-lg text-sm bg-yellow-50 border border-yellow-200">
+                                  <div className="flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                                    <span className="font-medium text-yellow-800">
+                                      {familySizeInfo.current >= familySizeInfo.max 
+                                        ? `Maximum family size reached (${familySizeInfo.max} family members)`
+                                        : 'Primary member must be "going" to add family members'
+                                      }
+                                    </span>
                                   </div>
+                                  <p className="mt-1 text-xs text-yellow-700">
+                                    {familySizeInfo.current >= familySizeInfo.max 
+                                      ? 'You can add up to 4 family members per event.'
+                                      : 'Please set your status to "going" first, then you can add family members.'
+                                    }
+                                  </p>
                                 </div>
                               )}
 
                               {capacityState.isNearlyFull && familySizeInfo.canAdd && (
-                                <div className={`p-2.5 sm:p-3 rounded-lg border ${getCapacityBadgeClasses(capacityState.state)}`}>
-                                  <div className="flex items-start gap-1.5 sm:gap-2">
-                                    <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 mt-0.5" />
-                                    <div className="flex-1">
-                                      <div className="font-semibold text-xs sm:text-sm">{capacityState.warningMessage}</div>
-                                      <p className="mt-1 text-xs opacity-90">
-                                        {waitlistPosition 
-                                          ? `Waitlist #${waitlistPosition}. ${capacityState.slotsRemainingText}`
-                                          : capacityState.slotsRemainingText
-                                        }
-                                      </p>
-                                    </div>
+                                <div className={`mb-4 p-3 rounded-lg text-sm ${getCapacityBadgeClasses(capacityState.state)}`}>
+                                  <div className="flex items-center gap-2">
+                                    <AlertTriangle className="w-4 h-4" />
+                                    <span className="font-medium">{capacityState.warningMessage}</span>
                                   </div>
+                                  <p className="mt-1 text-xs opacity-90">
+                                    {waitlistPosition 
+                                      ? `You are waitlisted (#${waitlistPosition}). ${capacityState.slotsRemainingText}`
+                                      : capacityState.slotsRemainingText
+                                    }
+                                  </p>
                                 </div>
                               )}
 
                               {availableFamilyMembers.length > 0 ? (
                                 <>
-                                  <div className="space-y-2">
-                                    {availableFamilyMembers.map((familyMember) => (
-                                      <div
-                                        key={familyMember.id}
-                                        className="bg-white rounded-lg p-3 border border-gray-200"
-                                      >
-                                        <div className="space-y-2">
-                                          <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                              <div className="font-medium text-gray-900 text-sm">{familyMember.name}</div>
-                                              <div className="text-xs text-gray-500 mt-0.5">
-                                                {familyMember.ageGroup ? 
-                                                  (familyMember.ageGroup === 'adult' ? 'Adult' :
-                                                   familyMember.ageGroup === '11+' ? '11+ Years' :
-                                                   familyMember.ageGroup === '0-2' ? '0-2 Years' :
-                                                   familyMember.ageGroup === '3-5' ? '3-5 Years' :
-                                                   familyMember.ageGroup === '6-10' ? '6-10 Years' :
-                                                   `${familyMember.ageGroup} years`) : 'Not set'}
-                                              </div>
-                                            </div>
-                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                                              Available
-                                            </span>
-                                          </div>
-                                          <button
-                                            onClick={() => handleAddFamilyMember(familyMember)}
-                                            disabled={isAdding || !familySizeInfo.canAdd}
-                                            className="w-full px-3 py-2 text-sm bg-[#F25129] text-white rounded-lg font-medium active:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
-                                          >
-                                            {isAdding ? 'Adding...' : !familySizeInfo.canAdd ? 'Cannot Add' : 'Add to Event'}
-                                          </button>
-                                        </div>
+                                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                    {/* Header row - hidden on mobile, visible on sm+ */}
+                                    <div className="hidden sm:block bg-gray-50 px-3 py-2 border-b border-gray-200">
+                                      <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-600">
+                                        <div className="col-span-5">Name</div>
+                                        <div className="col-span-3">Age</div>
+                                        <div className="col-span-2">Status</div>
+                                        <div className="col-span-2">Action</div>
                                       </div>
-                                    ))}
+                                    </div>
+
+                                    {/* Rows */}
+                                    <div className="divide-y divide-gray-100">
+                                      {availableFamilyMembers.map((familyMember, index) => (
+                                        <div
+                                          key={familyMember.id}
+                                          className={`px-3 py-2 hover:bg-[#F25129]/10 transition-colors ${
+                                            index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                                          }`}
+                                        >
+                                          {/* Stack on mobile, 12-col on sm+ */}
+                                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                                            <div className="sm:col-span-5">
+                                              <span className="font-medium text-gray-900 text-[13px]">{familyMember.name}</span>
+                                            </div>
+                                            <div className="sm:col-span-3 text-[12px] text-gray-500">
+                                              {familyMember.ageGroup ? 
+                                                (familyMember.ageGroup === 'adult' ? 'Adult' :
+                                                 familyMember.ageGroup === '11+' ? '11+ Years' :
+                                                 familyMember.ageGroup === '0-2' ? '0-2 Years' :
+                                                 familyMember.ageGroup === '3-5' ? '3-5 Years' :
+                                                 familyMember.ageGroup === '6-10' ? '6-10 Years' :
+                                                 `${familyMember.ageGroup} years`) : 'Not set'}
+                                            </div>
+                                            <div className="sm:col-span-2">
+                                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800">
+                                                Available
+                                              </span>
+                                            </div>
+                                            <div className="sm:col-span-2">
+                                              <button
+                                                onClick={() => handleAddFamilyMember(familyMember)}
+                                                disabled={isAdding || !familySizeInfo.canAdd}
+                                                className="w-full px-2 py-1.5 text-[12px] bg-[#F25129] text-white rounded hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                              >
+                                                {isAdding ? 'Adding...' : !familySizeInfo.canAdd ? 'Cannot Add' : 'Add'}
+                                              </button>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
 
-                                  <div className="mt-4 pt-4 border-t border-pink-200">
+                                  <div className="mt-4 pt-3 border-t border-[#F25129]/20">
                                     <LoadingButton
                                       loading={isAdding}
                                       disabled={!familySizeInfo.canAdd}
                                       onClick={() => handleBulkAddFromProfile(availableFamilyMembers)}
-                                      className="w-full px-6 py-3 text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation"
+                                      className="w-full px-3.5 py-2 text-sm bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     >
                                       {!familySizeInfo.canAdd ? 'Cannot Add Family Members' : `Add All ${availableFamilyMembers.length} Family Members`}
                                     </LoadingButton>
@@ -1052,6 +1081,25 @@ const RSVPPage: React.FC = () => {
                     />
                   </div>
 
+                  {event.description && (
+                    <div className="mt-6 bg-gray-50 rounded-lg p-4">
+                      <h4 className="font-medium text-gray-900 mb-2">Event Details</h4>
+                      <div className="relative">
+                        <p className={`text-gray-700 leading-relaxed break-words ${!isDescriptionExpanded ? 'line-clamp-2' : ''}`}>
+                          {event.description}
+                        </p>
+                        {event.description.length > 120 && (
+                          <button
+                            onClick={() => setIsDescriptionExpanded((v) => !v)}
+                            className="text-[#F25129] hover:text-[#E0451F] text-sm font-medium mt-1"
+                          >
+                            {isDescriptionExpanded ? 'Show less' : 'View event details...'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Admin Tools */}
                   {isAdmin && (
                     <AutoPromotionManager
@@ -1064,8 +1112,21 @@ const RSVPPage: React.FC = () => {
             )}
           </div>
 
+          <div className="border-t border-gray-200 p-3 sm:p-4 bg-gradient-to-r from-gray-50 to-gray-100 mt-2 safe-footer">
+            <div className="flex items-center justify-center sm:justify-end">
+              <motion.button
+                whileHover={prefersReduced ? undefined : { scale: 1.05 }}
+                whileTap={prefersReduced ? undefined : { scale: 0.95 }}
+                onClick={handleClose}
+                className="w-full sm:w-auto px-6 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 active:bg-gray-400 transition-all duration-200 text-sm sm:text-base font-semibold shadow-sm hover:shadow-md"
+              >
+                Close
+              </motion.button>
+            </div>
+          </div>
         </div>
       </div>
+    </div>
     </>
   );
 };

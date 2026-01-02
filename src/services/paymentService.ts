@@ -31,7 +31,11 @@ export class PaymentService {
     attendees: Attendee[], 
     eventPricing: EventPricing
   ): PaymentSummary {
-    if (!eventPricing.requiresPayment || eventPricing.isFree) {
+    // Check if event has event support amount even without requiring payment
+    const hasEventSupportAmount = eventPricing.eventSupportAmount && eventPricing.eventSupportAmount > 0;
+    
+    // If no payment required and no event support amount, return free event summary
+    if (!eventPricing.requiresPayment && !hasEventSupportAmount) {
       return {
         totalAmount: 0,
         currency: eventPricing.currency,
@@ -44,7 +48,9 @@ export class PaymentService {
     const breakdown = attendees
       .filter(attendee => attendee.rsvpStatus === 'going')
       .map(attendee => {
-        const price = this.getPriceForAgeGroup(attendee.ageGroup, eventPricing);
+        const price = eventPricing.requiresPayment && !eventPricing.isFree 
+          ? this.getPriceForAgeGroup(attendee.ageGroup, eventPricing)
+          : 0;
         return {
           attendeeId: attendee.attendeeId,
           attendeeName: attendee.name,
@@ -55,7 +61,13 @@ export class PaymentService {
         };
       });
 
-    const totalAmount = breakdown.reduce((sum, item) => sum + item.subtotal, 0);
+    let totalAmount = breakdown.reduce((sum, item) => sum + item.subtotal, 0);
+    
+    // Add event support amount per attendee if applicable
+    if (hasEventSupportAmount) {
+      const goingAttendeesCount = attendees.filter(attendee => attendee.rsvpStatus === 'going').length;
+      totalAmount += eventPricing.eventSupportAmount * goingAttendeesCount;
+    }
 
     return {
       totalAmount,
@@ -503,12 +515,26 @@ export class PaymentService {
 
   /**
    * Create paid event pricing
+   * 
+   * @param adultPrice - Adult ticket price in CENTS (e.g., 10000 cents = $100.00)
+   * @param ageGroupPricing - Custom pricing for specific age groups in CENTS
+   * @param currency - Currency code (default: USD)
+   * @returns EventPricing configuration with all age group prices calculated
+   * 
+   * PRICING CALCULATION LOGIC:
+   * - All prices are stored in CENTS to avoid floating-point errors
+   * - Input: adultPrice is already converted to cents (e.g., $100 -> 10000 cents)
+   * - Default percentages: Infant 0%, Toddler 50%, Child 70%, Teen 80%, Adult 100%
+   * - Example: Adult $100 (10000¢) -> Toddler $50 (5000¢), Child $70 (7000¢), Teen $80 (8000¢)
+   * - Custom prices override defaults if provided
    */
   static createPaidEventPricing(
     adultPrice: number,
     ageGroupPricing: Partial<Record<AgeGroup, number>> = {},
     currency: string = 'USD'
   ): EventPricing {
+    // Calculate default pricing based on adult price (already in cents)
+    // Using percentages: Toddler 50%, Child 70%, Teen 80%
     const defaultPricing: AgeGroupPricing[] = [
       { ageGroup: '0-2', price: 0, label: 'Infant (0-2)' },
       { ageGroup: '3-5', price: Math.round(adultPrice * 0.5), label: 'Toddler (3-5)' },
@@ -517,10 +543,10 @@ export class PaymentService {
       { ageGroup: 'adult', price: adultPrice, label: 'Adults' }
     ];
 
-    // Override with custom pricing
+    // Override with custom pricing if provided (custom prices are already in cents)
     const finalPricing = defaultPricing.map(pricing => ({
       ...pricing,
-      price: ageGroupPricing[pricing.ageGroup] ?? pricing.price
+      price: ageGroupPricing[pricing.ageGroup] !== undefined ? ageGroupPricing[pricing.ageGroup]! : pricing.price
     }));
 
     return {

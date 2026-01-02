@@ -1,21 +1,21 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
-import { Helmet } from 'react-helmet-async';
 import {
+  ArrowDown,
   MessageSquare,
   Search,
   SlidersHorizontal,
   Sparkles,
   Star,
   X,
-  ArrowDown,
 } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Helmet } from 'react-helmet-async';
+import toast from 'react-hot-toast';
+import { Link, useNavigate } from 'react-router-dom';
 
-import { useAuth } from '../contexts/AuthContext';
-import { useTestimonials } from '../hooks/useTestimonials';
 import { TestimonialCarousel } from '../components/home/TestimonialCarousel';
 import { TestimonialSubmissionForm } from '../components/home/TestimonialSubmissionForm';
+import { useAuth } from '../contexts/AuthContext';
+import { useTestimonials } from '../hooks/useTestimonials';
 import type { Testimonial } from '../types';
 
 type SortMode = 'featured' | 'newest' | 'highest_rated';
@@ -182,6 +182,11 @@ const Testimonials: React.FC = () => {
   const { currentUser } = useAuth();
   const isAuthed = !!currentUser;
   const navigate = useNavigate();
+
+  // Scroll to top when component mounts
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
 
   const spotlightRef = useRef<HTMLDivElement | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -725,7 +730,7 @@ const Testimonials: React.FC = () => {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10">
         <div className="rounded-2xl bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white py-10 px-6 shadow-lg">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <Stat label="Active Moms" value="180+" />
+            <Stat label="Active Moms" value="190+" />
             <Stat label="NJ Towns & Growing" value="6+" />
             <Stat label="Stories Shared" value={`${totalCount}+`} />
           </div>

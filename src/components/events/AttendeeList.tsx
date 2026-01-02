@@ -769,25 +769,25 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                   className="overflow-hidden"
                 >
                   <div className="p-3 pt-0">
-                    {/* Excel-like Table Layout */}
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                             {/* Table Header */}
-                                               <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
-                                                     <div className={`grid gap-2 text-[12px] font-medium text-gray-600 ${
-                             event?.pricing?.requiresPayment ? 'grid-cols-14' : 'grid-cols-12'
-                           }`}>
-                             <div className="col-span-4">Name</div>
-                             <div className="col-span-3">Age</div>
-                             <div className="col-span-3">Status</div>
-                             {event?.pricing?.requiresPayment && (
-                               <div className="col-span-2">Paid</div>
-                             )}
-                             <div className="col-span-2">Actions</div>
-                           </div>
-                         </div>
+                    {/* Excel-like Table Layout - Enhanced Professional Styling */}
+                    <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                      {/* Table Header - Enhanced */}
+                      <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 border-b-2 border-gray-300">
+                        <div className={`grid gap-4 text-[12px] font-bold text-gray-700 uppercase tracking-wider ${
+                          event?.pricing?.requiresPayment ? 'grid-cols-[2fr_1fr_1.5fr_0.8fr_1fr]' : 'grid-cols-[2fr_1fr_1.5fr_1fr]'
+                        }`}>
+                          <div className="flex items-center">Name</div>
+                          <div className="flex items-center justify-center">Age</div>
+                          <div className="flex items-center justify-center"><span className="hidden sm:inline">RSVP Status</span><span className="sm:hidden">Status</span></div>
+                          {event?.pricing?.requiresPayment && (
+                            <div className="flex items-center justify-center"><span className="hidden sm:inline">Payment</span><span className="sm:hidden">Pay</span></div>
+                          )}
+                          <div className="flex items-center justify-center">Actions</div>
+                        </div>
+                      </div>
                          
-                         {/* Table Rows */}
-                         <div className="divide-y divide-gray-100">
+                         {/* Table Rows - Enhanced Hover & Spacing */}
+                         <div className="divide-y divide-gray-200">
                            {attendeesByStatus.going.map((attendee, index) => {
                              const attendeeIdValue = getAttendeeId(attendee);
                              const showFamilyWarning = attendee.attendeeType === 'primary' && hasGoingFamilyMembers(attendee);
@@ -797,27 +797,27 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                              return (
                                <div 
                                  key={attendeeIdValue} 
-                                 className={`px-3 py-2 hover:bg-green-50 transition-colors ${
-                                   index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                                 className={`px-4 py-3.5 hover:bg-green-50 transition-all duration-200 hover:shadow-md hover:scale-[1.01] cursor-pointer border-l-4 border-transparent hover:border-green-500 ${
+                                   index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                                  }`}
                                >
-                               <div className={`grid gap-2 items-center ${
-                                 event?.pricing?.requiresPayment ? 'grid-cols-14' : 'grid-cols-12'
+                               <div className={`grid gap-4 items-center ${
+                                 event?.pricing?.requiresPayment ? 'grid-cols-[2fr_1fr_1.5fr_0.8fr_1fr]' : 'grid-cols-[2fr_1fr_1.5fr_1fr]'
                                }`}>
-                                 {/* Name */}
-                                 <div className="col-span-4">
-                                   <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
+                                 {/* Name - Enhanced Typography */}
+                                 <div className="flex items-center">
+                                   <span className="font-semibold text-gray-900 text-[14px] tracking-tight leading-tight">{getDisplayName(attendee)}</span>
                                  </div>
                                  
-                                 {/* Age */}
-                                 <div className="col-span-3">
-                                   <span className="text-[12px] text-gray-500">
+                                 {/* Age - Better Visual Weight */}
+                                 <div className="flex items-center justify-center">
+                                   <span className="text-[13px] text-gray-600 font-medium">
                                      {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
                                    </span>
                                  </div>
                                  
-                                 {/* Status Dropdown */}
-                                 <div className="col-span-3">
+                                 {/* Status Dropdown - Enhanced Professional Styling */}
+                                 <div className="flex items-center justify-center">
                                    {canEditAttendee(attendee) ? (
                                      <>
                                        <select
@@ -837,7 +837,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                            });
                                            handleUpdateAttendee(attendeeIdValue, { rsvpStatus: e.target.value as AttendeeStatus });
                                          }}
-                                         className={`w-full px-1.5 py-0.5 text-[11px] border rounded focus:ring-1 focus:ring-green-500 focus:border-green-500 ${showFamilyWarning ? 'border-yellow-300 bg-yellow-50 focus:ring-yellow-500 focus:border-yellow-500' : 'border-gray-300 bg-white'}`}
+                                         className={`w-full px-3 py-1.5 text-[13px] font-medium border-2 rounded-lg shadow-sm cursor-pointer transition-all duration-200 focus:ring-2 focus:ring-green-500 focus:border-green-500 focus:outline-none hover:border-green-400 ${showFamilyWarning ? 'border-yellow-400 bg-yellow-50 focus:ring-yellow-500 focus:border-yellow-500' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
                                          title={showFamilyWarning ? 'Changing your status to "Not Going" will also update your family members.' : getDisabledTooltip(attendee)}
                                        >
                                          <option 
@@ -862,24 +862,24 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                  
                                  {/* Payment Status - Only for paid events */}
                                  {event?.pricing?.requiresPayment && (
-                                   <div className="col-span-2 flex items-center justify-center">
+                                   <div className="flex items-center justify-center">
                                      {attendee.paymentStatus === 'paid' ? (
-                                       <div className="flex items-center justify-center w-7 h-7 rounded-full bg-green-500" title="Payment Successful">
-                                         <CheckCircle className="w-4 h-4 text-white" strokeWidth={2.5} />
+                                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-500 shadow-md" title="Payment Successful">
+                                         <CheckCircle className="w-4.5 h-4.5 text-white" strokeWidth={2.5} />
                                        </div>
                                      ) : (
-                                       <div className="flex items-center justify-center w-7 h-7 rounded-full bg-amber-500" title="Payment Pending">
-                                         <Hourglass className="w-4 h-4 text-white" strokeWidth={2.5} />
+                                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500 shadow-md" title="Payment Pending">
+                                         <Hourglass className="w-4.5 h-4.5 text-white" strokeWidth={2.5} />
                                        </div>
                                      )}
                                    </div>
                                  )}
                                  
                                  {/* Actions */}
-                                 <div className="col-span-2">
-                                   <div className="flex items-center justify-center gap-1">
+                                 <div className="flex items-center justify-center">
+                                   <div className="flex items-center justify-center gap-2">
                                      {!attendee.userId ? (
-                                       <span className="text-xs text-gray-500 italic">Bulk Uploaded</span>
+                                       <span className="text-xs text-gray-500 italic font-medium">Bulk Upload</span>
                                      ) : canEditAttendee(attendee) && (
                                        <>
                                          {/* Add to Family Button */}
@@ -890,10 +890,10 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                              isAttendeeLinkedToFamily(attendee) ||
                                              (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                            }
-                                           className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
+                                           className={`px-2 py-1.5 rounded-lg transition-all duration-200 shadow-sm border flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 ${
                                              isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                               ? 'bg-green-100 text-green-600 cursor-not-allowed' 
-                                               : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                                               ? 'bg-green-100 text-green-700 border-green-300 cursor-not-allowed' 
+                                               : 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600 hover:shadow-md'
                                            }`}
                                            title={
                                              (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
@@ -904,11 +904,11 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                            }
                                          >
                                            {addingToFamily.has(getAttendeeId(attendee)) ? (
-                                             <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                             <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                            ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
-                                             <CheckCircle className="w-3 h-3" />
+                                             <CheckCircle className="w-3.5 h-3.5" />
                                            ) : (
-                                             <Heart className="w-3 h-3" />
+                                             <Heart className="w-3.5 h-3.5" />
                                            )}
                                          </button>
                                          
@@ -916,14 +916,14 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          <button
                                            onClick={() => handleDeleteAttendee(getAttendeeId(attendee))}
                                            disabled={attendee.attendeeType === 'primary'}
-                                           className={`px-1 py-0.5 rounded flex items-center justify-center transition-colors ${
+                                           className={`px-2 py-1.5 rounded-lg border flex items-center justify-center transition-all duration-200 shadow-sm hover:scale-105 ${
                                              attendee.attendeeType === 'primary' 
-                                               ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                                               : 'bg-gray-600 text-white hover:bg-gray-700'
+                                               ? 'bg-gray-300 text-gray-500 border-gray-400 cursor-not-allowed' 
+                                               : 'bg-red-500 text-white border-red-600 hover:bg-red-600 hover:shadow-md'
                                            }`}
                                            title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
                                          >
-                                           <Trash2 className="w-3 h-3" />
+                                           <Trash2 className="w-3.5 h-3.5" />
                                          </button>
                                        </>
                                      )}
@@ -973,17 +973,25 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                   className="overflow-hidden"
                 >
                   <div className="p-3 pt-0">
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                      <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
-                        <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
-                          <div className="col-span-4">Name</div>
-                          <div className="col-span-3">Age</div>
-                          <div className="col-span-3">Status</div>
-                          <div className="col-span-2">Actions</div>
+                    {/* Excel-like Table Layout - Enhanced Professional Styling */}
+                    <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                      {/* Table Header - Enhanced */}
+                      <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 border-b-2 border-gray-300">
+                        <div className={`grid gap-4 text-[12px] font-bold text-gray-700 uppercase tracking-wider ${
+                          event?.pricing?.requiresPayment ? 'grid-cols-[2fr_1fr_1.5fr_0.8fr_1fr]' : 'grid-cols-[2fr_1fr_1.5fr_1fr]'
+                        }`}>
+                          <div className="flex items-center">Name</div>
+                          <div className="flex items-center justify-center">Age</div>
+                          <div className="flex items-center justify-center"><span className="hidden sm:inline">RSVP Status</span><span className="sm:hidden">Status</span></div>
+                          {event?.pricing?.requiresPayment && (
+                            <div className="flex items-center justify-center"><span className="hidden sm:inline">Payment</span><span className="sm:hidden">Pay</span></div>
+                          )}
+                          <div className="flex items-center justify-center">Actions</div>
                         </div>
                       </div>
 
-                      <div className="divide-y divide-gray-100">
+                      {/* Table Rows - Enhanced Hover & Spacing */}
+                      <div className="divide-y divide-gray-200">
                         {attendeesByStatus.waitlisted.map((attendee, index) => {
                           const attendeeIdValue = getAttendeeId(attendee);
                           const statusError = statusErrors[attendeeIdValue];
@@ -993,27 +1001,34 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                           return (
                             <div
                               key={attendeeIdValue}
-                              className={`px-3 py-2 hover:bg-purple-50 transition-colors ${
-                                index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                              className={`px-4 py-3.5 hover:bg-purple-50 transition-all duration-200 hover:shadow-md hover:scale-[1.01] cursor-pointer border-l-4 border-transparent hover:border-purple-500 ${
+                                index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                               }`}
                             >
-                              <div className="grid grid-cols-12 gap-2 items-center">
-                                <div className="col-span-4">
-                                  <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
-                                  {waitlistPosition !== null && (
-                                    <span className="block text-[11px] text-purple-600 mt-0.5">
-                                      Position #{waitlistPosition}
-                                    </span>
-                                  )}
+                              <div className={`grid gap-4 items-center ${
+                                event?.pricing?.requiresPayment ? 'grid-cols-[2fr_1fr_1.5fr_0.8fr_1fr]' : 'grid-cols-[2fr_1fr_1.5fr_1fr]'
+                              }`}>
+                                {/* Name - Enhanced Typography */}
+                                <div className="flex items-center">
+                                  <div>
+                                    <span className="font-semibold text-gray-900 text-[14px] tracking-tight leading-tight">{getDisplayName(attendee)}</span>
+                                    {waitlistPosition !== null && (
+                                      <span className="block text-[11px] text-purple-600 font-medium mt-0.5">
+                                        Position #{waitlistPosition}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
 
-                                <div className="col-span-3">
-                                  <span className="text-[12px] text-gray-500">
+                                {/* Age - Better Visual Weight */}
+                                <div className="flex items-center justify-center">
+                                  <span className="text-[13px] text-gray-600 font-medium">
                                     {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
                                   </span>
                                 </div>
 
-                                <div className="col-span-3">
+                                {/* Status Dropdown - Enhanced Professional Styling */}
+                                <div className="flex items-center justify-center">
                                   {canEditAttendee(attendee) ? (
                                     <>
                                       <select
@@ -1033,7 +1048,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                           });
                                           handleUpdateAttendee(attendeeIdValue, { rsvpStatus: e.target.value as AttendeeStatus });
                                         }}
-                                        className="w-full px-1.5 py-0.5 text-[11px] border border-purple-300 bg-white rounded focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+                                        className="w-full px-3 py-1.5 text-[13px] font-medium border-2 rounded-lg shadow-sm cursor-pointer transition-all duration-200 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 focus:outline-none hover:border-purple-400 border-gray-300 bg-white hover:bg-gray-50"
                                         title={getDisabledTooltip(attendee)}
                                       >
                                         <option
@@ -1060,10 +1075,25 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                   )}
                                 </div>
 
-                                <div className="col-span-2">
-                                  <div className="flex items-center justify-center gap-1">
+                                {/* Payment Status - Only for paid events */}
+                                {event?.pricing?.requiresPayment && (
+                                  <div className="flex items-center justify-center">
+                                    {attendee.paymentStatus === 'paid' ? (
+                                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-500 shadow-md" title="Payment Successful">
+                                        <CheckCircle className="w-4.5 h-4.5 text-white" strokeWidth={2.5} />
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500 shadow-md" title="Payment Pending">
+                                        <Hourglass className="w-4.5 h-4.5 text-white" strokeWidth={2.5} />
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                <div className="flex items-center justify-center">
+                                  <div className="flex items-center justify-center gap-2">
                                     {!attendee.userId ? (
-                                      <span className="text-xs text-gray-500 italic">Bulk Uploaded</span>
+                                      <span className="text-xs text-gray-500 italic font-medium">Bulk Upload</span>
                                     ) : (
                                       canEditAttendee(attendee) && (
                                         <>
@@ -1074,10 +1104,10 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                               isAttendeeLinkedToFamily(attendee) ||
                                               (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                             }
-                                            className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
+                                            className={`px-2 py-1.5 rounded-lg transition-all duration-200 shadow-sm border flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 ${
                                               isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                                ? 'bg-green-100 text-green-600 cursor-not-allowed'
-                                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                                                ? 'bg-green-100 text-green-700 border-green-300 cursor-not-allowed'
+                                                : 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600 hover:shadow-md'
                                             }`}
                                             title={
                                               (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
@@ -1088,25 +1118,25 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                             }
                                           >
                                             {addingToFamily.has(getAttendeeId(attendee)) ? (
-                                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                             ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
-                                              <CheckCircle className="w-3 h-3" />
+                                              <CheckCircle className="w-3.5 h-3.5" />
                                             ) : (
-                                              <Heart className="w-3 h-3" />
+                                              <Heart className="w-3.5 h-3.5" />
                                             )}
                                           </button>
 
                                           <button
                                             onClick={() => handleDeleteAttendee(getAttendeeId(attendee))}
                                             disabled={attendee.attendeeType === 'primary'}
-                                            className={`px-1 py-0.5 rounded flex items-center justify-center transition-colors ${
+                                            className={`px-2 py-1.5 rounded-lg border flex items-center justify-center transition-all duration-200 shadow-sm hover:scale-105 ${
                                               attendee.attendeeType === 'primary'
-                                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                                : 'bg-gray-600 text-white hover:bg-gray-700'
+                                                ? 'bg-gray-300 text-gray-500 border-gray-400 cursor-not-allowed'
+                                                : 'bg-red-500 text-white border-red-600 hover:bg-red-600 hover:shadow-md'
                                             }`}
                                             title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
                                           >
-                                            <Trash2 className="w-3 h-3" />
+                                            <Trash2 className="w-3.5 h-3.5" />
                                           </button>
                                         </>
                                       )
@@ -1157,20 +1187,25 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                   className="overflow-hidden"
                 >
                   <div className="p-3 pt-0">
-                    {/* Excel-like Table Layout */}
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                             {/* Table Header */}
-                                               <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
-                                                     <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
-                             <div className="col-span-4">Name</div>
-                             <div className="col-span-3">Age</div>
-                             <div className="col-span-3">Status</div>
-                             <div className="col-span-2">Actions</div>
-                           </div>
-                         </div>
+                    {/* Excel-like Table Layout - Enhanced Professional Styling */}
+                    <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                      {/* Table Header - Enhanced */}
+                      <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 border-b-2 border-gray-300">
+                        <div className={`grid gap-4 text-[12px] font-bold text-gray-700 uppercase tracking-wider ${
+                          event?.pricing?.requiresPayment ? 'grid-cols-[2fr_1fr_1.5fr_0.8fr_1fr]' : 'grid-cols-[2fr_1fr_1.5fr_1fr]'
+                        }`}>
+                          <div className="flex items-center">Name</div>
+                          <div className="flex items-center justify-center">Age</div>
+                          <div className="flex items-center justify-center"><span className="hidden sm:inline">RSVP Status</span><span className="sm:hidden">Status</span></div>
+                          {event?.pricing?.requiresPayment && (
+                            <div className="flex items-center justify-center"><span className="hidden sm:inline">Payment</span><span className="sm:hidden">Pay</span></div>
+                          )}
+                          <div className="flex items-center justify-center">Actions</div>
+                        </div>
+                      </div>
                          
-                         {/* Table Rows */}
-                         <div className="divide-y divide-gray-100">
+                         {/* Table Rows - Enhanced Hover & Spacing */}
+                         <div className="divide-y divide-gray-200">
                            {attendeesByStatus['not-going'].map((attendee, index) => {
                              const attendeeIdValue = getAttendeeId(attendee);
                              const showFamilyWarning = attendee.attendeeType === 'primary' && hasGoingFamilyMembers(attendee);
@@ -1180,25 +1215,27 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                              return (
                                <div 
                                  key={attendeeIdValue} 
-                                 className={`px-3 py-2 hover:bg-red-50 transition-colors ${
-                                   index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                                 className={`px-4 py-3.5 hover:bg-red-50 transition-all duration-200 hover:shadow-md hover:scale-[1.01] cursor-pointer border-l-4 border-transparent hover:border-red-500 ${
+                                   index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                                  }`}
                                >
-                                 <div className="grid grid-cols-12 gap-2 items-center">
-                                   {/* Name */}
-                                   <div className="col-span-4">
-                                     <span className="font-medium text-gray-900 text-[13px]">{getDisplayName(attendee)}</span>
+                                 <div className={`grid gap-4 items-center ${
+                                   event?.pricing?.requiresPayment ? 'grid-cols-[2fr_1fr_1.5fr_0.8fr_1fr]' : 'grid-cols-[2fr_1fr_1.5fr_1fr]'
+                                 }`}>
+                                   {/* Name - Enhanced Typography */}
+                                   <div className="flex items-center">
+                                     <span className="font-semibold text-gray-900 text-[14px] tracking-tight leading-tight">{getDisplayName(attendee)}</span>
                                    </div>
                                    
-                                   {/* Age */}
-                                   <div className="col-span-3">
-                                     <span className="text-[12px] text-gray-500">
+                                   {/* Age - Better Visual Weight */}
+                                   <div className="flex items-center justify-center">
+                                     <span className="text-[13px] text-gray-600 font-medium">
                                        {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
                                      </span>
                                    </div>
                                    
-                                   {/* Status Dropdown */}
-                                   <div className="col-span-3">
+                                   {/* Status Dropdown - Enhanced Professional Styling */}
+                                   <div className="flex items-center justify-center">
                                      {canEditAttendee(attendee) ? (
                                        <>
                                          <select
@@ -1218,10 +1255,10 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                              });
                                              handleUpdateAttendee(attendeeIdValue, { rsvpStatus: e.target.value as AttendeeStatus });
                                            }}
-                                           className={`w-full px-1.5 py-0.5 text-[11px] border rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 ${
+                                           className={`w-full px-3 py-1.5 text-[13px] font-medium border-2 rounded-lg shadow-sm cursor-pointer transition-all duration-200 focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:outline-none hover:border-red-400 ${
                                              showFamilyWarning 
-                                               ? 'border-yellow-300 bg-yellow-50 focus:ring-yellow-500 focus:border-yellow-500' 
-                                               : 'border-red-300 bg-white'
+                                               ? 'border-yellow-400 bg-yellow-50 focus:ring-yellow-500 focus:border-yellow-500' 
+                                               : 'border-gray-300 bg-white hover:bg-gray-50'
                                            }`}
                                            title={showFamilyWarning ? 'Changing your status to "Not Going" will also update your family members.' : getDisabledTooltip(attendee)}
                                          >
@@ -1245,11 +1282,26 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                      )}
                                    </div>
                                  
+                                 {/* Payment Status - Only for paid events */}
+                                 {event?.pricing?.requiresPayment && (
+                                   <div className="flex items-center justify-center">
+                                     {attendee.paymentStatus === 'paid' ? (
+                                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-500 shadow-md" title="Payment Successful">
+                                         <CheckCircle className="w-4.5 h-4.5 text-white" strokeWidth={2.5} />
+                                       </div>
+                                     ) : (
+                                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500 shadow-md" title="Payment Pending">
+                                         <Hourglass className="w-4.5 h-4.5 text-white" strokeWidth={2.5} />
+                                       </div>
+                                     )}
+                                   </div>
+                                 )}
+                                 
                                  {/* Actions */}
-                                 <div className="col-span-2">
-                                   <div className="flex items-center justify-center gap-1">
+                                 <div className="flex items-center justify-center">
+                                   <div className="flex items-center justify-center gap-2">
                                      {!attendee.userId ? (
-                                       <span className="text-xs text-gray-500 italic">Bulk Uploaded</span>
+                                       <span className="text-xs text-gray-500 italic font-medium">Bulk Upload</span>
                                      ) : canEditAttendee(attendee) && (
                                        <>
                                          {/* Add to Family Button */}
@@ -1260,10 +1312,10 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                              isAttendeeLinkedToFamily(attendee) ||
                                              (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
                                            }
-                                           className={`px-1.5 py-0.5 rounded transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed ${
+                                           className={`px-2 py-1.5 rounded-lg transition-all duration-200 shadow-sm border flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 ${
                                              isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                               ? 'bg-green-100 text-green-600 cursor-not-allowed' 
-                                               : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                                               ? 'bg-green-100 text-green-700 border-green-300 cursor-not-allowed' 
+                                               : 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600 hover:shadow-md'
                                            }`}
                                            title={
                                              (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
@@ -1274,11 +1326,11 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                            }
                                          >
                                            {addingToFamily.has(getAttendeeId(attendee)) ? (
-                                             <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                             <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                            ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
-                                             <CheckCircle className="w-3 h-3" />
+                                             <CheckCircle className="w-3.5 h-3.5" />
                                            ) : (
-                                             <Heart className="w-3 h-3" />
+                                             <Heart className="w-3.5 h-3.5" />
                                            )}
                                          </button>
                                          
@@ -1286,14 +1338,14 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                          <button
                                            onClick={() => handleDeleteAttendee(getAttendeeId(attendee))}
                                            disabled={attendee.attendeeType === 'primary'}
-                                           className={`px-1 py-0.5 rounded flex items-center justify-center transition-colors ${
+                                           className={`px-2 py-1.5 rounded-lg border flex items-center justify-center transition-all duration-200 shadow-sm hover:scale-105 ${
                                              attendee.attendeeType === 'primary' 
-                                               ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                                               : 'bg-gray-600 text-white hover:bg-gray-700'
+                                               ? 'bg-gray-300 text-gray-500 border-gray-400 cursor-not-allowed' 
+                                               : 'bg-red-500 text-white border-red-600 hover:bg-red-600 hover:shadow-md'
                                            }`}
                                            title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
                                          >
-                                           <Trash2 className="w-3 h-3" />
+                                           <Trash2 className="w-3.5 h-3.5" />
                                          </button>
                                        </>
                                      )}

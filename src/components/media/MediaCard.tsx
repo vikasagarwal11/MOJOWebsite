@@ -1,18 +1,16 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Heart, MessageCircle, Tag, Play, /* Download, */ MoreHorizontal, EyeOff, Eye, Trash2, Check } from 'lucide-react';
-import { safeFormat, safeToDate } from '../../utils/dateUtils';
-import { useAuth } from '../../contexts/AuthContext';
-import { db } from '../../config/firebase';
-import { collection, addDoc, doc, deleteDoc, serverTimestamp, updateDoc, setDoc, onSnapshot, getDoc } from 'firebase/firestore';
-import { useViewCounter } from '../../hooks/useViewCounter';
-import { usePagedComments } from '../../hooks/usePagedComments';
-import { attachHls, detachHls } from '../../utils/hls';
-import { getDownloadURL, ref, deleteObject } from 'firebase/storage';
-import { storage } from '../../config/firebase';
+import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { getDownloadURL, ref } from 'firebase/storage';
+import { Check, Eye, EyeOff, Heart, MessageCircle, /* Download, */ MoreHorizontal, Play, Tag, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import ConfirmDialog from '../ConfirmDialog';
+import { db, storage } from '../../config/firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { usePagedComments } from '../../hooks/usePagedComments';
+import { useViewCounter } from '../../hooks/useViewCounter';
+import { safeFormat, safeToDate } from '../../utils/dateUtils';
+import { attachHls, detachHls } from '../../utils/hls';
 import { useImageOrientation } from '../../utils/imageOrientation';
-import { getThumbnailUrl } from '../../utils/thumbnailUtils';
+import ConfirmDialog from '../ConfirmDialog';
 // Download feature temporarily disabled - uncomment to re-enable
 // import { requestWatermarkedDownload } from '../../services/mediaDownloadService';
 import { isUserApproved } from '../../utils/userUtils';
@@ -514,7 +512,14 @@ export default function MediaCard({
               playsInline 
               muted
               preload="metadata"
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              onContextMenu={(e) => e.preventDefault()}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
+              style={{ 
+                userSelect: 'none', 
+                WebkitUserSelect: 'none', 
+                WebkitTouchCallout: 'none',
+                pointerEvents: 'auto'
+              }}
               onError={(e) => {
                 console.warn('⚠️ Video load error, showing placeholder:', e);
               }}
@@ -562,6 +567,14 @@ export default function MediaCard({
               loading="lazy" 
               onDoubleClick={onDoubleTap} 
               onClick={selectionMode ? undefined : onOpen}
+              onContextMenu={(e) => e.preventDefault()}
+              draggable={false}
+              style={{ 
+                userSelect: 'none', 
+                WebkitUserSelect: 'none', 
+                WebkitTouchCallout: 'none',
+                pointerEvents: 'auto'
+              }}
               onLoad={(e) => {
                 correctImageOrientation(e.currentTarget);
               }}
@@ -581,7 +594,7 @@ export default function MediaCard({
                   console.error('🖼️ [DEBUG] Both original and thumbnail failed to load');
                 }
               }}
-              className="w-full h-full object-contain transition-opacity duration-300" 
+              className="w-full h-full object-contain transition-opacity duration-300 select-none" 
             />
           );
         })()

@@ -1,6 +1,6 @@
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Calendar, CalendarCheck, Clock, MapPin, Tag, Users } from 'lucide-react';
+import { ArrowLeft, Calendar, CalendarCheck, CheckCircle, Clock, DollarSign, MapPin, Tag, Users, XCircle } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { EventImage } from '../components/events/EventImage';
@@ -210,87 +210,155 @@ const EventDetailsPage: React.FC = () => {
       />
       
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Back Button */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
-          className="mb-6"
-        >
-          <button
-            onClick={handleBack}
-            className="inline-flex items-center text-gray-600 hover:text-[#F25129] transition-colors duration-200"
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+          {/* Professional Two-Column Layout */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="bg-white rounded-3xl shadow-2xl overflow-hidden"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Events
-          </button>
-        </motion.div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
+              {/* Left Column - Image */}
+              <div className="relative bg-gradient-to-br from-gray-100 to-gray-200 h-64 sm:h-96 lg:min-h-[700px]">
+                <div className="absolute inset-0">
+                  <EventImage 
+                    src={event.imageUrl} 
+                    alt={event.title} 
+                    fit="cover" 
+                    aspect="16/9"
+                    title={event.title}
+                    loading="eager"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                {/* Gradient Overlay for better badge visibility */}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-transparent pointer-events-none"></div>
+                {/* Status Badge */}
+                <div className="absolute top-6 left-6 z-10">
+                  <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-bold shadow-lg backdrop-blur-sm ${eventStatus.bgColor} ${eventStatus.color} border-2 border-white/20`}>
+                    {eventStatus.status}
+                  </span>
+                </div>
+              </div>
 
-        {/* Event Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8"
-        >
-          {/* Event Image with Smart Cropping Prevention - Above the fold, so eager load */}
-          <EventImage 
-            src={event.imageUrl} 
-            alt={event.title} 
-            fit="contain" 
-            aspect="16/9"
-            title={event.title}
-            loading="eager"
-          >
-            {/* Status Badge Only */}
-            <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium ${eventStatus.bgColor} ${eventStatus.color}`}>
-              {eventStatus.status}
-            </span>
-          </EventImage>
-
-          {/* Event Content */}
-          <div className="p-8">
+              {/* Right Column - Content */}
+              <div className="p-6 sm:p-8 lg:p-10">
             {/* Title */}
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">{event.title}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 leading-tight">{event.title}</h1>
 
             {/* Description */}
             {event.description && (
-              <p className="text-lg text-gray-700 leading-relaxed mb-8">{event.description}</p>
+              <p className="text-base text-gray-700 leading-relaxed mb-6">{event.description}</p>
             )}
 
-            {/* Event Details */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            {/* User RSVP Status Card - Show if user has RSVP'd */}
+            {userAttendee && (
+              <div className={`mb-6 p-4 rounded-lg border-2 ${
+                userAttendee.rsvpStatus === 'going' 
+                  ? 'bg-green-50 border-green-200' 
+                  : userAttendee.rsvpStatus === 'waitlisted'
+                  ? 'bg-amber-50 border-amber-200'
+                  : 'bg-gray-50 border-gray-200'
+              }`}>
+                <div className="flex items-start gap-3">
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+                    userAttendee.rsvpStatus === 'going'
+                      ? 'bg-green-100'
+                      : userAttendee.rsvpStatus === 'waitlisted'
+                      ? 'bg-amber-100'
+                      : 'bg-gray-100'
+                  }`}>
+                    {userAttendee.rsvpStatus === 'going' ? (
+                      <CheckCircle className={`w-6 h-6 ${
+                        userAttendee.rsvpStatus === 'going' ? 'text-green-600' : 'text-gray-600'
+                      }`} />
+                    ) : (
+                      <XCircle className="w-6 h-6 text-gray-600" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className={`text-base font-bold ${
+                        userAttendee.rsvpStatus === 'going'
+                          ? 'text-green-800'
+                          : userAttendee.rsvpStatus === 'waitlisted'
+                          ? 'text-amber-800'
+                          : 'text-gray-800'
+                      }`}>
+                        {userAttendee.rsvpStatus === 'going' && 'You\'re Attending!'}
+                        {userAttendee.rsvpStatus === 'waitlisted' && 'You\'re Waitlisted'}
+                        {userAttendee.rsvpStatus === 'not-going' && 'Not Attending'}
+                      </h3>
+                    </div>
+                    
+                    {/* Payment Status for paid events */}
+                    {event.pricing?.requiresPayment && userAttendee.rsvpStatus === 'going' && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-gray-600" />
+                        <span className={`text-sm font-semibold ${
+                          userAttendee.paymentStatus === 'paid'
+                            ? 'text-green-700'
+                            : 'text-amber-700'
+                        }`}>
+                          {userAttendee.paymentStatus === 'paid' ? 'Payment Complete' : 'Payment Pending'}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {/* Quick action button */}
+                    <button
+                      onClick={() => navigate(`/events/${eventId}/rsvp`)}
+                      className="mt-3 text-sm font-medium text-[#F25129] hover:text-[#E0451F] underline"
+                    >
+                      {userAttendee.rsvpStatus === 'going' ? 'Manage RSVP' : 'Update RSVP'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Event Details Grid */}
+            <div className="space-y-3 mb-6">
               {/* Date */}
-              <div className="flex items-center">
-                <Calendar className="w-5 h-5 mr-4 text-[#F25129] flex-shrink-0" />
-                <div>
-                  <div className="font-medium text-gray-900">{formatEventDate(event.startAt)}</div>
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
+                <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-white shadow-sm">
+                  <Calendar className="w-5 h-5 text-[#F25129]" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-xs text-gray-500 font-medium mb-0.5">Date</div>
+                  <div className="font-semibold text-gray-900 text-sm">{formatEventDate(event.startAt)}</div>
                 </div>
               </div>
 
               {/* Time */}
-              <div className="flex items-center">
-                <Clock className="w-5 h-5 mr-4 text-[#F25129] flex-shrink-0" />
-                <div>
-                  <div className="font-medium text-gray-900">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
+                <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-white shadow-sm">
+                  <Clock className="w-5 h-5 text-[#F25129]" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-xs text-gray-500 font-medium mb-0.5">Time</div>
+                  <div className="font-semibold text-gray-900 text-sm">
                     {formatEventTime(event.startAt)}
                     {event.endAt && ` - ${formatEventTime(event.endAt)}`}
-                    {duration && ` (${duration} hours)`}
+                    {duration && <span className="block text-gray-500 text-xs mt-0.5 font-normal">{duration} hour{duration !== 1 ? 's' : ''}</span>}
                   </div>
                 </div>
               </div>
 
               {/* Location - Clickable for Directions */}
               {(event.venueName || event.venueAddress || event.location) && (
-                <div className="flex items-start">
-                  <MapPin className="w-5 h-5 mr-4 text-[#F25129] mt-1 flex-shrink-0" />
-                  <div>
+                <div className="flex items-start gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
+                  <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-white shadow-sm">
+                    <MapPin className="w-5 h-5 text-[#F25129]" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-xs text-gray-500 font-medium mb-0.5">Location</div>
                     <a
                       href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location || getDisplayVenueInfo(event.venueName || '', event.venueAddress || ''))}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                      className="font-semibold text-[#F25129] hover:text-[#E0451F] hover:underline transition-colors text-sm break-words"
                     >
                       {event.location || getDisplayVenueInfo(event.venueName || '', event.venueAddress || '')}
                     </a>
@@ -300,35 +368,44 @@ const EventDetailsPage: React.FC = () => {
 
               {/* Attendee Count */}
               {event.maxAttendees && (
-                <div className="space-y-3">
-                  <div className="flex items-center">
-                    <Users className="w-5 h-5 mr-4 text-[#F25129] flex-shrink-0" />
-                    <div className="font-medium text-gray-900">
-                      {event.attendingCount || 0}/{event.maxAttendees} spots
-                    </div>
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
+                  <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-white shadow-sm">
+                    <Users className="w-5 h-5 text-[#F25129]" />
                   </div>
-                  {/* Only show waitlist if waitlist is enabled */}
-                  {event.waitlistEnabled && (
-                    <div className="flex items-center">
-                      <Users className="w-5 h-5 mr-4 text-yellow-600 flex-shrink-0" />
-                      <div className="text-sm text-gray-600">
-                        {event.waitlistCount || 0} on waitlist
-                      </div>
+                  <div className="flex-1">
+                    <div className="text-xs text-gray-500 font-medium mb-0.5">Capacity</div>
+                    <div className="font-semibold text-gray-900 text-sm">
+                      {event.attendingCount || 0}/{event.maxAttendees}
                     </div>
-                  )}
+                    {/* Only show waitlist if waitlist is enabled */}
+                    {event.waitlistEnabled && (
+                      <div className="text-xs text-amber-600 font-medium mt-0.5">
+                        {event.waitlistCount || 0} waitlisted
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
               {/* Price Information */}
               {event.pricing && (
-                <div className="flex items-center">
-                  <div>
-                    <div className="text-xl font-bold text-green-600">
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
+                  <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-white shadow-sm">
+                    <Tag className="w-5 h-5 text-[#F25129]" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-xs text-gray-500 font-medium mb-0.5">Price</div>
+                    <div className="text-lg font-bold text-[#F25129]">
                       {event.pricing.adultPrice ? `$${(event.pricing.adultPrice / 100).toFixed(2)}` : 'Free'}
                     </div>
                     {event.pricing.childPrice && (
-                      <div className="text-sm text-gray-600">
+                      <div className="text-xs text-gray-500 mt-0.5">
                         Child: ${(event.pricing.childPrice / 100).toFixed(2)}
+                      </div>
+                    )}
+                    {event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
+                      <div className="text-xs text-gray-600 mt-0.5 font-medium">
+                        Event Support: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
                       </div>
                     )}
                   </div>
@@ -377,16 +454,16 @@ const EventDetailsPage: React.FC = () => {
 
             {/* Tags */}
             {event.tags && event.tags.length > 0 && (
-              <div className="mb-8">
-                <div className="flex items-center mb-4">
-                  <Tag className="w-5 h-5 mr-2 text-[#F25129]" />
-                  <h3 className="text-lg font-semibold text-gray-900">Tags</h3>
+              <div className="pt-6 border-t border-gray-200">
+                <div className="flex items-center gap-2 mb-3">
+                  <Tag className="w-4 h-4 text-[#F25129]" />
+                  <h3 className="text-base font-semibold text-gray-900">Categories</h3>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {event.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-700"
+                      className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 border border-purple-200"
                     >
                       {tag}
                     </span>
@@ -395,27 +472,25 @@ const EventDetailsPage: React.FC = () => {
               </div>
             )}
 
+            {/* RSVP Button - Changes based on RSVP status */}
+            <div className="pt-6 mt-6 border-t border-gray-200">
+              <button
+                onClick={() => navigate(`/events/${eventId}/rsvp`)}
+                className={`group w-full flex items-center justify-center gap-2 px-6 py-3 font-semibold text-base rounded-lg shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-95 transition-all duration-200 ${
+                  userAttendee 
+                    ? 'bg-gradient-to-r from-green-500 to-green-600 text-white' 
+                    : 'bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white'
+                }`}
+              >
+                <CalendarCheck className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                <span>{userAttendee ? 'Edit RSVP' : 'RSVP Now'}</span>
+              </button>
+            </div>
           </div>
-
-          {/* RSVP Now Button - Bottom Right */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            className="p-6 pt-0 flex justify-end"
-          >
-            <button
-              onClick={() => navigate(`/events/${eventId}/rsvp`)}
-              className="group inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white font-semibold text-lg rounded-xl hover:shadow-xl hover:scale-105 transition-all duration-300 ease-out"
-            >
-              <CalendarCheck className="w-6 h-6 group-hover:rotate-12 transition-transform duration-300" />
-              <span>RSVP Now</span>
-            </button>
-          </motion.div>
-        </motion.div>
-
-      </div>
-      </div>
+        </div>
+      </motion.div>
+    </div>
+  </div>
     </>
   );
 };

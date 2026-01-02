@@ -1,7 +1,7 @@
-import { doc, updateDoc, serverTimestamp, getDoc, collection, addDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 import { db } from '../config/firebase';
 import { notificationService } from './notificationService';
-import toast from 'react-hot-toast';
 
 export interface ModerationAction {
   contentId: string;
@@ -28,7 +28,8 @@ export class ModerationService {
     }
 
     try {
-      const contentRef = doc(db, contentType, contentId);
+      const collectionName = contentType === 'post' ? 'posts' : contentType;
+      const contentRef = doc(db, collectionName, contentId);
       const contentDoc = await getDoc(contentRef);
       
       if (!contentDoc.exists()) {
@@ -143,7 +144,8 @@ export class ModerationService {
     }
 
     try {
-      const contentRef = doc(db, contentType, contentId);
+      const collectionName = contentType === 'post' ? 'posts' : contentType;
+      const contentRef = doc(db, collectionName, contentId);
       const contentDoc = await getDoc(contentRef);
       
       if (!contentDoc.exists()) {

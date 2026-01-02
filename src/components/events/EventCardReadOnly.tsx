@@ -86,7 +86,7 @@ const EventCardReadOnly: React.FC<EventCardReadOnlyProps> = ({ event }) => {
       className="group"
     >
       <Link to={`/events/${event.id}`} className="block">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 h-full">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 h-[580px] sm:h-[600px] md:h-[620px] flex flex-col">
           {/* Event Image with Smart Cropping Prevention */}
           <EventImage 
             src={event.imageUrl} 
@@ -103,9 +103,9 @@ const EventCardReadOnly: React.FC<EventCardReadOnlyProps> = ({ event }) => {
           </EventImage>
 
           {/* Event Content */}
-          <div className="p-6">
+          <div className="p-6 flex flex-col flex-1 overflow-y-auto min-h-0">
             {/* Event Title */}
-            <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-2 group-hover:text-[#F25129] transition-colors duration-200">
+            <h3 className="text-xl font-bold text-gray-900 mb-3 line-clamp-2 group-hover:text-[#F25129] transition-colors duration-200 flex-shrink-0">
               {event.title}
             </h3>
 
@@ -168,13 +168,20 @@ const EventCardReadOnly: React.FC<EventCardReadOnlyProps> = ({ event }) => {
 
               {/* Price Information */}
               {event.pricing && (
-                <div className="flex items-center text-gray-700">
-                  <span className="w-4 h-4 mr-3 flex-shrink-0 flex items-center justify-center">
-                    <span className="text-sm font-bold text-green-600">$</span>
-                  </span>
-                  <span className="text-sm font-semibold text-green-600">
-                    {event.pricing.adultPrice ? `$${event.pricing.adultPrice}` : 'Free'}
-                  </span>
+                <div className="flex flex-col gap-0.5 text-gray-700">
+                  <div className="flex items-center">
+                    <span className="w-4 h-4 mr-3 flex-shrink-0 flex items-center justify-center">
+                      <span className="text-sm font-bold text-green-600">$</span>
+                    </span>
+                    <span className="text-sm font-semibold text-green-600">
+                      {event.pricing.adultPrice ? `$${(event.pricing.adultPrice / 100).toFixed(2)}` : 'Free'}
+                    </span>
+                  </div>
+                  {event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
+                    <div className="text-xs text-gray-600 ml-7">
+                      Event Support Amt: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
+                    </div>
+                  )}
                 </div>
               )}
 

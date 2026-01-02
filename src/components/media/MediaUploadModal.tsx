@@ -1,10 +1,10 @@
+import { zodResolver } from '@hookform/resolvers/zod';
+import { FileText, Upload, X } from "lucide-react";
 import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { X, Upload, FileText, ChevronLeft, ChevronRight } from "lucide-react";
-import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { z } from 'zod';
+import { useAuth } from '../../contexts/AuthContext';
 import { useUploader } from '../../hooks/useUploader';
 import { detectKind } from '../../utils/detectKind';
 import { getImageSize, getVideoDuration } from '../../utils/getMediaMetadata';
@@ -90,6 +90,8 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
           uploadedBy: currentUser.id,
           uploaderName: currentUser.displayName || 'Member',
           isPublic: true,
+          moderationStatus: 'pending', // CRITICAL: Set to pending so content requires approval
+          requiresApproval: true,
           likesCount: 0,
           commentsCount: 0,
           viewsCount: 0, // Initialize views counter for consistency

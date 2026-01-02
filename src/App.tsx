@@ -62,15 +62,23 @@ function AppContent() {
           }}
         /> */}
         <Toaster
-          position="bottom-right"
+          position="top-center"
+          containerStyle={{
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+          }}
           toastOptions={{
             duration: 2500,
             style: {
               background: '#111827',
               color: '#fff',
               borderRadius: '10px',
-              padding: '10px 12px',
+              padding: '16px 20px',
               boxShadow: '0 8px 24px rgba(0,0,0,.22)',
+              fontSize: '15px',
+              maxWidth: '90vw',
+              textAlign: 'center',
             },
             success: { iconTheme: { primary: '#10B981', secondary: '#111827' } },
             error:   { iconTheme: { primary: '#EF4444', secondary: '#111827' } },

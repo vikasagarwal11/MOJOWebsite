@@ -1056,10 +1056,10 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               <button
                                 key={filter.value}
                                 onClick={() => updateEventRsvpFilter(event.id, filter.value as 'all' | 'going' | 'not-going' | 'waitlisted')}
-                                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 shadow-sm hover:shadow-md ${
                                   currentFilter === filter.value
-                                    ? filter.color + ' ring-2 ring-offset-1 ring-gray-400'
-                                    : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                                    ? filter.color + ' ring-2 ring-offset-2 ring-gray-400 scale-105'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:scale-105'
                                 }`}
                                 title={`${filter.label}: ${filter.count} responses`}
                               >
@@ -1074,7 +1074,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               {rsvpsByEvent[event.id]
                                 .filter(r => getEventRsvpFilter(event.id) === 'all' || r.status === getEventRsvpFilter(event.id))
                                 .map(rsvp => (
-                                  <div key={rsvp.id} className="px-4 py-3 border-b border-gray-100 hover:bg-gray-50">
+                                  <div key={rsvp.id} className="px-4 py-3.5 border-b border-gray-200 hover:bg-gray-50 transition-all duration-200 hover:shadow-sm hover:border-l-4 hover:border-l-[#FFC107] cursor-pointer">
                                     <div className="flex items-center justify-between">
                                       <div className="flex-1">
                                         <div className="flex items-center gap-2">
@@ -1108,13 +1108,13 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                   {showContactInfo[rsvp.userId] ? 'Hide' : 'Show'} Contact
                                 </button>
                                 
-                                {/* Payment Status Badge - Only show for paid events and going attendees */}
-                                {event.pricing && event.pricing.requiresPayment && rsvp.status === 'going' && (
-                                  <div className="flex items-center gap-2">
-                                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                {/* Payment Status Badge - Enhanced Professional Styling */}
+                                {event.pricing && event.pricing.requiresPayment && (
+                                  <div className="flex items-center gap-2.5">
+                                    <span className={`px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm border tracking-tight ${
                                       rsvp.paymentStatus === 'paid' 
-                                        ? 'bg-green-100 text-green-700' 
-                                        : 'bg-yellow-100 text-yellow-700'
+                                        ? 'bg-green-100 text-green-700 border-green-300' 
+                                        : 'bg-yellow-100 text-yellow-700 border-yellow-300'
                                     }`}>
                                       {rsvp.paymentStatus === 'paid' ? '✓ Payment Successful' : '⏳ Payment Pending'}
                                     </span>
@@ -1136,7 +1136,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                           toast.error('Failed to update payment status');
                                         }
                                       }}
-                                      className="px-2 py-0.5 rounded text-xs font-medium bg-[#FFC107] text-white hover:bg-[#FFA000] transition-colors"
+                                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#FFC107] text-white hover:bg-[#FFA000] transition-all duration-200 shadow-sm hover:shadow-md border border-[#FFA000]"
                                       title={rsvp.paymentStatus === 'paid' ? 'Mark as unpaid' : 'Mark as paid'}
                                     >
                                       {rsvp.paymentStatus === 'paid' ? '💳 Mark Unpaid' : '✓ Mark Paid'}

@@ -25,6 +25,7 @@ export interface EventPricing {
     deadline?: Timestamp; // Refund deadline
     feePercentage?: number; // Refund fee percentage (0-100)
   };
+  eventSupportAmount?: number; // Additional event support fee in cents (optional)
 }
 
 // Payment transaction record

@@ -1,13 +1,13 @@
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import {
-  runTextModeration,
-  analyzeMediaSafeSearch,
   adjustUserTrustScore,
-  shouldForceManualReview,
+  analyzeMediaSafeSearch,
+  MediaModerationResult,
   ModerationContentType,
   ModerationVerdict,
-  MediaModerationResult,
+  runTextModeration,
+  shouldForceManualReview,
 } from './moderationEngine';
 
 interface ModerationJob {
@@ -119,23 +119,18 @@ async function handleModeration(job: ModerationJob) {
     ...(mediaVerdict?.detectedIssues || []),
   ];
 
-  let moderationStatus: 'approved' | 'pending' | 'rejected' = 'approved';
-  let requiresApproval = false;
-  let reason = textVerdict.reason || mediaVerdict?.reason || null;
+  // CRITICAL: ALL uploads must be manually approved in admin console
+  // Never auto-approve, even if AI analysis finds no issues
+  let moderationStatus: 'approved' | 'pending' | 'rejected' = 'pending';
+  let requiresApproval = true;
+  let reason = textVerdict.reason || mediaVerdict?.reason || 'Awaiting moderator review.';
 
   if (textVerdict.isBlocked || mediaVerdict?.isBlocked) {
     moderationStatus = 'rejected';
     requiresApproval = true;
     reason = reason || 'Automatically rejected by moderation pipeline.';
-  } else if (
-    textVerdict.requiresApproval ||
-    mediaVerdict?.requiresApproval ||
-    forceManual
-  ) {
-    moderationStatus = 'pending';
-    requiresApproval = true;
-    reason = reason || 'Awaiting moderator review.';
   }
+  // All other cases stay as 'pending' - no auto-approval
 
   const updatePayload: Record<string, any> = {
     moderationStatus,
