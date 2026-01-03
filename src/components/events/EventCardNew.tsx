@@ -725,7 +725,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                        {event.description}
                      </p>
 
-                     {/* View Details link - moved up with minimal spacing */}
+                     {/* View Details link - Restored to original location in description area (moved back from bottom right) */}
                      <div className="mt-0.5 flex items-center">
                        {isClamped && (
                          <button

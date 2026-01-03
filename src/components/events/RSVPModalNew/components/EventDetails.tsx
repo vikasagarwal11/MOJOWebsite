@@ -42,6 +42,8 @@ export const EventDetails: React.FC<EventDetailsProps> = ({
     const mapsUrl = locationText ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}` : '';
 
     return (
+      {/* Redesigned container: gradient background (blue-50 to purple-50) matching PaymentSection pattern,
+          theme border color (#F25129) for brand consistency, removed outer padding wrapper to align width */}
       <motion.div 
         className="bg-gradient-to-r from-blue-50 to-purple-50 border border-[#F25129] rounded-lg mb-4"
           initial={{ opacity: 0, y: 10 }}
@@ -79,7 +81,7 @@ export const EventDetails: React.FC<EventDetailsProps> = ({
                     overscrollBehavior: 'contain'
                   }}
                 >
-                  {/* Date - with calendar icon */}
+                  {/* Date - with calendar icon (blue background matching screenshot design) */}
                   {startDate && (
                     <div className="flex items-start gap-3">
                       <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
@@ -94,7 +96,7 @@ export const EventDetails: React.FC<EventDetailsProps> = ({
                     </div>
                   )}
 
-                  {/* Time - with clock icon */}
+                  {/* Time - with clock icon (green background matching screenshot design) */}
                   {startDate && (
                     <div className="flex items-start gap-3">
                       <div className="p-2 bg-green-100 rounded-lg flex-shrink-0">
@@ -109,7 +111,7 @@ export const EventDetails: React.FC<EventDetailsProps> = ({
                     </div>
                   )}
 
-                  {/* Location - with map pin icon */}
+                  {/* Location - with map pin icon (red background matching screenshot design) */}
                   {locationText && (
                     <div className="flex items-start gap-3">
                       <div className="p-2 bg-red-100 rounded-lg flex-shrink-0">

@@ -648,7 +648,13 @@ const RSVPPage: React.FC = () => {
             </div>
           )}
 
-          {/* Event Details Section */}
+          {/* Event Details Section 
+              Note: EventDetails component redesigned to match PaymentSection styling:
+              - Width aligned by placing inside px-4 container (moved from outside max-w-2xl)
+              - Gradient background (blue-50 to purple-50) with theme border (#F25129)
+              - Icon-based layout with colored backgrounds (blue calendar, green clock, red map pin)
+              - Clean content structure matching screenshot requirements
+          */}
           <div className="px-4">
             <EventDetails 
               event={event}

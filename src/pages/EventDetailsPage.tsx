@@ -210,8 +210,9 @@ const EventDetailsPage: React.FC = () => {
       />
       
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
+        {/* Layout optimizations: Reduced padding from py-8 sm:py-12 to py-4 sm:py-6 for better space usage */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
-          {/* Back Button */}
+          {/* Back Button - Spacing optimized: mb-6 changed to mb-4, page title "Event Details" removed */}
           <div className="mb-4">
             <button
               onClick={() => navigate('/events')}
@@ -263,7 +264,9 @@ const EventDetailsPage: React.FC = () => {
               <p className="text-base text-gray-700 leading-relaxed mb-6">{event.description}</p>
             )}
 
-            {/* User RSVP Status Card - Show if user has RSVP'd */}
+            {/* User RSVP Status Card - Show if user has RSVP'd
+                Change: Removed "Update RSVP" button - now only displays status (going/not going/waitlisted)
+            */}
             {userAttendee && (
               <div className={`mb-6 p-4 rounded-lg border-2 ${
                 userAttendee.rsvpStatus === 'going' 
@@ -321,9 +324,13 @@ const EventDetailsPage: React.FC = () => {
               </div>
             )}
 
-            {/* Event Details Grid */}
+            {/* Event Details Grid 
+                Optimizations: Reduced spacing (space-y-3 to space-y-2), card padding (p-3 to p-2.5),
+                icon sizes (w-10 h-10 to w-9 h-9, w-5 h-5 to w-4 h-4), gap (gap-3 to gap-2.5)
+                Changes: Combined Date and Time into single card, changed "Event Support:" to "Event Support Amt:"
+            */}
             <div className="space-y-2 mb-4">
-              {/* Date & Time */}
+              {/* Date & Time - Combined into single card (previously separate cards) */}
               <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
                 <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-white shadow-sm">
                   <Calendar className="w-4 h-4 text-[#F25129]" />
