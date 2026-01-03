@@ -649,12 +649,10 @@ const RSVPPage: React.FC = () => {
           )}
 
           {/* Event Details Section */}
-          <div className="px-4">
-            <EventDetails 
-              event={event}
-              isMobile={true}
-            />
-          </div>
+          <EventDetails 
+            event={event}
+            isMobile={true}
+          />
 
           {/* Tab Navigation - Clean Mobile Design */}
           <div className="bg-white border-b border-gray-200">

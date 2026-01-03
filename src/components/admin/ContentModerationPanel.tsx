@@ -10,6 +10,7 @@ import { format } from 'date-fns';
 interface PendingContent {
   id: string;
   type: 'post' | 'media';
+  mediaType?: 'image' | 'video'; // For media items: 'image' or 'video'
   title?: string;
   content?: string;
   description?: string;
@@ -88,11 +89,18 @@ export const ContentModerationPanel: React.FC = () => {
     const unsubscribeMedia = onSnapshot(
       mediaQuery,
       (snapshot) => {
-        const media = snapshot.docs.map(doc => ({
-          id: doc.id,
-          type: 'media' as const,
-          ...doc.data(),
-        })) as PendingContent[];
+        const media = snapshot.docs.map(doc => {
+          const data = doc.data();
+          // Preserve the original media type (image/video) before spread overwrites it
+          const originalMediaType = data.type; // This is 'image' or 'video' from the media document
+          return {
+            id: doc.id,
+            type: 'media' as const,
+            ...data,
+            // Preserve 'image' | 'video' from media document as mediaType (after spread to ensure it's not overwritten)
+            mediaType: originalMediaType || (data as any).mediaType,
+          };
+        }) as PendingContent[];
         setPendingMedia(media);
         setLoading(false);
       },
@@ -146,11 +154,18 @@ export const ContentModerationPanel: React.FC = () => {
     const unsubscribeRejectedMedia = onSnapshot(
       rejectedMediaQuery,
       (snapshot) => {
-        const media = snapshot.docs.map(doc => ({
-          id: doc.id,
-          type: 'media' as const,
-          ...doc.data(),
-        })) as PendingContent[];
+        const media = snapshot.docs.map(doc => {
+          const data = doc.data();
+          // Preserve the original media type (image/video) before spread overwrites it
+          const originalMediaType = data.type; // This is 'image' or 'video' from the media document
+          return {
+            id: doc.id,
+            type: 'media' as const,
+            ...data,
+            // Preserve 'image' | 'video' from media document as mediaType (after spread to ensure it's not overwritten)
+            mediaType: originalMediaType || (data as any).mediaType,
+          };
+        }) as PendingContent[];
         setRejectedMedia(media);
       },
       (error) => {
@@ -542,6 +557,63 @@ export const ContentModerationPanel: React.FC = () => {
                         className="w-4 h-4 text-[#F25129] rounded focus:ring-[#F25129] mt-1"
                       />
                     )}
+                    {/* Thumbnail for media - exactly like Media Management */}
+                    {content.type === 'media' && (() => {
+                      // Get the actual media type from the document (image or video)
+                      // Check multiple possible sources for the media type
+                      const actualMediaType = content.mediaType || (content as any).type || 'image';
+                      
+                      // Get thumbnail URL - prefer thumbnailUrl, fallback to url for images (same logic as Media Management)
+                      // Also check for imageUrl as a fallback
+                      const thumbnailUrl = content.thumbnailUrl 
+                        || (actualMediaType === 'image' ? (content.url || content.imageUrl) : null)
+                        || (content.url && actualMediaType !== 'video' ? content.url : null);
+                      
+                      return (
+                        <div className="flex-shrink-0">
+                          {thumbnailUrl ? (
+                            <div className="relative w-24 h-24 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
+                              {actualMediaType === 'video' ? (
+                                <>
+                                  <img 
+                                    src={thumbnailUrl} 
+                                    alt="Video thumbnail" 
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      // Fallback if image fails to load
+                                      console.warn('Thumbnail failed to load:', thumbnailUrl);
+                                      (e.target as HTMLImageElement).style.display = 'none';
+                                    }}
+                                  />
+                                  <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30">
+                                    <Video className="w-6 h-6 text-white" />
+                                  </div>
+                                </>
+                              ) : (
+                                <img 
+                                  src={thumbnailUrl} 
+                                  alt="Image thumbnail" 
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    // Fallback if image fails to load
+                                    console.warn('Thumbnail failed to load:', thumbnailUrl);
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                  }}
+                                />
+                              )}
+                            </div>
+                          ) : (
+                            <div className="w-24 h-24 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                              {actualMediaType === 'video' ? (
+                                <Video className="w-8 h-8 text-gray-400" />
+                              ) : (
+                                <ImageIcon className="w-8 h-8 text-gray-400" />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         {content.type === 'post' ? (

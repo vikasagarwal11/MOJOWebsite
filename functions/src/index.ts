@@ -4972,59 +4972,9 @@ Keep tone warm, empowering, and mom-to-mom. Respond with plain text only.
 
 // ───────────────── ACCOUNT APPROVALS: Notifications ─────────────────
 
-/**
- * Helper function: Send push notification with SMS fallback for admins
- * Strategy: Try push first, if fails or disabled, send SMS
- */
-async function sendAdminNotificationWithFallback(
-  adminId: string,
-  adminData: any,
-  title: string,
-  body: string,
-  smsMessage: string,
-  data?: Record<string, string>
-): Promise<void> {
-  const fcmToken = adminData?.fcmToken;
-  const phoneNumber = adminData?.phoneNumber;
-  const pushEnabled = adminData?.notificationPreferences?.pushEnabled !== false; // Default to true if not set
-  
-  // Try push notification first if enabled and token exists
-  if (pushEnabled && fcmToken) {
-    try {
-      const { getMessaging } = await import('firebase-admin/messaging');
-      const messaging = getMessaging();
-      await messaging.send({
-        token: fcmToken,
-        notification: {
-          title,
-          body,
-        },
-        data: data || {},
-      });
-      console.log(`✅ Push notification sent to admin ${adminId}`);
-      return; // Success - no need for SMS
-    } catch (pushError: any) {
-      console.warn(`⚠️ Push notification failed for admin ${adminId}:`, pushError?.message || pushError);
-      // Continue to SMS fallback
-    }
-  }
-
-  // SMS Fallback: Send SMS immediately if push failed or disabled (admins need immediate notification)
-  if (phoneNumber) {
-    try {
-      const result = await sendSMSViaTwilio(phoneNumber, smsMessage);
-      if (result.success) {
-        console.log(`✅ SMS sent immediately to admin ${adminId} (push ${fcmToken && pushEnabled ? 'failed' : 'disabled'})`);
-      } else {
-        console.error(`❌ SMS failed for admin ${adminId}:`, result.error);
-      }
-    } catch (smsError) {
-      console.error(`❌ Failed to send SMS for admin ${adminId}:`, smsError);
-    }
-  } else {
-    console.warn(`⚠️ No phone number found for admin ${adminId} - cannot send SMS fallback`);
-  }
-}
+// Import notification helper from utils
+import { sendAdminNotificationWithFallback } from './utils/notifications';
+export { sendAdminNotificationWithFallback };
 
 // Notify admins when new approval request is created
 export const onAccountApprovalCreated = onDocumentCreated(
@@ -5147,6 +5097,11 @@ export const onAccountApprovalCreated = onDocumentCreated(
     throw error; // Re-throw to ensure Firebase logs the error
   }
 });
+
+// NOTE: Media pending approval notifications are now handled by onMediaCreatedModeration
+// in contentModerationTriggers.ts. The notification logic is integrated into the moderation
+// handler to ensure it only triggers after moderation status is set to 'pending'.
+// This old function has been removed to prevent duplicate notifications.
 
 // Notify users when approval status changes
 export const onAccountApprovalUpdated = onDocumentWritten(

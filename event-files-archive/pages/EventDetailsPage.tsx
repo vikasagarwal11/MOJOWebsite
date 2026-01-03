@@ -210,16 +210,23 @@ const EventDetailsPage: React.FC = () => {
       />
       
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
           {/* Back Button */}
-          <div className="mb-4">
+          <div className="mb-6">
             <button
               onClick={() => navigate('/events')}
-              className="flex items-center gap-2 text-gray-600 hover:text-[#F25129] transition-colors"
+              className="flex items-center gap-2 text-gray-600 hover:text-[#F25129] transition-colors mb-6"
             >
               <ArrowLeft className="w-4 h-4" />
               <span className="text-sm font-medium">Back to Events</span>
             </button>
+          </div>
+          
+          {/* Title - Centered with Gradient (matching Media page style) */}
+          <div className="text-center mb-8">
+            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1">
+              Event Details
+            </h1>
           </div>
           
           {/* Professional Two-Column Layout */}
@@ -316,33 +323,52 @@ const EventDetailsPage: React.FC = () => {
                         </span>
                       </div>
                     )}
+                    
+                    {/* Quick action button */}
+                    <button
+                      onClick={() => navigate(`/events/${eventId}/rsvp`)}
+                      className="mt-3 text-sm font-medium text-[#F25129] hover:text-[#E0451F] underline"
+                    >
+                      {userAttendee.rsvpStatus === 'going' ? 'Manage RSVP' : 'Update RSVP'}
+                    </button>
                   </div>
                 </div>
               </div>
             )}
 
             {/* Event Details Grid */}
-            <div className="space-y-2 mb-4">
-              {/* Date & Time */}
-              <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
-                <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-white shadow-sm">
-                  <Calendar className="w-4 h-4 text-[#F25129]" />
+            <div className="space-y-3 mb-6">
+              {/* Date */}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
+                <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-white shadow-sm">
+                  <Calendar className="w-5 h-5 text-[#F25129]" />
                 </div>
                 <div className="flex-1">
-                  <div className="text-xs text-gray-500 font-medium mb-0.5">Date & Time</div>
+                  <div className="text-xs text-gray-500 font-medium mb-0.5">Date</div>
+                  <div className="font-semibold text-gray-900 text-sm">{formatEventDate(event.startAt)}</div>
+                </div>
+              </div>
+
+              {/* Time */}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
+                <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-white shadow-sm">
+                  <Clock className="w-5 h-5 text-[#F25129]" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-xs text-gray-500 font-medium mb-0.5">Time</div>
                   <div className="font-semibold text-gray-900 text-sm">
-                    {formatEventDate(event.startAt)} • {formatEventTime(event.startAt)}
+                    {formatEventTime(event.startAt)}
                     {event.endAt && ` - ${formatEventTime(event.endAt)}`}
-                    {duration && <span className="text-gray-500 text-xs font-normal ml-1">({duration} hour{duration !== 1 ? 's' : ''})</span>}
+                    {duration && <span className="block text-gray-500 text-xs mt-0.5 font-normal">{duration} hour{duration !== 1 ? 's' : ''}</span>}
                   </div>
                 </div>
               </div>
 
               {/* Location - Clickable for Directions */}
               {(event.venueName || event.venueAddress || event.location) && (
-                <div className="flex items-start gap-2.5 p-2.5 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
-                  <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-white shadow-sm">
-                    <MapPin className="w-4 h-4 text-[#F25129]" />
+                <div className="flex items-start gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
+                  <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-white shadow-sm">
+                    <MapPin className="w-5 h-5 text-[#F25129]" />
                   </div>
                   <div className="flex-1">
                     <div className="text-xs text-gray-500 font-medium mb-0.5">Location</div>
@@ -360,9 +386,9 @@ const EventDetailsPage: React.FC = () => {
 
               {/* Attendee Count */}
               {event.maxAttendees && (
-                <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
-                  <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-white shadow-sm">
-                    <Users className="w-4 h-4 text-[#F25129]" />
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
+                  <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-white shadow-sm">
+                    <Users className="w-5 h-5 text-[#F25129]" />
                   </div>
                   <div className="flex-1">
                     <div className="text-xs text-gray-500 font-medium mb-0.5">Capacity</div>
@@ -381,13 +407,13 @@ const EventDetailsPage: React.FC = () => {
 
               {/* Price Information */}
               {event.pricing && (
-                <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
-                  <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-white shadow-sm">
-                    <Tag className="w-4 h-4 text-[#F25129]" />
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
+                  <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg bg-white shadow-sm">
+                    <Tag className="w-5 h-5 text-[#F25129]" />
                   </div>
                   <div className="flex-1">
                     <div className="text-xs text-gray-500 font-medium mb-0.5">Price</div>
-                    <div className="text-base font-bold text-[#F25129]">
+                    <div className="text-lg font-bold text-[#F25129]">
                       {event.pricing.adultPrice ? `$${(event.pricing.adultPrice / 100).toFixed(2)}` : 'Free'}
                     </div>
                     {event.pricing.childPrice && (
@@ -397,7 +423,7 @@ const EventDetailsPage: React.FC = () => {
                     )}
                     {event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
                       <div className="text-xs text-gray-600 mt-0.5 font-medium">
-                        Event Support Amt: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
+                        Event Support: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
                       </div>
                     )}
                   </div>

@@ -24,10 +24,13 @@ type Props = {
 const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
   const { currentUser } = useAuth();
   
+  // Ensure events is always an array
+  const safeEvents = events || [];
+  
   // For calendar view, we'll get RSVP status from the first event's attendees
   // This is a simplified approach - in a full implementation, you might want to
   // fetch attendees for all events or use a different strategy
-  const firstEventId = events[0]?.id;
+  const firstEventId = safeEvents[0]?.id;
   const { attendees: firstEventAttendees } = useAttendees(firstEventId || '', currentUser?.id || '');
   
   // Helper function to get RSVP status for an event
@@ -48,7 +51,7 @@ const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
     return null;
   }, [currentUser, firstEventId, firstEventAttendees]);
   
-  const calendarEvents = useMemo(() => events.map((e) => {
+  const calendarEvents = useMemo(() => (safeEvents || []).map((e) => {
     const start = safeToDate(e.startAt) || new Date();
     let end: Date;
     if (e.endAt) {
@@ -67,7 +70,7 @@ const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
     }
     
     return { title, start, end, allDay: !!e.allDay, resource: e };
-  }), [events]);
+  }), [safeEvents]);
 
   return (
     <div className="bg-white rounded-2xl shadow-lg p-4 relative overflow-visible">

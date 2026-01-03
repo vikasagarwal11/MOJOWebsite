@@ -165,12 +165,113 @@ async function handleModeration(job: ModerationJob) {
   });
 
   if (job.userId) {
-    if (moderationStatus === 'approved' && !requiresApproval) {
-      await adjustUserTrustScore(job.userId, 1);
-    } else if (moderationStatus === 'rejected') {
+    if (moderationStatus === 'rejected') {
       await adjustUserTrustScore(job.userId, -5);
-    } else {
+    } else if (moderationStatus === 'pending') {
       await adjustUserTrustScore(job.userId, -1);
+    }
+    // Note: 'approved' status is never set in this function (all media requires manual approval)
+  }
+
+  // Notify admins when media is set to pending
+  if (contentType === 'media' && moderationStatus === 'pending') {
+    try {
+      const mediaData = await ref.get();
+      const mediaDoc = mediaData.data();
+      if (!mediaDoc) return;
+
+      const mediaId = ref.id;
+      const uploadedBy = mediaDoc.uploadedBy || job.userId;
+      const uploadedByName = mediaDoc.uploadedByName || mediaDoc.uploaderName || 'A member';
+      const mediaType = mediaDoc.type || 'media';
+
+      console.log('🔔 [ModerationTriggers] Notifying admins about pending media', {
+        mediaId,
+        uploadedBy,
+        uploadedByName,
+        mediaType
+      });
+
+      // Get all admins
+      const adminsSnapshot = await db.collection('users')
+        .where('role', '==', 'admin')
+        .get();
+
+      if (adminsSnapshot.empty) {
+        console.warn('⚠️ [ModerationTriggers] No admins found to notify');
+        return;
+      }
+
+      // Import notification helper function
+      const { sendAdminNotificationWithFallback } = await import('./utils/notifications');
+
+      // Create in-app notifications for all admins
+      const notifications = adminsSnapshot.docs.map(adminDoc => ({
+        userId: adminDoc.id,
+        type: 'media_pending_approval',
+        title: 'Media Pending Approval',
+        message: `${uploadedByName} has uploaded ${mediaType === 'video' ? 'a video' : 'an image'} that requires your approval.`,
+        createdAt: FieldValue.serverTimestamp(),
+        read: false,
+        metadata: {
+          mediaId: mediaId,
+          uploadedBy: uploadedBy,
+          uploadedByName: uploadedByName,
+          mediaType: mediaType,
+          action: 'media_pending_review'
+        }
+      }));
+
+      // Batch write in-app notifications
+      const batch = db.batch();
+      notifications.forEach(notif => {
+        const notifRef = db.collection('notifications').doc();
+        batch.set(notifRef, notif);
+      });
+      await batch.commit();
+      console.log('✅ [ModerationTriggers] In-app notifications created successfully', {
+        notificationCount: notifications.length
+      });
+
+      // Send push notifications with SMS fallback for each admin
+      const notificationPromises = adminsSnapshot.docs.map(async (adminDoc) => {
+        const adminData = adminDoc.data();
+        const adminId = adminDoc.id;
+
+        await sendAdminNotificationWithFallback(
+          adminId,
+          adminData,
+          'Media Pending Approval',
+          `${uploadedByName} has uploaded ${mediaType === 'video' ? 'a video' : 'an image'} that requires your approval.`,
+          `MOMS FITNESS MOJO: New ${mediaType} pending approval from ${uploadedByName}. Check Content Moderation.`,
+          {
+            type: 'media_pending_approval',
+            mediaId: mediaId,
+            uploadedBy: uploadedBy,
+          }
+        );
+      });
+
+      const results = await Promise.allSettled(notificationPromises);
+      const successCount = results.filter(r => r.status === 'fulfilled').length;
+      const failureCount = results.filter(r => r.status === 'rejected').length;
+
+      console.log(`✅ [ModerationTriggers] Notified ${adminsSnapshot.size} admins`, {
+        successCount,
+        failureCount,
+        totalAdmins: adminsSnapshot.size
+      });
+
+      if (failureCount > 0) {
+        console.error('❌ [ModerationTriggers] Some notifications failed', {
+          failures: results
+            .map((r, i) => r.status === 'rejected' ? { adminIndex: i, error: r.reason } : null)
+            .filter(Boolean)
+        });
+      }
+    } catch (error) {
+      console.error('❌ [ModerationTriggers] Error sending media pending notifications:', error);
+      // Don't throw - we don't want to fail moderation if notification fails
     }
   }
 }

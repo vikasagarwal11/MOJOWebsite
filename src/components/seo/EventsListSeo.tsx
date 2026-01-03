@@ -2,8 +2,8 @@ import React from 'react';
 import { Helmet } from 'react-helmet-async';
 import type { EventDoc } from '../../hooks/useEvents';
 
-export const EventsListSeo: React.FC<{ events: EventDoc[] }> = ({ events }) => {
-  const items = events.map((e, i) => ({
+export const EventsListSeo: React.FC<{ events?: EventDoc[] }> = ({ events = [] }) => {
+  const items = (events || []).map((e, i) => ({
     '@type': 'ListItem',
     position: i + 1,
     url: `https://momfitnessmojo.web.app/events/${e.slug || e.id}`,

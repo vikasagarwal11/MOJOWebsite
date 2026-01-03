@@ -407,23 +407,20 @@ const Testimonials: React.FC = () => {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-18">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#F25129]/20 bg-white/70 px-4 py-2 text-sm text-gray-700">
-              <Sparkles className="w-4 h-4 text-[#F25129]" />
-              Real Stories. Real Strength.
-            </div>
-
-            <h1 className="mt-5 text-4xl sm:text-5xl font-extrabold tracking-tight">
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#F25129] to-[#FFC107]">
-                What Moms Are Saying
-              </span>
+          {/* Title - Centered with Gradient (matching Media page style) */}
+          <div className="text-center mb-8">
+            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">
+              What Moms Are Saying
             </h1>
-
-            <p className="mt-4 text-lg text-gray-700 leading-relaxed">
+            
+            <p className="text-lg text-gray-700 leading-relaxed max-w-3xl mx-auto">
               Honest experiences from women who found fitness, friendship, and confidence through Moms Fitness Mojo.
             </p>
+          </div>
 
-            <div className="mt-7 flex flex-wrap items-center gap-3">
+          <div className="max-w-3xl mx-auto">
+
+            <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
               <button
                 onClick={handleShare}
                 className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white shadow-md hover:shadow-lg transition-all hover:scale-[1.02]"

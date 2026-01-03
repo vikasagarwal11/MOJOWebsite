@@ -1,6 +1,6 @@
 import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { getDownloadURL, ref } from 'firebase/storage';
-import { Check, Eye, EyeOff, Heart, MessageCircle, /* Download, */ MoreHorizontal, Play, Tag, Trash2 } from 'lucide-react';
+import { Check, Clock, Eye, EyeOff, Heart, MessageCircle, /* Download, */ MoreHorizontal, Play, Tag, Trash2 } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { db, storage } from '../../config/firebase';
@@ -637,6 +637,25 @@ export default function MediaCard({
             </div>
           </div>
         )}
+        {/* Pending Approval Watermark/Badge - Visible to admins and uploaders */}
+        {localMedia.moderationStatus === 'pending' && 
+         (currentUser?.role === 'admin' || currentUser?.id === localMedia.uploadedBy) && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+            <div className="bg-amber-500/90 backdrop-blur-sm rounded-lg px-4 py-2 shadow-lg border-2 border-amber-600">
+              <div className="flex items-center gap-2 text-white font-bold text-sm">
+                <Clock className="w-4 h-4" />
+                <span>Pending Approval</span>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* Pending Approval Badge - Top left corner (visible to admins and uploaders) */}
+        {localMedia.moderationStatus === 'pending' && 
+         (currentUser?.role === 'admin' || currentUser?.id === localMedia.uploadedBy) && (
+          <div className="absolute top-2 left-2 z-20 bg-amber-500 text-white px-2 py-1 rounded-md text-xs font-semibold shadow-lg border border-amber-600">
+            ⏳ Pending
+          </div>
+        )}
         {previewEl}
         <div className="absolute top-3 right-3 flex gap-2">
           {/* Download feature temporarily disabled - uncomment to re-enable */}
@@ -698,6 +717,16 @@ export default function MediaCard({
           <span>By {localMedia.uploaderName || 'Member'}</span>
           <span>{safeFormat(createdAt, 'MMM d, yyyy', '')}</span>
         </div>
+        
+        {/* Pending Status Badge - Visible to uploader (not just admins) */}
+        {localMedia.moderationStatus === 'pending' && currentUser?.id === localMedia.uploadedBy && (
+          <div className="mb-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-800 rounded-full text-xs font-semibold border border-amber-300">
+              <Clock className="w-3 h-3" />
+              <span>Your upload is pending approval</span>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">

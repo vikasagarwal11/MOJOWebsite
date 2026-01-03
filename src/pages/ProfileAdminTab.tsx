@@ -488,6 +488,56 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
     }
   };
 
+  // Handle moderation approve/reject (duplicate from Content Moderation)
+  const handleApproveMedia = async (mediaId: string) => {
+    if (!currentUser) {
+      toast.error('You must be logged in to approve media');
+      return;
+    }
+    setUpdatingStatus(mediaId);
+    try {
+      await ModerationService.approveContent(mediaId, 'media', currentUser.id);
+      // Update local state
+      setAllMedia(prev => prev.map(m => 
+        m.id === mediaId 
+          ? { ...m, moderationStatus: 'approved', requiresApproval: false }
+          : m
+      ));
+      toast.success('Media approved successfully');
+    } catch (error: any) {
+      console.error('Failed to approve media:', error);
+      toast.error(error?.message || 'Failed to approve media');
+    } finally {
+      setUpdatingStatus(null);
+    }
+  };
+
+  const handleRejectMedia = async (mediaId: string) => {
+    if (!currentUser) {
+      toast.error('You must be logged in to reject media');
+      return;
+    }
+    const reason = prompt('Enter rejection reason (optional):');
+    if (reason === null) return; // User cancelled
+    
+    setUpdatingStatus(mediaId);
+    try {
+      await ModerationService.rejectContent(mediaId, 'media', currentUser.id, reason || undefined);
+      // Update local state
+      setAllMedia(prev => prev.map(m => 
+        m.id === mediaId 
+          ? { ...m, moderationStatus: 'rejected', moderationReason: reason || undefined }
+          : m
+      ));
+      toast.success('Media rejected');
+    } catch (error: any) {
+      console.error('Failed to reject media:', error);
+      toast.error(error?.message || 'Failed to reject media');
+    } finally {
+      setUpdatingStatus(null);
+    }
+  };
+
   // Fix stuck processing videos - improved to check HLS files
   const handleFixStuckProcessing = async () => {
     setIsFixingStuckProcessing(true);
@@ -1230,19 +1280,33 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                           </div>
                           
                           <div className="text-sm text-gray-600 space-y-1">
-                            <div className="flex items-center gap-2">
-                              <strong>Status:</strong>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <strong>Processing Status:</strong>
                               <span className={`px-2 py-1 rounded text-xs font-medium ${
                                 media.transcodeStatus === 'ready' ? 'bg-green-100 text-green-800' :
                                 media.transcodeStatus === 'processing' ? 'bg-yellow-100 text-yellow-800' :
                                 media.transcodeStatus === 'failed' ? 'bg-red-100 text-red-800' :
                                 'bg-gray-100 text-gray-800'
-                              }`}>
+                              }`} title="Upload and processing status - 'ready' means file upload and processing completed successfully">
                                 {media.transcodeStatus || 'pending'}
                               </span>
                               {media.transcodeStatus === 'ready' && media.sources?.hls && (
                                 <span className="px-2 py-1 rounded text-xs bg-blue-100 text-blue-800">HLS Ready</span>
                               )}
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <strong>Moderation Status:</strong>
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                media.moderationStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                                media.moderationStatus === 'pending' ? 'bg-amber-100 text-amber-700' :
+                                media.moderationStatus === 'rejected' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
+                              }`}>
+                                {media.moderationStatus === 'approved' ? 'Approved' :
+                                 media.moderationStatus === 'pending' ? 'Pending Approval' :
+                                 media.moderationStatus === 'rejected' ? 'Rejected' :
+                                 'Not Set'}
+                              </span>
                             </div>
                             <p><strong>Uploaded by:</strong> {userNames[media.uploadedBy] || 'Unknown'}</p>
                             <p><strong>Created:</strong> {media.createdAt?.toLocaleDateString() || 'Unknown'}</p>
@@ -1386,6 +1450,52 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                                 Mark as Failed
                               </button>
                             </div>
+                          </div>
+
+                          {/* Content Moderation Actions (duplicate from Content Moderation Panel) */}
+                          <div className="pt-3 border-t border-gray-200">
+                            <p className="text-xs font-semibold text-gray-700 mb-2">Content Moderation:</p>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={() => handleApproveMedia(media.id)}
+                                disabled={updatingStatus === media.id || media.moderationStatus === 'approved'}
+                                className="px-3 py-1.5 bg-green-100 text-green-800 rounded text-xs hover:bg-green-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                              >
+                                {updatingStatus === media.id && media.moderationStatus !== 'approved' ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <CheckCircle className="w-3 h-3" />
+                                )}
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleRejectMedia(media.id)}
+                                disabled={updatingStatus === media.id || media.moderationStatus === 'rejected'}
+                                className="px-3 py-1.5 bg-red-100 text-red-800 rounded text-xs hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                              >
+                                {updatingStatus === media.id && media.moderationStatus !== 'rejected' ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <XCircle className="w-3 h-3" />
+                                )}
+                                Reject
+                              </button>
+                            </div>
+                            {media.moderationReason && (
+                              <p className="text-xs text-gray-600 mt-2">
+                                <strong>Reason:</strong> {media.moderationReason}
+                              </p>
+                            )}
+                            {media.moderationDetectedIssues && media.moderationDetectedIssues.length > 0 && (
+                              <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs">
+                                <strong className="text-amber-900">Detected Issues:</strong>
+                                <ul className="list-disc list-inside mt-1 text-amber-800">
+                                  {media.moderationDetectedIssues.map((issue: string, idx: number) => (
+                                    <li key={idx}>{issue}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
                           </div>
 
                           {/* Additional Metadata */}

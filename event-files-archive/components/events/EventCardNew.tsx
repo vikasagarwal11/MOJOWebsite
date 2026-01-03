@@ -331,8 +331,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
       return;
     }
     
-    // Navigate directly to RSVP page
-    navigate(`/events/${event.id}/rsvp`);
+    // Navigate to the canonical event details route
+    navigate(`/events/${event.id}`);
   };
 
   // Quick RSVP handlers using new attendee system
@@ -940,6 +940,29 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
               </motion.button>
             </div>
 
+            {/* Additional Actions - Now visible with icon-only Manage button */}
+            <div className="flex items-center gap-1 ml-2">
+              {/* RSVP Modal Button - Icon only to save space */}
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleRSVPModalOpen}
+                disabled={isEventPast}
+                className="p-2 bg-[#F25129]/10 text-[#F25129] hover:bg-[#F25129]/20 rounded-lg transition-colors"
+                title="Manage RSVP details"
+              >
+                <div className="relative">
+                  <Users className="w-4 h-4" />
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-[#F25129] rounded-full flex items-center justify-center">
+                    <span className="text-white text-[8px] font-bold leading-none">+</span>
+                  </div>
+                </div>
+              </motion.button>
+
+              
+
+
+            </div>
           </div>
         </div>
       </motion.div>

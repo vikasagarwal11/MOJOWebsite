@@ -1,0 +1,187 @@
+import { collection, FirestoreError, onSnapshot, orderBy, query, Query, Timestamp, where } from 'firebase/firestore';
+import { useEffect, useRef, useState } from 'react';
+import { db } from '../config/firebase';
+import { useAuth } from '../contexts/AuthContext';
+import { normalizeEvent } from '../utils/normalizeEvent';
+import { toMillis } from './useEventsUtils';
+
+export type EventDoc = {
+  id: string;
+  title: string;
+  startAt: any;
+  endAt?: any;
+  duration?: number;
+  visibility?: 'public' | 'members' | 'private';
+  createdBy?: string;
+  invitedUserIds?: string[];
+  tags?: string[];
+  allDay?: boolean;
+  location?: string; // Keep for backward compatibility
+  venueName?: string; // New: "Short Hills Racquet Club"
+  venueAddress?: string; // New: "123 Main St, Short Hills, NJ 07078"
+  description?: string;
+  imageUrl?: string;
+  isTeaser?: boolean;
+  maxAttendees?: number;
+  attendingCount?: number;
+  waitlistCount?: number; // Number of people on waitlist
+  waitlistEnabled?: boolean;
+  waitlistLimit?: number;
+  status?: 'scheduled' | 'canceled' | 'postponed' | 'draft'; // Event status
+  // QR Code Attendance Tracking
+  qrCode?: string; // Generated QR code data
+  qrCodeGeneratedAt?: any; // Timestamp when QR was generated
+  attendanceEnabled?: boolean; // Admin can enable/disable QR attendance
+  attendanceCount?: number; // Real-time attendance count from QR scans
+  lastAttendanceUpdate?: any; // Last time attendance was updated
+  // Payment Configuration
+  pricing?: import('../types/payment').EventPricing;
+  // Read-only mode
+  isReadOnly?: boolean;
+};
+
+type UseEventsOptions = { skewMs?: number; includeGuestTeasers?: boolean; };
+type UseEventsResult = { upcomingEvents: EventDoc[]; pastEvents: EventDoc[]; upcomingTeasers: EventDoc[]; loading: boolean; error: string | null; };
+
+export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
+  const { currentUser, loading: authLoading } = useAuth();
+  const skewMs = opts.skewMs ?? 2 * 60 * 1000;
+  const includeGuestTeasers = opts.includeGuestTeasers ?? true;
+
+  const [upcomingEvents, setUpcomingEvents] = useState<EventDoc[]>([]);
+  const [pastEvents, setPastEvents] = useState<EventDoc[]>([]);
+  const [upcomingTeasers, setUpcomingTeasers] = useState<EventDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const upcomingMapRef = useRef<Map<string, EventDoc>>(new Map());
+  const pastMapRef = useRef<Map<string, EventDoc>>(new Map());
+
+  const nowMs = Date.now();
+  const nowTs = Timestamp.fromMillis(nowMs);
+  const pastCutoff = Timestamp.fromMillis(nowMs - skewMs);
+
+  const eventsRef = collection(db, 'events');
+  const teasersRef = collection(db, 'event_teasers');
+
+  const buildUpcomingQueries = (): Query[] => {
+    // Members-only events are now visible to everyone, but only members can RSVP
+    // Treat non-approved users like logged-out users (show public and members events)
+    const isApproved = currentUser && (currentUser.status === 'approved' || !currentUser.status); // Legacy users without status are approved
+    
+    if (!currentUser || !isApproved) {
+      // Show both public and members-only events to everyone (non-members can see but not RSVP)
+      // Use separate queries instead of 'in' operator - Firestore security rules can't evaluate 'in' queries efficiently
+      return [
+        query(eventsRef, where('visibility', '==', 'public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+        query(eventsRef, where('visibility', '==', 'members'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc'))
+      ];
+    }
+    return [
+      // Use separate queries instead of 'in' operator for better security rule evaluation
+      query(eventsRef, where('visibility', '==', 'public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+      query(eventsRef, where('visibility', '==', 'members'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+      query(eventsRef, where('createdBy', '==', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+      // Check for both new and legacy field names
+      query(eventsRef, where('invitedUserIds', 'array-contains', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+      query(eventsRef, where('invitedUsers', 'array-contains', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+    ];
+  };
+
+  const buildPastQueries = (): Query[] => {
+    // Past events: ALL past events are public (Firestore rules allow everyone to read past events)
+    // This is intentional - past events become public history regardless of original visibility
+    return [query(eventsRef, where('startAt', '<', pastCutoff), orderBy('startAt', 'desc'))];
+  };
+
+  useEffect(() => {
+    if (authLoading) return;
+    setLoading(true);
+    setError(null);
+
+    // Debug logging for Safari issue
+    console.log('[useEvents] Setting up queries:', {
+      hasUser: !!currentUser,
+      userId: currentUser?.id,
+      userStatus: currentUser?.status,
+      isApproved: currentUser && (currentUser.status === 'approved' || !currentUser.status),
+      authLoading
+    });
+
+    const upcomingMap = new Map<string, EventDoc>();
+    const pastMap = new Map<string, EventDoc>();
+    upcomingMapRef.current = upcomingMap;
+    pastMapRef.current = pastMap;
+
+    const upcomingQs = buildUpcomingQueries();
+    const pastQs = buildPastQueries();
+    
+    console.log('[useEvents] Query count:', {
+      upcoming: upcomingQs.length,
+      past: pastQs.length
+    });
+
+    let loadedUpcoming = 0;
+    let loadedPast = 0;
+
+    const unsubs: Array<() => void> = [];
+
+    const onErr = (e: FirestoreError) => {
+      console.error('[events] snapshot error', e);
+      setError(e.message || 'Failed to load events.');
+      setLoading(false);
+    };
+
+    // upcoming listeners
+    for (const qy of upcomingQs) {
+      const unsub = onSnapshot(qy, (snap) => {
+        console.log('[useEvents] Upcoming snapshot received:', snap.docs.length, 'docs');
+        snap.docs.forEach((d) => upcomingMap.set(d.id, normalizeEvent({ id: d.id, ...(d.data() as any) })));
+        loadedUpcoming += 1;
+        if (loadedUpcoming >= upcomingQs.length) {
+          const arr = Array.from(upcomingMap.values()).sort((a,b)=> toMillis(a.startAt)-toMillis(b.startAt));
+          console.log('[useEvents] Setting upcoming events:', arr.length);
+          setUpcomingEvents(arr);
+          if (loadedPast >= pastQs.length) setLoading(false);
+        }
+      }, onErr);
+      unsubs.push(unsub);
+    }
+
+    // past listeners
+    for (const qy of pastQs) {
+      const unsub = onSnapshot(qy, (snap) => {
+        console.log('[useEvents] Past snapshot received:', snap.docs.length, 'docs');
+        snap.docs.forEach((d) => pastMap.set(d.id, normalizeEvent({ id: d.id, ...(d.data() as any) })));
+        loadedPast += 1;
+        if (loadedPast >= pastQs.length) {
+          const arr = Array.from(pastMap.values()).sort((a,b)=> toMillis(b.startAt)-toMillis(a.startAt));
+          console.log('[useEvents] Setting past events:', arr.length);
+          setPastEvents(arr);
+          if (loadedUpcoming >= upcomingQs.length) setLoading(false);
+        }
+      }, onErr);
+      unsubs.push(unsub);
+    }
+
+    // guest teasers
+    let teasersUnsub: (() => void) | null = null;
+    if (!currentUser && includeGuestTeasers) {
+      teasersUnsub = onSnapshot(
+        query(teasersRef, where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+        (snap) => setUpcomingTeasers(snap.docs.map((d) => normalizeEvent({ id: d.id, ...(d.data() as any), isTeaser: true }))),
+        onErr
+      );
+    } else {
+      setUpcomingTeasers([]);
+    }
+
+    return () => {
+      console.log('[useEvents] Cleaning up listeners');
+      unsubs.forEach((u) => u && u());
+      if (teasersUnsub) teasersUnsub();
+    };
+  }, [authLoading, currentUser?.id, currentUser?.status]); // re-run when auth resolves, user changes, or status changes
+
+  return { upcomingEvents, pastEvents, upcomingTeasers, loading, error };
+}

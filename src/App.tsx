@@ -16,7 +16,9 @@ import AccountRejected from './pages/AccountRejected';
 import CommunityGuidelines from './pages/CommunityGuidelines';
 import Contact from './pages/Contact';
 import EventDetailsPage from './pages/EventDetailsPage';
+import EventDetailsPageV2 from './pages/EventDetailsPageV2';
 import Events from './pages/Events';
+import EventsV2 from './pages/EventsV2';
 import FamilyManagement from './pages/FamilyManagement';
 import Founder from './pages/Founder';
 import Home from './pages/Home';
@@ -27,6 +29,7 @@ import Press from './pages/Press';
 import Profile from './pages/Profile';
 import Reset from './pages/Reset';
 import RSVPPage from './pages/RSVPPage';
+import RSVPPageV2 from './pages/RSVPPageV2';
 import ShareYourStory from './pages/ShareYourStory';
 import Sponsors from './pages/Sponsors';
 import Testimonials from './pages/Testimonials';
@@ -102,6 +105,9 @@ function AppContent() {
             <Route path="events" element={<Events />} />
             <Route path="events/:eventId" element={<EventDetailsPage />} />
             <Route path="events/:eventId/rsvp" element={<RSVPPage />} />
+            <Route path="events-v2" element={<EventsV2 />} />
+            <Route path="events-v2/:eventId" element={<EventDetailsPageV2 />} />
+            <Route path="events-v2/:eventId/rsvp" element={<RSVPPageV2 />} />
             <Route path="media" element={<Media />} />  {/* UPDATED VERSION WITH LIVE UPLOAD */}
           {/* <Route path="media" element={<MediaGallery />} />  OLD VERSION - COMMENTED OUT */}
             <Route path="posts" element={<Posts />} />
