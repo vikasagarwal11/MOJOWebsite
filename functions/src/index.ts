@@ -32,9 +32,10 @@ const ALLOWED_CORS_ORIGINS = [
   // Historical/typo variants kept for backward compatibility with older clients
   'https://momfitnessmojo.web.app',
   'https://momfitnessmojo.firebaseapp.com',
-  // Local development
-  'http://localhost:5173',
-  'http://localhost:3000',
+    // Local development
+    'http://localhost:5173',
+    'http://localhost:5175',
+    'http://localhost:3000',
 ];
 
 function wrapWithOriginGuard<T, R>(fn: (request: CallableRequest<T>) => R | Promise<R>) {

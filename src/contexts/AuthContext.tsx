@@ -368,7 +368,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('  - Phone Number:', phoneNumber);
         console.log('  - Project ID:', auth.app?.options?.projectId);
         console.log('  - Auth Domain:', auth.app?.options?.authDomain);
-        console.log('  - reCAPTCHA Site Key:', process.env.VITE_RECAPTCHA_SITE_KEY);
+        console.log('  - reCAPTCHA Site Key:', import.meta.env.VITE_RECAPTCHA_SITE_KEY);
         console.log('  - Current Domain:', window.location.hostname);
         console.log('  - User Agent:', navigator.userAgent);
         console.log('  - Timestamp:', new Date().toISOString());
