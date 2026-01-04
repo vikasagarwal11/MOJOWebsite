@@ -62,8 +62,8 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   // NEW: Per-event RSVP filter state (instead of global)
   const [eventRsvpFilters, setEventRsvpFilters] = useState<{[eventId: string]: 'all' | 'going' | 'not-going' | 'waitlisted'}>({});
   
-  // NEW: Date and Activity filter state
-  const [dateFilter, setDateFilter] = useState<'all' | 'upcoming' | 'this-week' | 'past'>('all');
+  // NEW: Date and Activity filter state - Default to 'upcoming' as requested
+  const [dateFilter, setDateFilter] = useState<'all' | 'upcoming' | 'this-week' | 'past'>('upcoming');
   const [activityFilter, setActivityFilter] = useState<'all' | 'has-rsvps' | 'no-rsvps' | 'high-activity'>('all');
   
   // NEW: Advanced search state
@@ -89,8 +89,9 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
     enabled: false
   });
   
-  // NEW: Sorting state
+  // NEW: Sorting state - Add sort direction for date sorting
   const [sortBy, setSortBy] = useState<'date' | 'title' | 'location' | 'rsvp-count'>('date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
   // Function to fetch user email and phone details
   const fetchUserDetails = async (userId: string) => {
@@ -174,11 +175,16 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
 
   // Helper function to calculate billing summary
   const calculateBillingSummary = (attendees: any[]) => {
+    // Helper to get status - check both 'status' and 'rsvpStatus' fields for compatibility
+    const getStatus = (attendee: any): string => {
+      return attendee.status || attendee.rsvpStatus || 'unknown';
+    };
+    
     const summary = {
       total: attendees.length,
-      going: attendees.filter(a => a.status === 'going').length,
-      notGoing: attendees.filter(a => a.status === 'not-going').length,
-      waitlisted: attendees.filter(a => a.status === 'waitlisted').length,
+      going: attendees.filter(a => getStatus(a) === 'going').length,
+      notGoing: attendees.filter(a => getStatus(a) === 'not-going').length,
+      waitlisted: attendees.filter(a => getStatus(a) === 'waitlisted').length,
       byAgeGroup: {
         adults: 0,
         children0to2: 0,
@@ -192,6 +198,32 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
         guests: 0
       }
     };
+    
+    // Debug logging in development mode
+    if (import.meta.env.DEV && attendees.length > 0) {
+      const statusBreakdown = attendees.reduce((acc: any, a: any) => {
+        const status = getStatus(a);
+        acc[status] = (acc[status] || 0) + 1;
+        return acc;
+      }, {});
+      
+      console.log('🔍 ProfileRSVPAdminTab - calculateBillingSummary:', {
+        totalAttendees: attendees.length,
+        statusBreakdown,
+        calculatedSummary: {
+          going: summary.going,
+          notGoing: summary.notGoing,
+          waitlisted: summary.waitlisted
+        },
+        sampleAttendee: {
+          id: attendees[0]?.id,
+          name: attendees[0]?.name,
+          status: attendees[0]?.status,
+          rsvpStatus: attendees[0]?.rsvpStatus,
+          finalStatus: getStatus(attendees[0])
+        }
+      });
+    }
 
     attendees.forEach(attendee => {
       // Count by age group
@@ -353,29 +385,39 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
       isEventInAttendeeRange(event)
     );
     
-    // NEW: Apply sorting
+    // NEW: Apply sorting with direction support
     filtered.sort((a, b) => {
+      let result = 0;
       switch (sortBy) {
         case 'date':
           if (!a.startAt || !b.startAt) return 0;
           const dateA = a.startAt.toDate ? a.startAt.toDate() : new Date(a.startAt);
           const dateB = b.startAt.toDate ? b.startAt.toDate() : new Date(b.startAt);
-          return dateA.getTime() - dateB.getTime();
+          result = dateA.getTime() - dateB.getTime();
+          break;
         case 'title':
-          return a.title.localeCompare(b.title);
+          result = a.title.localeCompare(b.title);
+          break;
         case 'location':
-          return a.location.localeCompare(b.location);
+          result = a.location.localeCompare(b.location);
+          break;
         case 'rsvp-count':
           const countA = rsvpsByEvent[a.id]?.length || 0;
           const countB = rsvpsByEvent[b.id]?.length || 0;
-          return countB - countA; // High to low
+          result = countB - countA; // High to low by default
+          break;
         default:
           return 0;
       }
+      // Apply sort direction (only for date, title, and location - rsvp-count is always desc)
+      if (sortBy === 'date' || sortBy === 'title' || sortBy === 'location') {
+        return sortDirection === 'asc' ? result : -result;
+      }
+      return result;
     });
     
     setFilteredEvents(filtered);
-  }, [eventFilter, dateFilter, activityFilter, locationFilter, dateRangeFilter, creatorFilter, maxAttendeesFilter, sortBy, allEvents, rsvpsByEvent]);
+  }, [eventFilter, dateFilter, activityFilter, locationFilter, dateRangeFilter, creatorFilter, maxAttendeesFilter, sortBy, sortDirection, allEvents, rsvpsByEvent]);
 
   return (
     <div className="grid gap-6">
@@ -386,7 +428,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
           setRsvpFilter('all');        // Reset RSVP status filter
           setEventFilter('');          // Reset event search filter
           setEventRsvpFilters({});     // Reset all per-event RSVP filters
-          setDateFilter('all');        // Reset date filter
+          setDateFilter('upcoming');   // Reset date filter to upcoming (default)
           setActivityFilter('all');    // Reset activity filter
           setLocationFilter('');       // Reset location filter
           setDateRangeFilter({ startDate: '', endDate: '', enabled: false }); // Reset date range
@@ -394,6 +436,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
           setMaxAttendeesFilter({ min: '', max: '', enabled: false }); // Reset attendee range
           setShowAdvancedSearch(false); // Hide advanced search
           setSortBy('date');           // Reset sorting to date
+          setSortDirection('asc');     // Reset sort direction to ascending
         }}
         className="ml-4 text-xs text-[#F25129] hover:underline"
         aria-label="Reset all filters"
@@ -420,7 +463,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
           <div>
             <div className="text-sm text-[#F25129] font-medium">Going</div>
             <div className="text-2xl font-bold text-[#F25129]">
-              {Object.values(rsvpsByEvent).reduce((sum, rsvps) => sum + rsvps.filter(r => r.status === 'going').length, 0)}
+              {Object.values(rsvpsByEvent).reduce((sum, rsvps) => sum + rsvps.filter(r => (r.status || r.rsvpStatus) === 'going').length, 0)}
             </div>
           </div>
         </div>
@@ -432,7 +475,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
           <div>
             <div className="text-sm text-red-600 font-medium">Not Going</div>
             <div className="text-2xl font-bold text-red-800">
-              {Object.values(rsvpsByEvent).reduce((sum, rsvps) => sum + rsvps.filter(r => r.status === 'not-going').length, 0)}
+              {Object.values(rsvpsByEvent).reduce((sum, rsvps) => sum + rsvps.filter(r => (r.status || r.rsvpStatus) === 'not-going').length, 0)}
             </div>
           </div>
         </div>
@@ -546,7 +589,14 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
              <span className="text-xs text-[#F25129] font-medium">Sort by:</span>
              <select
                value={sortBy}
-               onChange={(e) => setSortBy(e.target.value as 'date' | 'title' | 'location' | 'rsvp-count')}
+               onChange={(e) => {
+                 const newSortBy = e.target.value as 'date' | 'title' | 'location' | 'rsvp-count';
+                 setSortBy(newSortBy);
+                 // Reset sort direction to asc when changing sort field (except rsvp-count which is always desc)
+                 if (newSortBy !== 'rsvp-count') {
+                   setSortDirection('asc');
+                 }
+               }}
                className="px-2 py-1 text-xs border border-[#F25129]/20 rounded focus:ring-1 focus:ring-[#F25129]"
              >
                <option value="date">📅 Date</option>
@@ -554,6 +604,18 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                <option value="location">📍 Location</option>
                <option value="rsvp-count">👥 RSVP Count</option>
              </select>
+             {/* Sort Direction - Only show for date, title, and location */}
+             {(sortBy === 'date' || sortBy === 'title' || sortBy === 'location') && (
+               <select
+                 value={sortDirection}
+                 onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
+                 className="px-2 py-1 text-xs border border-[#F25129]/20 rounded focus:ring-1 focus:ring-[#F25129]"
+                 title={`Sort ${sortBy} in ${sortDirection === 'asc' ? 'ascending' : 'descending'} order`}
+               >
+                 <option value="asc">↑ Ascending</option>
+                 <option value="desc">↓ Descending</option>
+               </select>
+             )}
            </div>
            <span className="text-sm text-[#F25129]">
              {filteredEvents.length} of {allEvents.length} events
@@ -1046,13 +1108,17 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                       
                           {/* Quick Status Filter Pills */}
                           <div className="flex gap-2 flex-wrap">
-                            {[
-                              { value: 'all', label: 'All', count: attendees.length, color: 'bg-gray-100 text-gray-700' },
-                              { value: 'going', label: 'Going', count: attendees.filter(r => r.status === 'going').length, color: 'bg-green-100 text-green-700' },
-                              { value: 'not-going', label: 'Not Going', count: attendees.filter(r => r.status === 'not-going').length, color: 'bg-red-100 text-red-700' },
+                            {(() => {
+                              // Helper to get status - check both 'status' and 'rsvpStatus' fields
+                              const getStatus = (r: any): string => r.status || r.rsvpStatus || 'unknown';
                               
-                              { value: 'waitlisted', label: 'Waitlisted', count: attendees.filter(r => r.status === 'waitlisted').length, color: 'bg-purple-100 text-purple-700' }
-                            ].map(filter => (
+                              return [
+                                { value: 'all', label: 'All', count: attendees.length, color: 'bg-gray-100 text-gray-700' },
+                                { value: 'going', label: 'Going', count: attendees.filter(r => getStatus(r) === 'going').length, color: 'bg-green-100 text-green-700' },
+                                { value: 'not-going', label: 'Not Going', count: attendees.filter(r => getStatus(r) === 'not-going').length, color: 'bg-red-100 text-red-700' },
+                                { value: 'waitlisted', label: 'Waitlisted', count: attendees.filter(r => getStatus(r) === 'waitlisted').length, color: 'bg-purple-100 text-purple-700' }
+                              ];
+                            })().map(filter => (
                               <button
                                 key={filter.value}
                                 onClick={() => updateEventRsvpFilter(event.id, filter.value as 'all' | 'going' | 'not-going' | 'waitlisted')}
@@ -1072,7 +1138,13 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                         {/* Clean List Format - Similar to RSVPModalNew */}
                         <div className="max-h-80 overflow-y-auto">
                               {rsvpsByEvent[event.id]
-                                .filter(r => getEventRsvpFilter(event.id) === 'all' || r.status === getEventRsvpFilter(event.id))
+                                .filter(r => {
+                                  const currentFilter = getEventRsvpFilter(event.id);
+                                  if (currentFilter === 'all') return true;
+                                  // Check both 'status' and 'rsvpStatus' fields for compatibility
+                                  const rsvpStatus = r.status || r.rsvpStatus;
+                                  return rsvpStatus === currentFilter;
+                                })
                                 .map(rsvp => (
                                   <div key={rsvp.id} className="px-4 py-3.5 border-b border-gray-200 hover:bg-gray-50 transition-all duration-200 hover:shadow-sm hover:border-l-4 hover:border-l-[#FFC107] cursor-pointer">
                                     <div className="flex items-center justify-between">
@@ -1226,7 +1298,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                             </div>
                             <div className="flex items-center gap-2">
                               <select
-                                value={rsvp.status}
+                                value={rsvp.status || rsvp.rsvpStatus || ''}
                                 onChange={(e) => {
                                   const newStatus = e.target.value as 'going' | 'not-going' | 'waitlisted' | '';
                                   updateRsvp(event.id, rsvp.id, newStatus || null);
@@ -1239,7 +1311,7 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                 <option value="waitlisted">🟣 Waitlisted</option>
                                 <option value="">🗑️ Remove</option>
                               </select>
-                              {rsvp.status === 'waitlisted' && (
+                              {(rsvp.status || rsvp.rsvpStatus) === 'waitlisted' && (
                                 <button
                                   onClick={() => updateRsvp(event.id, rsvp.id, 'going')}
                                   className="ml-2 px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"

@@ -69,4 +69,5 @@ scripts/log-reader-key.json
 
 # Documentation files (local reference only)
 *.md
-!README.md
+# Allow README.md files at any level (root and nested)
+!**/README.md

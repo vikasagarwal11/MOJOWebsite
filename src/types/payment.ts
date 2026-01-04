@@ -2,7 +2,7 @@ import { Timestamp } from 'firebase/firestore';
 
 // Payment status types
 export type PaymentStatus = 'unpaid' | 'paid' | 'refunded' | 'failed' | 'pending';
-export type PaymentMethod = 'card' | 'bank_transfer' | 'cash' | 'other';
+export type PaymentMethod = 'card' | 'bank_transfer' | 'cash' | 'paypal' | 'venmo' | 'zelle' | 'other';
 export type RefundStatus = 'none' | 'partial' | 'full' | 'requested';
 
 // Age group pricing configuration

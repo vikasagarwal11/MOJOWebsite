@@ -1,25 +1,20 @@
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle,
-  ArrowLeft,
   Calendar,
   ChevronDown,
-  Heart,
   QrCode,
   UserPlus,
   Users
 } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AttendeeList } from '../components/events/AttendeeList';
-import { LoadingButton } from '../components/ui/LoadingSpinner';
 import { useAuth } from '../contexts/AuthContext';
 import { useAttendees } from '../hooks/useAttendees';
 import { EventDoc } from '../hooks/useEvents';
-import { useFamilyMembers } from '../hooks/useFamilyMembers';
 import { useUserBlocking } from '../hooks/useUserBlocking';
 import { AgeGroup, AttendeeStatus, CreateAttendeeData, Relationship } from '../types/attendee';
-import { FamilyMember } from '../types/family';
 
 import { doc, onSnapshot } from 'firebase/firestore';
 import toast from 'react-hot-toast';
@@ -44,8 +39,6 @@ const RSVPPage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
-  const closeBtnRef = useRef<HTMLButtonElement>(null);
-  
   // Real-time event loading with onSnapshot (NOT getDoc)
   const [event, setEvent] = useState<EventDoc | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,35 +49,14 @@ const RSVPPage: React.FC = () => {
   // React Rules of Hooks require hooks to be called in the same order every render
   // ============================================================================
   
-  // Mobile detection
-  const [isMobile, setIsMobile] = useState(false);
-  
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768); // md breakpoint
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
-  // Reduced-motion aware transitions
-  const prefersReduced = useReducedMotion();
-  
   // Initialize all state hooks (must be unconditional)
   const [isAddSectionCollapsed, setIsAddSectionCollapsed] = useState(true);
-  const [showFamilyMembers, setShowFamilyMembers] = useState(false);
-  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'attendees' | 'qr' | 'whosGoing'>('attendees');
-  const [familySizeInfo, setFamilySizeInfo] = useState<{ current: number; max: number; canAdd: boolean }>({ current: 0, max: 4, canAdd: true });
   const [isAdding, setIsAdding] = useState(false);
   
   // Use real-time event data for capacity state - initialize with safe fallback
   const [realTimeAttendingCount, setRealTimeAttendingCount] = useState<number>(0);
   
-  // Ref to track previous family info - must be BEFORE early returns to maintain hook count
-  const prevFamilyInfoRef = useRef<{ primaryGoing: boolean; familyCount: number } | null>(null);
   
   // Load event from URL using onSnapshot for real-time updates
   useEffect(() => {
@@ -168,7 +140,23 @@ const RSVPPage: React.FC = () => {
   const isAdmin = currentUser?.role === 'admin' || isEventCreator;
   
   // Check if members are allowed to add attendees
-  const canAddAttendees = isAdmin || (event?.allowMembersToAddAttendees === true);
+  // Note: allowMembersToAddAttendees may exist on event but not in EventDoc type
+  const allowMembersToAddAttendees = (event as any)?.allowMembersToAddAttendees;
+  const canAddAttendees = isAdmin || (allowMembersToAddAttendees === true);
+  
+  // Debug log to verify event settings
+  useEffect(() => {
+    if (event?.id) {
+      console.log('🔍 RSVPPage - Event settings check:', {
+        eventId: event.id,
+        isAdmin,
+        allowMembersToAddAttendees,
+        canAddAttendees,
+        maxAttendees: event.maxAttendees,
+        attendingCount: event.attendingCount
+      });
+    }
+  }, [event?.id, isAdmin, allowMembersToAddAttendees, canAddAttendees, event?.maxAttendees, event?.attendingCount]);
   
   // Use our new date hook - safe fallback for null event
   const emptyEvent = useMemo(() => ({} as EventDoc), []);
@@ -177,12 +165,11 @@ const RSVPPage: React.FC = () => {
   } = useEventDates(event || emptyEvent);
   
   // Event-dependent hooks - safe fallbacks for null event
-  const { attendees, counts, addAttendee, bulkAddAttendees, refreshAttendees, updateAttendee, error: attendeesError } = useAttendees(
+  const { attendees, counts, bulkAddAttendees, refreshAttendees, updateAttendee, error: attendeesError } = useAttendees(
     event?.id || '',
     currentUser?.id || '',
     isAdmin
   );
-  const { familyMembers } = useFamilyMembers();
 
   // Real-time waitlist positions - ONLY when waitlist is enabled
   const { positions: waitlistPositions, myPosition: waitlistPosition, waitlistCount } = useWaitlistPositions(
@@ -240,46 +227,6 @@ const RSVPPage: React.FC = () => {
     (block) => block.blockCategory === 'rsvp_only' && block.isActive
   );
 
-  // Calculate family size info - use ref to track previous values and prevent infinite loops
-  // NOTE: prevFamilyInfoRef is already declared above (before early returns) to maintain hook count
-  useEffect(() => {
-    if (!currentUser) {
-      setFamilySizeInfo({ current: 0, max: 4, canAdd: false });
-      prevFamilyInfoRef.current = null;
-      return;
-    }
-
-    // Find primary attendee
-    const primaryAttendee = attendees.find(
-      attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'primary'
-    );
-    const isPrimaryGoing = primaryAttendee?.rsvpStatus === 'going';
-
-    // Count family members
-    const currentFamilyCount = attendees.filter(
-      attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'family_member'
-    ).length;
-
-    const maxFamilyMembers = 4;
-    const canAddMore = isPrimaryGoing && currentFamilyCount < maxFamilyMembers;
-
-    // Only update if values actually changed to prevent infinite loops
-    const currentFamilyInfo = { primaryGoing: isPrimaryGoing, familyCount: currentFamilyCount };
-    const prevFamilyInfo = prevFamilyInfoRef.current;
-    
-    if (
-      !prevFamilyInfo ||
-      prevFamilyInfo.primaryGoing !== isPrimaryGoing ||
-      prevFamilyInfo.familyCount !== currentFamilyCount
-    ) {
-      prevFamilyInfoRef.current = currentFamilyInfo;
-      setFamilySizeInfo({
-        current: currentFamilyCount,
-        max: maxFamilyMembers,
-        canAdd: canAddMore
-      });
-    }
-  }, [currentUser?.id, attendees]);
 
   // Memoize the ready to add count to prevent unnecessary re-renders
   const readyToAddCount = useMemo(() => 
@@ -313,23 +260,6 @@ const RSVPPage: React.FC = () => {
     }));
   }, []);
 
-  // Helper functions (not hooks, but must be defined before early returns)
-  const handleClose = useCallback(() => {
-    // Always navigate to main events page for consistent UX across all devices
-    navigate('/events');
-  }, [navigate]);
-
-  // Available family members (not a hook, but computed value)
-  const availableFamilyMembers = useMemo(() => {
-    if (!currentUser || !familyMembers) return [];
-    return familyMembers.filter(
-      (familyMember) =>
-        !attendees.some(
-          (attendee) =>
-            attendee.userId === currentUser.id && attendee.familyMemberId === familyMember.id
-        )
-    );
-  }, [currentUser?.id, familyMembers, attendees]);
 
   // ============================================================================
   // NOW safe to do early returns - all hooks have been called
@@ -484,120 +414,6 @@ const RSVPPage: React.FC = () => {
     }
   };
 
-  const handleAddFamilyMember = async (familyMember: FamilyMember) => {
-    if (!canAddAttendees) {
-      toast.error('This event is restricted to members. Please contact the host.');
-      return;
-    }
-    if (!currentUser) return;
-    try {
-      setIsAdding(true);
-      
-      // Check if primary member is already an attendee
-      const existingPrimaryAttendee = attendees.find(
-        attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'primary'
-      );
-      
-      const attendeesToAdd: CreateAttendeeData[] = [];
-      
-      // Add family member
-      attendeesToAdd.push({
-        eventId: event.id,
-        userId: currentUser.id,
-        attendeeType: 'family_member',
-        familyMemberId: familyMember.id,
-        relationship: 'guest',
-        name: familyMember.name,
-        ageGroup: familyMember.ageGroup || 'adult',
-        rsvpStatus: 'going',
-      });
-      
-      // Add primary member if not already exists, or update existing one to going
-      if (!existingPrimaryAttendee) {
-        attendeesToAdd.push({
-          eventId: event.id,
-          userId: currentUser.id,
-          attendeeType: 'primary',
-          relationship: 'self',
-          name: currentUser.displayName || `${currentUser.firstName} ${currentUser.lastName}`.trim() || 'You',
-          ageGroup: 'adult',
-          rsvpStatus: 'going',
-        });
-      } else if (existingPrimaryAttendee.rsvpStatus !== 'going') {
-        // Update existing primary member to going status
-        await updateAttendee(existingPrimaryAttendee.attendeeId, { rsvpStatus: 'going' });
-        toast.success('You have been automatically set to "going" since a family member is attending.');
-      }
-      
-      // Add family member (and primary if new)
-      if (attendeesToAdd.length === 1) {
-        await addAttendee(attendeesToAdd[0]);
-      } else {
-        await bulkAddAttendees(attendeesToAdd);
-      }
-      
-      await refreshAttendees();
-      toast.success(`${familyMember.name} added successfully!${!existingPrimaryAttendee ? ' You have also been added as attending.' : ''}`);
-    } catch (error) {
-      console.error('Failed to add family member:', error);
-      toast.error('Failed to add family member. Please try again.');
-    } finally {
-      setIsAdding(false);
-    }
-  };
-
-  const handleBulkAddFromProfile = async (members: FamilyMember[]) => {
-    if (!canAddAttendees) {
-      toast.error('This event is restricted to members. Please contact the host.');
-      return;
-    }
-    if (!currentUser || members.length === 0) return;
-    try {
-      setIsAdding(true);
-      
-      // Check if primary member is already an attendee
-      const existingPrimaryAttendee = attendees.find(
-        attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'primary'
-      );
-      
-      const attendeesData: CreateAttendeeData[] = members.map((member) => ({
-        eventId: event.id,
-        userId: currentUser.id,
-        attendeeType: 'family_member',
-        familyMemberId: member.id,
-        relationship: 'guest',
-        name: member.name,
-        ageGroup: member.ageGroup || 'adult',
-        rsvpStatus: 'going',
-      }));
-      
-      // Add primary member if not already exists, or update existing one to going
-      if (!existingPrimaryAttendee) {
-        attendeesData.unshift({
-          eventId: event.id,
-          userId: currentUser.id,
-          attendeeType: 'primary',
-          relationship: 'self',
-          name: currentUser.displayName || `${currentUser.firstName} ${currentUser.lastName}`.trim() || 'You',
-          ageGroup: 'adult',
-          rsvpStatus: 'going',
-        });
-      } else if (existingPrimaryAttendee.rsvpStatus !== 'going') {
-        // Update existing primary member to going status
-        await updateAttendee(existingPrimaryAttendee.attendeeId, { rsvpStatus: 'going' });
-        toast.success('You have been automatically set to "going" since family members are attending.');
-      }
-      
-      await bulkAddAttendees(attendeesData);
-      await refreshAttendees();
-      toast.success(`${members.length} family members added successfully!${!existingPrimaryAttendee ? ' You have also been added as attending.' : ''}`);
-    } catch (error) {
-      console.error('Failed to add family members:', error);
-      toast.error('Failed to add family members. Please try again.');
-    } finally {
-      setIsAdding(false);
-    }
-  };
 
   const canonicalUrl = event ? createEventCanonicalUrl(event) : '';
 
@@ -612,24 +428,20 @@ const RSVPPage: React.FC = () => {
       
       {/* Mobile-First Design - Clean, No Nested Containers */}
       <div className="min-h-screen bg-gray-50">
-        {/* Sticky Top Bar with Back Button */}
+        {/* Sticky Top Bar - Removed back arrow and RSVP text */}
         <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm">
-          <div className="max-w-2xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={handleClose}
-              className="p-1.5 sm:p-2 -ml-2 hover:bg-gray-100 rounded-lg transition-colors active:scale-95"
-              aria-label="Go back"
-            >
-              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" />
-            </button>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-gray-500 mb-0.5">RSVP</div>
-              <h1 className="text-sm sm:text-base lg:text-lg font-bold text-gray-900 truncate" title={event.title}>{event.title}</h1>
-            </div>
+          <div className="max-w-2xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3">
+            {/* Empty header - back navigation removed per user request */}
           </div>
         </div>
 
         <div className="max-w-2xl mx-auto">
+          {/* Event Title - Centered with consistent styling from other pages */}
+          <div className="text-center mb-6 sm:mb-8 px-4 pt-6 sm:pt-8">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1">
+              {event.title}
+            </h1>
+          </div>
           {/* Capacity Status Banner */}
           {capacityState.isNearlyFull && (
             <div className={`px-3 sm:px-4 py-2.5 sm:py-3 border-b border-gray-200 ${getCapacityBadgeClasses(capacityState.state)}`}>
@@ -805,17 +617,22 @@ const RSVPPage: React.FC = () => {
                         canAddAttendees ? 'active:bg-orange-100 cursor-pointer' : 'opacity-50 cursor-not-allowed'
                       }`}
                       aria-label={`${isAddSectionCollapsed ? 'Expand' : 'Collapse'} Add Attendees section`}
-                      title={!canAddAttendees ? 'Only admins can add attendees for this event' : undefined}
+                      title={!canAddAttendees ? 'Only event organizers can add attendees for this event. Contact the event organizer if you need to add additional attendees.' : undefined}
                     >
-                      <div className="flex items-center gap-2 sm:gap-3">
+                      <div className="flex items-center gap-2 sm:gap-3 flex-1">
                         <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm">
                           <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
                         </div>
-                        <div className="text-left">
+                        <div className="text-left flex-1">
                           <h4 className="font-semibold text-gray-900 text-xs sm:text-sm">Add Attendees</h4>
                           {canAddAttendees && readyToAddCount > 0 && (
                             <span className="text-xs text-orange-600 font-medium">
                               {readyToAddCount} ready to add
+                            </span>
+                          )}
+                          {!canAddAttendees && (
+                            <span className="text-xs text-gray-500 font-normal block mt-0.5">
+                              Only event organizers can add attendees for this event
                             </span>
                           )}
                         </div>
@@ -825,16 +642,41 @@ const RSVPPage: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      {canAddAttendees && (
-                        <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.3 }}>
-                          <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
-                        </motion.div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {canAddAttendees && !isAddSectionCollapsed && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addBulkFormRow();
+                            }}
+                            className="text-xs sm:text-sm text-[#F25129] hover:text-[#E0451F] font-medium transition-colors touch-manipulation"
+                            title="Add a row"
+                          >
+                            Add a row
+                          </button>
+                        )}
+                        {canAddAttendees && (
+                          <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.3 }}>
+                            <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
+                          </motion.div>
+                        )}
+                      </div>
                     </motion.button>
 
-                    {!isAddSectionCollapsed && canAddAttendees && (
+                    {!isAddSectionCollapsed && (
                       <div className="px-4 pt-2">
-                        {capacityState.isNearlyFull && (
+                        {!canAddAttendees && (
+                          <div className="mb-2 sm:mb-3 p-2.5 sm:p-3 rounded-lg text-xs sm:text-sm bg-gray-50 border border-gray-200">
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500" />
+                              <span className="font-medium text-gray-700">Adding attendees is restricted</span>
+                            </div>
+                            <p className="mt-1 text-xs text-gray-600">
+                              Only event organizers can add attendees for this event. If you need to add additional attendees, please contact the event organizer.
+                            </p>
+                          </div>
+                        )}
+                        {canAddAttendees && capacityState.isNearlyFull && (
                           <div className={`mb-2 sm:mb-3 p-2.5 sm:p-3 rounded-lg text-xs sm:text-sm ${getCapacityBadgeClasses(capacityState.state)}`}>
                             <div className="flex items-center gap-1.5 sm:gap-2">
                               <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -887,7 +729,7 @@ const RSVPPage: React.FC = () => {
                                   bulkFormData.familyMembers.every((m) => !m.name.trim()) ||
                                   (!capacityState.canAddMore && !capacityState.canWaitlist)
                                 }
-                                className="w-full px-4 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation"
+                                className="w-full px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation"
                               >
                                 {isAdding
                                   ? 'Adding...'
@@ -903,149 +745,6 @@ const RSVPPage: React.FC = () => {
                       )}
                     </AnimatePresence>
                   </div>
-
-                  {familyMembers.length > 0 && (
-                    <div className="bg-pink-50 border border-pink-200 rounded-lg mb-3 sm:mb-4">
-                      <motion.button
-                        id="family-members-trigger"
-                        aria-expanded={showFamilyMembers}
-                        aria-controls="family-members-panel"
-                        onClick={() => setShowFamilyMembers((v) => !v)}
-                        className="w-full p-3 sm:p-4 flex items-center justify-between active:bg-pink-100 transition-colors touch-manipulation"
-                        aria-label={`${showFamilyMembers ? 'Collapse' : 'Expand'} Family Members section`}
-                      >
-                        <div className="flex items-center gap-2 sm:gap-3">
-                          <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm">
-                            <Heart className="w-4 h-4 sm:w-5 sm:h-5 text-pink-500" />
-                          </div>
-                          <div className="text-left">
-                            <h4 className="font-semibold text-gray-900 text-xs sm:text-sm">Add from Family Profile</h4>
-                            <span className="text-xs text-pink-600 font-medium">
-                              {availableFamilyMembers.length} available · {familySizeInfo.current}/{familySizeInfo.max} used
-                            </span>
-                          </div>
-                        </div>
-                        <motion.div animate={{ rotate: showFamilyMembers ? 0 : 180 }} transition={{ duration: 0.3 }}>
-                          <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-pink-500" />
-                        </motion.div>
-                      </motion.button>
-
-                      <AnimatePresence>
-                        {showFamilyMembers && (
-                          <motion.div
-                            id="family-members-panel"
-                            role="region"
-                            aria-labelledby="family-members-trigger"
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.3, ease: 'easeInOut' }}
-                            className="overflow-hidden"
-                          >
-                            <div className="p-4 pt-2 space-y-3">
-                              {!familySizeInfo.canAdd && (
-                                <div className="p-2.5 sm:p-3 rounded-lg bg-amber-50 border border-amber-200">
-                                  <div className="flex items-start gap-1.5 sm:gap-2">
-                                    <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                                    <div className="flex-1">
-                                      <div className="font-semibold text-amber-900 text-xs sm:text-sm">
-                                        {familySizeInfo.current >= familySizeInfo.max 
-                                          ? `Maximum family size reached (${familySizeInfo.max} members)`
-                                          : 'Primary member must be "going" to add family'
-                                        }
-                                      </div>
-                                      <p className="mt-1 text-xs text-amber-800">
-                                        {familySizeInfo.current >= familySizeInfo.max 
-                                          ? 'You can add up to 4 family members per event.'
-                                          : 'Set your status to "going" first, then add family members.'
-                                        }
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {capacityState.isNearlyFull && familySizeInfo.canAdd && (
-                                <div className={`p-2.5 sm:p-3 rounded-lg border ${getCapacityBadgeClasses(capacityState.state)}`}>
-                                  <div className="flex items-start gap-1.5 sm:gap-2">
-                                    <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 mt-0.5" />
-                                    <div className="flex-1">
-                                      <div className="font-semibold text-xs sm:text-sm">{capacityState.warningMessage}</div>
-                                      <p className="mt-1 text-xs opacity-90">
-                                        {waitlistPosition 
-                                          ? `Waitlist #${waitlistPosition}. ${capacityState.slotsRemainingText}`
-                                          : capacityState.slotsRemainingText
-                                        }
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {availableFamilyMembers.length > 0 ? (
-                                <>
-                                  <div className="space-y-2">
-                                    {availableFamilyMembers.map((familyMember) => (
-                                      <div
-                                        key={familyMember.id}
-                                        className="bg-white rounded-lg p-3 border border-gray-200"
-                                      >
-                                        <div className="space-y-2">
-                                          <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                              <div className="font-medium text-gray-900 text-sm">{familyMember.name}</div>
-                                              <div className="text-xs text-gray-500 mt-0.5">
-                                                {familyMember.ageGroup ? 
-                                                  (familyMember.ageGroup === 'adult' ? 'Adult' :
-                                                   familyMember.ageGroup === '11+' ? '11+ Years' :
-                                                   familyMember.ageGroup === '0-2' ? '0-2 Years' :
-                                                   familyMember.ageGroup === '3-5' ? '3-5 Years' :
-                                                   familyMember.ageGroup === '6-10' ? '6-10 Years' :
-                                                   `${familyMember.ageGroup} years`) : 'Not set'}
-                                              </div>
-                                            </div>
-                                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                                              Available
-                                            </span>
-                                          </div>
-                                          <button
-                                            onClick={() => handleAddFamilyMember(familyMember)}
-                                            disabled={isAdding || !familySizeInfo.canAdd}
-                                            className="w-full px-3 py-2 text-sm bg-[#F25129] text-white rounded-lg font-medium active:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
-                                          >
-                                            {isAdding ? 'Adding...' : !familySizeInfo.canAdd ? 'Cannot Add' : 'Add to Event'}
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-
-                                  <div className="mt-4 pt-4 border-t border-pink-200">
-                                    <LoadingButton
-                                      loading={isAdding}
-                                      disabled={!familySizeInfo.canAdd}
-                                      onClick={() => handleBulkAddFromProfile(availableFamilyMembers)}
-                                      className="w-full px-6 py-3 text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation"
-                                    >
-                                      {!familySizeInfo.canAdd ? 'Cannot Add Family Members' : `Add All ${availableFamilyMembers.length} Family Members`}
-                                    </LoadingButton>
-                                  </div>
-                                </>
-                              ) : (
-                                <div className="text-center py-6">
-                                  <Users className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                                  <p className="text-gray-600 mb-2">All family members already added!</p>
-                                  <p className="text-sm text-gray-500">
-                                    Your family members from your profile have already been added to this event.
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  )}
 
                   <div className="bg-white border border-gray-200 rounded-lg p-4">
                     <AttendeeList

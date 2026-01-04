@@ -349,13 +349,15 @@ service cloud.firestore {
     match /events/{eventId} {
       allow read: if
         // Past events: always readable by everyone (for history)
-        resource.data.startAt < request.time ||
-        // Public events: readable by everyone (including events with missing fields)
-        (('visibility' in resource.data) && resource.data.visibility == 'public') ||
+        (resource.data.startAt != null && resource.data.startAt < request.time) ||
+        // Public events: readable by everyone (query-friendly evaluation)
+        // Check both new 'visibility' field and legacy 'public' field
+        (resource.data.visibility == 'public' || 
+         (!('visibility' in resource.data) && resource.data.public == true) ||
+         // Allow if visibility field doesn't exist and public field is true (legacy events)
+         (!('visibility' in resource.data) && 'public' in resource.data && resource.data.public == true)) ||
         // Members-only events: visible to everyone (but only members can RSVP)
-        (('visibility' in resource.data) && resource.data.visibility == 'members') ||
-        // Legacy support: old 'public' field
-        (('public' in resource.data) && resource.data.public == true) ||
+        resource.data.visibility == 'members' ||
         // Authenticated users can see events they're allowed to access
         (isSignedIn() && (
           // Event creator can see their own events
@@ -980,7 +982,7 @@ service cloud.firestore {
         isNonEmptyString(request.resource.data.status) &&
         request.resource.data.status in ['pending', 'paid', 'failed', 'refunded'] &&
         isNonEmptyString(request.resource.data.method) &&
-        request.resource.data.method in ['card', 'bank_transfer', 'cash', 'other'] &&
+        request.resource.data.method in ['card', 'bank_transfer', 'cash', 'paypal', 'venmo', 'zelle', 'other'] &&
         request.resource.data.refundStatus in ['none', 'partial', 'full', 'requested'];
       
       // Users can update their own payment transactions, admins can update any

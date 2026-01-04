@@ -2878,7 +2878,7 @@ export const onAttendeeMirror = onDocumentWritten('events/{eventId}/attendees/{u
 });
 
 // ───────────────── PHONE NUMBER VALIDATION ─────────────────
-export const checkPhoneNumberExists = onCallWithCors({}, async (request) => {
+export const checkPhoneNumberExists = onCallWithCors({ region: 'us-east1' }, async (request) => {
   console.log('🔍 checkPhoneNumberExists called with:', request.data);
   
   const { phoneNumber } = request.data;

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Calendar, CheckCircle, Clock, DollarSign, Edit, Hourglass, MoreVertical, Share2, Tag, ThumbsDown, ThumbsUp, Trash2, Users } from 'lucide-react';
+import { Calendar, CheckCircle, Clock, DollarSign, Edit, Hourglass, MoreVertical, Tag, Trash2, Users } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useInView } from 'react-intersection-observer';
@@ -186,6 +186,64 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
 
   // Use real-time attending count
   const totalAttendeeCount = realTimeAttendingCount;
+  
+  // Verify actual "going" count vs stored count
+  useEffect(() => {
+    if (event.id) {
+      // Calculate actual "going" count from all attendees (not just user's attendees)
+      // Note: counts.totalGoing only includes user's attendees, so we need to query all
+      const calculateActualGoingCount = async () => {
+        try {
+          const { calculateEffectiveCapacity } = await import('../../services/attendeeService');
+          const { totalGoing } = await calculateEffectiveCapacity(event.id);
+          const storedCount = realTimeAttendingCount;
+          const hasDiscrepancy = totalGoing !== storedCount;
+          
+          // Count user's own attendees by status for clarity
+          const userGoingCount = attendees.filter(a => a.rsvpStatus === 'going').length;
+          const userNotGoingCount = attendees.filter(a => a.rsvpStatus === 'not-going').length;
+          const userWaitlistedCount = attendees.filter(a => a.rsvpStatus === 'waitlisted').length;
+          
+          if (import.meta.env.DEV || hasDiscrepancy) {
+            console.log('🔍 EventCardNew - Attendee count verification:', {
+              eventId: event.id,
+              eventTitle: event.title,
+              storedCount: storedCount,
+              actualGoingCount: totalGoing,
+              discrepancy: hasDiscrepancy ? `⚠️ MISMATCH: Stored (${storedCount}) vs Actual (${totalGoing})` : '✅ Match',
+              userAttendees: {
+                going: userGoingCount,
+                notGoing: userNotGoingCount,
+                waitlisted: userWaitlistedCount,
+                total: attendees.length
+              },
+              countsTotalGoing: counts.totalGoing,
+              maxAttendees: event.maxAttendees,
+              isAtCapacity: storedCount >= (event.maxAttendees || 0),
+              note: hasDiscrepancy ? 'Cloud Function onAttendeeChange should auto-recalculate. If discrepancy persists, the count may need manual recalculation via manualRecalculateCount Cloud Function.' : undefined,
+              clarification: `The displayed count (${storedCount}) represents ONLY attendees with "going" status, NOT "not-going" attendees. Your ${userNotGoingCount} "not-going" attendee(s) are NOT included in this count.`
+            });
+            
+            if (hasDiscrepancy) {
+              console.warn(`⚠️ EventCardNew - Count discrepancy detected for event ${event.id}:`, {
+                stored: storedCount,
+                actual: totalGoing,
+                difference: storedCount - totalGoing,
+                action: 'The Cloud Function onAttendeeChange should automatically fix this. If it persists, use manualRecalculateCount Cloud Function.'
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error verifying attendee count:', error);
+        }
+      };
+      
+      // Only verify if we have attendees loaded or if there's a potential issue
+      if (attendees.length > 0 || realTimeAttendingCount > 0) {
+        calculateActualGoingCount();
+      }
+    }
+  }, [event.id, event.title, realTimeAttendingCount, event.attendingCount, counts.totalGoing, event.maxAttendees, attendees.length, attendees]);
   
   // Debug: Log when component renders with new count
   useEffect(() => {
@@ -522,28 +580,6 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
     }
   };
 
-  // Handle share
-  const handleShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: event.title,
-          text: event.description || 'Check out this event!',
-          url: window.location.href
-        });
-      } catch (error) {
-        console.log('Share cancelled or failed');
-      }
-    } else {
-      // Fallback to copying to clipboard
-      try {
-        await navigator.clipboard.writeText(window.location.href);
-        // You could show a toast notification here
-      } catch (error) {
-        console.error('Failed to copy to clipboard:', error);
-      }
-    }
-  };
 
   // Format event date
   const formatEventDate = (date: any) => {
@@ -630,20 +666,6 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
            
            {/* Top Right Buttons - Outside overflow container */}
            <div className="absolute top-3 right-3 flex gap-2 z-20">
-             {/* Share Button */}
-             <motion.button
-               whileHover={{ scale: 1.05 }}
-               whileTap={{ scale: 0.95 }}
-               onClick={(e) => {
-                 e.stopPropagation();
-                 handleShare();
-               }}
-               className="p-2 bg-white/90 backdrop-blur-sm text-gray-700 hover:text-[#F25129] hover:bg-white rounded-lg transition-all duration-200 shadow-lg"
-               title="Share event"
-             >
-               <Share2 className="w-4 h-4" />
-             </motion.button>
-             
              {/* Three-dot Menu Button (Admin Only) */}
              {currentUser?.role === 'admin' && (onEdit || onDelete) && (
                <div className="relative">
@@ -903,9 +925,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
                 ) : !isUserApprovedForRSVP && currentUser ? (
                   <Lock className="w-3 h-3" />
-                ) : (
-                  <ThumbsUp className="w-3 h-3" />
-                )}
+                ) : null}
                 {rsvpStatus === 'waitlisted' 
                   ? `Waitlisted${waitlistPosition ? ` (#${waitlistPosition})` : ''}`
                   : 'Going'}
@@ -933,9 +953,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
                 ) : !isUserApprovedForRSVP && currentUser ? (
                   <Lock className="w-3 h-3" />
-                ) : (
-                  <ThumbsDown className="w-3 h-3" />
-                )}
+                ) : null}
                 Can't Go
               </motion.button>
             </div>

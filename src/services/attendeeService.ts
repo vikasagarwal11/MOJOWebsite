@@ -807,15 +807,25 @@ export const deleteAttendee = async (
   const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
   const eventRef = doc(db, 'events', eventId);
 
+  console.log(`🗑️ deleteAttendee called: eventId=${eventId}, attendeeId=${attendeeId}`);
+
   await runTransaction(db, async (transaction) => {
     // CRITICAL: All reads must happen before all writes in Firestore transactions
     // Read both attendee and event documents first
     const attendeeSnap = await transaction.get(attendeeRef);
     if (!attendeeSnap.exists()) {
+      console.log(`⚠️ deleteAttendee: Attendee ${attendeeId} does not exist, skipping deletion`);
       return;
     }
 
     const attendeeData = attendeeSnap.data() as Attendee;
+    
+    console.log(`🗑️ deleteAttendee: Deleting attendee:`, {
+      attendeeId,
+      name: attendeeData.name,
+      rsvpStatus: attendeeData.rsvpStatus,
+      attendeeType: attendeeData.attendeeType
+    });
     
     // Read event document if we need to update attending count
     let currentCount = 0;
@@ -826,7 +836,10 @@ export const deleteAttendee = async (
       const eventSnap = await transaction.get(eventRef);
       if (eventSnap.exists()) {
         currentCount = Number(eventSnap.data()?.attendingCount || 0);
+        console.log(`🗑️ deleteAttendee: Attendee is "going", will decrement count from ${currentCount} to ${Math.max(0, currentCount - 1)}`);
       }
+    } else {
+      console.log(`🗑️ deleteAttendee: Attendee is "${attendeeData.rsvpStatus}", will NOT update attendingCount (only "going" attendees affect count)`);
     }
 
     // Now perform all writes
@@ -838,8 +851,13 @@ export const deleteAttendee = async (
         attendingCount: newCount,
         updatedAt: serverTimestamp()
       });
+      console.log(`✅ deleteAttendee: Updated event ${eventId} attendingCount: ${currentCount} → ${newCount}`);
+    } else {
+      console.log(`ℹ️ deleteAttendee: No count update needed for event ${eventId} (attendee was not "going")`);
     }
   });
+  
+  console.log(`✅ deleteAttendee: Transaction completed for attendee ${attendeeId}`);
 };
 
 // Set attendee status

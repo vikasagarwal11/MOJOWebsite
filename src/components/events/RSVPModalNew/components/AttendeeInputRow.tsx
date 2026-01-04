@@ -66,21 +66,14 @@ export const AttendeeInputRow = memo<AttendeeInputRowProps>(({
         </div>
       </div>
       
-      {/* Actions */}
-      <div className="flex gap-2">
+      {/* Remove link at bottom-right */}
+      <div className="flex justify-end pt-1">
         <button
           onClick={() => onRemove(member.id)}
-          className="flex-1 px-3 py-2 bg-red-500 text-white text-sm rounded-lg active:bg-red-600 transition-colors font-medium touch-manipulation"
+          className="text-sm text-red-600 hover:text-red-700 font-medium transition-colors touch-manipulation"
           title="Remove"
         >
           Remove
-        </button>
-        <button
-          onClick={onAdd}
-          className="flex-1 px-3 py-2 bg-green-500 text-white text-sm rounded-lg active:bg-green-600 transition-colors font-medium touch-manipulation"
-          title="Add Another"
-        >
-          Add Row
         </button>
       </div>
     </div>

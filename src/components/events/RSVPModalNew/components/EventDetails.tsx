@@ -41,15 +41,15 @@ export const EventDetails: React.FC<EventDetailsProps> = ({
     
     const mapsUrl = locationText ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}` : '';
 
+    // Redesigned container: gradient background (blue-50 to purple-50) matching PaymentSection pattern,
+    // theme border color (#F25129) for brand consistency, removed outer padding wrapper to align width
     return (
-      {/* Redesigned container: gradient background (blue-50 to purple-50) matching PaymentSection pattern,
-          theme border color (#F25129) for brand consistency, removed outer padding wrapper to align width */}
       <motion.div 
         className="bg-gradient-to-r from-blue-50 to-purple-50 border border-[#F25129] rounded-lg mb-4"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2, delay: 0.1 }}
-        >
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, delay: 0.1 }}
+      >
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="w-full p-3 sm:p-4 flex items-center justify-between text-left hover:bg-blue-100/50 transition-colors rounded-lg"

@@ -1066,7 +1066,7 @@ useEffect(() => {
                       disabled={isLoading}
                       onChange={(e) => {
                         setIsManuallyOverridden(true);
-                        register('endDate').onChange(e);
+                        setValue('endDate', e.target.value, { shouldValidate: true });
                       }}
                       className={`w-full pl-8 pr-3 py-2 text-sm rounded-lg border ${errors.endDate ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
                     />
@@ -1084,7 +1084,7 @@ useEffect(() => {
                       disabled={isLoading}
                       onChange={(e) => {
                         setIsManuallyOverridden(true);
-                        register('endTime').onChange(e);
+                        setValue('endTime', e.target.value, { shouldValidate: true });
                       }}
                       className={`w-full pl-8 pr-3 py-2 text-sm rounded-lg border ${errors.endTime ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
                     />

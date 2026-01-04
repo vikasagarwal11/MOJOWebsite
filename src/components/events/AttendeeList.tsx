@@ -119,6 +119,32 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
     return age || attendee.ageGroup;
   };
 
+  const formatAgeDisplay = (ageGroup?: string): string => {
+    if (!ageGroup) return '';
+    if (ageGroup === 'adult') return 'Adult';
+    if (ageGroup === '11+') return '11+ Years';
+    if (ageGroup === '0-2') return '0-2 Years';
+    if (ageGroup === '3-5') return '3-5 Years';
+    if (ageGroup === '6-10') return '6-10 Years';
+    return `${ageGroup} years`;
+  };
+
+  const formatRelationshipDisplay = (relationship?: string): string => {
+    if (!relationship) return '';
+    return relationship.charAt(0).toUpperCase() + relationship.slice(1);
+  };
+
+  const getDisplaySubtext = (attendee: Attendee): string => {
+    const relationship = formatRelationshipDisplay(attendee.relationship);
+    const age = formatAgeDisplay(getDisplayAge(attendee));
+    if (relationship && age) {
+      return `${relationship}, ${age}`;
+    }
+    if (relationship) return relationship;
+    if (age) return age;
+    return '';
+  };
+
   const getWaitlistPosition = (attendee: Attendee): number | null => {
     if (!attendee.userId) return null;
     return waitlistPositions.get(attendee.userId) || null;
@@ -127,6 +153,11 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   const getCapacityBlockedMessage = () => {
     if (capacityState?.canWaitlist) {
       return "This event is already full, but a waitlist is available. Please move this attendee to 'Waitlisted' or contact the organizer.";
+    }
+    const currentCount = event?.attendingCount || 0;
+    const maxCount = event?.maxAttendees || 0;
+    if (maxCount > 0) {
+      return `This event is at capacity (${currentCount}/${maxCount} attendees). Please contact the organizer if you need to attend, or try again later if spots become available.`;
     }
     return "This event is already full. Please contact the organizer to open additional spots.";
   };
@@ -192,6 +223,8 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   }), [attendees]);
 
   const handleUpdateAttendee = async (attendeeId: string, updateData: any) => {
+    let pendingUpdate = { ...updateData };
+    
     try {
       console.log('DEBUG: handleUpdateAttendee called with:', { attendeeId, updateData });
 
@@ -222,7 +255,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
         return;
       }
 
-      let pendingUpdate = { ...updateData };
+      pendingUpdate = { ...updateData };
       updateStatusError(attendeeId);
 
       // Check if this is a primary member changing to "not-going"
@@ -243,6 +276,9 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
         if (goingFamilyMembers.length > 0) {
           console.log(`DEBUG: Found ${goingFamilyMembers.length} family members to update to not-going`);
           
+          // Get primary member's display name for the message
+          const primaryMemberName = getDisplayName(attendeeToUpdate);
+          
           // Update all family members to "not-going"
           for (const familyMember of goingFamilyMembers) {
             try {
@@ -253,7 +289,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
             }
           }
           
-          toast.success(`${goingFamilyMembers.length} family member${goingFamilyMembers.length > 1 ? 's' : ''} automatically marked as "Not Going" since you cannot attend.`);
+          toast.success(`Since ${primaryMemberName} is not going, all dependents also cannot go.`);
         }
       }
       
@@ -278,27 +314,52 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
       // Capacity pre-check: Check if changing to 'going' would violate capacity
       // This applies to ALL attendee types, not just primary
       const current = attendeeToUpdate.rsvpStatus;
+      const isChangingToGoing = pendingUpdate.rsvpStatus === 'going' && current !== 'going';
+      
+      // Get current going count - use event count if available, otherwise count from attendees list
+      const currentGoingCount = event?.attendingCount ?? attendeesByStatus.going.length;
+      const maxAttendees = event?.maxAttendees || 0;
+      
       console.log('DEBUG: Capacity pre-check:', {
         newStatus: pendingUpdate.rsvpStatus,
         currentStatus: current,
-        isChangingToGoing: pendingUpdate.rsvpStatus === 'going' && current !== 'going',
+        isChangingToGoing: isChangingToGoing,
+        currentGoingCount,
+        maxAttendees,
         capacityState: capacityState,
         isAtCapacity: capacityState?.isAtCapacity,
         canWaitlist: capacityState?.canWaitlist
       });
       
-      if (pendingUpdate.rsvpStatus === 'going' && current !== 'going' && capacityState?.isAtCapacity) {
-        if (capacityState.canWaitlist) {
+      // Only block if changing TO going AND we're already at or above capacity
+      // Allow changes until max is reached, then block further additions
+      if (isChangingToGoing && maxAttendees > 0 && currentGoingCount >= maxAttendees) {
+        if (capacityState?.canWaitlist) {
           // Auto-convert to waitlisted for fast feedback
           console.log('DEBUG: Event at capacity with waitlist - converting to waitlisted');
           pendingUpdate = { ...pendingUpdate, rsvpStatus: 'waitlisted' };
-          toast.info('Event is full. Adding you to the waitlist…');
+          toast('Event is full. Adding you to the waitlist…', { 
+            icon: 'ℹ️',
+            duration: 4000
+          });
         } else {
-          // Block immediately with user-friendly message
+          // Block immediately with clear, user-friendly message
           const blockedMessage = getCapacityBlockedMessage();
           console.log('DEBUG: Blocking update due to capacity with no waitlist');
           updateStatusError(attendeeId, blockedMessage);
-          toast.error(blockedMessage);
+          
+          // Show a prominent, clear error message
+          toast.error(blockedMessage, {
+            duration: 6000,
+            style: {
+              background: '#ef4444',
+              color: '#fff',
+              fontSize: '14px',
+              padding: '16px',
+            },
+          });
+          
+          // Return early to prevent the update attempt
           return;
         }
       }
@@ -489,25 +550,19 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
 
   // Status changes are handled inline via handleUpdateAttendee
 
-  // Helper function to check if a primary attendee has family members marked as "going"
-  const hasGoingFamilyMembers = (attendee: Attendee): boolean => {
-    if (!attendee.userId || attendee.attendeeType !== 'primary') {
-      return false;
-    }
-    
-    return attendees.some(
-      family =>
-        family.userId === attendee.userId &&
-        family.attendeeType === 'family_member' &&
-        family.rsvpStatus === 'going'
-    );
-  };
 
   // Helper function to check if "Going" option should be disabled
   const isGoingOptionDisabled = (attendee: Attendee): boolean => {
-    if (attendee.attendeeType === 'primary') {
-      // Let primary members attempt the change so we can surface capacity messaging in handleUpdateAttendee
+    // If attendee is already going, don't disable (they can change to not-going)
+    if (attendee.rsvpStatus === 'going') {
       return false;
+    }
+
+    // Check capacity: Only disable if event is at capacity AND there's no waitlist
+    // Allow changes until max is reached, then block further additions
+    if (capacityState?.isAtCapacity && !capacityState?.canWaitlist) {
+      // Event is at capacity and no waitlist - disable for new "going" changes
+      return true;
     }
 
     // Check business rules for family members
@@ -521,6 +576,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
       return !primaryAttendee || primaryAttendee.rsvpStatus !== 'going';
     }
     
+    // For primary members and guests, allow if not at capacity
     return false;
   };
 
@@ -747,7 +803,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
               <div className="flex items-center gap-2">
                 <CheckCircle className="w-5 h-5 text-green-600" />
                 <h4 className="font-medium text-gray-900 text-[13px]">
-                  {isAdmin ? 'Going' : 'Your RSVP'} ({attendeesByStatus.going.length})
+                  You're Going ({attendeesByStatus.going.length})
                 </h4>
               </div>
               <motion.div
@@ -768,17 +824,14 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                   transition={{ duration: 0.3, ease: 'easeInOut' }}
                   className="overflow-hidden"
                 >
-                  <div className="p-3 pt-0">
-                    {/* Excel-like Table Layout - Enhanced Professional Styling */}
-                    <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                      {/* Table Header - Enhanced */}
-                      <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 border-b-2 border-gray-300">
-                        <div className={`grid gap-4 text-[12px] font-bold text-gray-700 uppercase tracking-wider ${
-                          event?.pricing?.requiresPayment ? 'grid-cols-[2fr_1fr_1.5fr_0.8fr_1fr]' : 'grid-cols-[2fr_1fr_1.5fr_1fr]'
+                  {/* Excel-like Table Layout - Enhanced Professional Styling */}
+                  <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm mx-3 mb-3">
+                    {/* Table Header - Enhanced */}
+                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-2 border-b-2 border-gray-300">
+                        <div className={`grid gap-1 text-[12px] font-bold text-gray-700 uppercase tracking-wider ${
+                          event?.pricing?.requiresPayment ? 'grid-cols-[2fr_0.8fr_1.5fr]' : 'grid-cols-[2fr_1.5fr]'
                         }`}>
                           <div className="flex items-center">Name</div>
-                          <div className="flex items-center justify-center">Age</div>
-                          <div className="flex items-center justify-center"><span className="hidden sm:inline">RSVP Status</span><span className="sm:hidden">Status</span></div>
                           {event?.pricing?.requiresPayment && (
                             <div className="flex items-center justify-center"><span className="hidden sm:inline">Payment</span><span className="sm:hidden">Pay</span></div>
                           )}
@@ -790,74 +843,27 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                          <div className="divide-y divide-gray-200">
                            {attendeesByStatus.going.map((attendee, index) => {
                              const attendeeIdValue = getAttendeeId(attendee);
-                             const showFamilyWarning = attendee.attendeeType === 'primary' && hasGoingFamilyMembers(attendee);
-                             const statusError = statusErrors[attendeeIdValue];
-                             const goingOptionDisabled = isGoingOptionDisabled(attendee);
 
                              return (
                                <div 
                                  key={attendeeIdValue} 
-                                 className={`px-4 py-3.5 hover:bg-green-50 transition-all duration-200 hover:shadow-md hover:scale-[1.01] cursor-pointer border-l-4 border-transparent hover:border-green-500 ${
+                                 className={`px-4 py-2 hover:bg-green-50 transition-all duration-200 hover:shadow-md hover:scale-[1.01] cursor-pointer border-l-4 border-transparent hover:border-green-500 ${
                                    index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                                  }`}
                                >
-                               <div className={`grid gap-4 items-center ${
-                                 event?.pricing?.requiresPayment ? 'grid-cols-[2fr_1fr_1.5fr_0.8fr_1fr]' : 'grid-cols-[2fr_1fr_1.5fr_1fr]'
+                               <div className={`grid gap-1 items-center ${
+                                 event?.pricing?.requiresPayment ? 'grid-cols-[2fr_0.8fr_1.5fr]' : 'grid-cols-[2fr_1.5fr]'
                                }`}>
-                                 {/* Name - Enhanced Typography */}
+                                 {/* Name - Enhanced Typography with Age/Relationship */}
                                  <div className="flex items-center">
-                                   <span className="font-semibold text-gray-900 text-[14px] tracking-tight leading-tight">{getDisplayName(attendee)}</span>
-                                 </div>
-                                 
-                                 {/* Age - Better Visual Weight */}
-                                 <div className="flex items-center justify-center">
-                                   <span className="text-[13px] text-gray-600 font-medium">
-                                     {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
-                                   </span>
-                                 </div>
-                                 
-                                 {/* Status Dropdown - Enhanced Professional Styling */}
-                                 <div className="flex items-center justify-center">
-                                   {canEditAttendee(attendee) ? (
-                                     <>
-                                       <select
-                                         value={attendee.rsvpStatus}
-                                         onClick={(e) => {
-                                           console.log('DEBUG: Dropdown onClick fired! (Going section)', { 
-                                             attendeeId: attendeeIdValue, 
-                                             currentValue: attendee.rsvpStatus,
-                                             canEdit: canEditAttendee(attendee)
-                                           });
-                                         }}
-                                         onChange={(e) => {
-                                           console.log('DEBUG: Dropdown onChange fired! (Going section)', { 
-                                             attendeeId: attendeeIdValue, 
-                                             newValue: e.target.value,
-                                             currentValue: attendee.rsvpStatus 
-                                           });
-                                           handleUpdateAttendee(attendeeIdValue, { rsvpStatus: e.target.value as AttendeeStatus });
-                                         }}
-                                         className={`w-full px-3 py-1.5 text-[13px] font-medium border-2 rounded-lg shadow-sm cursor-pointer transition-all duration-200 focus:ring-2 focus:ring-green-500 focus:border-green-500 focus:outline-none hover:border-green-400 ${showFamilyWarning ? 'border-yellow-400 bg-yellow-50 focus:ring-yellow-500 focus:border-yellow-500' : 'border-gray-300 bg-white hover:bg-gray-50'}`}
-                                         title={showFamilyWarning ? 'Changing your status to "Not Going" will also update your family members.' : getDisabledTooltip(attendee)}
-                                       >
-                                         <option 
-                                           value="going" 
-                                           className="text-green-700"
-                                           disabled={goingOptionDisabled} title={goingOptionDisabled ? getCapacityBlockedMessage() : ''}
-                                         >
-                                           {isAdmin ? 'Going' : 'Your RSVP'}
-                                         </option>
-                                         <option value="not-going" className="text-red-700">Not Going</option>
-                                       </select>
-                                       {statusError && (
-                                         <p className="mt-1 text-[11px] text-red-600">{statusError}</p>
-                                       )}
-                                     </>
-                                   ) : (
-                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium bg-green-100 text-green-800">
-                                       Going
-                                     </span>
-                                   )}
+                                   <div>
+                                     <span className="font-semibold text-gray-900 text-[14px] tracking-tight leading-tight">{getDisplayName(attendee)}</span>
+                                     {getDisplaySubtext(attendee) && (
+                                       <div className="text-[12px] text-gray-600 mt-0.5">
+                                         {getDisplaySubtext(attendee)}
+                                       </div>
+                                     )}
+                                   </div>
                                  </div>
                                  
                                  {/* Payment Status - Only for paid events */}
@@ -876,66 +882,39 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                  )}
                                  
                                  {/* Actions */}
-                                 <div className="flex items-center justify-center">
-                                   <div className="flex items-center justify-center gap-2">
-                                     {!attendee.userId ? (
-                                       <span className="text-xs text-gray-500 italic font-medium">Bulk Upload</span>
-                                     ) : canEditAttendee(attendee) && (
-                                       <>
-                                         {/* Add to Family Button */}
-                                         <button
-                                           onClick={() => handleAddToFamily(attendee)}
-                                           disabled={
-                                             addingToFamily.has(getAttendeeId(attendee)) || 
-                                             isAttendeeLinkedToFamily(attendee) ||
-                                             (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                           }
-                                           className={`px-2 py-1.5 rounded-lg transition-all duration-200 shadow-sm border flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 ${
-                                             isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                               ? 'bg-green-100 text-green-700 border-green-300 cursor-not-allowed' 
-                                               : 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600 hover:shadow-md'
-                                           }`}
-                                           title={
-                                             (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                               ? "This is you - cannot add yourself to family profile"
-                                               : isAttendeeLinkedToFamily(attendee) 
-                                               ? "Already in Family Profile" 
-                                               : "Add to Family Profile"
-                                           }
-                                         >
-                                           {addingToFamily.has(getAttendeeId(attendee)) ? (
-                                             <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                           ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
-                                             <CheckCircle className="w-3.5 h-3.5" />
-                                           ) : (
-                                             <Heart className="w-3.5 h-3.5" />
-                                           )}
-                                         </button>
-                                         
-                                         {/* Delete Button - Disabled for primary members */}
-                                         <button
-                                           onClick={() => handleDeleteAttendee(getAttendeeId(attendee))}
-                                           disabled={attendee.attendeeType === 'primary'}
-                                           className={`px-2 py-1.5 rounded-lg border flex items-center justify-center transition-all duration-200 shadow-sm hover:scale-105 ${
-                                             attendee.attendeeType === 'primary' 
-                                               ? 'bg-gray-300 text-gray-500 border-gray-400 cursor-not-allowed' 
-                                               : 'bg-red-500 text-white border-red-600 hover:bg-red-600 hover:shadow-md'
-                                           }`}
-                                           title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
-                                         >
-                                           <Trash2 className="w-3.5 h-3.5" />
-                                         </button>
-                                       </>
-                                     )}
-                                   </div>
+                                 <div className="flex items-center justify-center gap-2 flex-wrap">
+                                   {!attendee.userId ? (
+                                     <span className="text-xs text-gray-500 italic font-medium">Bulk Upload</span>
+                                   ) : canEditAttendee(attendee) ? (
+                                     <>
+                                       <button
+                                         onClick={() => handleUpdateAttendee(getAttendeeId(attendee), { rsvpStatus: 'not-going' as AttendeeStatus })}
+                                         className="px-2 py-1.5 rounded-lg border flex items-center justify-center transition-all duration-200 shadow-sm hover:scale-105 bg-orange-500 text-white border-orange-600 hover:bg-orange-600 hover:shadow-md flex-shrink-0"
+                                         title="Mark as Not Going"
+                                       >
+                                         <XCircle className="w-3.5 h-3.5" />
+                                       </button>
+                                       <button
+                                         onClick={() => handleDeleteAttendee(getAttendeeId(attendee))}
+                                         disabled={attendee.attendeeType === 'primary'}
+                                         className={`px-2 py-1.5 rounded-lg border flex items-center justify-center transition-all duration-200 shadow-sm hover:scale-105 flex-shrink-0 ${
+                                           attendee.attendeeType === 'primary' 
+                                             ? 'bg-gray-300 text-gray-500 border-gray-400 cursor-not-allowed' 
+                                             : 'bg-red-500 text-white border-red-600 hover:bg-red-600 hover:shadow-md'
+                                         }`}
+                                         title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
+                                       >
+                                         <Trash2 className="w-3.5 h-3.5" />
+                                       </button>
+                                     </>
+                                   ) : null}
                                  </div>
                                </div>
                              </div>
-                           );
-                         })}
-                         </div>
+                          );
+                        })}
+                        </div>
                     </div>
-                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -972,11 +951,10 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                   transition={{ duration: 0.3, ease: 'easeInOut' }}
                   className="overflow-hidden"
                 >
-                  <div className="p-3 pt-0">
-                    {/* Excel-like Table Layout - Enhanced Professional Styling */}
-                    <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                      {/* Table Header - Enhanced */}
-                      <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 border-b-2 border-gray-300">
+                  {/* Excel-like Table Layout - Enhanced Professional Styling */}
+                  <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm mx-3 mb-3">
+                    {/* Table Header - Enhanced */}
+                    <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-2 border-b-2 border-gray-300">
                         <div className={`grid gap-4 text-[12px] font-bold text-gray-700 uppercase tracking-wider ${
                           event?.pricing?.requiresPayment ? 'grid-cols-[2fr_1fr_1.5fr_0.8fr_1fr]' : 'grid-cols-[2fr_1fr_1.5fr_1fr]'
                         }`}>
@@ -1001,7 +979,7 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                           return (
                             <div
                               key={attendeeIdValue}
-                              className={`px-4 py-3.5 hover:bg-purple-50 transition-all duration-200 hover:shadow-md hover:scale-[1.01] cursor-pointer border-l-4 border-transparent hover:border-purple-500 ${
+                                 className={`px-4 py-2 hover:bg-purple-50 transition-all duration-200 hover:shadow-md hover:scale-[1.01] cursor-pointer border-l-4 border-transparent hover:border-purple-500 ${
                                 index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                               }`}
                             >
@@ -1149,7 +1127,6 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                         })}
                       </div>
                     </div>
-                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1186,17 +1163,14 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                   transition={{ duration: 0.3, ease: 'easeInOut' }}
                   className="overflow-hidden"
                 >
-                  <div className="p-3 pt-0">
-                    {/* Excel-like Table Layout - Enhanced Professional Styling */}
-                    <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  {/* Excel-like Table Layout - Enhanced Professional Styling */}
+                  <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm mx-3 mb-3">
                       {/* Table Header - Enhanced */}
-                      <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-3 border-b-2 border-gray-300">
-                        <div className={`grid gap-4 text-[12px] font-bold text-gray-700 uppercase tracking-wider ${
-                          event?.pricing?.requiresPayment ? 'grid-cols-[2fr_1fr_1.5fr_0.8fr_1fr]' : 'grid-cols-[2fr_1fr_1.5fr_1fr]'
+                      <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-4 py-2 border-b-2 border-gray-300">
+                        <div className={`grid gap-1 text-[12px] font-bold text-gray-700 uppercase tracking-wider ${
+                          event?.pricing?.requiresPayment ? 'grid-cols-[2fr_0.8fr_1.5fr]' : 'grid-cols-[2fr_1.5fr]'
                         }`}>
                           <div className="flex items-center">Name</div>
-                          <div className="flex items-center justify-center">Age</div>
-                          <div className="flex items-center justify-center"><span className="hidden sm:inline">RSVP Status</span><span className="sm:hidden">Status</span></div>
                           {event?.pricing?.requiresPayment && (
                             <div className="flex items-center justify-center"><span className="hidden sm:inline">Payment</span><span className="sm:hidden">Pay</span></div>
                           )}
@@ -1208,78 +1182,28 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                          <div className="divide-y divide-gray-200">
                            {attendeesByStatus['not-going'].map((attendee, index) => {
                              const attendeeIdValue = getAttendeeId(attendee);
-                             const showFamilyWarning = attendee.attendeeType === 'primary' && hasGoingFamilyMembers(attendee);
-                             const statusError = statusErrors[attendeeIdValue];
                              const goingOptionDisabled = isGoingOptionDisabled(attendee);
 
                              return (
                                <div 
                                  key={attendeeIdValue} 
-                                 className={`px-4 py-3.5 hover:bg-red-50 transition-all duration-200 hover:shadow-md hover:scale-[1.01] cursor-pointer border-l-4 border-transparent hover:border-red-500 ${
+                                 className={`px-4 py-2 hover:bg-red-50 transition-all duration-200 hover:shadow-md hover:scale-[1.01] cursor-pointer border-l-4 border-transparent hover:border-red-500 ${
                                    index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                                  }`}
                                >
-                                 <div className={`grid gap-4 items-center ${
-                                   event?.pricing?.requiresPayment ? 'grid-cols-[2fr_1fr_1.5fr_0.8fr_1fr]' : 'grid-cols-[2fr_1fr_1.5fr_1fr]'
+                                 <div className={`grid gap-2 items-center ${
+                                   event?.pricing?.requiresPayment ? 'grid-cols-[2fr_0.8fr_1.5fr]' : 'grid-cols-[2fr_1.5fr]'
                                  }`}>
-                                   {/* Name - Enhanced Typography */}
+                                   {/* Name - Enhanced Typography with Relationship/Age */}
                                    <div className="flex items-center">
-                                     <span className="font-semibold text-gray-900 text-[14px] tracking-tight leading-tight">{getDisplayName(attendee)}</span>
-                                   </div>
-                                   
-                                   {/* Age - Better Visual Weight */}
-                                   <div className="flex items-center justify-center">
-                                     <span className="text-[13px] text-gray-600 font-medium">
-                                       {getDisplayAge(attendee) ? `${getDisplayAge(attendee)} years` : 'Not set'}
-                                     </span>
-                                   </div>
-                                   
-                                   {/* Status Dropdown - Enhanced Professional Styling */}
-                                   <div className="flex items-center justify-center">
-                                     {canEditAttendee(attendee) ? (
-                                       <>
-                                         <select
-                                           value={attendee.rsvpStatus}
-                                           onClick={(e) => {
-                                             console.log('DEBUG: Dropdown onClick fired! (Not Going section)', { 
-                                               attendeeId: attendeeIdValue, 
-                                               currentValue: attendee.rsvpStatus,
-                                               canEdit: canEditAttendee(attendee)
-                                             });
-                                           }}
-                                           onChange={(e) => {
-                                             console.log('DEBUG: Dropdown onChange fired! (Not Going section)', { 
-                                               attendeeId: attendeeIdValue, 
-                                               newValue: e.target.value,
-                                               currentValue: attendee.rsvpStatus 
-                                             });
-                                             handleUpdateAttendee(attendeeIdValue, { rsvpStatus: e.target.value as AttendeeStatus });
-                                           }}
-                                           className={`w-full px-3 py-1.5 text-[13px] font-medium border-2 rounded-lg shadow-sm cursor-pointer transition-all duration-200 focus:ring-2 focus:ring-red-500 focus:border-red-500 focus:outline-none hover:border-red-400 ${
-                                             showFamilyWarning 
-                                               ? 'border-yellow-400 bg-yellow-50 focus:ring-yellow-500 focus:border-yellow-500' 
-                                               : 'border-gray-300 bg-white hover:bg-gray-50'
-                                           }`}
-                                           title={showFamilyWarning ? 'Changing your status to "Not Going" will also update your family members.' : getDisabledTooltip(attendee)}
-                                         >
-                                           <option 
-                                             value="going" 
-                                             className="text-green-700"
-                                             disabled={goingOptionDisabled} title={goingOptionDisabled ? getCapacityBlockedMessage() : ''}
-                                           >
-                                             {isAdmin ? 'Going' : 'Your RSVP'}
-                                           </option>
-                                           <option value="not-going" className="text-red-700">Not Going</option>
-                                         </select>
-                                         {statusError && (
-                                           <p className="mt-1 text-[11px] text-red-600">{statusError}</p>
-                                         )}
-                                       </>
-                                     ) : (
-                                       <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[12px] font-medium bg-red-100 text-red-800">
-                                         Not Going
-                                       </span>
-                                     )}
+                                     <div>
+                                       <span className="font-semibold text-gray-900 text-[14px] tracking-tight leading-tight">{getDisplayName(attendee)}</span>
+                                       {getDisplaySubtext(attendee) && (
+                                         <div className="text-[12px] text-gray-600 mt-0.5">
+                                           {getDisplaySubtext(attendee)}
+                                         </div>
+                                       )}
+                                     </div>
                                    </div>
                                  
                                  {/* Payment Status - Only for paid events */}
@@ -1297,67 +1221,31 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
                                    </div>
                                  )}
                                  
-                                 {/* Actions */}
+                                 {/* Actions - Mark as Going Button */}
                                  <div className="flex items-center justify-center">
-                                   <div className="flex items-center justify-center gap-2">
-                                     {!attendee.userId ? (
-                                       <span className="text-xs text-gray-500 italic font-medium">Bulk Upload</span>
-                                     ) : canEditAttendee(attendee) && (
-                                       <>
-                                         {/* Add to Family Button */}
-                                         <button
-                                           onClick={() => handleAddToFamily(attendee)}
-                                           disabled={
-                                             addingToFamily.has(getAttendeeId(attendee)) || 
-                                             isAttendeeLinkedToFamily(attendee) ||
-                                             (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                           }
-                                           className={`px-2 py-1.5 rounded-lg transition-all duration-200 shadow-sm border flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 ${
-                                             isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                               ? 'bg-green-100 text-green-700 border-green-300 cursor-not-allowed' 
-                                               : 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600 hover:shadow-md'
-                                           }`}
-                                           title={
-                                             (canEditAttendee(attendee) && attendee.attendeeType === 'primary')
-                                               ? "This is you - cannot add yourself to family profile"
-                                               : isAttendeeLinkedToFamily(attendee) 
-                                               ? "Already in Family Profile" 
-                                               : "Add to Family Profile"
-                                           }
-                                         >
-                                           {addingToFamily.has(getAttendeeId(attendee)) ? (
-                                             <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                           ) : isAttendeeLinkedToFamily(attendee) || (canEditAttendee(attendee) && attendee.attendeeType === 'primary') ? (
-                                             <CheckCircle className="w-3.5 h-3.5" />
-                                           ) : (
-                                             <Heart className="w-3.5 h-3.5" />
-                                           )}
-                                         </button>
-                                         
-                                         {/* Delete Button - Disabled for primary members */}
-                                         <button
-                                           onClick={() => handleDeleteAttendee(getAttendeeId(attendee))}
-                                           disabled={attendee.attendeeType === 'primary'}
-                                           className={`px-2 py-1.5 rounded-lg border flex items-center justify-center transition-all duration-200 shadow-sm hover:scale-105 ${
-                                             attendee.attendeeType === 'primary' 
-                                               ? 'bg-gray-300 text-gray-500 border-gray-400 cursor-not-allowed' 
-                                               : 'bg-red-500 text-white border-red-600 hover:bg-red-600 hover:shadow-md'
-                                           }`}
-                                           title={attendee.attendeeType === 'primary' ? 'Primary member cannot be removed' : 'Remove'}
-                                         >
-                                           <Trash2 className="w-3.5 h-3.5" />
-                                         </button>
-                                       </>
-                                     )}
-                                   </div>
+                                   {!attendee.userId ? (
+                                     <span className="text-xs text-gray-500 italic font-medium">Bulk Upload</span>
+                                   ) : canEditAttendee(attendee) && (
+                                     <button
+                                       onClick={() => handleUpdateAttendee(attendeeIdValue, { rsvpStatus: 'going' as AttendeeStatus })}
+                                       disabled={goingOptionDisabled}
+                                       className={`px-2 py-1.5 rounded-lg border flex items-center justify-center transition-all duration-200 shadow-sm hover:scale-105 ${
+                                         goingOptionDisabled
+                                           ? 'bg-gray-300 text-gray-500 border-gray-400 cursor-not-allowed' 
+                                           : 'bg-green-500 text-white border-green-600 hover:bg-green-600 hover:shadow-md'
+                                       }`}
+                                       title={goingOptionDisabled ? getCapacityBlockedMessage() : 'Mark as Going'}
+                                     >
+                                       <CheckCircle className="w-3.5 h-3.5" />
+                                     </button>
+                                   )}
                                  </div>
                                </div>
                              </div>
-                           );
-                         })}
-                         </div>
+                          );
+                        })}
+                        </div>
                     </div>
-                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
