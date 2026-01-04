@@ -263,29 +263,30 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
           attendeeToUpdate.attendeeType === 'primary' && 
           pendingUpdate.rsvpStatus === 'not-going') {
         
-        console.log('DEBUG: Primary member changing to not-going - will cascade to family members');
+        console.log('DEBUG: Primary member changing to not-going - will cascade to family members and guests');
         
         // Business Rule: When primary member changes to "not-going", 
-        // all family members should also be set to "not-going"
-        const goingFamilyMembers = attendees.filter(
+        // all family members and guests should also be set to "not-going"
+        // (If you're not going, you cannot RSVP on behalf of anyone else)
+        const goingDependents = attendees.filter(
           a => a.userId === currentUser.id && 
-               a.attendeeType === 'family_member' && 
+               (a.attendeeType === 'family_member' || a.attendeeType === 'guest') && 
                a.rsvpStatus === 'going'
         );
         
-        if (goingFamilyMembers.length > 0) {
-          console.log(`DEBUG: Found ${goingFamilyMembers.length} family members to update to not-going`);
+        if (goingDependents.length > 0) {
+          console.log(`DEBUG: Found ${goingDependents.length} dependents (family members/guests) to update to not-going`);
           
           // Get primary member's display name for the message
           const primaryMemberName = getDisplayName(attendeeToUpdate);
           
-          // Update all family members to "not-going"
-          for (const familyMember of goingFamilyMembers) {
+          // Update all dependents (family members and guests) to "not-going"
+          for (const dependent of goingDependents) {
             try {
-              await updateAttendee(getAttendeeId(familyMember), { rsvpStatus: 'not-going' });
-              console.log(`DEBUG: Updated family member ${familyMember.name} to not-going`);
+              await updateAttendee(getAttendeeId(dependent), { rsvpStatus: 'not-going' });
+              console.log(`DEBUG: Updated ${dependent.attendeeType} ${dependent.name} to not-going`);
             } catch (error) {
-              console.error(`DEBUG: Failed to update family member ${familyMember.name}:`, error);
+              console.error(`DEBUG: Failed to update ${dependent.attendeeType} ${dependent.name}:`, error);
             }
           }
           

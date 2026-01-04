@@ -482,22 +482,25 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
         await setAttendeeStatus(attendeeIdToUse, finalStatus);
 
         if (finalStatus === 'not-going') {
-          const familyMembers = attendees.filter(
+          // Business Rule: When primary member changes to "not-going", 
+          // all family members and guests should also be set to "not-going"
+          // (If you're not going, you cannot RSVP on behalf of anyone else)
+          const dependents = attendees.filter(
             (a) =>
               a.userId === currentUser?.id &&
-              a.attendeeType === 'family_member' &&
+              (a.attendeeType === 'family_member' || a.attendeeType === 'guest') &&
               a.rsvpStatus === 'going'
           );
 
-          for (const familyMember of familyMembers) {
-            const memberIdToUse = familyMember.attendeeId || familyMember.id;
-            if (memberIdToUse) {
-              await setAttendeeStatus(memberIdToUse, 'not-going');
+          for (const dependent of dependents) {
+            const dependentIdToUse = dependent.attendeeId || dependent.id;
+            if (dependentIdToUse) {
+              await setAttendeeStatus(dependentIdToUse, 'not-going');
             }
           }
 
-          if (familyMembers.length > 0) {
-            toast.success(`${familyMembers.length} family member${familyMembers.length > 1 ? 's' : ''} automatically marked as "Not Going" since you cannot attend.`);
+          if (dependents.length > 0) {
+            toast.success(`${dependents.length} dependent${dependents.length > 1 ? 's' : ''} (family member${dependents.length > 1 ? 's' : ''}/guest${dependents.length > 1 ? 's' : ''}) automatically marked as "Not Going" since you cannot attend.`);
           }
         }
       } else {
