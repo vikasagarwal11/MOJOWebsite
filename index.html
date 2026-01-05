@@ -25,8 +25,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
     <!-- Preload hero logo for Safari first-load fix -->
-    <link rel="preload" href="/assets/logo/mfm-logo-new-hero.svg" as="image" type="image/svg+xml" />
-    <link rel="preload" href="/assets/logo/mfm-logo-800.png" as="image" type="image/png" />
+    <!-- Using fetchpriority="high" instead of preload to avoid "preloaded but not used" warnings -->
+    <link rel="preload" href="/assets/logo/mfm-logo-new-hero.svg" as="image" type="image/svg+xml" fetchpriority="high" />
+    <link rel="preload" href="/assets/logo/mfm-logo-800.png" as="image" type="image/png" fetchpriority="high" />
     
     <!-- Safari & iOS Specific Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes" />

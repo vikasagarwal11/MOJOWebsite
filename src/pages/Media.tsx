@@ -14,6 +14,7 @@ import toast from 'react-hot-toast';
 import { isUserApproved } from '../utils/userUtils';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { batchResolveThumbnailUrls, extractThumbnailPaths } from '../utils/batchThumbnailResolver';
 
 const Media: React.FC = () => {
   const { currentUser } = useAuth();
@@ -144,6 +145,35 @@ const Media: React.FC = () => {
 
   // Displayed media: we increase the Firestore limit, so no additional client slicing
   const displayedMedia = filteredMedia;
+
+  // OPTIMIZATION: Batch resolve thumbnail URLs for visible items upfront
+  // This reduces the waterfall effect of sequential getDownloadURL() calls
+  useEffect(() => {
+    if (mediaLoading || !Array.isArray(displayedMedia) || displayedMedia.length === 0) return;
+
+    // Only resolve thumbnails for the first visible batch (first 12 items)
+    // This prevents overwhelming the network while still pre-warming the cache
+    const visibleBatch = displayedMedia.slice(0, 12);
+    const thumbnailPaths = extractThumbnailPaths(visibleBatch);
+
+    if (thumbnailPaths.length === 0) return;
+
+    // Batch resolve in background (don't block render)
+    const resolveUrls = async () => {
+      try {
+        await batchResolveThumbnailUrls(thumbnailPaths, 6); // Max 6 concurrent
+      } catch (error) {
+        console.warn('⚠️ Batch thumbnail resolution failed:', error);
+      }
+    };
+
+    // Use requestIdleCallback to avoid blocking render
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(resolveUrls, { timeout: 2000 });
+    } else {
+      setTimeout(resolveUrls, 100);
+    }
+  }, [displayedMedia, mediaLoading]);
 
   // Check if there's more media to load
   // If Firestore returned at least the requested amount, assume there may be more
