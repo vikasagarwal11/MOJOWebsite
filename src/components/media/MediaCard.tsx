@@ -167,10 +167,21 @@ export default function MediaCard({
 
   // Load thumbnail URLs with responsive selection
   // CRITICAL: Gate thumbnail resolution behind inView to prevent 50x getDownloadURL() bursts on mount
+  // BUT: For initial visible cards, resolve immediately to avoid stuck loading state
   useEffect(() => {
-    // Do NOT resolve thumbnails for cards not near the viewport
-    // This prevents expensive network requests for off-screen cards
-    if (!inView) return;
+    // For cards not in view, defer resolution (they'll resolve when they scroll into view)
+    // For cards in view, resolve immediately
+    // This prevents network bursts while ensuring visible cards load quickly
+    if (!inView && thumbnailUrl === '') {
+      // Card not in view and no URL yet - wait for it to come into view
+      return;
+    }
+
+    // If we already have a URL, don't reload
+    if (thumbnailUrl && thumbnailUrl !== '') {
+      setIsThumbnailLoading(false);
+      return;
+    }
 
     setIsThumbnailLoading(true);
     
@@ -639,51 +650,44 @@ export default function MediaCard({
           
           return (
             <div ref={imageRef} className="w-full h-full">
-              {inView ? (
-                <img 
-                  src={imageSrc}
-                  srcSet={thumbnailSrcSet || undefined}
-                  sizes={thumbnailSizes || undefined}
-                  alt={localMedia.title} 
-                  loading="lazy" 
-                  onDoubleClick={onDoubleTap} 
-                  onClick={selectionMode ? undefined : onOpen}
-                  onContextMenu={(e) => e.preventDefault()}
-                  draggable={false}
-                  style={{ 
-                    userSelect: 'none', 
-                    WebkitUserSelect: 'none', 
-                    WebkitTouchCallout: 'none',
-                    pointerEvents: 'auto'
-                  }}
-                  onLoad={(e) => {
-                    correctImageOrientation(e.currentTarget);
-                  }}
-                  onError={(e) => {
-                    const img = e.currentTarget;
-                    console.warn('🖼️ [DEBUG] Image load error:', {
-                      mediaId: localMedia.id,
-                      failedSrc: img.src,
-                      currentSrc: img.currentSrc,
-                    });
-                    
-                    // Fallback to original if thumbnail fails
-                    if (img.src !== localMedia.url && localMedia.url) {
-                      console.log('🖼️ [DEBUG] Falling back to original URL');
-                      img.src = localMedia.url;
-                      img.srcSet = '';
-                    } else {
-                      console.error('🖼️ [DEBUG] Both thumbnail and original failed to load');
-                    }
-                  }}
-                  className="w-full h-full object-contain transition-opacity duration-300 select-none" 
-                />
-              ) : (
-                // Placeholder while image is not in viewport
-                <div className="w-full h-full bg-gray-200 animate-pulse flex items-center justify-center">
-                  <div className="text-gray-400 text-xs">Loading...</div>
-                </div>
-              )}
+              <img 
+                src={imageSrc}
+                srcSet={thumbnailSrcSet || undefined}
+                sizes={thumbnailSizes || undefined}
+                alt={localMedia.title} 
+                loading="lazy" 
+                onDoubleClick={onDoubleTap} 
+                onClick={selectionMode ? undefined : onOpen}
+                onContextMenu={(e) => e.preventDefault()}
+                draggable={false}
+                style={{ 
+                  userSelect: 'none', 
+                  WebkitUserSelect: 'none', 
+                  WebkitTouchCallout: 'none',
+                  pointerEvents: 'auto'
+                }}
+                onLoad={(e) => {
+                  correctImageOrientation(e.currentTarget);
+                }}
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  console.warn('🖼️ [DEBUG] Image load error:', {
+                    mediaId: localMedia.id,
+                    failedSrc: img.src,
+                    currentSrc: img.currentSrc,
+                  });
+                  
+                  // Fallback to original if thumbnail fails
+                  if (img.src !== localMedia.url && localMedia.url) {
+                    console.log('🖼️ [DEBUG] Falling back to original URL');
+                    img.src = localMedia.url;
+                    img.srcSet = '';
+                  } else {
+                    console.error('🖼️ [DEBUG] Both thumbnail and original failed to load');
+                  }
+                }}
+                className="w-full h-full object-contain transition-opacity duration-300 select-none" 
+              />
             </div>
           );
         })()
