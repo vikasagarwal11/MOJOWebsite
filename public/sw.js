@@ -114,12 +114,14 @@ if (self.workbox) {
   workbox.setConfig({ debug: false });
   const { strategies, expiration, cacheableResponse } = workbox;
 
+  // Enhanced thumbnail cache with better expiration
   thumbnailStrategy = new strategies.StaleWhileRevalidate({
     cacheName: 'thumbnail-cache-v1',
     plugins: [
       new expiration.ExpirationPlugin({
-        maxEntries: 120,
-        maxAgeSeconds: 60 * 60 * 24, // 24 hours
+        maxEntries: 500, // Increased from 120 to 500
+        maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days (increased from 24 hours)
+        purgeOnQuotaError: true, // Auto-delete if storage quota exceeded
       }),
       new cacheableResponse.CacheableResponsePlugin({
         statuses: [200],
@@ -221,7 +223,7 @@ async function getCachedResponse(request, isImage, isAPI, isStatic) {
   }
 }
 
-// Cache-first strategy for static assets
+// Cache-first strategy for static assets with enhanced expiration
 async function cacheFirstStrategy(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cachedResponse = await cache.match(request);
@@ -231,8 +233,31 @@ async function cacheFirstStrategy(request, cacheName) {
     return fetch(request);
   }
   
+  // Check if cached response is still valid (enhanced expiration)
   if (cachedResponse) {
-    return cachedResponse;
+    const cachedDate = cachedResponse.headers.get('date');
+    if (cachedDate) {
+      const age = (Date.now() - new Date(cachedDate).getTime()) / 1000; // age in seconds
+      
+      // Different TTL for different cache types
+      let maxAge = 60 * 60 * 24 * 30; // 30 days default
+      
+      if (cacheName === IMAGE_CACHE) {
+        maxAge = 60 * 60 * 24 * 30; // 30 days for images
+      } else if (cacheName === STATIC_CACHE) {
+        maxAge = 60 * 60 * 24 * 365; // 1 year for static assets
+      }
+      
+      if (age < maxAge) {
+        return cachedResponse;
+      } else {
+        // Cache expired, delete it
+        await cache.delete(request);
+      }
+    } else {
+      // No date header, assume valid
+      return cachedResponse;
+    }
   }
   
   try {
@@ -243,6 +268,27 @@ async function cacheFirstStrategy(request, cacheName) {
     if (networkResponse.ok && networkResponse.status !== 206 && !isHLSSegment) {
       // Clone response before caching (must be done before reading body)
       const responseClone = networkResponse.clone();
+      
+      // Enhanced: Check cache size before adding
+      const cacheKeys = await cache.keys();
+      const maxEntries = cacheName === IMAGE_CACHE ? 500 : cacheName === STATIC_CACHE ? 100 : 200;
+      
+      // If cache is full, delete oldest entries (LRU-like)
+      if (cacheKeys.length >= maxEntries) {
+        // Delete oldest 20% of entries
+        const entriesToDelete = Math.floor(maxEntries * 0.2);
+        const sortedKeys = await Promise.all(
+          cacheKeys.map(async (key) => {
+            const response = await cache.match(key);
+            const date = response?.headers.get('date');
+            return { key, date: date ? new Date(date).getTime() : 0 };
+          })
+        );
+        sortedKeys.sort((a, b) => a.date - b.date);
+        await Promise.all(
+          sortedKeys.slice(0, entriesToDelete).map(({ key }) => cache.delete(key))
+        );
+      }
       
       // Try to cache, but don't block on it
       cache.put(request, responseClone).catch((cacheError) => {
@@ -257,7 +303,7 @@ async function cacheFirstStrategy(request, cacheName) {
     
     return networkResponse;
   } catch (fetchError) {
-    // If fetch fails, try to return cached response
+    // If fetch fails, try to return cached response (even if expired)
     const cachedResponse = await cache.match(request);
     if (cachedResponse) {
       return cachedResponse;
