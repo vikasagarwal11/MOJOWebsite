@@ -159,7 +159,11 @@ const Media: React.FC = () => {
     }
   }, [hasMoreMedia]);
 
-  // Image preloading: when new items arrive, prefetch their thumbnails
+  // Image preloading: when new items arrive, prefetch their thumbnails (optimized)
+  // - Only preload resolved URLs (http)
+  // - Limit count to avoid saturating network
+  // - Use requestIdleCallback so it doesn't compete with initial render
+  // - NO <link rel="prefetch"> tags (causes "preloaded but not used" warnings)
   const prevLoadedCountRef = useRef(0);
 
   useEffect(() => {
@@ -177,15 +181,50 @@ const Media: React.FC = () => {
 
     const newlyFetched = mediaFiles.slice(prevCount, currentCount);
 
-    newlyFetched.forEach((m: any) => {
-      if (m?.type !== 'image') return;
-      const thumbs = m?.thumbnails;
-      const thumbPath = thumbs?.mediumPath || thumbs?.smallPath || thumbs?.largePath;
-      if (!thumbPath || typeof window === 'undefined') return;
+    // Extract image thumbnails that are already URLs (not storage paths)
+    // Limit to 12 items to avoid network saturation
+    const imagesToPreload = newlyFetched
+      .filter((m: any) => m?.type === 'image')
+      .slice(0, 12) // Limit to 12 items max
+      .map((m: any) => {
+        // Only use resolved HTTP thumbnail URLs - NEVER fall back to originals
+        // Preloading originals would saturate network and make page feel slower
+        const url = m?.thumbnailUrl || 
+                   m?.thumbnails?.mediumUrl || 
+                   m?.thumbnails?.smallUrl || 
+                   m?.thumbnails?.largeUrl;
+        
+        // Only preload if it's a full URL (starts with http) - skip if not resolved yet
+        if (typeof url === 'string' && url.startsWith('http')) {
+          return url;
+        }
+        return null;
+      })
+      .filter(Boolean) as string[];
 
-      const img = new window.Image();
-      img.src = thumbPath;
-    });
+    if (imagesToPreload.length === 0) {
+      prevLoadedCountRef.current = currentCount;
+      return;
+    }
+
+    // Deduplicate URLs and limit to 10 items to avoid network saturation
+    const uniqueUrls = Array.from(new Set(imagesToPreload)).slice(0, 10);
+
+    // Use requestIdleCallback to avoid competing with render-critical work
+    const preloadImages = () => {
+      uniqueUrls.forEach((url: string) => {
+        const img = new window.Image();
+        img.decoding = 'async';
+        img.src = url;
+      });
+    };
+
+    // Schedule preloading during idle time (or after 1.5s timeout)
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(preloadImages, { timeout: 1500 });
+    } else {
+      setTimeout(preloadImages, 0);
+    }
 
     prevLoadedCountRef.current = currentCount;
   }, [mediaFiles, mediaLoading]);

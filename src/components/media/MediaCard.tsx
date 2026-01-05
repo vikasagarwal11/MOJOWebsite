@@ -21,6 +21,10 @@ import {
   generateThumbnailSrcSet, 
   getThumbnailSizes 
 } from '../../utils/responsiveThumbnails';
+import { 
+  getCachedThumbnailUrl, 
+  setCachedThumbnailUrl 
+} from '../../utils/thumbnailUrlCache';
 
 export default function MediaCard({ 
   media, 
@@ -92,11 +96,17 @@ export default function MediaCard({
   const [optimalSize, setOptimalSize] = useState<'small' | 'medium' | 'large'>('medium');
   
   // IntersectionObserver for better lazy loading control
+  // OPTIMIZED: Larger rootMargin (600px) starts resolving URLs earlier for smoother perceived performance
   const { ref: imageRef, inView } = useInView({
     triggerOnce: true, // Only trigger once when image enters viewport
-    rootMargin: '200px', // Start loading 200px before image enters viewport
-    threshold: 0.1, // Trigger when 10% of image is visible
+    rootMargin: '600px 0px', // Start loading 600px before image enters viewport (was 200px)
+    threshold: 0, // Trigger as soon as any part enters the margin (no need to wait for 10%)
   });
+
+  // Stabilize thumbnail dependency fields (avoid depending on the whole thumbnails object)
+  const thumbSmall = localMedia?.thumbnails?.smallPath;
+  const thumbMed = localMedia?.thumbnails?.mediumPath;
+  const thumbLarge = localMedia?.thumbnails?.largePath;
   
   // Keep localMedia in sync when this card points at a new doc
   useEffect(() => {
@@ -130,14 +140,23 @@ export default function MediaCard({
   }, [media.id, media.transcodeStatus]);
   
   // Calculate optimal thumbnail size based on viewport (responsive)
+  // OPTIMIZED: Bias toward larger thumbnails on high-DPI displays for better quality
   useEffect(() => {
     const updateOptimalSize = () => {
-      const size = getOptimalThumbnailSize(
-        window.innerWidth,
-        window.devicePixelRatio || 1
-      );
-      // Avoid serving 400x400 for grid cards on modern screens; bias up to medium at minimum
-      setOptimalSize(size === 'small' ? 'medium' : size);
+      const viewportWidth = window.innerWidth;
+      const devicePixelRatio = window.devicePixelRatio || 1;
+      
+      // For high-DPI displays (retina), prefer larger thumbnails for better quality
+      // This prevents "soft" looking thumbnails on retina screens
+      if (devicePixelRatio >= 2) {
+        // High-DPI: prefer large (1200x1200) for desktop, medium (800x800) for mobile
+        setOptimalSize(viewportWidth >= 1200 ? 'large' : 'medium');
+      } else {
+        // Standard DPI: use responsive selection but clamp small to medium for grid
+        const size = getOptimalThumbnailSize(viewportWidth, devicePixelRatio);
+        // Avoid serving 400x400 thumbnails to grid cards (they look soft)
+        setOptimalSize(size === 'small' ? 'medium' : size);
+      }
     };
 
     updateOptimalSize();
@@ -146,7 +165,12 @@ export default function MediaCard({
   }, []);
 
   // Load thumbnail URLs with responsive selection
+  // CRITICAL: Gate thumbnail resolution behind inView to prevent 50x getDownloadURL() bursts on mount
   useEffect(() => {
+    // Do NOT resolve thumbnails for cards not near the viewport
+    // This prevents expensive network requests for off-screen cards
+    if (!inView) return;
+
     setIsThumbnailLoading(true);
     
     // For images: Use responsive thumbnail selection
@@ -162,32 +186,35 @@ export default function MediaCard({
       if (bestThumbnailPath && bestThumbnailPath !== localMedia.url) {
         // Check if it's already a full URL or a storage path
         if (bestThumbnailPath.startsWith('http')) {
+          // Already a URL - use it directly
           setThumbnailUrl(bestThumbnailPath);
           setIsThumbnailLoading(false);
         } else {
-          // It's a storage path, get download URL
-          getDownloadURL(ref(storage, bestThumbnailPath))
-            .then(url => {
-              setThumbnailUrl(url);
-              
-              // Generate srcSet with URLs if we have multiple thumbnails available
-              // For now, we'll load the best one and let the browser handle responsive sizing
-              // Full srcSet implementation would require loading all thumbnail URLs upfront
-              const srcSet = generateThumbnailSrcSet(localMedia.thumbnails, localMedia.url);
-              // Note: srcSet contains paths, not URLs - would need to convert all paths to URLs
-              // For now, we'll use the single best thumbnail URL and let CSS handle responsive sizing
-              setThumbnailSrcSet(''); // Disable srcSet for now - requires loading all URLs
-              setThumbnailSizes(getThumbnailSizes());
-              
-              setIsThumbnailLoading(false);
-            })
-            .catch(error => {
-              console.warn('🖼️ Error loading thumbnail, falling back to original:', error);
-              setThumbnailUrl(localMedia.url);
-              setThumbnailSrcSet('');
-              setThumbnailSizes('');
-              setIsThumbnailLoading(false);
-            });
+          // It's a storage path - check shared module-level cache first
+          const cachedUrl = getCachedThumbnailUrl(bestThumbnailPath);
+          if (cachedUrl) {
+            // Use cached URL - no network call needed
+            setThumbnailUrl(cachedUrl);
+            setIsThumbnailLoading(false);
+          } else {
+            // Not in cache - resolve and cache it
+            getDownloadURL(ref(storage, bestThumbnailPath))
+              .then(url => {
+                // Cache the resolved URL in shared module-level cache
+                setCachedThumbnailUrl(bestThumbnailPath, url);
+                setThumbnailUrl(url);
+                setThumbnailSrcSet(''); // Disable srcSet for now - requires loading all URLs
+                setThumbnailSizes(getThumbnailSizes());
+                setIsThumbnailLoading(false);
+              })
+              .catch(error => {
+                console.warn('🖼️ Error loading thumbnail, falling back to original:', error);
+                setThumbnailUrl(localMedia.url);
+                setThumbnailSrcSet('');
+                setThumbnailSizes('');
+                setIsThumbnailLoading(false);
+              });
+          }
         }
       } else {
         // No thumbnails available, use original
@@ -197,18 +224,27 @@ export default function MediaCard({
         setIsThumbnailLoading(false);
       }
     } else {
-      // For videos or images without filePath: Use existing logic
+      // For videos or images without filePath: Use existing logic with shared caching
       if (localMedia.thumbnailPath) {
-        getDownloadURL(ref(storage, localMedia.thumbnailPath))
-          .then(url => {
-            setThumbnailUrl(url);
-            setIsThumbnailLoading(false);
-          })
-          .catch(error => {
-            console.warn('🖼️ Failed to load thumbnail, using original URL:', error);
-            setThumbnailUrl(localMedia.url);
-            setIsThumbnailLoading(false);
-          });
+        // Check shared module-level cache first for video thumbnails too
+        const cachedUrl = getCachedThumbnailUrl(localMedia.thumbnailPath);
+        if (cachedUrl) {
+          setThumbnailUrl(cachedUrl);
+          setIsThumbnailLoading(false);
+        } else {
+          getDownloadURL(ref(storage, localMedia.thumbnailPath))
+            .then(url => {
+              // Cache the resolved URL in shared module-level cache
+              setCachedThumbnailUrl(localMedia.thumbnailPath, url);
+              setThumbnailUrl(url);
+              setIsThumbnailLoading(false);
+            })
+            .catch(error => {
+              console.warn('🖼️ Failed to load thumbnail, using original URL:', error);
+              setThumbnailUrl(localMedia.url);
+              setIsThumbnailLoading(false);
+            });
+        }
       } else {
         setThumbnailUrl(localMedia.url);
         setIsThumbnailLoading(false);
@@ -216,7 +252,17 @@ export default function MediaCard({
       setThumbnailSrcSet('');
       setThumbnailSizes('');
     }
-  }, [localMedia.thumbnailPath, localMedia.url, localMedia.filePath, localMedia.type, localMedia.thumbnails, optimalSize]);
+  }, [
+    inView, // CRITICAL: Only resolve when card is near viewport
+    localMedia.thumbnailPath,
+    localMedia.url,
+    localMedia.filePath,
+    localMedia.type,
+    thumbSmall, // Use scalar fields instead of whole thumbnails object
+    thumbMed,
+    thumbLarge,
+    optimalSize
+  ]);
 
   // Enhanced debugging for video playback issues (reduced logging)
   useEffect(() => {
@@ -235,7 +281,11 @@ export default function MediaCard({
   }, [localMedia.id, localMedia.type, localMedia.transcodeStatus, localMedia.sources?.hls, localMedia.thumbnailPath, localMedia.url, isHlsAttached]);
 
   // Attach HLS when video element is ready and HLS source is available
+  // FIXED: Only run HLS logic for videos, skip for images to avoid unnecessary processing
   useEffect(() => {
+    // Early exit for non-video items - HLS is only for videos
+    if (localMedia.type !== 'video') return;
+
     // Skip HLS in development due to CORS issues
     if (import.meta.env.DEV) {
       console.log('🔧 Development mode: HLS disabled due to CORS');
@@ -250,15 +300,18 @@ export default function MediaCard({
     const hlsPath = localMedia.sources?.hlsMaster || localMedia.sources?.hls;
     const isMasterPlaylist = !!localMedia.sources?.hlsMaster;
     
-    console.log('🔧 HLS Attachment Logic:', {
-      hasVideoRef: !!videoRef.current,
-      hasHlsMaster: !!localMedia.sources?.hlsMaster,
-      hasHlsSource: !!localMedia.sources?.hls,
-      hlsPath: hlsPath,
-      isMasterPlaylist: isMasterPlaylist,
-      isAlreadyAttached: isHlsAttached,
-      videoUrl: localMedia.url
-    });
+    // Only log HLS details in development and only for videos (already guarded above)
+    if (import.meta.env.DEV) {
+      console.log('🔧 HLS Attachment Logic:', {
+        hasVideoRef: !!videoRef.current,
+        hasHlsMaster: !!localMedia.sources?.hlsMaster,
+        hasHlsSource: !!localMedia.sources?.hls,
+        hlsPath: hlsPath,
+        isMasterPlaylist: isMasterPlaylist,
+        isAlreadyAttached: isHlsAttached,
+        videoUrl: localMedia.url
+      });
+    }
     
     if (videoRef.current && hlsPath && !isHlsAttached) {
       console.log(`✅ Attempting to attach HLS ${isMasterPlaylist ? '(adaptive streaming)' : '(single quality)'}:`, hlsPath);
@@ -298,24 +351,11 @@ export default function MediaCard({
         isAlreadyAttached: isHlsAttached
       });
     }
-  }, [localMedia.sources?.hlsMaster, localMedia.sources?.hls, localMedia.url, isHlsAttached]);
+  }, [localMedia.type, localMedia.sources?.hlsMaster, localMedia.sources?.hls, localMedia.url, isHlsAttached]);
 
-  // Enhanced poster image handling - show poster immediately when available
-  useEffect(() => {
-    if (localMedia.thumbnailPath && localMedia.type === 'video') {
-      // For videos, show poster image immediately if available
-      getDownloadURL(ref(storage, localMedia.thumbnailPath))
-        .then(url => {
-          setThumbnailUrl(url);
-          setIsThumbnailLoading(false);
-        })
-        .catch(error => {
-          console.warn('Failed to load poster image:', error);
-          setThumbnailUrl(localMedia.url); // Fallback to original
-          setIsThumbnailLoading(false);
-        });
-    }
-  }, [localMedia.thumbnailPath, localMedia.type, localMedia.url]);
+  // REMOVED: Duplicate poster image handling effect
+  // The main thumbnail resolution effect above already handles video thumbnails
+  // and uses the shared cache. This duplicate effect was causing extra network calls.
 
   // Cleanup HLS when component unmounts or media changes
   useEffect(() => {
