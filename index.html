@@ -24,10 +24,9 @@
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
-    <!-- Preload hero logo for Safari first-load fix -->
-    <!-- Using fetchpriority="high" instead of preload to avoid "preloaded but not used" warnings -->
-    <link rel="preload" href="/assets/logo/mfm-logo-new-hero.svg" as="image" type="image/svg+xml" fetchpriority="high" />
-    <link rel="preload" href="/assets/logo/mfm-logo-800.png" as="image" type="image/png" fetchpriority="high" />
+    <!-- Logo preloading removed to avoid "preloaded but not used" warnings -->
+    <!-- Logos will load naturally when referenced in components -->
+    <!-- If logos are critical above-the-fold, use <img fetchpriority="high"> in the component instead -->
     
     <!-- Safari & iOS Specific Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
