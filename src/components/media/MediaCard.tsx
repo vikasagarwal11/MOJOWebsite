@@ -113,7 +113,12 @@ export default function MediaCard({
   // Keep localMedia in sync when this card points at a new doc
   useEffect(() => {
     setLocalMedia(media);
-  }, [media.id]); // important: key on id only
+    // Reset thumbnailUrl when media changes to ensure it matches
+    if (media?.url && thumbnailUrl !== media.url) {
+      setThumbnailUrl(media.url);
+      setIsThumbnailLoading(false);
+    }
+  }, [media.id, media.url]); // important: key on id and url
   
   // Real-time sync for main media document data (transcodeStatus, sources.hls, etc.)
   useEffect(() => {
@@ -171,17 +176,29 @@ export default function MediaCard({
   // CRITICAL: Gate thumbnail resolution behind inView to prevent 50x getDownloadURL() bursts on mount
   // BUT: Always have a fallback URL (original) to prevent stuck loading state
   useEffect(() => {
+    // Ensure we always have a URL to display (use original as fallback)
+    if (!localMedia.url) {
+      setIsThumbnailLoading(false);
+      return;
+    }
+
     // If we already have a resolved thumbnail URL (not the original), we're done
     if (thumbnailUrl && thumbnailUrl !== localMedia.url && thumbnailUrl.startsWith('http')) {
       setIsThumbnailLoading(false);
       return;
     }
 
+    // Always ensure thumbnailUrl is set to original URL as fallback
+    if (!thumbnailUrl || thumbnailUrl === '') {
+      setThumbnailUrl(localMedia.url);
+      setIsThumbnailLoading(false);
+    }
+
     // For cards not in view, use original URL as fallback (no thumbnail resolution)
     // This prevents network bursts while ensuring cards always have something to display
     if (!inView) {
       // Use original URL if we don't have a thumbnail yet
-      if (thumbnailUrl !== localMedia.url && localMedia.url) {
+      if (thumbnailUrl !== localMedia.url) {
         setThumbnailUrl(localMedia.url);
       }
       setIsThumbnailLoading(false);
