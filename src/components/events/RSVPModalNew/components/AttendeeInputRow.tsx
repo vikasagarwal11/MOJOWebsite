@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import React from 'react';
 
 interface BulkRow {
   id: string;
@@ -15,7 +15,7 @@ interface AttendeeInputRowProps {
   onAdd: () => void;
 }
 
-export const AttendeeInputRow = memo<AttendeeInputRowProps>(({ 
+export const AttendeeInputRow: React.FC<AttendeeInputRowProps> = ({ 
   member, 
   onUpdate, 
   onRemove, 
@@ -78,22 +78,7 @@ export const AttendeeInputRow = memo<AttendeeInputRowProps>(({
       </div>
     </div>
   );
-});
-
-AttendeeInputRow.displayName = 'AttendeeInputRow';
-
-// Custom comparison function to prevent unnecessary re-renders
-const areEqual = (prevProps: AttendeeInputRowProps, nextProps: AttendeeInputRowProps) => {
-  return (
-    prevProps.member.id === nextProps.member.id &&
-    prevProps.member.name === nextProps.member.name &&
-    prevProps.member.ageGroup === nextProps.member.ageGroup &&
-    prevProps.member.relationship === nextProps.member.relationship &&
-    prevProps.member.rsvpStatus === nextProps.member.rsvpStatus &&
-    prevProps.onUpdate === nextProps.onUpdate &&
-    prevProps.onRemove === nextProps.onRemove &&
-    prevProps.onAdd === nextProps.onAdd
-  );
 };
 
-export const AttendeeInputRowMemo = memo(AttendeeInputRow, areEqual);
+// Use the same component for memo version to avoid double wrapping
+export const AttendeeInputRowMemo = AttendeeInputRow;

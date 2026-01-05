@@ -1,11 +1,9 @@
 import {
   ArrowDown,
   MessageSquare,
-  Search,
-  SlidersHorizontal,
   Sparkles,
   Star,
-  X,
+  X
 } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
@@ -399,31 +397,29 @@ const Testimonials: React.FC = () => {
       </HelmetWrapper>
 
       {/* HERO */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10">
-          <div className="absolute inset-0 bg-gradient-to-b from-[#F25129]/12 via-[#FFF3EE] to-white" />
-          <div className="absolute -top-24 -right-24 h-80 w-80 rounded-full bg-[#EFD8C5] blur-3xl opacity-60" />
-          <div className="absolute -bottom-28 -left-20 h-72 w-72 rounded-full bg-[#FFE08A] blur-3xl opacity-55" />
+      <section className="relative overflow-hidden bg-gradient-to-b from-[#F25129]/8 via-[#FFF3EE] to-white">
+        <div className="absolute inset-0 -z-10 pointer-events-none">
+          <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-[#EFD8C5] blur-3xl opacity-50" />
+          <div className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-[#FFE08A] blur-3xl opacity-45" />
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-18">
-          {/* Title - Centered with Gradient (matching Media page style) */}
-          <div className="text-center mb-8">
-            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1 mb-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 pb-4">
+          {/* Title - Centered with Gradient */}
+          <div className="text-center mb-5">
+            <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-tight mb-2">
               What Moms Are Saying
             </h1>
             
-            <p className="text-lg text-gray-700 leading-relaxed max-w-3xl mx-auto">
+            <p className="text-base text-gray-700 max-w-3xl mx-auto">
               Honest experiences from women who found fitness, friendship, and confidence through Moms Fitness Mojo.
             </p>
           </div>
 
           <div className="max-w-3xl mx-auto">
-
-            <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
               <button
                 onClick={handleShare}
-                className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white shadow-md hover:shadow-lg transition-all hover:scale-[1.02]"
+                className="inline-flex items-center gap-2 rounded-full px-5 sm:px-6 py-2 sm:py-2.5 text-sm font-semibold bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white shadow-md hover:shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
                 <MessageSquare className="w-4 h-4" />
                 Share Your Story
@@ -432,7 +428,7 @@ const Testimonials: React.FC = () => {
               {featuredList.length > 0 && (
                 <button
                   onClick={() => spotlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                  className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-[#F25129] border border-[#F25129]/35 bg-white/70 hover:bg-[#F25129]/5 transition-colors"
+                  className="inline-flex items-center gap-2 rounded-full px-5 sm:px-6 py-2 sm:py-2.5 text-sm font-semibold text-[#F25129] border-2 border-[#F25129]/35 bg-white/90 hover:bg-[#F25129]/5 hover:border-[#F25129]/50 transition-all"
                 >
                   <ArrowDown className="w-4 h-4" />
                   Read Featured Stories
@@ -440,62 +436,38 @@ const Testimonials: React.FC = () => {
               )}
             </div>
 
-            <div className="mt-8 flex flex-wrap gap-2 text-sm text-gray-600">
-              <span className="rounded-full bg-white/70 border border-gray-200 px-3 py-1">{totalCount} stories</span>
-              {featuredCount > 0 && (
-                <span className="rounded-full bg-white/70 border border-gray-200 px-3 py-1">
-                  {featuredCount} featured
-                </span>
-              )}
-              {avgRating !== null && (
-                <span className="rounded-full bg-white/70 border border-gray-200 px-3 py-1 inline-flex items-center gap-1">
-                  <Star className="w-4 h-4 text-[#F25129] fill-current" />
-                  {avgRating} avg
-                </span>
-              )}
-            </div>
+            {totalCount > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2 text-sm text-gray-600 justify-center">
+                <span className="rounded-full bg-white/90 border border-gray-200 px-3 py-1">{totalCount} stories</span>
+                {featuredCount > 0 && (
+                  <span className="rounded-full bg-white/90 border border-gray-200 px-3 py-1">
+                    {featuredCount} featured
+                  </span>
+                )}
+                {avgRating !== null && (
+                  <span className="rounded-full bg-white/90 border border-gray-200 px-3 py-1 inline-flex items-center gap-1">
+                    <Star className="w-3.5 h-3.5 text-[#F25129] fill-current" />
+                    {avgRating} avg
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-      </section>
-
-      {/* TABS (Hybrid UX) */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-2">
-        <div className="flex flex-wrap gap-2">
-          {(
-            [
-              ['spotlight', 'Spotlight'],
-              ['all', 'All Stories'],
-              ['themes', 'By Theme'],
-              ['moods', 'By Mood'],
-            ] as Array<[ViewMode, string]>
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setViewMode(key)}
-              className={`rounded-full px-4 py-2 text-sm font-semibold border transition-colors ${
-                viewMode === key
-                  ? 'bg-[#F25129] text-white border-[#F25129]'
-                  : 'bg-white text-[#F25129] border-[#F25129]/35 hover:bg-[#F25129]/5'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
         </div>
       </section>
 
       {/* FEATURED SPOTLIGHT */}
       {viewMode === 'spotlight' && featuredList.length > 0 && (
-        <section ref={spotlightRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
-          <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
+        <section ref={spotlightRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-end justify-between gap-4 flex-wrap mb-5">
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Featured Spotlight</h2>
-              <p className="mt-1 text-gray-600">A few standout stories from the community.</p>
+              <p className="mt-1 text-sm text-gray-600">A few standout stories from the community.</p>
             </div>
 
             <button
               onClick={handleShare}
-              className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-colors shadow-sm"
+              className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-all shadow-md hover:shadow-lg active:scale-95"
             >
               <MessageSquare className="w-4 h-4" />
               Add Yours
@@ -616,106 +588,32 @@ const Testimonials: React.FC = () => {
         </section>
       )}
 
-      {/* TOOLBAR (smart search + sort) */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-2">
-        <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4 sm:p-5">
-          <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
-            <div className="flex-1">
-              <label className="sr-only" htmlFor="testimonial-search">
-                Search testimonials
-              </label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  id="testimonial-search"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder='Try: "confidence", "friends", "accountability", "postpartum"...'
-                  className="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#F25129]/30"
-                />
-              </div>
-              {query.trim().length > 0 ? (
-                <div className="mt-2 text-xs text-gray-500">
-                  Smart ranking uses quote + highlight + AI keywords + tags + mood labels.
-                </div>
-              ) : null}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2">
-                <SlidersHorizontal className="w-4 h-4 text-gray-500" />
-                <select
-                  value={sortMode}
-                  onChange={(e) => setSortMode(e.target.value as SortMode)}
-                  className="text-sm bg-transparent focus:outline-none"
-                  disabled={query.trim().length > 0} // smart rank overrides sort
-                  title={query.trim().length > 0 ? 'Sorting disabled while searching (smart ranking enabled)' : ''}
-                >
-                  <option value="featured">Featured first</option>
-                  <option value="newest">Newest</option>
-                  <option value="highest_rated">Highest rated</option>
-                </select>
-              </div>
-
-              <button
-                onClick={() => setOnlyFeatured((v) => !v)}
-                className={`rounded-full px-4 py-2 text-sm font-semibold border transition-colors ${
-                  onlyFeatured
-                    ? 'bg-[#F25129] text-white border-[#F25129]'
-                    : 'bg-white text-[#F25129] border-[#F25129]/35 hover:bg-[#F25129]/5'
-                }`}
-              >
-                Featured only
-              </button>
-
-              <div className="text-sm text-gray-500 ml-1">
-                Showing <span className="font-semibold text-gray-700">{filtered.length}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* GRID */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-        <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
-          <div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Community Voices</h2>
-            <p className="mt-1 text-gray-600">Browse stories from across Moms Fitness Mojo.</p>
-          </div>
+     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2 pb-8">
 
-          <Link to="/" className="text-sm font-semibold text-[#F25129] hover:underline">
-            Back to Home
-          </Link>
+        <div className="text-center mb-5">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1.5">Community Voices</h2>
+          <p className="text-sm text-gray-600 max-w-2xl mx-auto">Browse stories from across Moms Fitness Mojo.</p>
         </div>
 
         {loading ? (
-          <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
+          <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 sm:gap-8 space-y-6 sm:space-y-8">
             {Array.from({ length: 9 }).map((_, i) => (
               <div key={i} className="break-inside-avoid rounded-2xl bg-gray-100 animate-pulse h-48" />
             ))}
           </div>
         ) : error ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-800">{String(error)}</div>
+          <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-8 text-red-800 text-center shadow-sm">
+            <div className="text-lg font-semibold mb-2">Error Loading Stories</div>
+            <div>{String(error)}</div>
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[#F25129]/30 bg-white p-10 text-center">
-            <div className="text-lg font-semibold text-gray-900">No stories match your filters.</div>
-            <p className="mt-2 text-gray-600">Try a different keyword, theme, or mood.</p>
-            <button
-              onClick={() => {
-                setQuery('');
-                setOnlyFeatured(false);
-                setSortMode('featured');
-                setActiveTheme(null);
-                setActiveMood(null);
-              }}
-              className="mt-5 inline-flex rounded-full px-5 py-2.5 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-colors"
-            >
-              Reset
-            </button>
+          <div className="rounded-2xl border-2 border-dashed border-[#F25129]/30 bg-white p-12 sm:p-20 text-center shadow-sm">
+            <div className="text-xl sm:text-2xl font-semibold text-gray-900 mb-4">No Stories Available</div>
+            <p className="text-base sm:text-lg text-gray-600 max-w-md mx-auto">Check back soon! New stories are added regularly as our community grows.</p>
           </div>
         ) : (
-          <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">
+          <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 sm:gap-8 space-y-6 sm:space-y-8">
             {filtered.map((testimonial) => (
               <QuoteCard key={testimonial.id} testimonial={testimonial} />
             ))}
@@ -724,7 +622,7 @@ const Testimonials: React.FC = () => {
       </section>
 
       {/* IMPACT STRIP */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="rounded-2xl bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white py-10 px-6 shadow-lg">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <Stat label="Active Moms" value="190+" />
@@ -736,17 +634,17 @@ const Testimonials: React.FC = () => {
 
       {/* FINAL CTA */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-        <div className="rounded-3xl border border-[#F25129]/15 bg-gradient-to-br from-[#F25129]/8 to-[#FFC107]/10 p-8 sm:p-12 text-center shadow-sm">
-          <h3 className="text-3xl font-bold text-gray-900">Your Story Belongs Here</h3>
-          <p className="mt-3 text-lg text-gray-700 max-w-2xl mx-auto">
+        <div className="rounded-3xl border border-[#F25129]/15 bg-gradient-to-br from-[#F25129]/8 to-[#FFC107]/10 p-8 sm:p-10 text-center shadow-sm">
+          <h3 className="text-2xl sm:text-3xl font-bold text-gray-900">Your Story Belongs Here</h3>
+          <p className="mt-3 text-base text-gray-700 max-w-2xl mx-auto">
             Whether it's fitness, confidence, friendship, or simply finding time for yourself — your journey can inspire
             another mom.
           </p>
 
-          <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <button
               onClick={handleShare}
-              className="inline-flex items-center gap-2 rounded-full px-7 py-3 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-colors shadow-sm"
+              className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-colors shadow-sm"
             >
               <MessageSquare className="w-4 h-4" />
               Share Your Story
@@ -754,7 +652,7 @@ const Testimonials: React.FC = () => {
 
             <Link
               to="/events"
-              className="inline-flex items-center gap-2 rounded-full px-7 py-3 text-sm font-semibold bg-white text-[#F25129] border border-[#F25129]/35 hover:bg-[#F25129]/5 transition-colors"
+              className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold bg-white text-[#F25129] border border-[#F25129]/35 hover:bg-[#F25129]/5 transition-colors"
             >
               Explore Events
             </Link>

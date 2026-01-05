@@ -632,16 +632,18 @@ const RSVPPage: React.FC = () => {
         <div className="max-w-2xl mx-auto">
           {/* Capacity Status Banner */}
           {capacityState.isNearlyFull && (
-            <div className={`px-3 sm:px-4 py-2.5 sm:py-3 border-b border-gray-200 ${getCapacityBadgeClasses(capacityState.state)}`}>
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-xs sm:text-sm">{capacityState.warningMessage}</div>
-                  <div className="text-xs mt-0.5 opacity-90">
-                    {waitlistPosition 
-                      ? `Waitlist position #${waitlistPosition}. ${capacityState.slotsRemainingText}`
-                      : capacityState.slotsRemainingText
-                    }
+            <div className="px-4 mb-4">
+              <div className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg ${getCapacityBadgeClasses(capacityState.state)}`}>
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-xs sm:text-sm">{capacityState.warningMessage}</div>
+                    <div className="text-xs mt-0.5 opacity-90">
+                      {waitlistPosition 
+                        ? `Waitlist position #${waitlistPosition}. ${capacityState.slotsRemainingText}`
+                        : capacityState.slotsRemainingText
+                      }
+                    </div>
                   </div>
                 </div>
               </div>
@@ -771,7 +773,7 @@ const RSVPPage: React.FC = () => {
                     <div className="flex flex-wrap gap-2 sm:gap-3 text-xs text-gray-600">
                       <span className="flex items-center gap-1 sm:gap-1.5">
                         <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-green-500 rounded-full" />
-                        <span className="font-medium">{counts.goingCount} Going</span>
+                        <span className="font-medium">{realTimeAttendingCount} Going</span>
                       </span>
                       <span className="flex items-center gap-1 sm:gap-1.5">
                         <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full" />
@@ -779,7 +781,7 @@ const RSVPPage: React.FC = () => {
                       </span>
                       <span className="flex items-center gap-1 sm:gap-1.5">
                         <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-purple-500 rounded-full" />
-                        <span className="font-medium">{counts.waitlistedCount} Waitlisted</span>
+                        <span className="font-medium">{waitlistCount} Waitlisted</span>
                       </span>
                     </div>
                   </div>
@@ -958,7 +960,7 @@ const RSVPPage: React.FC = () => {
                               )}
 
                               {capacityState.isNearlyFull && familySizeInfo.canAdd && (
-                                <div className={`p-2.5 sm:p-3 rounded-lg border ${getCapacityBadgeClasses(capacityState.state)}`}>
+                                <div className={`p-2.5 sm:p-3 rounded-lg ${getCapacityBadgeClasses(capacityState.state)}`}>
                                   <div className="flex items-start gap-1.5 sm:gap-2">
                                     <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 mt-0.5" />
                                     <div className="flex-1">

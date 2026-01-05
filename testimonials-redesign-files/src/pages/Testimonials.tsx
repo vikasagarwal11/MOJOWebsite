@@ -1,11 +1,9 @@
 import {
   ArrowDown,
   MessageSquare,
-  Search,
-  SlidersHorizontal,
   Sparkles,
   Star,
-  X,
+  X
 } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
@@ -440,26 +438,28 @@ const Testimonials: React.FC = () => {
               )}
             </div>
 
-            <div className="mt-8 flex flex-wrap gap-2 text-sm text-gray-600">
-              <span className="rounded-full bg-white/70 border border-gray-200 px-3 py-1">{totalCount} stories</span>
-              {featuredCount > 0 && (
-                <span className="rounded-full bg-white/70 border border-gray-200 px-3 py-1">
-                  {featuredCount} featured
-                </span>
-              )}
-              {avgRating !== null && (
-                <span className="rounded-full bg-white/70 border border-gray-200 px-3 py-1 inline-flex items-center gap-1">
-                  <Star className="w-4 h-4 text-[#F25129] fill-current" />
-                  {avgRating} avg
-                </span>
-              )}
-            </div>
+            {totalCount > 0 && (
+              <div className="mt-8 flex flex-wrap gap-2 text-sm text-gray-600 justify-center">
+                <span className="rounded-full bg-white/70 border border-gray-200 px-3 py-1">{totalCount} stories</span>
+                {featuredCount > 0 && (
+                  <span className="rounded-full bg-white/70 border border-gray-200 px-3 py-1">
+                    {featuredCount} featured
+                  </span>
+                )}
+                {avgRating !== null && (
+                  <span className="rounded-full bg-white/70 border border-gray-200 px-3 py-1 inline-flex items-center gap-1">
+                    <Star className="w-4 h-4 text-[#F25129] fill-current" />
+                    {avgRating} avg
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </section>
 
       {/* TABS (Hybrid UX) */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-2">
+      {/* <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-2">
         <div className="flex flex-wrap gap-2">
           {(
             [
@@ -482,7 +482,7 @@ const Testimonials: React.FC = () => {
             </button>
           ))}
         </div>
-      </section>
+      </section> */}
 
       {/* FEATURED SPOTLIGHT */}
       {viewMode === 'spotlight' && featuredList.length > 0 && (
@@ -617,7 +617,7 @@ const Testimonials: React.FC = () => {
       )}
 
       {/* TOOLBAR (smart search + sort) */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-2">
+      {/* <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-2">
         <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4 sm:p-5">
           <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4">
             <div className="flex-1">
@@ -674,19 +674,13 @@ const Testimonials: React.FC = () => {
             </div>
           </div>
         </div>
-      </section>
+      </section> */}
 
       {/* GRID */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-        <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
-          <div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Community Voices</h2>
-            <p className="mt-1 text-gray-600">Browse stories from across Moms Fitness Mojo.</p>
-          </div>
-
-          <Link to="/" className="text-sm font-semibold text-[#F25129] hover:underline">
-            Back to Home
-          </Link>
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
+        <div className="text-center mb-8">
+          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-3">Community Voices</h2>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">Browse stories from across Moms Fitness Mojo.</p>
         </div>
 
         {loading ? (
@@ -698,21 +692,9 @@ const Testimonials: React.FC = () => {
         ) : error ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-800">{String(error)}</div>
         ) : filtered.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[#F25129]/30 bg-white p-10 text-center">
-            <div className="text-lg font-semibold text-gray-900">No stories match your filters.</div>
-            <p className="mt-2 text-gray-600">Try a different keyword, theme, or mood.</p>
-            <button
-              onClick={() => {
-                setQuery('');
-                setOnlyFeatured(false);
-                setSortMode('featured');
-                setActiveTheme(null);
-                setActiveMood(null);
-              }}
-              className="mt-5 inline-flex rounded-full px-5 py-2.5 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-colors"
-            >
-              Reset
-            </button>
+          <div className="rounded-2xl border border-dashed border-[#F25129]/30 bg-white p-12 sm:p-16 text-center">
+            <div className="text-xl sm:text-2xl font-semibold text-gray-900 mb-3">No Stories Available</div>
+            <p className="text-base text-gray-600 max-w-md mx-auto">Check back soon! New stories are added regularly as our community grows.</p>
           </div>
         ) : (
           <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 space-y-6">

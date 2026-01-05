@@ -754,6 +754,14 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         toast.error('No RSVPs to export');
         return;
       }
+
+      // Helper function to get price for an age group
+      const getPriceForAgeGroup = (ageGroup: string, pricing: any): number => {
+        if (!pricing || pricing.isFree || !pricing.requiresPayment) return 0;
+        const agePricing = pricing.ageGroupPricing?.find((p: any) => p.ageGroup === ageGroup);
+        return agePricing ? agePricing.price / 100 : (pricing.adultPrice || 0) / 100;
+      };
+
       const attendeeDetails = await Promise.all(
         rsvps.map(async (attendee) => {
           try {
@@ -761,6 +769,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
             if (userDoc.exists()) {
               const rawData = userDoc.data();
               const userData = sanitizeFirebaseData(rawData);
+              const isPaid = attendee.paymentStatus === 'paid';
+              const eventAmount = isPaid ? getPriceForAgeGroup(attendee.ageGroup || 'adult', event.pricing) : 0;
+              const eventSupportAmount = isPaid && event.pricing?.eventSupportAmount ? event.pricing.eventSupportAmount / 100 : 0;
               return {
                 // Attendee-specific data
                 attendeeId: attendee.attendeeId || attendee.id,
@@ -770,6 +781,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
                 relationship: attendee.relationship || '',
                 rsvpStatus: attendee.status,
                 paymentStatus: attendee.paymentStatus || 'unpaid',
+                eventAmount: isPaid ? eventAmount.toFixed(2) : '',
+                eventSupportAmount: isPaid && eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
                 // User data
                 userId: attendee.userId,
                 firstName: userData.firstName || '',
@@ -783,6 +796,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
                 updatedDate: attendee.updatedAt instanceof Date ? attendee.updatedAt.toLocaleDateString('en-US') : 'Unknown'
               };
             }
+            const isPaid = attendee.paymentStatus === 'paid';
+            const eventAmount = isPaid ? getPriceForAgeGroup(attendee.ageGroup || 'adult', event.pricing) : 0;
+            const eventSupportAmount = isPaid && event.pricing?.eventSupportAmount ? event.pricing.eventSupportAmount / 100 : 0;
             return {
               // Attendee-specific data
               attendeeId: attendee.id,
@@ -792,6 +808,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               relationship: attendee.relationship || '',
               rsvpStatus: attendee.status,
               paymentStatus: attendee.paymentStatus || 'unpaid',
+              eventAmount: isPaid ? eventAmount.toFixed(2) : '',
+              eventSupportAmount: isPaid && eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
               // User data
               userId: attendee.userId,
               firstName: 'Unknown',
@@ -805,6 +823,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               updatedDate: attendee.updatedAt instanceof Date ? attendee.updatedAt.toLocaleDateString('en-US') : 'Unknown'
             };
           } catch {
+            const isPaid = attendee.paymentStatus === 'paid';
+            const eventAmount = isPaid ? getPriceForAgeGroup(attendee.ageGroup || 'adult', event.pricing) : 0;
+            const eventSupportAmount = isPaid && event.pricing?.eventSupportAmount ? event.pricing.eventSupportAmount / 100 : 0;
             return {
               // Attendee-specific data
               attendeeId: attendee.id,
@@ -814,6 +835,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               relationship: attendee.relationship || '',
               rsvpStatus: attendee.status,
               paymentStatus: attendee.paymentStatus || 'unpaid',
+              eventAmount: isPaid ? eventAmount.toFixed(2) : '',
+              eventSupportAmount: isPaid && eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
               // User data
               userId: attendee.userId,
               firstName: 'Error',
@@ -837,6 +860,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         'Relationship',
         'RSVP Status',
         'Payment Status',
+        'Event Amount',
+        'Event Support Amount',
         'User ID',
         'Primary User First Name',
         'Primary User Last Name',
@@ -847,6 +872,15 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         'RSVP Date',
         'Updated Date'
       ];
+      // Calculate total amounts (only for paid attendees)
+      const totalEventAmount = attendeeDetails.reduce((sum, attendee) => {
+        return sum + (attendee.eventAmount ? parseFloat(attendee.eventAmount) : 0);
+      }, 0);
+      const totalSupportAmount = attendeeDetails.reduce((sum, attendee) => {
+        return sum + (attendee.eventSupportAmount ? parseFloat(attendee.eventSupportAmount) : 0);
+      }, 0);
+      const grossTotal = totalEventAmount + totalSupportAmount;
+
       const csvRows = [
         headers.join(','),
         ...attendeeDetails.map(attendee => [
@@ -857,6 +891,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
           attendee.relationship,
           attendee.rsvpStatus,
           attendee.paymentStatus,
+          attendee.eventAmount,
+          attendee.eventSupportAmount,
           attendee.userId,
           `"${attendee.firstName}"`,
           `"${attendee.lastName}"`,
@@ -866,7 +902,11 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
           `"${attendee.address}"`,
           attendee.rsvpDate,
           attendee.updatedDate
-        ].join(','))
+        ].join(',')),
+        // Add total row
+        ['', '', '', '', '', '', 'TOTAL', totalEventAmount.toFixed(2), totalSupportAmount > 0 ? totalSupportAmount.toFixed(2) : '', '', '', '', '', '', '', '', '', ''].join(','),
+        // Add gross total row
+        ['', '', '', '', '', '', 'GROSS TOTAL', '', '', grossTotal.toFixed(2), '', '', '', '', '', '', '', ''].join(',')
       ];
       const csv = csvRows.join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

@@ -3,6 +3,8 @@ import {
   AlertTriangle,
   Calendar,
   ChevronDown,
+  Clock,
+  MapPin,
   QrCode,
   UserPlus,
   Users
@@ -30,7 +32,6 @@ import { AutoPromotionManager } from '../components/admin/AutoPromotionManager';
 import { PaymentSection } from '../components/events/PaymentSection';
 import { QRCodeTab } from '../components/events/QRCodeTab';
 import { AttendeeInputRowMemo } from '../components/events/RSVPModalNew/components/AttendeeInputRow';
-import { EventDetails } from '../components/events/RSVPModalNew/components/EventDetails';
 import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
 import { createEventCanonicalUrl } from '../utils/seo';
 
@@ -51,6 +52,7 @@ const RSVPPage: React.FC = () => {
   
   // Initialize all state hooks (must be unconditional)
   const [isAddSectionCollapsed, setIsAddSectionCollapsed] = useState(true);
+  const [isEventDetailsCollapsed, setIsEventDetailsCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<'attendees' | 'qr' | 'whosGoing'>('attendees');
   const [isAdding, setIsAdding] = useState(false);
   
@@ -204,6 +206,14 @@ const RSVPPage: React.FC = () => {
     ],
   }));
 
+  // Modal states for payment instruction and non-refundable warnings
+  const [showPaymentInstructionModal, setShowPaymentInstructionModal] = useState(false);
+  const [showNonRefundableModal, setShowNonRefundableModal] = useState(false);
+  const [pendingStatusChange, setPendingStatusChange] = useState<{
+    attendeeId: string;
+    status: AttendeeStatus;
+  } | null>(null);
+
   // Create capacity state using real-time count and waitlist data - BEFORE early returns
   // CRITICAL: Always use realTimeAttendingCount for capacity checks, NOT counts.totalGoing
   // because counts.totalGoing only includes the current user's attendees, not all attendees
@@ -339,6 +349,40 @@ const RSVPPage: React.FC = () => {
   // NOTE: This runs after early returns, but it's just logging, not a hook
   // All hooks are already declared above before early returns
 
+  // Helper function to update primary member and cascade to family members
+  const handleCascadingStatusUpdate = async (attendeeId: string, newStatus: AttendeeStatus) => {
+    const attendeeToUpdate = attendees.find(a => a.attendeeId === attendeeId);
+    if (!attendeeToUpdate) return;
+
+    // Update the primary/target attendee
+    await updateAttendee(attendeeId, { rsvpStatus: newStatus });
+
+    // If this is a primary member changing to "not-going", cascade to family members
+    if (attendeeToUpdate.attendeeType === 'primary' && newStatus === 'not-going') {
+      const familyMembers = attendees.filter(
+        a => a.userId === attendeeToUpdate.userId && 
+             a.attendeeType === 'family_member' && 
+             a.rsvpStatus === 'going'
+      );
+
+      if (familyMembers.length > 0) {
+        toast.loading(`Updating ${familyMembers.length} family member(s)...`);
+        
+        // Update all family members to not-going
+        await Promise.all(
+          familyMembers.map(member => 
+            updateAttendee(member.attendeeId, { rsvpStatus: 'not-going' })
+          )
+        );
+
+        toast.dismiss();
+        toast.success(`Updated ${familyMembers.length} family member(s) to Not Going`);
+      }
+    }
+
+    await refreshAttendees();
+  };
+
   const handleBulkAddFamilyMembers = async () => {
     if (!canAddAttendees) {
       toast.error('This event is restricted to members. Please contact the host.');
@@ -447,34 +491,168 @@ const RSVPPage: React.FC = () => {
           </div>
           {/* Capacity Status Banner */}
           {capacityState.isNearlyFull && (
-            <div className={`px-3 sm:px-4 py-2.5 sm:py-3 border-b border-gray-200 ${getCapacityBadgeClasses(capacityState.state)}`}>
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-xs sm:text-sm">{capacityState.warningMessage}</div>
-                  <div className="text-xs mt-0.5 opacity-90">
-                    {waitlistPosition 
-                      ? `Waitlist position #${waitlistPosition}. ${capacityState.slotsRemainingText}`
-                      : capacityState.slotsRemainingText
-                    }
+            <div className="px-4 mb-4">
+              <div className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg ${getCapacityBadgeClasses(capacityState.state)}`}>
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-xs sm:text-sm">{capacityState.warningMessage}</div>
+                    <div className="text-xs mt-0.5 opacity-90">
+                      {waitlistPosition 
+                        ? `Waitlist position #${waitlistPosition}. ${capacityState.slotsRemainingText}`
+                        : capacityState.slotsRemainingText
+                      }
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Event Details Section 
-              Note: EventDetails component redesigned to match PaymentSection styling:
-              - Width aligned by placing inside px-4 container (moved from outside max-w-2xl)
-              - Gradient background (blue-50 to purple-50) with theme border (#F25129)
-              - Icon-based layout with colored backgrounds (blue calendar, green clock, red map pin)
-              - Clean content structure matching screenshot requirements
-          */}
-          <div className="px-4">
-            <EventDetails 
-              event={event}
-              isMobile={true}
-            />
+          {/* Event Details Section - Collapsible with dropdown */}
+          <div className="px-4 mb-4">
+            <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+              <motion.button
+                onClick={() => setIsEventDetailsCollapsed((v) => !v)}
+                className="w-full p-3 sm:p-4 flex items-center justify-between touch-manipulation active:bg-blue-100/50 cursor-pointer"
+                aria-expanded={!isEventDetailsCollapsed}
+                aria-label={`${isEventDetailsCollapsed ? 'Expand' : 'Collapse'} Event Details`}
+              >
+                <div className="flex items-center gap-2 sm:gap-3 flex-1">
+                  <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm">
+                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <h4 className="font-semibold text-gray-900 text-xs sm:text-sm">Event Details</h4>
+                    {event.startAt && (
+                      <span className="text-xs text-blue-600 font-medium">
+                        {new Date(event.startAt.seconds * 1000).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric' 
+                        })}
+                        {event.startAt && (
+                          ` at ${new Date(event.startAt.seconds * 1000).toLocaleTimeString('en-US', { 
+                            hour: 'numeric', 
+                            minute: '2-digit', 
+                            hour12: true 
+                          })}`
+                        )}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <motion.div animate={{ rotate: isEventDetailsCollapsed ? 0 : 180 }} transition={{ duration: 0.3 }}>
+                  <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                </motion.div>
+              </motion.button>
+
+              {!isEventDetailsCollapsed && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="border-t border-blue-200"
+                >
+                  <div className="bg-white rounded-b-lg p-4 sm:p-5">
+                    <div className="space-y-3">
+                      {/* Date - Blue icon background */}
+                      {event.startAt && (
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0 shadow-sm">
+                            <Calendar className="w-5 h-5 text-blue-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-gray-900 break-words">
+                              {new Date(event.startAt.seconds * 1000).toLocaleDateString('en-US', { 
+                                weekday: 'long', 
+                                month: 'long', 
+                                day: 'numeric', 
+                                year: 'numeric' 
+                              })}
+                            </div>
+                            <div className="text-xs text-gray-600 mt-0.5">
+                              {new Date(event.startAt.seconds * 1000).toLocaleDateString('en-US', { weekday: 'long' })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Time - Green icon background */}
+                      {event.startAt && (
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 bg-green-100 rounded-lg flex-shrink-0 shadow-sm">
+                            <Clock className="w-5 h-5 text-green-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-gray-900 break-words">
+                              {new Date(event.startAt.seconds * 1000).toLocaleTimeString('en-US', { 
+                                hour: 'numeric', 
+                                minute: '2-digit', 
+                                hour12: true 
+                              })}
+                              {event.endAt && ` - ${new Date(event.endAt.seconds * 1000).toLocaleTimeString('en-US', { 
+                                hour: 'numeric', 
+                                minute: '2-digit', 
+                                hour12: true 
+                              })}`}
+                            </div>
+                            {event.startAt && event.endAt && (
+                              <div className="text-xs text-gray-600 mt-0.5">
+                                {Math.round((event.endAt.seconds - event.startAt.seconds) / 3600)} hour
+                                {Math.round((event.endAt.seconds - event.startAt.seconds) / 3600) !== 1 ? 's' : ''}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Location - Red icon background */}
+                      {(event.venueName || event.venueAddress || event.location) && (
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 bg-red-100 rounded-lg flex-shrink-0 shadow-sm">
+                            <MapPin className="w-5 h-5 text-red-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-gray-900 break-words">
+                              {event.location || (event.venueName && event.venueAddress 
+                                ? `${event.venueName}, ${event.venueAddress}`
+                                : event.venueName || event.venueAddress || '')}
+                            </div>
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                                event.location || (event.venueName && event.venueAddress 
+                                  ? `${event.venueName}, ${event.venueAddress}`
+                                  : event.venueName || event.venueAddress || '')
+                              )}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-[#F25129] hover:text-[#E0451F] hover:underline mt-0.5 inline-flex items-center gap-1 touch-manipulation"
+                              style={{WebkitTapHighlightColor: 'transparent'}}
+                            >
+                              Get Directions 
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                            </a>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Description */}
+                      {event.description && (
+                        <div className="pt-3 border-t border-gray-200">
+                          <div className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-2">DESCRIPTION</div>
+                          <p className="text-sm text-gray-700 leading-relaxed break-words whitespace-pre-wrap">
+                            {event.description}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </div>
           </div>
 
           {/* Tab Navigation - Clean Mobile Design */}
@@ -517,7 +695,7 @@ const RSVPPage: React.FC = () => {
                 }`}
               >
                 <Users className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span>Guests</span>
+                <span>Event Guests List</span>
               </button>
             </div>
           </div>
@@ -594,7 +772,7 @@ const RSVPPage: React.FC = () => {
                     <div className="flex flex-wrap gap-2 sm:gap-3 text-xs text-gray-600">
                       <span className="flex items-center gap-1 sm:gap-1.5">
                         <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-green-500 rounded-full" />
-                        <span className="font-medium">{counts.goingCount} Going</span>
+                        <span className="font-medium">{realTimeAttendingCount} Going</span>
                       </span>
                       <span className="flex items-center gap-1 sm:gap-1.5">
                         <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full" />
@@ -602,7 +780,7 @@ const RSVPPage: React.FC = () => {
                       </span>
                       <span className="flex items-center gap-1 sm:gap-1.5">
                         <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-purple-500 rounded-full" />
-                        <span className="font-medium">{counts.waitlistedCount} Waitlisted</span>
+                        <span className="font-medium">{waitlistCount} Waitlisted</span>
                       </span>
                     </div>
                   </div>
@@ -759,6 +937,15 @@ const RSVPPage: React.FC = () => {
                       onAttendeeUpdate={async () => {
                         try { await refreshAttendees(); } catch {}
                       }}
+                      onCascadingStatusUpdate={handleCascadingStatusUpdate}
+                      onRequestPaymentModal={(attendeeId, status) => {
+                        setPendingStatusChange({ attendeeId, status });
+                        setShowPaymentInstructionModal(true);
+                      }}
+                      onRequestNonRefundableModal={(attendeeId, status) => {
+                        setPendingStatusChange({ attendeeId, status });
+                        setShowNonRefundableModal(true);
+                      }}
                     />
                   </div>
 
@@ -775,8 +962,142 @@ const RSVPPage: React.FC = () => {
           </div>
 
         </div>
-      </div>
-    </>
+      </div>      
+      {/* Payment Instruction Modal */}
+      {showPaymentInstructionModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          onClick={() => setShowPaymentInstructionModal(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative"
+          >
+            <button
+              onClick={() => setShowPaymentInstructionModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Close"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+            </div>
+
+            <h3 className="text-xl font-bold text-gray-900 text-center mb-4">
+              Payment Instructions
+            </h3>
+
+            <p className="text-gray-700 text-center mb-6 leading-relaxed">
+              Pay via Zelle to <span className="font-semibold text-blue-600">momsfitnessmojo@gmail.com</span>.<br />
+              Please notify the host after completing the payment.<br />
+              Your spot is not confirmed until payment is received.<br />
+              For questions, contact the host.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPaymentInstructionModal(false)}
+                className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setShowPaymentInstructionModal(false);
+                  if (pendingStatusChange) {
+                    await handleCascadingStatusUpdate(pendingStatusChange.attendeeId, pendingStatusChange.status);
+                    setPendingStatusChange(null);
+                  }
+                }}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-[#F25129] to-[#E0451F] hover:from-[#E0451F] hover:to-[#D03D1B] text-white font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl"
+              >
+                Ok
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* Non-Refundable Confirmation Modal */}
+      {showNonRefundableModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          onClick={() => setShowNonRefundableModal(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative"
+          >
+            <button
+              onClick={() => setShowNonRefundableModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Close"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+            </div>
+
+            <h3 className="text-xl font-bold text-gray-900 text-center mb-4">
+              Non-Refundable Event
+            </h3>
+
+            <p className="text-gray-700 text-center mb-6 leading-relaxed">
+              This event is non-refundable.<br />
+              Are you sure you want to change your RSVP to Not Going?
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowNonRefundableModal(false)}
+                className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setShowNonRefundableModal(false);
+                  if (pendingStatusChange) {
+                    await handleCascadingStatusUpdate(pendingStatusChange.attendeeId, pendingStatusChange.status);
+                    setPendingStatusChange(null);
+                  }
+                }}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl"
+              >
+                Yes
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}    </>
   );
 };
 

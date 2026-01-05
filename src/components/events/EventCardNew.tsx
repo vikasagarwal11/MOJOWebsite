@@ -1037,8 +1037,9 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
               {/* Message */}
               <p className="text-gray-700 text-center mb-6 leading-relaxed">
                 Pay via Zelle to <span className="font-semibold text-blue-600">momsfitnessmojo@gmail.com</span>.<br />
-                Please notify the host after payment.<br />
-                Additional questions? Contact host.
+                Please notify the host after completing the payment.<br />
+                Your spot is not confirmed until payment is received.<br />
+                For questions, contact the host.
               </p>
 
               {/* Buttons */}

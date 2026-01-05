@@ -257,12 +257,7 @@ const EventDetailsPage: React.FC = () => {
               {/* Right Column - Content */}
               <div className="p-6 sm:p-8 lg:p-10">
             {/* Title */}
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4 leading-tight">{event.title}</h1>
-
-            {/* Description */}
-            {event.description && (
-              <p className="text-base text-gray-700 leading-relaxed mb-6">{event.description}</p>
-            )}
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6 leading-tight">{event.title}</h1>
 
             {/* User RSVP Status Card - Show if user has RSVP'd
                 Change: Removed "Update RSVP" button - now only displays status (going/not going/waitlisted)
@@ -324,59 +319,71 @@ const EventDetailsPage: React.FC = () => {
               </div>
             )}
 
-            {/* Event Details Grid 
-                Optimizations: Reduced spacing (space-y-3 to space-y-2), card padding (p-3 to p-2.5),
-                icon sizes (w-10 h-10 to w-9 h-9, w-5 h-5 to w-4 h-4), gap (gap-3 to gap-2.5)
-                Changes: Combined Date and Time into single card, changed "Event Support:" to "Event Support Amt:"
-            */}
-            <div className="space-y-2 mb-4">
-              {/* Date & Time - Combined into single card (previously separate cards) */}
-              <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
-                <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-white shadow-sm">
-                  <Calendar className="w-4 h-4 text-[#F25129]" />
-                </div>
-                <div className="flex-1">
-                  <div className="text-xs text-gray-500 font-medium mb-0.5">Date & Time</div>
-                  <div className="font-semibold text-gray-900 text-sm">
-                    {formatEventDate(event.startAt)} • {formatEventTime(event.startAt)}
-                    {event.endAt && ` - ${formatEventTime(event.endAt)}`}
-                    {duration && <span className="text-gray-500 text-xs font-normal ml-1">({duration} hour{duration !== 1 ? 's' : ''})</span>}
+            {/* Event Details - Color-coded icons matching RSVPPage */}
+            <div className="space-y-3 mb-6">
+              {/* Date - Blue icon background */}
+              {event.startAt && (
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0 shadow-sm">
+                    <Calendar className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 break-words">{formatEventDate(event.startAt)}</div>
+                    <div className="text-xs text-gray-600 mt-0.5">{safeFormat(safeToDate(event.startAt), 'EEEE')}</div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Location - Clickable for Directions */}
-              {(event.venueName || event.venueAddress || event.location) && (
-                <div className="flex items-start gap-2.5 p-2.5 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
-                  <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-white shadow-sm">
-                    <MapPin className="w-4 h-4 text-[#F25129]" />
+              {/* Time - Green icon background */}
+              {event.startAt && (
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-green-100 rounded-lg flex-shrink-0 shadow-sm">
+                    <Clock className="w-5 h-5 text-green-600" />
                   </div>
-                  <div className="flex-1">
-                    <div className="text-xs text-gray-500 font-medium mb-0.5">Location</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 break-words">
+                      {formatEventTime(event.startAt)}{event.endAt && ` - ${formatEventTime(event.endAt)}`}
+                    </div>
+                    {duration && (
+                      <div className="text-xs text-gray-600 mt-0.5">{duration} hour{duration !== 1 ? 's' : ''}</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Location - Red icon background */}
+              {(event.venueName || event.venueAddress || event.location) && (
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-red-100 rounded-lg flex-shrink-0 shadow-sm">
+                    <MapPin className="w-5 h-5 text-red-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 break-words">
+                      {event.location || getDisplayVenueInfo(event.venueName || '', event.venueAddress || '')}
+                    </div>
                     <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location || getDisplayVenueInfo(event.venueName || '', event.venueAddress || ''))}`}
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(getLocationForMaps())}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="font-semibold text-[#F25129] hover:text-[#E0451F] hover:underline transition-colors text-sm break-words"
+                      className="text-xs text-[#F25129] hover:text-[#E0451F] hover:underline mt-0.5 inline-flex items-center gap-1 touch-manipulation"
+                      style={{WebkitTapHighlightColor: 'transparent'}}
                     >
-                      {event.location || getDisplayVenueInfo(event.venueName || '', event.venueAddress || '')}
+                      Get Directions <ExternalLink className="w-3 h-3 flex-shrink-0" />
                     </a>
                   </div>
                 </div>
               )}
 
-              {/* Attendee Count */}
+              {/* Attendee Count - Purple icon background */}
               {event.maxAttendees && (
-                <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
-                  <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-white shadow-sm">
-                    <Users className="w-4 h-4 text-[#F25129]" />
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg flex-shrink-0 shadow-sm">
+                    <Users className="w-5 h-5 text-purple-600" />
                   </div>
-                  <div className="flex-1">
-                    <div className="text-xs text-gray-500 font-medium mb-0.5">Capacity</div>
-                    <div className="font-semibold text-gray-900 text-sm">
-                      {event.attendingCount || 0}/{event.maxAttendees}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900">
+                      {event.attendingCount || 0}/{event.maxAttendees} attending
                     </div>
-                    {/* Only show waitlist if waitlist is enabled */}
                     {event.waitlistEnabled && (
                       <div className="text-xs text-amber-600 font-medium mt-0.5">
                         {event.waitlistCount || 0} waitlisted
@@ -386,15 +393,14 @@ const EventDetailsPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Price Information */}
+              {/* Price Information - Orange icon background */}
               {event.pricing && (
-                <div className="flex items-center gap-2.5 p-2.5 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100">
-                  <div className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg bg-white shadow-sm">
-                    <Tag className="w-4 h-4 text-[#F25129]" />
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-orange-100 rounded-lg flex-shrink-0 shadow-sm">
+                    <Tag className="w-5 h-5 text-orange-600" />
                   </div>
-                  <div className="flex-1">
-                    <div className="text-xs text-gray-500 font-medium mb-0.5">Price</div>
-                    <div className="text-base font-bold text-[#F25129]">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-lg font-bold text-[#F25129]">
                       {event.pricing.adultPrice ? `$${(event.pricing.adultPrice / 100).toFixed(2)}` : 'Free'}
                     </div>
                     {event.pricing.childPrice && (
@@ -438,18 +444,17 @@ const EventDetailsPage: React.FC = () => {
                   </div>
                 </div>
               )}
-              
-              {/* Debug: Show what we have */}
-              {process.env.NODE_ENV === 'development' && userAttendee && (
-                <div className="col-span-2 p-3 bg-gray-100 rounded text-xs">
-                  <div><strong>Debug Info:</strong></div>
-                  <div>User Attendee ID: {userAttendee.id}</div>
-                  <div>Status: {userAttendee.status}</div>
-                  <div>Payment Status: {userAttendee.paymentStatus || 'undefined'}</div>
-                  <div>Requires Payment: {event.pricing?.requiresPayment ? 'Yes' : 'No'}</div>
-                </div>
-              )}
             </div>
+
+            {/* Event Description - After details */}
+            {event.description && (
+              <div className="pt-4 border-t border-gray-200 mb-6">
+                <div className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-2">DESCRIPTION</div>
+                <p className="text-gray-700 leading-relaxed break-words whitespace-pre-wrap overflow-wrap-anywhere">
+                  {event.description}
+                </p>
+              </div>
+            )}
 
             {/* Tags */}
             {event.tags && event.tags.length > 0 && (

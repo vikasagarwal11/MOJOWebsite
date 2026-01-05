@@ -1,13 +1,13 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-    CheckCircle,
-    ChevronDown,
-    Clock,
-    Heart,
-    Hourglass,
-    Trash2,
-    Users,
-    XCircle
+  CheckCircle,
+  ChevronDown,
+  Clock,
+  Heart,
+  Hourglass,
+  Trash2,
+  Users,
+  XCircle
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 // Note: row rendering is inline for performance; no AttendeeItem import needed
@@ -18,12 +18,12 @@ import { useAttendees } from '../../hooks/useAttendees';
 import { useFamilyMembers } from '../../hooks/useFamilyMembers';
 import { familyMemberService } from '../../services/familyMemberService';
 import {
-    AgeGroup,
-    Attendee,
-    AttendeeStatus,
-    AttendeeType,
-    CreateAttendeeData,
-    Relationship
+  AgeGroup,
+  Attendee,
+  AttendeeStatus,
+  AttendeeType,
+  CreateAttendeeData,
+  Relationship
 } from '../../types/attendee';
 
 interface AttendeeListProps {
@@ -37,6 +37,9 @@ interface AttendeeListProps {
     isAtCapacity: boolean;
   };
   event?: any; // Event object for payment status display
+  onRequestPaymentModal?: (attendeeId: string, status: AttendeeStatus) => void;
+  onRequestNonRefundableModal?: (attendeeId: string, status: AttendeeStatus) => void;
+  onCascadingStatusUpdate?: (attendeeId: string, status: AttendeeStatus) => Promise<void>;
 }
 
 export const AttendeeList: React.FC<AttendeeListProps> = ({ 
@@ -45,7 +48,10 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
   isAdmin = false,
   waitlistPositions = new Map(),
   capacityState,
-  event
+  event,
+  onRequestPaymentModal,
+  onRequestNonRefundableModal,
+  onCascadingStatusUpdate
 }) => {
   const { currentUser } = useAuth();
   const { 
@@ -258,10 +264,40 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
       pendingUpdate = { ...updateData };
       updateStatusError(attendeeId);
 
+      // Check for paid event modals (payment instruction and non-refundable)
+      // Only for primary member status changes
+      if (attendeeToUpdate.userId === currentUser.id && attendeeToUpdate.attendeeType === 'primary') {
+        const isPaidEvent = event?.pricing && event.pricing.requiresPayment;
+        const currentStatus = attendeeToUpdate.rsvpStatus;
+        const newStatus = pendingUpdate.rsvpStatus;
+        const paymentStatus = attendeeToUpdate.paymentStatus;
+
+        // Show payment instruction modal when first RSVP'ing to a paid event
+        if (newStatus === 'going' && currentStatus !== 'going' && isPaidEvent && onRequestPaymentModal) {
+          console.log('DEBUG: Triggering payment instruction modal for paid event');
+          onRequestPaymentModal(attendeeId, newStatus);
+          return; // Exit early - the modal will handle the actual update
+        }
+
+        // Show non-refundable warning when changing from Going to Not Going for paid events with confirmed payment
+        if (newStatus === 'not-going' && currentStatus === 'going' && isPaidEvent && paymentStatus === 'paid' && onRequestNonRefundableModal) {
+          console.log('DEBUG: Triggering non-refundable confirmation modal');
+          onRequestNonRefundableModal(attendeeId, newStatus);
+          return; // Exit early - the modal will handle the actual update
+        }
+      }
+
       // Check if this is a primary member changing to "not-going"
       if (attendeeToUpdate.userId === currentUser.id && 
           attendeeToUpdate.attendeeType === 'primary' && 
           pendingUpdate.rsvpStatus === 'not-going') {
+        
+        // If parent provides cascading update handler, use it (for better coordination)
+        if (onCascadingStatusUpdate) {
+          console.log('DEBUG: Using parent cascading update handler');
+          await onCascadingStatusUpdate(attendeeId, pendingUpdate.rsvpStatus as AttendeeStatus);
+          return;
+        }
         
         console.log('DEBUG: Primary member changing to not-going - will cascade to family members and guests');
         
@@ -695,12 +731,23 @@ export const AttendeeList: React.FC<AttendeeListProps> = ({
         rsvpStatus: rsvpStatus
       };
 
-      await addAttendee(attendeeData);
+      const newAttendeeId = await addAttendee(attendeeData);
       
       const statusText = rsvpStatus === 'waitlisted' ? 'added to waitlist' : 'added as going';
       toast.success(`You've been ${statusText}!`);
       
+      // Check if event requires payment and show payment instruction modal
+      const isPaidEvent = event?.pricing && event.pricing.requiresPayment;
+      if (rsvpStatus === 'going' && isPaidEvent && onRequestPaymentModal && newAttendeeId) {
+        // Show payment instruction modal for paid events immediately
+        // Use a small delay to ensure the modal appears after the success toast
+        setTimeout(() => {
+          onRequestPaymentModal(newAttendeeId, 'going');
+        }, 300);
+      }
+      
       // Refresh the attendee list
+      await refreshAttendees();
       onAttendeeUpdate?.();
       
     } catch (error) {

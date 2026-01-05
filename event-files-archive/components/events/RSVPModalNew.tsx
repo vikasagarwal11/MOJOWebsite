@@ -637,7 +637,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                         <div className="flex items-center gap-2 text-[12px] text-gray-600">
                           <span className="flex items-center gap-1">
                             <div className="w-2 h-2 bg-green-500 rounded-full" />
-                            <span>{counts.goingCount} Going</span>
+                            <span>{realTimeAttendingCount} Going</span>
                           </span>
                           <span className="flex items-center gap-1">
                             <div className="w-2 h-2 bg-red-500 rounded-full" />
@@ -648,7 +648,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                           </span>
                           <span className="flex items-center gap-1">
                             <div className="w-2 h-2 bg-purple-500 rounded-full" />
-                            <span>{counts.waitlistedCount} Waitlisted</span>
+                            <span>{waitlistCount} Waitlisted</span>
                           </span>
 
                         </div>
