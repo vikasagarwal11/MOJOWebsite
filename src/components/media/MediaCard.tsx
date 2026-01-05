@@ -87,11 +87,13 @@ export default function MediaCard({
   }, [menuOpen]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
+  // Initialize with original URL as fallback - prevents stuck loading state
+  const [thumbnailUrl, setThumbnailUrl] = useState<string>(media?.url || '');
   const [thumbnailSrcSet, setThumbnailSrcSet] = useState<string>('');
   const [thumbnailSizes, setThumbnailSizes] = useState<string>('');
   const [isHlsAttached, setIsHlsAttached] = useState(false);
-  const [isThumbnailLoading, setIsThumbnailLoading] = useState(true);
+  // Start with false if we have a URL, true only if we need to resolve thumbnails
+  const [isThumbnailLoading, setIsThumbnailLoading] = useState(!media?.url);
   const [localMedia, setLocalMedia] = useState(media); // Local copy for real-time sync
   const [optimalSize, setOptimalSize] = useState<'small' | 'medium' | 'large'>('medium');
   
@@ -167,22 +169,26 @@ export default function MediaCard({
 
   // Load thumbnail URLs with responsive selection
   // CRITICAL: Gate thumbnail resolution behind inView to prevent 50x getDownloadURL() bursts on mount
-  // BUT: For initial visible cards, resolve immediately to avoid stuck loading state
+  // BUT: Always have a fallback URL (original) to prevent stuck loading state
   useEffect(() => {
-    // For cards not in view, defer resolution (they'll resolve when they scroll into view)
-    // For cards in view, resolve immediately
-    // This prevents network bursts while ensuring visible cards load quickly
-    if (!inView && thumbnailUrl === '') {
-      // Card not in view and no URL yet - wait for it to come into view
-      return;
-    }
-
-    // If we already have a URL, don't reload
-    if (thumbnailUrl && thumbnailUrl !== '') {
+    // If we already have a resolved thumbnail URL (not the original), we're done
+    if (thumbnailUrl && thumbnailUrl !== localMedia.url && thumbnailUrl.startsWith('http')) {
       setIsThumbnailLoading(false);
       return;
     }
 
+    // For cards not in view, use original URL as fallback (no thumbnail resolution)
+    // This prevents network bursts while ensuring cards always have something to display
+    if (!inView) {
+      // Use original URL if we don't have a thumbnail yet
+      if (thumbnailUrl !== localMedia.url && localMedia.url) {
+        setThumbnailUrl(localMedia.url);
+      }
+      setIsThumbnailLoading(false);
+      return;
+    }
+
+    // Card is in view - resolve thumbnail if available
     setIsThumbnailLoading(true);
     
     // For images: Use responsive thumbnail selection
