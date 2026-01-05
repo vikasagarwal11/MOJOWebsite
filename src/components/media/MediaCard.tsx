@@ -146,11 +146,12 @@ export default function MediaCard({
       const viewportWidth = window.innerWidth;
       const devicePixelRatio = window.devicePixelRatio || 1;
       
-      // For high-DPI displays (retina), prefer larger thumbnails for better quality
+      // For high-DPI displays (retina), always use large thumbnails for best quality
       // This prevents "soft" looking thumbnails on retina screens
+      // ChatGPT recommendation: Force large for all retina screens (not just desktop)
       if (devicePixelRatio >= 2) {
-        // High-DPI: prefer large (1200x1200) for desktop, medium (800x800) for mobile
-        setOptimalSize(viewportWidth >= 1200 ? 'large' : 'medium');
+        // High-DPI: Always use large (1200x1200) for retina displays (any screen size)
+        setOptimalSize('large');
       } else {
         // Standard DPI: use responsive selection but clamp small to medium for grid
         const size = getOptimalThumbnailSize(viewportWidth, devicePixelRatio);
