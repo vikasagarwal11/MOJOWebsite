@@ -205,7 +205,10 @@ const RSVPPage: React.FC = () => {
   }));
 
   // Create capacity state using real-time count and waitlist data - BEFORE early returns
-  const liveGoingCount = typeof counts.totalGoing === 'number' ? counts.totalGoing : realTimeAttendingCount;
+  // CRITICAL: Always use realTimeAttendingCount for capacity checks, NOT counts.totalGoing
+  // because counts.totalGoing only includes the current user's attendees, not all attendees
+  // For a user who hasn't RSVP'd, counts.totalGoing would be 0, causing incorrect capacity checks
+  const liveGoingCount = realTimeAttendingCount;
 
   const mockCountsWithRealTime = useMemo(() => ({
     ...counts,
