@@ -1233,7 +1233,7 @@ async function enqueueQualityTask(
 export const onMediaFileFinalize = onObjectFinalized({ 
   region: 'us-east1',
   memory: '8GiB', // Maximum memory for fastest video processing
-  timeoutSeconds: 900, // 15 minutes - increased to support 4K processing and match worker function timeout
+  timeoutSeconds: 539, // Max allowed for event-triggered functions (slightly under 9 minutes to avoid API limit)
   cpu: 2, // Use 2 vCPUs for parallel processing
   maxInstances: 20 // Handle spike days with many concurrent uploads (default: 80)
 }, async (event) => {
