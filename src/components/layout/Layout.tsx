@@ -99,10 +99,11 @@ const Layout: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-purple-50 via-white to-pink-50">
+    <div className="min-h-screen flex flex-col bg-white">
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#FFF5F2] via-[#FFF9F7] to-white pointer-events-none" />
       <Header />
       <StatusBanner currentUser={currentUser} />
-      <main className="flex-1 overflow-x-hidden">
+      <main className="flex-1 overflow-x-hidden relative">
         <Outlet />
       </main>
       <Footer />

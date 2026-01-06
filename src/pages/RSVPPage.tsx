@@ -235,6 +235,38 @@ const RSVPPage: React.FC = () => {
     event?.waitlistLimit || undefined
   );
 
+  // Capacity UI state - improved state handling
+  const capacityUI = useMemo(() => {
+    if (!capacityState) return null;
+
+    if (!capacityState.canAddMore && !capacityState.canWaitlist) {
+      return {
+        tone: 'error' as const,
+        title: 'Event is Full',
+        subtitle: 'No more RSVPs can be accepted.',
+      };
+    }
+
+    if (!capacityState.canAddMore && capacityState.canWaitlist) {
+      return {
+        tone: 'warning' as const,
+        title: 'Event is Full — Waitlist Available',
+        subtitle: 'Join the waitlist and you\'ll be auto-notified if a spot opens.',
+        showWaitlistPosition: true,
+      };
+    }
+
+    if (capacityState.isNearlyFull) {
+      return {
+        tone: 'info' as const,
+        title: 'Limited Spots Remaining',
+        subtitle: capacityState.slotsRemainingText || 'Hurry! Spots are filling up fast.',
+      };
+    }
+
+    return null;
+  }, [capacityState]);
+
   // Blocked users check (non-hook, safe to call)
   const isBlockedFromRSVP = blockedUsers.some(
     (block) => block.blockCategory === 'rsvp_only' && block.isActive
@@ -482,27 +514,45 @@ const RSVPPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-2xl mx-auto px-4">
           {/* Event Title - Centered with consistent styling from other pages */}
-          <div className="text-center mb-6 sm:mb-8 px-4 pt-6 sm:pt-8">
+          <div className="text-center mb-6 sm:mb-8 pt-6 sm:pt-8">
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1">
               {event.title}
             </h1>
           </div>
-          {/* Capacity Status Banner */}
-          {capacityState.isNearlyFull && (
-            <div className="px-4 mb-4">
-              <div className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg ${getCapacityBadgeClasses(capacityState.state)}`}>
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+          {/* Capacity Status Banner - Improved state handling */}
+          {capacityUI && (
+            <div className="mb-4">
+              <div
+                className={`rounded-xl border px-4 py-3 ${
+                  capacityUI.tone === 'error'
+                    ? 'bg-red-50 border-red-200 text-red-900'
+                    : capacityUI.tone === 'warning'
+                    ? 'bg-amber-50 border-amber-200 text-amber-900'
+                    : 'bg-blue-50 border-blue-200 text-blue-900'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex-shrink-0">
+                    <AlertTriangle
+                      className={`w-5 h-5 ${
+                        capacityUI.tone === 'error'
+                          ? 'text-red-600'
+                          : capacityUI.tone === 'warning'
+                          ? 'text-amber-600'
+                          : 'text-blue-600'
+                      }`}
+                    />
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-xs sm:text-sm">{capacityState.warningMessage}</div>
-                    <div className="text-xs mt-0.5 opacity-90">
-                      {waitlistPosition 
-                        ? `Waitlist position #${waitlistPosition}. ${capacityState.slotsRemainingText}`
-                        : capacityState.slotsRemainingText
-                      }
-                    </div>
+                    <div className="font-bold text-sm leading-tight">{capacityUI.title}</div>
+                    <div className="text-xs sm:text-sm mt-0.5 opacity-90">{capacityUI.subtitle}</div>
+                    {capacityUI.showWaitlistPosition && waitlistPosition && (
+                      <div className="text-xs mt-1.5 opacity-80 font-medium">
+                        Your waitlist position: #{waitlistPosition}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -510,8 +560,8 @@ const RSVPPage: React.FC = () => {
           )}
 
           {/* Event Details Section - Collapsible with dropdown */}
-          <div className="px-4 mb-4">
-            <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+          <div className="mb-4">
+            <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-lg overflow-hidden">
               <motion.button
                 onClick={() => setIsEventDetailsCollapsed((v) => !v)}
                 className="w-full p-3 sm:p-4 flex items-center justify-between touch-manipulation active:bg-blue-100/50 cursor-pointer"
@@ -657,7 +707,7 @@ const RSVPPage: React.FC = () => {
 
           {/* Tab Navigation - Clean Mobile Design */}
           <div className="bg-white border-b border-gray-200">
-            <div className="max-w-2xl mx-auto flex">
+            <div className="max-w-2xl mx-auto px-4 flex">
               <button
                 onClick={() => setActiveTab('attendees')}
                 className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${
@@ -702,6 +752,7 @@ const RSVPPage: React.FC = () => {
 
           {/* Content Wrapper */}
           <div className="bg-white">
+            <div className="max-w-2xl mx-auto px-4">
             {activeTab === 'qr' && event.attendanceEnabled ? (
               <div className="px-4 py-6">
                 <QRCodeTab 
@@ -959,6 +1010,7 @@ const RSVPPage: React.FC = () => {
                   )}
                 </div>
             )}
+            </div>
           </div>
 
         </div>

@@ -8,8 +8,7 @@ const About: React.FC = () => {
   const { currentUser } = useAuth();
   
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-amber-50">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Hero Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -215,7 +214,6 @@ const About: React.FC = () => {
           )}
         </motion.div>
       </div>
-    </div>
   );
 };
 

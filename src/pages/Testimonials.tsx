@@ -1,14 +1,9 @@
-import {
-  ArrowDown,
-  MessageSquare,
-  Sparkles,
-  Star,
-  X
-} from 'lucide-react';
+import { MessageSquare, Sparkles, Star, X, Search, Filter } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import toast from 'react-hot-toast';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { useDebounce } from 'use-debounce';
 
 import { TestimonialCarousel } from '../components/home/TestimonialCarousel';
 import { TestimonialSubmissionForm } from '../components/home/TestimonialSubmissionForm';
@@ -17,7 +12,7 @@ import { useTestimonials } from '../hooks/useTestimonials';
 import type { Testimonial } from '../types';
 
 type SortMode = 'featured' | 'newest' | 'highest_rated';
-type ViewMode = 'spotlight' | 'all' | 'themes' | 'moods';
+type ViewMode = 'spotlight' | 'all' | 'moods';
 
 const isBrowser = typeof window !== 'undefined';
 
@@ -55,18 +50,17 @@ function scoreTestimonial(t: Testimonial, qRaw: string) {
   const hayQuote = norm(t.quote);
   const hayName = norm(t.displayName || '');
   const hayHighlight = norm(t.highlight || '');
-  const tags = (t as any).tags as string[] | undefined;
   const toneKeywords = (t as any).toneKeywords as string[] | undefined;
   const toneLabel = norm((t as any).toneLabel || '');
 
   let score = 0;
 
-  // Hard matches
+  // Hard matches (exact phrase matches)
   if (hayQuote.includes(q)) score += 50;
   if (hayHighlight.includes(q)) score += 35;
   if (hayName.includes(q)) score += 25;
 
-  // Token-level boosting
+  // Token-level boosting (individual word matches)
   const qTokens = q.split(' ').filter((w) => w.length >= 3);
   for (const tok of qTokens) {
     if (hayQuote.includes(tok)) score += 8;
@@ -74,7 +68,6 @@ function scoreTestimonial(t: Testimonial, qRaw: string) {
     if (hayName.includes(tok)) score += 4;
     if (toneLabel && toneLabel.includes(tok)) score += 5;
 
-    if (tags?.some((x) => norm(x) === tok || norm(x).includes(tok))) score += 7;
     if (toneKeywords?.some((x) => norm(x) === tok || norm(x).includes(tok))) score += 7;
   }
 
@@ -83,105 +76,121 @@ function scoreTestimonial(t: Testimonial, qRaw: string) {
   if (typeof t.rating === 'number') score += Math.max(0, Math.min(5, t.rating)) * 0.5;
 
   const ts = t.createdAt instanceof Date ? t.createdAt.getTime() : 0;
-  if (ts) score += Math.min(3, (Date.now() - ts) / (1000 * 60 * 60 * 24 * 120)); // small recency signal
+  if (ts) score += Math.min(3, (Date.now() - ts) / (1000 * 60 * 60 * 24 * 120));
 
   return score;
 }
 
-const Stat: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="text-center">
-    <div className="text-3xl md:text-4xl font-bold mb-1">{value}</div>
-    <div className="text-white/90 text-sm">{label}</div>
+const StatPill: React.FC<{ icon?: React.ReactNode; value: string; label: string }> = ({ icon, value, label }) => (
+  <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/90 px-3 py-1.5 text-sm">
+    <span className="text-[#F25129]">{icon}</span>
+    <span className="font-semibold text-gray-900">{value}</span>
+    <span className="text-gray-600">{label}</span>
   </div>
 );
 
-const QuoteCard: React.FC<{ testimonial: Testimonial }> = ({ testimonial }) => {
+// Editorial-style row layout for testimonials
+const TestimonialRow: React.FC<{ testimonial: Testimonial }> = ({ testimonial }) => {
+  const [isExpanded, setIsExpanded] = React.useState(false);
   const displayName = testimonial.displayName || 'MFM Member';
   const date = testimonial.publishedAt || testimonial.createdAt;
-  const dt = date
+  const dateLabel = date
     ? new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(date)
     : '';
 
   const toneLabel = (testimonial as any).toneLabel as string | undefined;
+  const quoteText = testimonial.quote;
+  const shouldTruncate = quoteText.length > 200; // Show expand if quote is longer than ~200 chars
+  const displayQuote = isExpanded || !shouldTruncate ? quoteText : quoteText.slice(0, 200) + '...';
 
   return (
-    <div className="break-inside-avoid rounded-2xl bg-white shadow-sm border border-gray-100 hover:shadow-lg hover:-translate-y-0.5 transition-all">
-      <div className="p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-full overflow-hidden ring-1 ring-[#F25129]/25 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center shrink-0">
-              {testimonial.avatarUrl ? (
-                <img src={testimonial.avatarUrl} alt={displayName} className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-white text-xs font-semibold">{initialsFromName(displayName)}</span>
+    <div className="group rounded-2xl border border-gray-100 bg-white px-5 py-5 shadow-sm hover:shadow-md transition">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 items-start">
+        {/* Meta column */}
+        <div className="md:col-span-4 lg:col-span-3 flex items-start gap-3">
+          <div className="h-11 w-11 rounded-full overflow-hidden ring-1 ring-[#F25129]/20 bg-gradient-to-br from-[#F25129] to-[#FFC107] flex items-center justify-center shrink-0">
+            {testimonial.avatarUrl ? (
+              <img src={testimonial.avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-white text-xs font-bold">{initialsFromName(displayName)}</span>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="font-semibold text-gray-900 truncate">{displayName}</div>
+
+              {testimonial.featured && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-[#F25129]/10 text-[#F25129] font-semibold">
+                  Featured
+                </span>
+              )}
+
+              {toneLabel && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                  {toneLabel}
+                </span>
               )}
             </div>
 
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="font-semibold text-gray-900 truncate">{displayName}</div>
-                {testimonial.featured && (
-                  <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[#F25129]/10 text-[#F25129]">
-                    <Sparkles className="w-3 h-3" />
-                    Featured
-                  </span>
-                )}
-                {toneLabel ? (
-                  <span className="inline-flex items-center text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-                    {toneLabel}
-                  </span>
-                ) : null}
-              </div>
-              <div className="text-xs text-gray-500">{dt}</div>
-            </div>
-          </div>
+            <div className="text-xs text-gray-500 mt-0.5">{dateLabel}</div>
 
-          {typeof testimonial.rating === 'number' && (
-            <div className="flex items-center gap-1 text-[#F25129] shrink-0">
-              <Star className="w-4 h-4 fill-current" />
-              <span className="text-sm font-semibold">
-                {Math.max(1, Math.min(5, Math.round(testimonial.rating)))}
-              </span>
+            {/* Rating */}
+            {typeof testimonial.rating === 'number' && (
+              <div className="mt-2 flex items-center gap-1 text-[#F25129]">
+                <Star className="w-4 h-4 fill-current" />
+                <span className="text-sm font-semibold">{Math.max(1, Math.min(5, Math.round(testimonial.rating)))}</span>
+                <span className="text-xs text-gray-500">/ 5</span>
+              </div>
+            )}
+
+          </div>
+        </div>
+
+        {/* Quote column */}
+        <div className="md:col-span-8 lg:col-span-9">
+          <p className="text-gray-800 leading-relaxed text-[15px] md:text-base">
+            {displayQuote}
+          </p>
+
+          {/* Highlight callout - Option 5: Minimal No Border (cleanest) */}
+          {testimonial.highlight && (
+            <div className="mt-4 text-gray-600 italic text-[15px] leading-relaxed">
+              {testimonial.highlight}
+            </div>
+          )}
+
+          {/* Expand/Collapse button */}
+          {shouldTruncate && (
+            <div className="mt-3">
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="text-sm font-semibold text-[#F25129] hover:underline flex items-center gap-1"
+              >
+                {isExpanded ? (
+                  <>
+                    Show less <span className="transform rotate-180 inline-block">→</span>
+                  </>
+                ) : (
+                  <>
+                    Read full story →
+                  </>
+                )}
+              </button>
             </div>
           )}
         </div>
-
-        <p className="mt-4 text-gray-700 leading-relaxed">
-          <span className="text-[#F25129] font-bold mr-1">"</span>
-          {testimonial.quote}
-          <span className="text-[#F25129] font-bold ml-1">"</span>
-        </p>
-
-        {testimonial.highlight ? (
-          <div className="mt-4 rounded-xl border border-[#F25129]/15 bg-[#FFF5F2] px-4 py-3 text-sm text-gray-700">
-            <span className="font-semibold text-[#F25129]">Mojo Highlight: </span>
-            {testimonial.highlight}
-          </div>
-        ) : null}
-
-        {Array.isArray((testimonial as any).tags) && (testimonial as any).tags.length ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {(testimonial as any).tags.slice(0, 6).map((tag: string) => (
-              <span
-                key={tag}
-                className="text-[11px] px-2 py-1 rounded-full border border-gray-200 bg-white text-gray-600"
-              >
-                #{tag}
-              </span>
-            ))}
-          </div>
-        ) : null}
       </div>
     </div>
   );
 };
+
 
 const Testimonials: React.FC = () => {
   const { currentUser } = useAuth();
   const isAuthed = !!currentUser;
   const navigate = useNavigate();
 
-  // Scroll to top when component mounts
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
@@ -189,11 +198,7 @@ const Testimonials: React.FC = () => {
   const spotlightRef = useRef<HTMLDivElement | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  const {
-    testimonials: allTestimonials,
-    loading,
-    error,
-  } = useTestimonials({
+  const { testimonials: allTestimonials, loading, error } = useTestimonials({
     statuses: ['published'],
     orderByField: 'createdAt',
     orderDirection: 'desc',
@@ -202,11 +207,11 @@ const Testimonials: React.FC = () => {
   });
 
   const [query, setQuery] = useState('');
+  const [debouncedQuery] = useDebounce(query, 300); // Wait 300ms after user stops typing before searching
   const [sortMode, setSortMode] = useState<SortMode>('featured');
   const [onlyFeatured, setOnlyFeatured] = useState(false);
 
-  const [viewMode, setViewMode] = useState<ViewMode>('spotlight');
-  const [activeTheme, setActiveTheme] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('all');
   const [activeMood, setActiveMood] = useState<string | null>(null);
 
   const featuredList = useMemo(
@@ -214,14 +219,6 @@ const Testimonials: React.FC = () => {
     [allTestimonials]
   );
 
-  const allThemes = useMemo(() => {
-    const set = new Set<string>();
-    for (const t of allTestimonials) {
-      const tags = (t as any).tags as string[] | undefined;
-      tags?.forEach((x) => set.add(String(x)));
-    }
-    return [...set].sort((a, b) => a.localeCompare(b)).slice(0, 18);
-  }, [allTestimonials]);
 
   const allMoods = useMemo(() => {
     const set = new Set<string>();
@@ -237,22 +234,17 @@ const Testimonials: React.FC = () => {
 
     if (onlyFeatured) list = list.filter((t) => t.featured);
 
-    if (activeTheme) {
-      list = list.filter((t) => Array.isArray((t as any).tags) && (t as any).tags.includes(activeTheme));
-    }
-
     if (activeMood) {
       list = list.filter((t) => String((t as any).toneLabel || '') === activeMood);
     }
 
     return list;
-  }, [allTestimonials, onlyFeatured, activeTheme, activeMood]);
+  }, [allTestimonials, onlyFeatured, activeMood]);
 
   const filtered = useMemo(() => {
-    const q = query.trim();
+    const q = debouncedQuery.trim(); // Use debounced query instead of immediate query
     let list = baseFiltered;
 
-    // When query exists, use smart ranking (instead of plain includes)
     if (q) {
       const scored = list
         .map((t) => ({ t, s: scoreTestimonial(t, q) }))
@@ -260,17 +252,16 @@ const Testimonials: React.FC = () => {
         .sort((a, b) => b.s - a.s)
         .map((x) => x.t);
 
-      // If smart score yields nothing, fallback to simple includes on quote/highlight
       if (scored.length > 0) list = scored;
       else {
         const qq = norm(q);
         list = list.filter((t) => {
-          const hay = `${t.displayName} ${t.quote} ${t.highlight || ''} ${(t as any).searchText || ''}`.toLowerCase();
+          // Fallback simple search: searches across all text fields
+          const hay = `${t.displayName} ${t.quote} ${t.highlight || ''} ${(t as any).toneLabel || ''} ${((t as any).toneKeywords || []).join(' ')} ${(t as any).searchText || ''}`.toLowerCase();
           return hay.includes(qq);
         });
       }
     } else {
-      // No query: apply selected sort mode
       if (sortMode === 'newest') {
         list = [...list].sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
       } else if (sortMode === 'highest_rated') {
@@ -285,7 +276,7 @@ const Testimonials: React.FC = () => {
     }
 
     return list;
-  }, [baseFiltered, query, sortMode]);
+  }, [baseFiltered, debouncedQuery, sortMode]); // Use debouncedQuery instead of query
 
   const totalCount = allTestimonials.length;
   const featuredCount = featuredList.length;
@@ -386,8 +377,15 @@ const Testimonials: React.FC = () => {
     toast.success('Thank you! Your testimonial is pending review.');
   };
 
+  const clearFilters = () => {
+    setQuery('');
+    setSortMode('featured');
+    setOnlyFeatured(false);
+    setActiveMood(null);
+  };
+
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-[#FFF9F6]">
       <HelmetWrapper>
         <title>Testimonials | Moms Fitness Mojo</title>
         <meta
@@ -396,85 +394,58 @@ const Testimonials: React.FC = () => {
         />
       </HelmetWrapper>
 
-      {/* HERO */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-[#F25129]/8 via-[#FFF3EE] to-white">
+      {/* COMPACT HERO */}
+      <section className="relative overflow-hidden bg-white">
         <div className="absolute inset-0 -z-10 pointer-events-none">
-          <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-[#EFD8C5] blur-3xl opacity-50" />
-          <div className="absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-[#FFE08A] blur-3xl opacity-45" />
+          <div className="absolute -top-40 -right-40 h-[28rem] w-[28rem] rounded-full bg-[#EFD8C5] blur-3xl opacity-35" />
+          <div className="absolute -bottom-40 -left-40 h-[24rem] w-[24rem] rounded-full bg-[#FFE08A] blur-3xl opacity-30" />
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 pb-4">
-          {/* Title - Centered with Gradient */}
-          <div className="text-center mb-5">
-            <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-tight mb-2">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-5">
+          {/* Title - Centered to match other pages */}
+          <div className="text-center mb-6 overflow-visible pb-1">
+            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-3 overflow-visible">
               What Moms Are Saying
             </h1>
-            
-            <p className="text-base text-gray-700 max-w-3xl mx-auto">
-              Honest experiences from women who found fitness, friendship, and confidence through Moms Fitness Mojo.
+            <p className="mt-1 sm:mt-1.5 text-base sm:text-lg text-gray-600 leading-snug max-w-3xl mx-auto">
+              Real stories of fitness, friendship, and confidence in Moms Fitness Mojo.
             </p>
           </div>
 
-          <div className="max-w-3xl mx-auto">
-            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+          {/* Buttons and Stats */}
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex items-center gap-2">
               <button
                 onClick={handleShare}
-                className="inline-flex items-center gap-2 rounded-full px-5 sm:px-6 py-2 sm:py-2.5 text-sm font-semibold bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white shadow-md hover:shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
+                className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm
+                           bg-gradient-to-r from-[#F25129] to-[#FFC107] hover:opacity-95 active:scale-[0.98] transition"
               >
                 <MessageSquare className="w-4 h-4" />
                 Share Your Story
               </button>
-
-              {featuredList.length > 0 && (
-                <button
-                  onClick={() => spotlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                  className="inline-flex items-center gap-2 rounded-full px-5 sm:px-6 py-2 sm:py-2.5 text-sm font-semibold text-[#F25129] border-2 border-[#F25129]/35 bg-white/90 hover:bg-[#F25129]/5 hover:border-[#F25129]/50 transition-all"
-                >
-                  <ArrowDown className="w-4 h-4" />
-                  Read Featured Stories
-                </button>
-              )}
             </div>
 
-            {totalCount > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2 text-sm text-gray-600 justify-center">
-                <span className="rounded-full bg-white/90 border border-gray-200 px-3 py-1">{totalCount} stories</span>
-                {featuredCount > 0 && (
-                  <span className="rounded-full bg-white/90 border border-gray-200 px-3 py-1">
-                    {featuredCount} featured
-                  </span>
-                )}
-                {avgRating !== null && (
-                  <span className="rounded-full bg-white/90 border border-gray-200 px-3 py-1 inline-flex items-center gap-1">
-                    <Star className="w-3.5 h-3.5 text-[#F25129] fill-current" />
-                    {avgRating} avg
-                  </span>
-                )}
-              </div>
-            )}
+            {/* STATS STRIP */}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <StatPill icon={<Sparkles className="w-4 h-4" />} value={`${totalCount}`} label="stories" />
+              {avgRating !== null ? (
+                <StatPill icon={<Star className="w-4 h-4 fill-current" />} value={`${avgRating}`} label="avg" />
+              ) : null}
+              <StatPill icon={<Filter className="w-4 h-4" />} value={`${featuredCount}`} label="featured" />
+            </div>
           </div>
         </div>
       </section>
 
-      {/* FEATURED SPOTLIGHT */}
-      {viewMode === 'spotlight' && featuredList.length > 0 && (
-        <section ref={spotlightRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-end justify-between gap-4 flex-wrap mb-5">
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Featured Spotlight</h2>
-              <p className="mt-1 text-sm text-gray-600">A few standout stories from the community.</p>
+      {/* FEATURED CAROUSEL (cleaner container, less vertical padding) */}
+      {featuredList.length > 0 && (
+        <section ref={spotlightRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5">
+          <div className="rounded-2xl border border-[#F25129]/15 bg-white shadow-sm p-4 sm:p-6">
+            <div className="mb-4">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Featured Spotlight</h2>
+              <p className="text-sm text-gray-600">A few standout stories from the community.</p>
             </div>
 
-            <button
-              onClick={handleShare}
-              className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-all shadow-md hover:shadow-lg active:scale-95"
-            >
-              <MessageSquare className="w-4 h-4" />
-              Add Yours
-            </button>
-          </div>
-
-          <div className="rounded-2xl border border-[#F25129]/15 bg-white/60 backdrop-blur-sm shadow-sm p-4 sm:p-6">
             <TestimonialCarousel
               testimonials={featuredList.length > 0 ? featuredList : allTestimonials.slice(0, 12)}
               loading={loading}
@@ -484,9 +455,9 @@ const Testimonials: React.FC = () => {
         </section>
       )}
 
-      {/* SUBMISSION FORM */}
+      {/* FORM */}
       {showForm && isAuthed && (
-        <section id="testimonial-form-section" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <section id="testimonial-form-section" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
           <div className="rounded-2xl border border-[#F25129]/20 bg-white shadow-lg p-6 md:p-8">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Share Your Story</h2>
@@ -503,164 +474,198 @@ const Testimonials: React.FC = () => {
         </section>
       )}
 
-      {/* THEMES / MOODS PICKERS */}
-      {(viewMode === 'themes' || viewMode === 'moods') && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4 sm:p-5">
-            {viewMode === 'themes' ? (
-              <>
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <div>
-                    <div className="text-lg font-bold text-gray-900">Themes</div>
-                    <div className="text-sm text-gray-600">Tap a theme to filter stories.</div>
-                  </div>
-                  {activeTheme ? (
-                    <button
-                      onClick={() => setActiveTheme(null)}
-                      className="text-sm font-semibold text-[#F25129] hover:underline"
-                    >
-                      Clear theme
-                    </button>
-                  ) : null}
-                </div>
+      {/* Section separator */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mt-5 h-px w-full bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
+      </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {allThemes.length === 0 ? (
-                    <div className="text-sm text-gray-500">No themes yet. They'll appear as stories are added.</div>
-                  ) : (
-                    allThemes.map((tag) => (
-                      <button
-                        key={tag}
-                        onClick={() => setActiveTheme((v) => (v === tag ? null : tag))}
-                        className={`rounded-full px-3 py-1.5 text-sm font-semibold border transition-colors ${
-                          activeTheme === tag
-                            ? 'bg-[#F25129] text-white border-[#F25129]'
-                            : 'bg-white text-gray-700 border-gray-200 hover:border-[#F25129]/40 hover:text-[#F25129]'
-                        }`}
-                      >
-                        #{tag}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </>
+      {/* MAIN: FEED + RIGHT RAIL */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* LEFT: FEED */}
+          <div className="lg:col-span-8 xl:col-span-9">
+            <div className="flex items-end justify-between gap-3 flex-wrap mb-4">
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">Community Voices</h2>
+                <p className="text-sm text-gray-600">Browse stories from across Moms Fitness Mojo.</p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={sortMode}
+                  onChange={(e) => setSortMode(e.target.value as SortMode)}
+                  className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-800 outline-none focus:ring-2 focus:ring-[#F25129]/25"
+                >
+                  <option value="featured">Featured first</option>
+                  <option value="newest">Most recent</option>
+                  <option value="highest_rated">Highest rated</option>
+                </select>
+
+                <button
+                  onClick={() => setOnlyFeatured((v) => !v)}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold border transition ${
+                    onlyFeatured
+                      ? 'bg-[#F25129] text-white border-[#F25129]'
+                      : 'bg-white text-gray-800 border-gray-200 hover:border-[#F25129]/30'
+                  }`}
+                >
+                  Featured only
+                </button>
+              </div>
+            </div>
+
+            {/* RESULTS - Editorial row layout */}
+            {loading ? (
+              <div className="space-y-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="rounded-2xl bg-gray-100 animate-pulse h-32" />
+                ))}
+              </div>
+            ) : error ? (
+              <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-8 text-red-800 text-center shadow-sm">
+                <div className="text-lg font-semibold mb-2">Error Loading Stories</div>
+                <div>{String(error)}</div>
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className="rounded-2xl border-2 border-dashed border-[#F25129]/30 bg-white p-10 text-center shadow-sm">
+                <div className="text-xl font-semibold text-gray-900 mb-2">No Stories Found</div>
+                <p className="text-base text-gray-600 max-w-md mx-auto">
+                  Try clearing filters or searching a different keyword.
+                </p>
+                <button
+                  onClick={clearFilters}
+                  className="mt-5 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition"
+                >
+                  Clear filters
+                </button>
+              </div>
             ) : (
-              <>
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <div>
-                    <div className="text-lg font-bold text-gray-900">Moods (AI)</div>
-                    <div className="text-sm text-gray-600">
-                      These come from tone classification saved with each story.
-                    </div>
-                  </div>
-                  {activeMood ? (
-                    <button
-                      onClick={() => setActiveMood(null)}
-                      className="text-sm font-semibold text-[#F25129] hover:underline"
-                    >
-                      Clear mood
-                    </button>
-                  ) : null}
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {allMoods.length === 0 ? (
-                    <div className="text-sm text-gray-500">No mood labels yet.</div>
-                  ) : (
-                    allMoods.map((m) => (
-                      <button
-                        key={m}
-                        onClick={() => setActiveMood((v) => (v === m ? null : m))}
-                        className={`rounded-full px-3 py-1.5 text-sm font-semibold border transition-colors ${
-                          activeMood === m
-                            ? 'bg-[#F25129] text-white border-[#F25129]'
-                            : 'bg-white text-gray-700 border-gray-200 hover:border-[#F25129]/40 hover:text-[#F25129]'
-                        }`}
-                      >
-                        {m}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </>
+              <div className="space-y-4">
+                {filtered.map((testimonial) => (
+                  <TestimonialRow key={testimonial.id} testimonial={testimonial} />
+                ))}
+              </div>
             )}
           </div>
-        </section>
-      )}
 
-      {/* GRID */}
-     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-2 pb-8">
+          {/* RIGHT: STICKY FILTERS */}
+          <aside className="lg:col-span-4 xl:col-span-3">
+            <div className="lg:sticky lg:top-20 space-y-4">
+              {/* Search */}
+              <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Search className="w-4 h-4 text-[#F25129]" />
+                  <div className="font-bold text-gray-900">Search stories</div>
+                </div>
+                <div className="relative">
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Try: supportive, confidence, postpartum..."
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#F25129]/25"
+                  />
+                </div>
 
-        <div className="text-center mb-5">
-          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1.5">Community Voices</h2>
-          <p className="text-sm text-gray-600 max-w-2xl mx-auto">Browse stories from across Moms Fitness Mojo.</p>
+                <div className="mt-3 flex items-center justify-between">
+                  <button
+                    onClick={clearFilters}
+                    className="text-sm font-semibold text-[#F25129] hover:underline"
+                  >
+                    Reset
+                  </button>
+                  <div className="text-xs text-gray-500">{filtered.length} results</div>
+                </div>
+              </div>
+
+              {/* View toggles */}
+              <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
+                <div className="font-bold text-gray-900 mb-3">Browse by</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { key: 'all', label: 'All' },
+                    { key: 'moods', label: 'Moods' },
+                  ] as const).map((x) => (
+                    <button
+                      key={x.key}
+                      onClick={() => setViewMode(x.key as ViewMode)}
+                      className={`rounded-xl px-3 py-2 text-sm font-semibold border transition ${
+                        viewMode === x.key
+                          ? 'bg-[#F25129] text-white border-[#F25129]'
+                          : 'bg-white text-gray-800 border-gray-200 hover:border-[#F25129]/30'
+                      }`}
+                    >
+                      {x.label}
+                    </button>
+                  ))}
+                </div>
+
+                {viewMode === 'moods' && (
+                  <div className="mt-4">
+                    <div className="text-sm font-semibold text-gray-900 mb-2">Moods (AI)</div>
+                    <div className="flex flex-wrap gap-2">
+                      {allMoods.length === 0 ? (
+                        <div className="text-sm text-gray-500">No mood labels yet.</div>
+                      ) : (
+                        allMoods.map((m) => (
+                          <button
+                            key={m}
+                            onClick={() => setActiveMood((v) => (v === m ? null : m))}
+                            className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition ${
+                              activeMood === m
+                                ? 'bg-[#F25129] text-white border-[#F25129]'
+                                : 'bg-white text-gray-700 border-gray-200 hover:border-[#F25129]/30'
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Tips */}
+              <div className="rounded-2xl border border-[#F25129]/15 bg-gradient-to-br from-[#F25129]/5 to-[#FFC107]/10 p-4">
+                <div className="font-bold text-gray-900 mb-2">How to write a great story</div>
+                <ul className="text-sm text-gray-700 space-y-2">
+                  <li className="flex gap-2"><span className="mt-1 h-1.5 w-1.5 rounded-full bg-[#F25129]" />Write from the heart</li>
+                  <li className="flex gap-2"><span className="mt-1 h-1.5 w-1.5 rounded-full bg-[#F25129]" />Share a specific moment or result</li>
+                  <li className="flex gap-2"><span className="mt-1 h-1.5 w-1.5 rounded-full bg-[#F25129]" />Keep it real and encouraging</li>
+                </ul>
+
+                <button
+                  onClick={handleShare}
+                  className="mt-4 w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Share Your Story
+                </button>
+              </div>
+
+            </div>
+          </aside>
         </div>
-
-        {loading ? (
-          <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 sm:gap-8 space-y-6 sm:space-y-8">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <div key={i} className="break-inside-avoid rounded-2xl bg-gray-100 animate-pulse h-48" />
-            ))}
-          </div>
-        ) : error ? (
-          <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-8 text-red-800 text-center shadow-sm">
-            <div className="text-lg font-semibold mb-2">Error Loading Stories</div>
-            <div>{String(error)}</div>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="rounded-2xl border-2 border-dashed border-[#F25129]/30 bg-white p-12 sm:p-20 text-center shadow-sm">
-            <div className="text-xl sm:text-2xl font-semibold text-gray-900 mb-4">No Stories Available</div>
-            <p className="text-base sm:text-lg text-gray-600 max-w-md mx-auto">Check back soon! New stories are added regularly as our community grows.</p>
-          </div>
-        ) : (
-          <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 sm:gap-8 space-y-6 sm:space-y-8">
-            {filtered.map((testimonial) => (
-              <QuoteCard key={testimonial.id} testimonial={testimonial} />
-            ))}
-          </div>
-        )}
       </section>
 
-      {/* IMPACT STRIP */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="rounded-2xl bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white py-10 px-6 shadow-lg">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <Stat label="Active Moms" value="190+" />
-            <Stat label="NJ Towns & Growing" value="6+" />
-            <Stat label="Stories Shared" value={`${totalCount}+`} />
-          </div>
-        </div>
-      </section>
-
-      {/* FINAL CTA */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-        <div className="rounded-3xl border border-[#F25129]/15 bg-gradient-to-br from-[#F25129]/8 to-[#FFC107]/10 p-8 sm:p-10 text-center shadow-sm">
-          <h3 className="text-2xl sm:text-3xl font-bold text-gray-900">Your Story Belongs Here</h3>
-          <p className="mt-3 text-base text-gray-700 max-w-2xl mx-auto">
-            Whether it's fitness, confidence, friendship, or simply finding time for yourself — your journey can inspire
-            another mom.
-          </p>
-
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+      {/* BOTTOM CTA STRIP (lighter, less tall) */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+        <div className="rounded-3xl bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white px-6 py-8 shadow-lg">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <div className="text-2xl font-extrabold">Your story belongs here.</div>
+              <div className="text-white/90 text-sm mt-1">
+                Fitness, confidence, friendship—whatever your journey looks like, it can inspire another mom.
+              </div>
+            </div>
             <button
               onClick={handleShare}
-              className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold bg-[#F25129] text-white hover:bg-[#E0451F] transition-colors shadow-sm"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-white text-[#F25129] px-6 py-2.5 text-sm font-extrabold hover:bg-white/90 transition"
             >
               <MessageSquare className="w-4 h-4" />
               Share Your Story
             </button>
-
-            <Link
-              to="/events"
-              className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold bg-white text-[#F25129] border border-[#F25129]/35 hover:bg-[#F25129]/5 transition-colors"
-            >
-              Explore Events
-            </Link>
           </div>
-
-          <p className="mt-5 text-sm text-gray-600">
-            Tip: If you're new here, start with an event — the community feeling clicks instantly.
-          </p>
         </div>
       </section>
     </div>

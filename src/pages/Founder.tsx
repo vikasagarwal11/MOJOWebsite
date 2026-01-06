@@ -79,7 +79,7 @@ const Founder: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-amber-50">
+    <>
       {/* SEO */}
       <Helmet>
         <title>About the Founder | Moms Fitness Mojo</title>
@@ -306,7 +306,7 @@ const Founder: React.FC = () => {
         recipientEmail={founderData.email}
         prefillSubject={`Message to ${founderData.name}`}
       />
-    </div>
+    </>
   );
 };
 

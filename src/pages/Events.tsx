@@ -441,17 +441,31 @@ const Events: React.FC = () => {
   //   }
   // };
 
-  // COMMENTED OUT: Clear all filters function for layout testing
-  // const clearAllFilters = () => {
-  //   setSearchInput('');
-  //   setTagSearch('');
-  //   setSelectedTag(null);
-  //   setLocationFilter('');
-  //   setDateRangeFilter({ startDate: '', endDate: '', enabled: false });
-  //   setCapacityFilter({ min: '', max: '', enabled: false });
-  //   setSortBy('date');
-  //   toast.success('All filters cleared!');
-  // };
+  // Clear all filters function
+  const clearAllFilters = () => {
+    setSearchInput('');
+    setTagSearch('');
+    setSelectedTag(null);
+    setLocationFilter('');
+    setDateRangeFilter({ startDate: '', endDate: '', enabled: false });
+    setCapacityFilter({ min: '', max: '', enabled: false });
+    setSortBy('date');
+    toast.success('All filters cleared!');
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters = useMemo(() => {
+    return !!(
+      searchInput ||
+      selectedTag ||
+      locationFilter ||
+      dateRangeFilter.startDate ||
+      dateRangeFilter.endDate ||
+      capacityFilter.min ||
+      capacityFilter.max ||
+      sortBy !== 'date'
+    );
+  }, [searchInput, selectedTag, locationFilter, dateRangeFilter.startDate, dateRangeFilter.endDate, capacityFilter.min, capacityFilter.max, sortBy]);
 
 
     return (
@@ -656,6 +670,21 @@ const Events: React.FC = () => {
             <option value="location">Location (A-Z)</option>
             <option value="popularity">Popularity</option>
           </select>
+
+          {/* Clear Filters Button - Always visible */}
+          <button
+            onClick={clearAllFilters}
+            disabled={!hasActiveFilters}
+            className={`px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-2 text-sm flex-shrink-0 ${
+              hasActiveFilters
+                ? 'border-[#F25129] text-[#F25129] hover:bg-[#F25129]/10 hover:border-[#F25129] cursor-pointer'
+                : 'border-gray-200 text-gray-400 cursor-not-allowed opacity-50'
+            }`}
+            title={hasActiveFilters ? 'Clear all filters' : 'No active filters'}
+          >
+            <Filter className="w-4 h-4" />
+            Clear
+          </button>
         </div>
       </motion.div>
 
@@ -866,6 +895,25 @@ const Events: React.FC = () => {
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              {/* Clear Filters Button - Mobile */}
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <button
+                  onClick={() => {
+                    clearAllFilters();
+                    setShowMobileFilters(false);
+                  }}
+                  disabled={!hasActiveFilters}
+                  className={`w-full min-h-[44px] px-4 rounded-xl border-2 transition-all duration-200 flex items-center justify-center gap-2 font-semibold ${
+                    hasActiveFilters
+                      ? 'border-[#F25129] text-[#F25129] hover:bg-[#F25129] hover:text-white cursor-pointer'
+                      : 'border-gray-200 text-gray-400 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  <Filter className="w-4 h-4" />
+                  Clear All Filters
+                </button>
+              </div>
             </div>
           </div>
         </div>
