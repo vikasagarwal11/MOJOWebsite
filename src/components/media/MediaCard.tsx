@@ -14,17 +14,16 @@ import { useImageOrientation } from '../../utils/imageOrientation';
 import ConfirmDialog from '../ConfirmDialog';
 // Download feature temporarily disabled - uncomment to re-enable
 // import { requestWatermarkedDownload } from '../../services/mediaDownloadService';
-import { isUserApproved } from '../../utils/userUtils';
-import { 
-  getOptimalThumbnailSize, 
-  getBestThumbnailUrl, 
-  generateThumbnailSrcSet, 
-  getThumbnailSizes 
+import {
+    getBestThumbnailUrl,
+    getOptimalThumbnailSize,
+    getThumbnailSizes
 } from '../../utils/responsiveThumbnails';
-import { 
-  getCachedThumbnailUrl, 
-  setCachedThumbnailUrl 
+import {
+    getCachedThumbnailUrl,
+    setCachedThumbnailUrl
 } from '../../utils/thumbnailUrlCache';
+import { isUserApproved } from '../../utils/userUtils';
 
 export default function MediaCard({ 
   media, 
@@ -678,7 +677,10 @@ export default function MediaCard({
                 srcSet={thumbnailSrcSet || undefined}
                 sizes={thumbnailSizes || undefined}
                 alt={localMedia.title} 
-                loading="lazy" 
+                loading="lazy"
+                decoding="async"
+                fetchpriority="auto"
+                crossOrigin="anonymous"
                 onDoubleClick={onDoubleTap} 
                 onClick={selectionMode ? undefined : onOpen}
                 onContextMenu={(e) => e.preventDefault()}

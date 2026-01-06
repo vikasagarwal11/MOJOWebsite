@@ -82,6 +82,7 @@ const eventSchema = z.object({
   allowMembersToAddAttendees: z.boolean().optional(),
   // Payment fields
   requiresPayment: z.boolean().optional(),
+  payThere: z.boolean().optional(),
   adultPrice: z.string().optional(),
   teenPrice: z.string().optional(),
   childPrice: z.string().optional(),
@@ -143,6 +144,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const [isManuallyOverridden, setIsManuallyOverridden] = useState(false); // Track if end date/time are manually overridden
   // Payment state
   const [requiresPayment, setRequiresPayment] = useState(false);
+  const [payThere, setPayThere] = useState(false);
   const [eventSupportAmountEnabled, setEventSupportAmountEnabled] = useState(false);
   
   // Waitlist state
@@ -222,6 +224,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     allowMembersToAddAttendees: eventToEdit.allowMembersToAddAttendees || false,
     // Payment fields
     requiresPayment: eventToEdit.pricing?.requiresPayment || false,
+    payThere: eventToEdit.pricing?.payThere || false,
     adultPrice: eventToEdit.pricing?.adultPrice ? centsToDollars(eventToEdit.pricing.adultPrice) : '',
     currency: eventToEdit.pricing?.currency || 'USD',
     refundAllowed: eventToEdit.pricing?.refundPolicy?.allowed === true,
@@ -235,6 +238,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     attendanceEnabled: false, // Default to false for new events
     allowMembersToAddAttendees: false, // Default to false for new events
     requiresPayment: false, // Default to free events
+    payThere: false, // Default to no pay there
     currency: 'USD', // Default currency
     refundAllowed: false, // Default no refunds
     eventSupportAmountEnabled: false, // Default to no event support amount
@@ -357,6 +361,7 @@ useEffect(() => {
       // Set payment configuration
       if (eventToEdit.pricing) {
         setValue('requiresPayment', eventToEdit.pricing.requiresPayment || false);
+        setValue('payThere', eventToEdit.pricing.payThere || false);
         setValue('currency', eventToEdit.pricing.currency || 'USD');
         setValue('refundAllowed', eventToEdit.pricing.refundPolicy?.allowed === true);
         
@@ -389,6 +394,7 @@ useEffect(() => {
         
         // Update payment state
         setRequiresPayment(eventToEdit.pricing.requiresPayment || false);
+        setPayThere(eventToEdit.pricing.payThere || false);
         
         // Set event support amount
         if (eventToEdit.pricing.eventSupportAmount) {
@@ -856,6 +862,11 @@ useEffect(() => {
           };
         }
         
+      } else if (data.payThere) {
+        // Pay There event: treated as free event (no payment processing in app)
+        // but marked as payThere so it displays differently
+        pricing = PaymentService.createDefaultPricing();
+        pricing.payThere = true;
       } else {
         pricing = PaymentService.createDefaultPricing();
       }
@@ -1729,6 +1740,11 @@ useEffect(() => {
                   onChange={(e) => {
                     setRequiresPayment(e.target.checked);
                     setValue('requiresPayment', e.target.checked);
+                    // If unchecking requiresPayment, also uncheck payThere
+                    if (!e.target.checked) {
+                      setPayThere(false);
+                      setValue('payThere', false);
+                    }
                   }}
                   disabled={isLoading}
                   className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
@@ -1736,6 +1752,23 @@ useEffect(() => {
                 <div>
                   <span className="text-sm font-medium text-gray-700">Require Payment</span>
                   <p className="text-xs text-gray-500">Enable payment collection for this event</p>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={payThere}
+                  onChange={(e) => {
+                    setPayThere(e.target.checked);
+                    setValue('payThere', e.target.checked);
+                  }}
+                  disabled={isLoading}
+                  className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Pay There Event</span>
+                  <p className="text-xs text-gray-500">Payment will be handled separately at the event or directly with the hosting organization</p>
                 </div>
               </label>
 

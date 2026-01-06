@@ -93,7 +93,14 @@ const Header: React.FC = () => {
         <div className="flex items-center gap-2 sm:gap-4 h-14 sm:h-16">
           {/* Logo - visible on all devices for better branding */}
           <Link to="/" className="flex items-center gap-2 shrink-0 md:hidden">
-            <img src="/logo.png" alt="Moms Fitness Mojo" className="h-8 w-8 rounded-full object-cover" />
+            <img 
+              src="/logo.png" 
+              alt="Moms Fitness Mojo" 
+              className="h-8 w-8 rounded-full object-cover" 
+              loading="eager"
+              decoding="async"
+              fetchpriority="high"
+            />
           </Link>
 
           {/* Center nav (desktop only; mobile uses hamburger menu) */}

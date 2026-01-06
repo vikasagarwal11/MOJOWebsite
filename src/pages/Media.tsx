@@ -1,20 +1,19 @@
-import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { Upload, Image, Video, Filter } from 'lucide-react';
+import { Filter, Image, Upload, Video } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // import { Video as VideoIcon } from 'lucide-react'; // PHASE 2: Re-enable live camera functionality
-import { orderBy, doc, deleteDoc, where, limit } from 'firebase/firestore';
+import { deleteDoc, doc, limit, orderBy, where } from 'firebase/firestore';
+import MediaUploadModal from '../components/media/MediaUploadModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useFirestore } from '../hooks/useFirestore';
-import MediaUploadModal from '../components/media/MediaUploadModal';
 // import { LiveMediaUpload } from '../components/media/LiveMediaUpload'; // PHASE 2: Re-enable live camera functionality
+import toast from 'react-hot-toast';
 import MediaCard from '../components/media/MediaCard';
 import MediaLightbox from '../components/media/MediaLightbox';
-import { useLightbox } from '../hooks/useLightbox';
-import { db } from '../config/firebase';
-import toast from 'react-hot-toast';
-import { isUserApproved } from '../utils/userUtils';
-import InfiniteScroll from 'react-infinite-scroll-component';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { db } from '../config/firebase';
+import { useLightbox } from '../hooks/useLightbox';
 import { batchResolveThumbnailUrls, extractThumbnailPaths } from '../utils/batchThumbnailResolver';
+import { isUserApproved } from '../utils/userUtils';
 
 const Media: React.FC = () => {
   const { currentUser } = useAuth();
@@ -47,8 +46,8 @@ const Media: React.FC = () => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const [displayedCount, setDisplayedCount] = useState(50); // Initial load: 50 items
-  const ITEMS_PER_PAGE = 50; // Load 50 items at a time
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 9; // 9 items per page for optimal display
 
   // Debounce search queries (300ms delay)
   useEffect(() => {
@@ -65,11 +64,11 @@ const Media: React.FC = () => {
     return () => clearTimeout(timer);
   }, [eventSearchQuery]);
 
-  // Media: Query with limit for scalability (prevents loading entire collection)
-  // Memoize query constraints to prevent unnecessary re-subscriptions
+  // Media: Query with reasonable limit for scalability
+  // Load more items to support pagination without frequent re-queries
   const mediaQueryConstraints = useMemo(
-    () => [orderBy('createdAt', 'desc'), limit(displayedCount)],
-    [displayedCount]
+    () => [orderBy('createdAt', 'desc'), limit(500)], // Load up to 500 items
+    []
   );
 
   const { data: mediaFiles, loading: mediaLoading } =
@@ -143,25 +142,36 @@ const Media: React.FC = () => {
     });
   }, [mediaFilesArray, filterType, selectedEvent, debouncedSearchQuery]);
 
-  // Displayed media: we increase the Firestore limit, so no additional client slicing
-  const displayedMedia = filteredMedia;
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredMedia.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const displayedMedia = filteredMedia.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterType, selectedEvent, debouncedSearchQuery]);
+
+  // Scroll to top when page changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [currentPage]);
 
   // OPTIMIZATION: Batch resolve thumbnail URLs for visible items upfront
   // This reduces the waterfall effect of sequential getDownloadURL() calls
   useEffect(() => {
     if (mediaLoading || !Array.isArray(displayedMedia) || displayedMedia.length === 0) return;
 
-    // Only resolve thumbnails for the first visible batch (first 12 items)
-    // This prevents overwhelming the network while still pre-warming the cache
-    const visibleBatch = displayedMedia.slice(0, 12);
-    const thumbnailPaths = extractThumbnailPaths(visibleBatch);
+    // Resolve thumbnails for all items on current page (max 9 items)
+    const thumbnailPaths = extractThumbnailPaths(displayedMedia);
 
     if (thumbnailPaths.length === 0) return;
 
     // Batch resolve in background (don't block render)
     const resolveUrls = async () => {
       try {
-        await batchResolveThumbnailUrls(thumbnailPaths, 6); // Max 6 concurrent
+        await batchResolveThumbnailUrls(thumbnailPaths, 9); // Resolve all 9 concurrently
       } catch (error) {
         console.warn('⚠️ Batch thumbnail resolution failed:', error);
       }
@@ -169,25 +179,11 @@ const Media: React.FC = () => {
 
     // Use requestIdleCallback to avoid blocking render
     if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      (window as any).requestIdleCallback(resolveUrls, { timeout: 2000 });
+      (window as any).requestIdleCallback(resolveUrls, { timeout: 1000 });
     } else {
-      setTimeout(resolveUrls, 100);
+      setTimeout(resolveUrls, 50);
     }
-  }, [displayedMedia, mediaLoading]);
-
-  // Check if there's more media to load
-  // If Firestore returned at least the requested amount, assume there may be more
-  const hasMoreMedia =
-    !mediaLoading &&
-    Array.isArray(mediaFiles) &&
-    mediaFiles.length >= displayedCount;
-
-  // Load more media (infinite scroll)
-  const loadMoreMedia = useCallback(() => {
-    if (hasMoreMedia) {
-      setDisplayedCount(prev => prev + ITEMS_PER_PAGE);
-    }
-  }, [hasMoreMedia]);
+  }, [displayedMedia, mediaLoading, currentPage]); // Add currentPage to re-run when page changes
 
   // Image preloading: when new items arrive, prefetch their thumbnails (optimized)
   // - Only preload resolved URLs (http)
@@ -539,45 +535,91 @@ const Media: React.FC = () => {
         </div>
       )}
 
-      {/* Media Grid with Infinite Scroll - Optimized for Mobile */}
+      {/* Media Grid - Optimized for Mobile */}
       {!mediaLoading || displayedMedia.length > 0 ? (
-        <InfiniteScroll
-          dataLength={displayedMedia.length}
-          scrollThreshold={0.8}
-          next={loadMoreMedia}
-          hasMore={hasMoreMedia}
-          loader={
-            <div className="col-span-full flex items-center justify-center py-8">
-              <LoadingSpinner text="Loading more media..." />
-            </div>
-          }
-          endMessage={
-            displayedMedia.length > 0 ? (
-              <div className="col-span-full text-center py-8 text-gray-500 text-sm">
-                {filteredMedia.length > 0 
-                  ? `Showing all ${filteredMedia.length} media item${filteredMedia.length === 1 ? '' : 's'}`
-                  : 'No more media to load'
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 mb-8">
+            {displayedMedia.map((media: any, index: number) => (
+              <MediaCard
+                key={media.id}
+                media={media}
+                onOpen={
+                  selectionMode ? undefined : () => lightbox.open(index)
                 }
+                selectionMode={isAdmin && selectionMode}
+                selected={selectedIds.includes(media.id)}
+                onToggleSelect={
+                  isAdmin && selectionMode ? handleToggleSelect : undefined
+                }
+              />
+            ))}
+          </div>
+
+          {/* Pagination Controls */}
+          {filteredMedia.length > ITEMS_PER_PAGE && (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <div className="text-sm text-gray-600">
+                Showing {startIndex + 1}-{Math.min(endIndex, filteredMedia.length)} of {filteredMedia.length} items
               </div>
-            ) : null
-          }
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6"
-        >
-          {displayedMedia.map((media: any, index: number) => (
-            <MediaCard
-              key={media.id}
-              media={media}
-              onOpen={
-                selectionMode ? undefined : () => lightbox.open(index)
-              }
-              selectionMode={isAdmin && selectionMode}
-              selected={selectedIds.includes(media.id)}
-              onToggleSelect={
-                isAdmin && selectionMode ? handleToggleSelect : undefined
-              }
-            />
-          ))}
-        </InfiniteScroll>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {/* Previous Button */}
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                >
+                  Previous
+                </button>
+
+                {/* Page Numbers */}
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+                  // Show first page, last page, current page, and pages around current
+                  const showPage = 
+                    pageNum === 1 || 
+                    pageNum === totalPages || 
+                    Math.abs(pageNum - currentPage) <= 1;
+                  
+                  // Show ellipsis
+                  const showEllipsisBefore = pageNum === currentPage - 2 && currentPage > 3;
+                  const showEllipsisAfter = pageNum === currentPage + 2 && currentPage < totalPages - 2;
+
+                  if (showEllipsisBefore || showEllipsisAfter) {
+                    return (
+                      <span key={pageNum} className="px-2 text-gray-400">
+                        ...
+                      </span>
+                    );
+                  }
+
+                  if (!showPage) return null;
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
+                        currentPage === pageNum
+                          ? 'bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white shadow-md'
+                          : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+
+                {/* Next Button */}
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       ) : null}
       
       {/* Empty State - Compact Card Style */}

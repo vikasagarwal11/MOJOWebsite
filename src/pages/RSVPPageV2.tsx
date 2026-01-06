@@ -1,32 +1,32 @@
+import { doc, onSnapshot } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  AlertTriangle,
-  ArrowLeft,
-  Calendar,
-  CheckCircle2,
-  Clock,
-  DollarSign,
-  MapPin,
-  Users,
-  XCircle
+    AlertTriangle,
+    ArrowLeft,
+    Calendar,
+    CheckCircle2,
+    Clock,
+    DollarSign,
+    MapPin,
+    Users,
+    XCircle
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { PaymentSection } from '../components/events/PaymentSection';
+import { QRCodeTab } from '../components/events/QRCodeTab';
+import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
+import { useCapacityState } from '../components/events/RSVPModalNew/hooks/useCapacityState';
+import { useEventDates } from '../components/events/RSVPModalNew/hooks/useEventDates';
 import { LoadingButton } from '../components/ui/LoadingSpinner';
+import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { useAttendees } from '../hooks/useAttendees';
 import { EventDoc } from '../hooks/useEvents';
 import { useFamilyMembers } from '../hooks/useFamilyMembers';
 import { useWaitlistPositions } from '../hooks/useWaitlistPositions';
+import { AgeGroup, Attendee, AttendeeStatus, CreateAttendeeData, Relationship } from '../types/attendee';
 import { safeFormat, safeToDate } from '../utils/dateUtils';
-import { db } from '../config/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { PaymentSection } from '../components/events/PaymentSection';
-import { QRCodeTab } from '../components/events/QRCodeTab';
-import { Attendee, AgeGroup, AttendeeStatus, CreateAttendeeData, Relationship } from '../types/attendee';
-import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
-import { useEventDates } from '../components/events/RSVPModalNew/hooks/useEventDates';
-import { useCapacityState } from '../components/events/RSVPModalNew/hooks/useCapacityState';
 
 type ActiveView = 'rsvp' | 'whosgoing' | 'qr';
 
@@ -40,6 +40,8 @@ function classNames(...xs: Array<string | false | null | undefined>) {
 function isPaidEvent(event?: EventDoc | null) {
   const pricing: any = (event as any)?.pricing;
   if (!pricing) return false;
+  // Pay There events are treated as free (no payment processing in app)
+  if (pricing?.payThere) return false;
   if (pricing?.type === 'free') return false;
   const amount = pricing?.amount ?? pricing?.price ?? pricing?.perPersonAmount;
   return typeof amount === 'number' ? amount > 0 : Boolean(amount);
@@ -48,6 +50,8 @@ function isPaidEvent(event?: EventDoc | null) {
 function getPriceLabel(event?: EventDoc | null) {
   const pricing: any = (event as any)?.pricing;
   if (!pricing) return 'Free';
+  // Pay There events show "Pay There" instead of "Free"
+  if (pricing?.payThere) return 'Pay There';
   if (pricing?.type === 'free') return 'Free';
   const amount = pricing?.amount ?? pricing?.price ?? pricing?.perPersonAmount;
   if (typeof amount === 'number') return `$${amount}`;

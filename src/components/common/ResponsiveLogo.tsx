@@ -52,6 +52,7 @@ export function ResponsiveLogo({
             loading={priority ? "eager" : "lazy"}
             fetchpriority={priority ? "high" : "auto"}
             decoding="async"
+            crossOrigin="anonymous"
             width="800"
             height="600"
             style={{

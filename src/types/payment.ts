@@ -16,6 +16,7 @@ export interface AgeGroupPricing {
 export interface EventPricing {
   isFree: boolean;
   requiresPayment: boolean;
+  payThere?: boolean; // Payment handled at event or with organization
   adultPrice: number; // Price in cents for adults
   ageGroupPricing: AgeGroupPricing[];
   currency: string; // ISO currency code (e.g., 'USD')

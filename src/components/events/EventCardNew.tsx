@@ -33,6 +33,56 @@ import { Lock } from 'lucide-react';
 import { isUserApproved } from '../../utils/userUtils';
 import { EventImage } from './EventImage';
 
+// PayTherePrice component with fixed positioning tooltip
+const PayTherePrice: React.FC = () => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const priceRef = useRef<HTMLDivElement>(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    if (showTooltip && priceRef.current) {
+      const rect = priceRef.current.getBoundingClientRect();
+      setTooltipPosition({
+        top: rect.top - 80, // Position above the element
+        left: Math.max(16, rect.left - 128) // Center tooltip, but keep 16px from left edge
+      });
+    }
+  }, [showTooltip]);
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div 
+        ref={priceRef}
+        className="flex items-center gap-2.5 cursor-help"
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+      >
+        <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+        <span className="font-semibold text-blue-600">
+          Pay There
+        </span>
+      </div>
+      
+      {/* Tooltip - Portal to body with fixed positioning */}
+      {showTooltip && createPortal(
+        <div 
+          className="fixed w-64 bg-gray-900 text-white text-xs rounded-lg p-3 shadow-xl z-[9999] pointer-events-none"
+          style={{
+            top: `${tooltipPosition.top}px`,
+            left: `${tooltipPosition.left}px`
+          }}
+        >
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 transform rotate-45"></div>
+          <p className="leading-relaxed">
+            RSVP now. Payment will be handled separately at the event or directly with the hosting organization.
+          </p>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
+
 interface EventCardProps {
   event: EventDoc;
   onEdit?: () => void;
@@ -806,7 +856,9 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
               </div>
               
               {/* Price Display */}
-              {event.pricing && event.pricing.requiresPayment && event.pricing.adultPrice ? (
+              {event.pricing?.payThere ? (
+                <PayTherePrice />
+              ) : event.pricing && event.pricing.requiresPayment && event.pricing.adultPrice ? (
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-2.5">
                     <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
