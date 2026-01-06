@@ -24,9 +24,8 @@
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
-    <!-- Logo preloading removed to avoid "preloaded but not used" warnings -->
-    <!-- Logos will load naturally when referenced in components -->
-    <!-- If logos are critical above-the-fold, use <img fetchpriority="high"> in the component instead -->
+    <!-- Preload critical logo for Safari compatibility (prevents black flash on first load) -->
+    <link rel="preload" as="image" href="/assets/logo/mfm-logo-updated-tagline-2.svg" type="image/svg+xml" fetchpriority="high">
     
     <!-- Safari & iOS Specific Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes" />

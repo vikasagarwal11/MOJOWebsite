@@ -245,7 +245,7 @@ const Home: React.FC = () => {
                     className="w-full h-full object-contain"
                     loading="eager"
                     fetchpriority="high"
-                    decoding="async"
+                    decoding="sync"
                     width="800"
                     height="600"
                     style={{

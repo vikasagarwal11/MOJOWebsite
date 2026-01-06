@@ -561,21 +561,21 @@ const RSVPPage: React.FC = () => {
 
           {/* Event Details Section - Collapsible with dropdown */}
           <div className="mb-4">
-            <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-lg overflow-hidden">
+            <div className="bg-gradient-to-br from-[#FFF5F2] to-[#FFE08A]/30 border border-[#F25129]/20 rounded-lg overflow-hidden">
               <motion.button
                 onClick={() => setIsEventDetailsCollapsed((v) => !v)}
-                className="w-full p-3 sm:p-4 flex items-center justify-between touch-manipulation active:bg-blue-100/50 cursor-pointer"
+                className="w-full p-3 sm:p-4 flex items-center justify-between touch-manipulation active:bg-[#F25129]/5 cursor-pointer"
                 aria-expanded={!isEventDetailsCollapsed}
                 aria-label={`${isEventDetailsCollapsed ? 'Expand' : 'Collapse'} Event Details`}
               >
                 <div className="flex items-center gap-2 sm:gap-3 flex-1">
                   <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm">
-                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
                   </div>
                   <div className="text-left flex-1">
                     <h4 className="font-semibold text-gray-900 text-xs sm:text-sm">Event Details</h4>
                     {event.startAt && (
-                      <span className="text-xs text-blue-600 font-medium">
+                      <span className="text-xs text-[#F25129] font-medium">
                         {new Date(event.startAt.seconds * 1000).toLocaleDateString('en-US', { 
                           month: 'short', 
                           day: 'numeric' 
@@ -592,7 +592,7 @@ const RSVPPage: React.FC = () => {
                   </div>
                 </div>
                 <motion.div animate={{ rotate: isEventDetailsCollapsed ? 0 : 180 }} transition={{ duration: 0.3 }}>
-                  <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                  <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
                 </motion.div>
               </motion.button>
 
@@ -606,11 +606,11 @@ const RSVPPage: React.FC = () => {
                 >
                   <div className="bg-white rounded-b-lg p-4 sm:p-5">
                     <div className="space-y-3">
-                      {/* Date - Blue icon background */}
+                      {/* Date - Orange icon background */}
                       {event.startAt && (
                         <div className="flex items-start gap-3">
-                          <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0 shadow-sm">
-                            <Calendar className="w-5 h-5 text-blue-600" />
+                          <div className="p-2 bg-[#F25129]/10 rounded-lg flex-shrink-0 shadow-sm">
+                            <Calendar className="w-5 h-5 text-[#F25129]" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-semibold text-gray-900 break-words">
@@ -628,11 +628,11 @@ const RSVPPage: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Time - Green icon background */}
+                      {/* Time - Yellow icon background */}
                       {event.startAt && (
                         <div className="flex items-start gap-3">
-                          <div className="p-2 bg-green-100 rounded-lg flex-shrink-0 shadow-sm">
-                            <Clock className="w-5 h-5 text-green-600" />
+                          <div className="p-2 bg-[#FFC107]/20 rounded-lg flex-shrink-0 shadow-sm">
+                            <Clock className="w-5 h-5 text-[#FFC107]" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-semibold text-gray-900 break-words">
@@ -657,11 +657,11 @@ const RSVPPage: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Location - Red icon background */}
+                      {/* Location - Orange icon background */}
                       {(event.venueName || event.venueAddress || event.location) && (
                         <div className="flex items-start gap-3">
-                          <div className="p-2 bg-red-100 rounded-lg flex-shrink-0 shadow-sm">
-                            <MapPin className="w-5 h-5 text-red-600" />
+                          <div className="p-2 bg-[#F25129]/10 rounded-lg flex-shrink-0 shadow-sm">
+                            <MapPin className="w-5 h-5 text-[#F25129]" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-semibold text-gray-900 break-words">

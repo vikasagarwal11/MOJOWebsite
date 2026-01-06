@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
-import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { setupGlobalErrorHandling } from './utils/globalErrorHandler';
@@ -124,7 +124,8 @@ function AppContent() {
             <Route path="press" element={<Press />} />
             <Route path="community-guidelines" element={<CommunityGuidelines />} />
             <Route path="share-your-story" element={<ShareYourStory />} />
-            <Route path="testimonials" element={<Testimonials />} />
+            <Route path="mfmstories" element={<Testimonials />} />
+            <Route path="testimonials" element={<Navigate to="/mfmstories" replace />} />
             {/* <Route path="workouts" element={<Workouts />} /> */} {/* Hidden for now */}
             {/* <Route path="challenges" element={<Challenges />} /> */} {/* Hidden for now */}
             {/* <Route path="challenges/:id" element={<ChallengeDetail />} /> */} {/* Hidden for now */}
