@@ -68,6 +68,15 @@ temp/
 scripts/log-reader-key.json
 
 # Documentation files (local reference only)
+# Ignore specific documentation .md files (not README.md files)
+# Using explicit patterns to avoid negation pattern issues
 *.md
-# Allow README.md files at any level (root and nested)
-!**/README.md
+# Explicitly un-ignore README.md files using reliable patterns
+# Root level README.md
+!README.md
+# README.md in any subdirectory (using explicit wildcard pattern)
+!/*/README.md
+!/*/*/README.md
+!/*/*/*/README.md
+!/*/*/*/*/README.md
+!/*/*/*/*/*/README.md

@@ -54,29 +54,34 @@ function scoreTestimonial(t: Testimonial, qRaw: string) {
   const toneLabel = norm((t as any).toneLabel || '');
 
   let score = 0;
+  let hasTextMatch = false;
 
   // Hard matches (exact phrase matches)
-  if (hayQuote.includes(q)) score += 50;
-  if (hayHighlight.includes(q)) score += 35;
-  if (hayName.includes(q)) score += 25;
+  if (hayQuote.includes(q)) { score += 50; hasTextMatch = true; }
+  if (hayHighlight.includes(q)) { score += 35; hasTextMatch = true; }
+  if (hayName.includes(q)) { score += 25; hasTextMatch = true; }
 
   // Token-level boosting (individual word matches)
   const qTokens = q.split(' ').filter((w) => w.length >= 3);
   for (const tok of qTokens) {
-    if (hayQuote.includes(tok)) score += 8;
-    if (hayHighlight.includes(tok)) score += 6;
-    if (hayName.includes(tok)) score += 4;
-    if (toneLabel && toneLabel.includes(tok)) score += 5;
+    if (hayQuote.includes(tok)) { score += 8; hasTextMatch = true; }
+    if (hayHighlight.includes(tok)) { score += 6; hasTextMatch = true; }
+    if (hayName.includes(tok)) { score += 4; hasTextMatch = true; }
+    if (toneLabel && toneLabel.includes(tok)) { score += 5; hasTextMatch = true; }
 
-    if (toneKeywords?.some((x) => norm(x) === tok || norm(x).includes(tok))) score += 7;
+    if (toneKeywords?.some((x) => norm(x) === tok || norm(x).includes(tok))) { score += 7; hasTextMatch = true; }
   }
 
-  // Tie-breakers
-  if (t.featured) score += 4;
-  if (typeof t.rating === 'number') score += Math.max(0, Math.min(5, t.rating)) * 0.5;
+  // Only add tie-breakers if there's at least one actual text match
+  // This ensures we only show stories that actually match the search query
+  if (hasTextMatch) {
+    // Tie-breakers (only applied to matching stories)
+    if (t.featured) score += 4;
+    if (typeof t.rating === 'number') score += Math.max(0, Math.min(5, t.rating)) * 0.5;
 
-  const ts = t.createdAt instanceof Date ? t.createdAt.getTime() : 0;
-  if (ts) score += Math.min(3, (Date.now() - ts) / (1000 * 60 * 60 * 24 * 120));
+    const ts = t.createdAt instanceof Date ? t.createdAt.getTime() : 0;
+    if (ts) score += Math.min(3, (Date.now() - ts) / (1000 * 60 * 60 * 24 * 120));
+  }
 
   return score;
 }
@@ -252,14 +257,19 @@ const Testimonials: React.FC = () => {
         .sort((a, b) => b.s - a.s)
         .map((x) => x.t);
 
-      if (scored.length > 0) list = scored;
-      else {
+      if (scored.length > 0) {
+        // Only show matching results when search is active
+        list = scored;
+      } else {
+        // Fallback: if no scored matches, try simple text search
         const qq = norm(q);
-        list = list.filter((t) => {
+        const simpleMatches = list.filter((t) => {
           // Fallback simple search: searches across all text fields
           const hay = `${t.displayName} ${t.quote} ${t.highlight || ''} ${(t as any).toneLabel || ''} ${((t as any).toneKeywords || []).join(' ')} ${(t as any).searchText || ''}`.toLowerCase();
           return hay.includes(qq);
         });
+        // Only show matches - if no matches, show empty list (not all results)
+        list = simpleMatches;
       }
     } else {
       if (sortMode === 'newest') {
@@ -482,6 +492,34 @@ const Testimonials: React.FC = () => {
       {/* MAIN: FEED + RIGHT RAIL */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* MOBILE: SEARCH FIRST (before stories on mobile) */}
+          <div className="lg:hidden">
+            {/* Search - Mobile */}
+            <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-3 mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Search className="w-4 h-4 text-[#F25129]" />
+                <div className="font-bold text-gray-900 text-sm">Search stories</div>
+              </div>
+              <div className="relative">
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Try: supportive, confidence..."
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#F25129]/25"
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <button
+                  onClick={clearFilters}
+                  className="text-xs font-semibold text-[#F25129] hover:underline"
+                >
+                  Reset
+                </button>
+                <div className="text-xs text-gray-500">{filtered.length} results</div>
+              </div>
+            </div>
+          </div>
+
           {/* LEFT: FEED */}
           <div className="lg:col-span-8 xl:col-span-9">
             <div className="flex items-end justify-between gap-3 flex-wrap mb-4">
@@ -548,10 +586,10 @@ const Testimonials: React.FC = () => {
             )}
           </div>
 
-          {/* RIGHT: STICKY FILTERS */}
-          <aside className="lg:col-span-4 xl:col-span-3">
+          {/* RIGHT: STICKY FILTERS (Desktop only - search hidden on mobile, shown above) */}
+          <aside className="hidden lg:block lg:col-span-4 xl:col-span-3">
             <div className="lg:sticky lg:top-20 space-y-4">
-              {/* Search */}
+              {/* Search - Desktop */}
               <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Search className="w-4 h-4 text-[#F25129]" />
@@ -562,7 +600,7 @@ const Testimonials: React.FC = () => {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Try: supportive, confidence, postpartum..."
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#F25129]/25"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#F25129]/25"
                   />
                 </div>
 
