@@ -588,6 +588,25 @@ const Events: React.FC = () => {
         </button>
       </motion.div>
 
+      {/* Mobile Filter Button - Visible only on mobile */}
+      <div className="md:hidden mb-4">
+        <motion.button
+          onClick={() => setShowMobileFilters(true)}
+          className="w-full px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium flex items-center justify-center gap-2 min-h-[44px] hover:bg-gray-50 transition-colors"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          aria-label="Open filters"
+        >
+          <Filter className="w-4 h-4" />
+          <span>Filters</span>
+          {hasActiveFilters && (
+            <span className="ml-auto bg-[#F25129] text-white text-xs px-2 py-0.5 rounded-full">
+              Active
+            </span>
+          )}
+        </motion.button>
+      </div>
+
       {/* Desktop Search and Filter Controls */}
       <motion.div 
         className="hidden md:block sticky z-10 bg-white/95 backdrop-blur-sm
