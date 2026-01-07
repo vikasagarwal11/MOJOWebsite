@@ -64,10 +64,13 @@ const Media: React.FC = () => {
     return () => clearTimeout(timer);
   }, [eventSearchQuery]);
 
-  // Media: Query with reasonable limit for scalability
-  // Load more items to support pagination without frequent re-queries
+  // Media: Query with pagination support
+  // Note: Firestore has a maximum limit of 500 items per query.
+  // If your library grows beyond 500 items, older media won't be visible.
+  // Consider implementing cursor-based pagination or query pagination if needed.
+  // For now, we use the maximum allowed limit (500).
   const mediaQueryConstraints = useMemo(
-    () => [orderBy('createdAt', 'desc'), limit(500)], // Load up to 500 items
+    () => [orderBy('createdAt', 'desc'), limit(500)], // Firestore maximum limit
     []
   );
 
