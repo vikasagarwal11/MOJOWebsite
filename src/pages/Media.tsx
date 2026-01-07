@@ -46,8 +46,8 @@ const Media: React.FC = () => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 9; // 9 items per page for optimal display
+  const [displayedCount, setDisplayedCount] = useState(12); // Initial load: 12 items (4 rows of 3 columns)
+  const ITEMS_PER_PAGE = 12; // Load 12 items at a time for better performance
 
   // Debounce search queries (300ms delay)
   useEffect(() => {
@@ -145,21 +145,18 @@ const Media: React.FC = () => {
     });
   }, [mediaFilesArray, filterType, selectedEvent, debouncedSearchQuery]);
 
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredMedia.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const displayedMedia = filteredMedia.slice(startIndex, endIndex);
+  // Slice media array to show only up to displayedCount items
+  const displayedMedia = filteredMedia.slice(0, displayedCount);
 
-  // Reset to page 1 when filters change
+  // Reset displayedCount when filters change
   useEffect(() => {
-    setCurrentPage(1);
+    setDisplayedCount(12);
   }, [filterType, selectedEvent, debouncedSearchQuery]);
 
-  // Scroll to top when page changes
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [currentPage]);
+  // Infinite scroll handler
+  const handleLoadMore = useCallback(() => {
+    setDisplayedCount(prev => Math.min(prev + ITEMS_PER_PAGE, filteredMedia.length));
+  }, [filteredMedia.length]);
 
   // OPTIMIZATION: Batch resolve thumbnail URLs for visible items upfront
   // This reduces the waterfall effect of sequential getDownloadURL() calls
@@ -186,7 +183,7 @@ const Media: React.FC = () => {
     } else {
       setTimeout(resolveUrls, 50);
     }
-  }, [displayedMedia, mediaLoading, currentPage]); // Add currentPage to re-run when page changes
+  }, [displayedMedia, mediaLoading, displayedCount]); // Re-run when displayedCount changes
 
   // Image preloading: when new items arrive, prefetch their thumbnails (optimized)
   // - Only preload resolved URLs (http)
@@ -558,68 +555,15 @@ const Media: React.FC = () => {
             ))}
           </div>
 
-          {/* Pagination Controls */}
-          {filteredMedia.length > ITEMS_PER_PAGE && (
-            <div className="flex flex-col items-center gap-4 py-8">
-              <div className="text-sm text-gray-600">
-                Showing {startIndex + 1}-{Math.min(endIndex, filteredMedia.length)} of {filteredMedia.length} items
-              </div>
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                {/* Previous Button */}
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                >
-                  Previous
-                </button>
-
-                {/* Page Numbers */}
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
-                  // Show first page, last page, current page, and pages around current
-                  const showPage = 
-                    pageNum === 1 || 
-                    pageNum === totalPages || 
-                    Math.abs(pageNum - currentPage) <= 1;
-                  
-                  // Show ellipsis
-                  const showEllipsisBefore = pageNum === currentPage - 2 && currentPage > 3;
-                  const showEllipsisAfter = pageNum === currentPage + 2 && currentPage < totalPages - 2;
-
-                  if (showEllipsisBefore || showEllipsisAfter) {
-                    return (
-                      <span key={pageNum} className="px-2 text-gray-400">
-                        ...
-                      </span>
-                    );
-                  }
-
-                  if (!showPage) return null;
-
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 ${
-                        currentPage === pageNum
-                          ? 'bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white shadow-md'
-                          : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  );
-                })}
-
-                {/* Next Button */}
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                >
-                  Next
-                </button>
-              </div>
+          {/* Load More Button */}
+          {displayedCount < filteredMedia.length && (
+            <div className="col-span-full flex justify-center py-8">
+              <button
+                onClick={handleLoadMore}
+                className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white rounded-lg font-medium hover:shadow-lg transition-all duration-200"
+              >
+                Load More ({filteredMedia.length - displayedCount} remaining)
+              </button>
             </div>
           )}
         </>

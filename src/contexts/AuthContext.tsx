@@ -29,8 +29,9 @@ import React, {
     useState,
 } from 'react';
 import toast from 'react-hot-toast';
-import app, { auth, db, USING_EMULATORS } from '../config/firebase';
+import app, { auth, db, USING_EMULATORS, withFirestoreErrorHandling } from '../config/firebase';
 import { AccountApprovalService } from '../services/accountApprovalService';
+import { useRollbar } from '@rollbar/react';
 import { User } from '../types';
 
 interface AuthContextType {
@@ -223,6 +224,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentUser(null);
         setLoading(false);
         setListenersReady(false); // Reset listeners ready state
+        // Clear Rollbar user context (will be handled by RollbarUserTracker component)
         return;
       }
 
@@ -275,6 +277,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             };
             console.log('🔍 AuthContext: Setting full user:', fullUser);
             setCurrentUser(fullUser);
+            // Rollbar user context will be set by RollbarUserTracker component
           }
           console.log('🔍 AuthContext: Setting loading to false');
           setLoading(false);
@@ -679,9 +682,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('🔍 AuthContext: createPendingUser called with:', { userId: data.userId, email: data.email });
     
     try {
-      const userRef = doc(db, 'users', data.userId);
-      const userSnap = await getDoc(userRef);
       const displayName = `${data.firstName} ${data.lastName}`.trim();
+      
+      // Use error handling wrapper for IndexedDB errors
+      const userSnap = await withFirestoreErrorHandling(async () => {
+        const userRef = doc(db, 'users', data.userId);
+        return await getDoc(userRef);
+      });
       
       // Check if user already exists (e.g., rejected user reapplying)
       if (userSnap.exists()) {

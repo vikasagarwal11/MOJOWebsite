@@ -1,7 +1,8 @@
 import { collection, deleteDoc, doc, DocumentReference, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { listAll, ref } from 'firebase/storage';
-import { Calendar, CheckCircle, ChevronDown, ChevronUp, Dumbbell, Eye, FolderTree, Image, Loader2, MessageSquare, RefreshCw, Search, Settings, Shield, ShieldCheck, Star, Trash2, UserCheck, Users, Video, XCircle } from 'lucide-react';
+import { AlertTriangle, Calendar, CheckCircle, ChevronDown, ChevronUp, Dumbbell, Eye, FolderTree, Image, Loader2, MessageSquare, RefreshCw, Search, Settings, Shield, ShieldCheck, Star, Trash2, UserCheck, Users, Video, XCircle } from 'lucide-react';
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import AccountApprovalsAdmin from '../components/admin/AccountApprovalsAdmin';
 import { AssistantConfigPanel } from '../components/admin/AssistantConfigPanel';
@@ -841,6 +842,13 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           <FolderTree className="w-4 h-4 inline mr-2" />
           Support Tool Categories
         </button>
+        <Link
+          to="/admin/error-logs"
+          className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center"
+        >
+          <AlertTriangle className="w-4 h-4 inline mr-2" />
+          Error Logs
+        </Link>
       </div>
 
       {/* Event Management Section */}

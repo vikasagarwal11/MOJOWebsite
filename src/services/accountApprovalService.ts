@@ -10,7 +10,7 @@ import {
   getDocs,
   Timestamp
 } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { db, withFirestoreErrorHandling } from '../config/firebase';
 import type { AccountApproval, ApprovalMessage, UserStatus } from '../types';
 
 export class AccountApprovalService {
@@ -63,10 +63,11 @@ export class AccountApprovalService {
         approvalData.referralNotes = data.referralNotes;
       }
 
-      const approvalRef = doc(collection(db, 'accountApprovals'));
-      await setDoc(approvalRef, approvalData);
-
-      return approvalRef.id;
+      return await withFirestoreErrorHandling(async () => {
+        const approvalRef = doc(collection(db, 'accountApprovals'));
+        await setDoc(approvalRef, approvalData);
+        return approvalRef.id;
+      });
     } catch (error) {
       console.error('Error creating account approval request:', error);
       throw error;
@@ -78,26 +79,28 @@ export class AccountApprovalService {
    */
   static async getApprovalByUserId(userId: string): Promise<AccountApproval | null> {
     try {
-      const q = query(
-        collection(db, 'accountApprovals'),
-        where('userId', '==', userId)
-      );
-      const querySnapshot = await getDocs(q);
-      
-      if (querySnapshot.empty) {
-        return null;
-      }
+      return await withFirestoreErrorHandling(async () => {
+        const q = query(
+          collection(db, 'accountApprovals'),
+          where('userId', '==', userId)
+        );
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+          return null;
+        }
 
-      const doc = querySnapshot.docs[0];
-      const data = doc.data();
-      
-      return {
-        id: doc.id,
-        ...data,
-        submittedAt: (data.submittedAt as Timestamp)?.toDate() || new Date(),
-        reviewedAt: (data.reviewedAt as Timestamp)?.toDate(),
-        lastMessageAt: (data.lastMessageAt as Timestamp)?.toDate(),
-      } as AccountApproval;
+        const doc = querySnapshot.docs[0];
+        const data = doc.data();
+        
+        return {
+          id: doc.id,
+          ...data,
+          submittedAt: (data.submittedAt as Timestamp)?.toDate() || new Date(),
+          reviewedAt: (data.reviewedAt as Timestamp)?.toDate(),
+          lastMessageAt: (data.lastMessageAt as Timestamp)?.toDate(),
+        } as AccountApproval;
+      });
     } catch (error) {
       console.error('Error getting approval by user ID:', error);
       throw error;

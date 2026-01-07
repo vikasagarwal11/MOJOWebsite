@@ -1,5 +1,15 @@
 import { FirebaseError } from 'firebase/app'
 import { toast } from 'react-hot-toast'
+import { useRollbar } from '@rollbar/react'
+import { logErrorToFirestore } from './firestoreErrorService'
+import { loggingService } from './loggingService'
+import { rollbarService } from './rollbarService'
+
+// Helper to get Rollbar instance (works outside React components)
+let rollbarInstance: any = null;
+export const setRollbarInstance = (instance: any) => {
+  rollbarInstance = instance;
+};
 
 export interface ErrorInfo {
   message: string
@@ -62,9 +72,21 @@ export class ErrorService {
         console.error('🚨 Error logged:', errorInfo)
       }
       
-      // Send to external service in production
-      if (import.meta.env.PROD) {
-        this.sendToExternalService(errorInfo)
+      // Send to external service (Firestore) - logs in both dev and prod
+      // Production logs are persisted, dev logs show what would be logged
+      this.sendToExternalService(errorInfo, error)
+      
+      // Also log to Analytics via LoggingService (for event tracking)
+      try {
+        loggingService.logErrorEvent(
+          new Error(errorInfo.message),
+          {
+            component: errorInfo.component,
+            severity: errorInfo.severity,
+          }
+        );
+      } catch (analyticsError) {
+        // Silent fail - don't break if Analytics fails
       }
     } catch (e) {
       // Silent fail to prevent infinite loops
@@ -325,34 +347,77 @@ export class ErrorService {
     return 'unknown'
   }
 
-  private sendToExternalService(errorInfo: ErrorInfo): void {
-    // In production, send to external service like Sentry, LogRocket, etc.
-    // For now, we'll just log to console with a different method to avoid infinite loops
+  private sendToExternalService(errorInfo: ErrorInfo, originalError?: Error | unknown): void {
     try {
-      // Use a different logging method to avoid infinite recursion
-      if (typeof window !== 'undefined' && window.console) {
-        // Use console.warn instead of console.error to avoid potential loops
-        console.warn('Production error:', {
+      // Send to Firestore for persistent storage and querying
+      logErrorToFirestore(errorInfo).catch((err) => {
+        // Silent fail - don't break app if error logging fails
+        console.warn('Failed to log error to Firestore:', err);
+      });
+
+      // Log to Rollbar for crash reporting (web equivalent of Crashlytics)
+      // Use Rollbar instance if available (from React context)
+      if (rollbarInstance) {
+        try {
+          // Create error object if not provided
+          let errorObj: Error;
+          if (originalError instanceof Error) {
+            errorObj = originalError;
+          } else if (errorInfo.stack) {
+            errorObj = new Error(errorInfo.message);
+            errorObj.stack = errorInfo.stack;
+          } else {
+            errorObj = new Error(errorInfo.message);
+          }
+
+          // Set custom data
+          const customData: Record<string, any> = {
+            component: errorInfo.component,
+            category: errorInfo.category,
+            severity: errorInfo.severity,
+            userId: errorInfo.userId,
+            timestamp: errorInfo.timestamp.toISOString(),
+          };
+
+          if (errorInfo.code) {
+            customData.errorCode = errorInfo.code;
+          }
+
+          // Map severity to Rollbar levels
+          const level = rollbarService.mapSeverityToLevel(errorInfo.severity);
+
+          // Log to Rollbar
+          rollbarInstance.error(errorObj, {
+            level,
+            custom: customData,
+            fingerprint: errorInfo.code || errorInfo.message,
+          });
+        } catch (rollbarError) {
+          // Silent fail - don't break app if Rollbar fails
+          if (import.meta.env.DEV) {
+            console.warn('Failed to log error to Rollbar:', rollbarError);
+          }
+        }
+      }
+
+      // Also log to Analytics for event tracking (via LoggingService)
+      // This is handled in the logError method through loggingService.logErrorEvent
+      
+      // Log to console in production for debugging (only in non-production)
+      if (import.meta.env.DEV) {
+        console.warn('Error logged:', {
           message: errorInfo.message,
           code: errorInfo.code,
           component: errorInfo.component,
           severity: errorInfo.severity,
           category: errorInfo.category,
           timestamp: errorInfo.timestamp
-        })
+        });
       }
     } catch (e) {
       // Silent fail to prevent infinite loops
+      console.warn('Error in sendToExternalService:', e);
     }
-    
-    // Example: Send to Firebase Analytics
-    // analytics.logEvent('error_occurred', {
-    //   error_code: errorInfo.code,
-    //   error_message: errorInfo.message,
-    //   component: errorInfo.component,
-    //   severity: errorInfo.severity,
-    //   category: errorInfo.category,
-    // })
   }
 }
 

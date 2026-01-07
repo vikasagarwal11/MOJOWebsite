@@ -1049,6 +1049,21 @@ service cloud.firestore {
     }
     
     // =========================
+    // Error Logs: errorLogs/{errorId}
+    // =========================
+    match /errorLogs/{errorId} {
+      // Allow writes from anyone (errors can happen to anyone, even unauthenticated users)
+      // This ensures we capture all errors for debugging
+      allow create: if true;
+      
+      // Only admins can read error logs
+      allow read: if isSignedIn() && isAdmin();
+      
+      // Only admins can update/delete error logs
+      allow update, delete: if isSignedIn() && isAdmin();
+    }
+    
+    // =========================
     // Account Approvals: accountApprovals/{approvalId}
     // =========================
     match /accountApprovals/{approvalId} {
