@@ -4,7 +4,7 @@ import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-d
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { setupGlobalErrorHandling } from './utils/globalErrorHandler';
-// import { OrganizationSchema } from './components/seo/StructuredData';
+import { OrganizationSchema } from './components/seo/StructuredData';
 import Login from './components/auth/Login';
 import Register from './components/auth/RegisterNew';
 import ScrollToTop from './components/common/ScrollToTop';
@@ -56,14 +56,8 @@ function AppContent() {
       <PushNotificationInitializer />
       
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
-        {/* Global SEO Structured Data - Temporarily disabled */}
-        {/* <OrganizationSchema 
-          socialMedia={{
-            facebook: "https://facebook.com/momsfitnessmojo",
-            instagram: "https://instagram.com/momsfitnessmojo",
-            twitter: "https://twitter.com/momsfitnessmojo"
-          }}
-        /> */}
+        {/* Global SEO Structured Data */}
+        <OrganizationSchema />
         <Toaster
           position="top-center"
           containerStyle={{

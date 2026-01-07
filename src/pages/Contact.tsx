@@ -9,6 +9,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { ContactService } from '../services/contactService';
 import { ContactMessageFormData } from '../types/contact';
+import { SEO_CONFIG } from '../config/seo';
 
 // Contact form validation schema
 const contactSchema = z.object({
@@ -109,31 +110,22 @@ const Contact: React.FC = () => {
     '@context': 'https://schema.org',
     '@type': 'ContactPage',
     name: 'Contact Moms Fitness Mojo',
-    url: 'https://momfitnessmojo.web.app/contact',
+    url: SEO_CONFIG.getUrl('/contact'),
     description: 'Get in touch with Moms Fitness Mojo. We\'d love to hear from you! Whether you have questions about our community, want to join an event, or just want to say hello, we\'re here to help.',
     mainEntity: {
       '@type': 'Organization',
-      name: 'Moms Fitness Mojo',
-      url: 'https://momfitnessmojo.web.app',
-      logo: 'https://momfitnessmojo.web.app/assets/logo/square-logo.svg',
-      email: 'momsfitnessmojo@gmail.com',
-      address: {
-        '@type': 'PostalAddress',
-        addressLocality: 'Short Hills',
-        addressRegion: 'NJ',
-        addressCountry: 'US',
-      },
+      name: SEO_CONFIG.siteName,
+      url: SEO_CONFIG.baseUrl,
+      logo: SEO_CONFIG.defaultLogo,
+      email: SEO_CONFIG.email,
+      address: SEO_CONFIG.address,
       contactPoint: {
         '@type': 'ContactPoint',
         contactType: 'customer service',
-        email: 'momsfitnessmojo@gmail.com',
+        email: SEO_CONFIG.email,
         availableLanguage: 'English',
       },
-      sameAs: [
-        'https://www.instagram.com/momsfitnessmojo/',
-        'https://www.facebook.com/momsfitnessmojo/',
-        'https://www.linkedin.com/company/momsfitnessmojo/',
-      ],
+      sameAs: Object.values(SEO_CONFIG.socialMedia),
     },
   };
 
@@ -146,20 +138,20 @@ const Contact: React.FC = () => {
           name="description"
           content="Get in touch with Moms Fitness Mojo. We'd love to hear from you! Whether you have questions about our community, want to join an event, or just want to say hello, we're here to help."
         />
-        <link rel="canonical" href="https://momfitnessmojo.web.app/contact" />
+        <link rel="canonical" href={SEO_CONFIG.getUrl('/contact')} />
         
         {/* Open Graph */}
         <meta property="og:type" content="website" />
         <meta property="og:title" content="Contact Moms Fitness Mojo" />
         <meta property="og:description" content="Get in touch with Moms Fitness Mojo. We'd love to hear from you! Whether you have questions about our community, want to join an event, or just want to say hello, we're here to help." />
-        <meta property="og:url" content="https://momfitnessmojo.web.app/contact" />
-        <meta property="og:image" content="https://momfitnessmojo.web.app/assets/logo/facebook-post.svg" />
+        <meta property="og:url" content={SEO_CONFIG.getUrl('/contact')} />
+        <meta property="og:image" content={SEO_CONFIG.defaultImage} />
         
         {/* Twitter */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="Contact Moms Fitness Mojo" />
         <meta name="twitter:description" content="Get in touch with Moms Fitness Mojo. We'd love to hear from you!" />
-        <meta name="twitter:image" content="https://momfitnessmojo.web.app/assets/logo/square-logo.svg" />
+        <meta name="twitter:image" content={SEO_CONFIG.defaultLogo} />
         
         {/* Structured Data */}
         <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>

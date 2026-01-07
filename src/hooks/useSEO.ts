@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { SEO_CONFIG } from '../config/seo';
 
 interface SEOData {
   title?: string;
@@ -107,44 +108,45 @@ const updateCanonicalURL = (url: string) => {
 // Predefined SEO configurations for different pages
 export const seoConfigs = {
   home: {
-    title: "Moms Fitness Mojo - Fitness Community for Moms",
-    description: "Join our supportive fitness community where moms connect, share fitness journeys, and grow together. Find local events, share media, and build lasting friendships.",
-    keywords: "mom fitness, fitness community, women fitness, local fitness events, mom workout, fitness classes, health and wellness"
+    title: SEO_CONFIG.defaultTitle,
+    description: SEO_CONFIG.defaultDescription,
+    keywords: SEO_CONFIG.defaultKeywords,
+    url: SEO_CONFIG.baseUrl
   },
   
   events: {
     title: "Events for Moms - Moms Fitness Mojo",
     description: "Discover local fitness events designed for moms. Join yoga classes, workout sessions, and wellness activities in your community.",
     keywords: "fitness events, mom yoga classes, women fitness events, local workout classes, mom wellness activities",
-    url: "https://momsfitnessmojo.com/events"
+    url: SEO_CONFIG.getUrl('/events')
   },
   
   media: {
     title: "Fitness Media & Gallery - Moms Fitness Mojo",
     description: "Browse our fitness media gallery featuring workout videos, healthy recipes, and inspiring stories from our mom fitness community.",
     keywords: "fitness videos, workout gallery, mom fitness inspiration, healthy recipes, fitness photos",
-    url: "https://momsfitnessmojo.com/media"
+    url: SEO_CONFIG.getUrl('/media')
   },
   
   founder: {
     title: "Meet Our Founder - Moms Fitness Mojo",
     description: "Learn about the inspiring story behind Moms Fitness Mojo and how our founder is building a supportive community for moms everywhere.",
     keywords: "fitness founder, mom entrepreneur, women in fitness, community leader",
-    url: "https://momsfitnessmojo.com/founder"
+    url: SEO_CONFIG.getUrl('/founder')
   },
   
   contact: {
     title: "Contact Us - Moms Fitness Mojo",
     description: "Get in touch with Moms Fitness Mojo. We'd love to hear from you and help you join our supportive fitness community.",
     keywords: "contact fitness community, join mom fitness, fitness community support",
-    url: "https://momsfitnessmojo.com/contact"
+    url: SEO_CONFIG.getUrl('/contact')
   },
   
   about: {
     title: "About Moms Fitness Mojo - Our Mission",
     description: "Learn about Moms Fitness Mojo's mission to create a supportive fitness community where moms can connect, share, and grow together.",
     keywords: "about mom fitness, fitness community mission, women wellness community",
-    url: "https://momsfitnessmojo.com/about"
+    url: SEO_CONFIG.getUrl('/about')
   }
 };
 
@@ -174,9 +176,9 @@ export const useEventSEO = (event: {
     title: `${event.title} - Moms Fitness Event | Moms Fitness Mojo`,
     description: `${event.description} Join MOJO at ${locationText} for this amazing fitness event designed for moms.`,
     keywords: `fitness event, mom workout, ${event.title}, ${locationText}, moms fitness mojo`,
-    image: event.imageUrl || "https://momsfitnessmojo.com/images/founder-cover.jpg",
+    image: event.imageUrl || SEO_CONFIG.defaultImage,
     type: 'event',
-    url: `https://momsfitnessmojo.com/events`
+    url: SEO_CONFIG.getUrl('/events')
   };
 
   useSEO(seoData);

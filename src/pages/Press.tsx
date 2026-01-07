@@ -4,8 +4,8 @@ import { ExternalLink, Calendar, FileText, Users, Heart } from 'lucide-react';
 
 const Press: React.FC = () => {
   const pressData = {
-    pageUrl: 'https://momfitnessmojo.web.app/press',
-    orgUrl: 'https://momfitnessmojo.web.app/',
+    pageUrl: 'https://momsfitnessmojo.com/press',
+    orgUrl: 'https://momsfitnessmojo.com/',
     email: 'momsfitnessmojo@gmail.com',
     pressKit: {
       founderBio: 'Aina Rai founded Moms Fitness Mojo in 2024 to create a supportive community where moms can prioritize their health while connecting with other women who understand the unique challenges of motherhood.',

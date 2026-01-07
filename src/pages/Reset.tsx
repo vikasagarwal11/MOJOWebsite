@@ -42,20 +42,20 @@ const Reset: React.FC = () => {
       <Helmet>
         <title>10-Minute Reset Kit | Moms Fitness Mojo</title>
         <meta name="description" content="Get your free 10-minute reset kit: 3 micro-workouts, breathing drill, and habit tracker designed for busy moms in Short Hills & Millburn, NJ." />
-        <link rel="canonical" href="https://momfitnessmojo.web.app/reset" />
+        <link rel="canonical" href="https://momsfitnessmojo.com/reset" />
         
         {/* Open Graph */}
         <meta property="og:type" content="website" />
         <meta property="og:title" content="10-Minute Reset Kit - Moms Fitness Mojo" />
         <meta property="og:description" content="Free wellness kit for busy moms: micro-workouts, breathing exercises, and habit tracking." />
-        <meta property="og:url" content="https://momfitnessmojo.web.app/reset" />
-        <meta property="og:image" content="https://momfitnessmojo.web.app/assets/logo/facebook-post.svg" />
+        <meta property="og:url" content="https://momsfitnessmojo.com/reset" />
+        <meta property="og:image" content="https://momsfitnessmojo.com/assets/logo/facebook-post.svg" />
         
         {/* Twitter */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="10-Minute Reset Kit - Moms Fitness Mojo" />
         <meta name="twitter:description" content="Free wellness kit for busy moms." />
-        <meta name="twitter:image" content="https://momfitnessmojo.web.app/assets/logo/square-logo.svg" />
+        <meta name="twitter:image" content="https://momsfitnessmojo.com/assets/logo/square-logo.svg" />
       </Helmet>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">

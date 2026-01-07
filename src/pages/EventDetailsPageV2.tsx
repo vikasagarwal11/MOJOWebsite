@@ -202,7 +202,7 @@ const EventDetailsPageV2: React.FC = () => {
   // Generate canonical URL for V2
   const canonicalUrl = useMemo(() => {
     if (!event) return '';
-    const baseUrl = 'https://momfitnessmojo.web.app';
+    const baseUrl = 'https://momsfitnessmojo.com';
     const eventSlug = (event as any).slug || event.id;
     return `${baseUrl}/events-v2/${eventSlug}`;
   }, [event]);

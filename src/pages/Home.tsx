@@ -21,6 +21,7 @@ import TestimonialCarousel from '../components/home/TestimonialCarousel';
 import { useAuth } from '../contexts/AuthContext';
 import { useFirestore } from '../hooks/useFirestore';
 import { useTestimonials } from '../hooks/useTestimonials';
+import { SEO_CONFIG } from '../config/seo';
 
 const LazyImage: React.FC<{ src: string; alt: string; className?: string }> = ({ src, alt, className }) => {
   const { ref, inView } = useInView({
@@ -180,44 +181,36 @@ const Home: React.FC = () => {
       <HelmetWrapper>
         <title>Moms Fitness Mojo | Millburn & Short Hills NJ Mom Fitness Events</title>
         <meta name="description" content="Moms Fitness Mojo - Fitness, Friendship & Lifestyle for Moms in NJ. Join our supportive community in Short Hills, Millburn, Maplewood, Summit & nearby NJ towns for workouts, events, and wellness." />
-        <link rel="canonical" href="https://momsfitnessmojo.web.app/" />
+        <link rel="canonical" href={SEO_CONFIG.baseUrl} />
         
         {/* Open Graph */}
         <meta property="og:type" content="website" />
         <meta property="og:title" content="Moms Fitness Mojo - Millburn & Short Hills NJ Mom Fitness" />
         <meta property="og:description" content="Moms Fitness Mojo - Fitness, Friendship & Lifestyle for Moms in NJ. Join our supportive community for workouts, events, and wellness." />
-        <meta property="og:url" content="https://momsfitnessmojo.web.app/" />
-        <meta property="og:image" content="https://momsfitnessmojo.web.app/assets/logo/facebook-post.svg" />
+        <meta property="og:url" content={SEO_CONFIG.baseUrl} />
+        <meta property="og:image" content={SEO_CONFIG.defaultImage} />
         
         {/* Twitter Card */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="Moms Fitness Mojo - Millburn & Short Hills NJ" />
         <meta name="twitter:description" content="Moms Fitness Mojo - Fitness, Friendship & Lifestyle for Moms in NJ. Join our supportive community for workouts, events, and wellness." />
-        <meta name="twitter:image" content="https://momsfitnessmojo.web.app/assets/logo/square-logo.svg" />
+        <meta name="twitter:image" content={SEO_CONFIG.defaultLogo} />
         
         {/* Structured Data */}
         <script type="application/ld+json">
           {JSON.stringify({
             "@context": "https://schema.org",
             "@type": "CommunityOrganization",
-            "name": "Moms Fitness Mojo",
-            "url": "https://momsfitnessmojo.web.app/",
-            "logo": "https://momsfitnessmojo.web.app/assets/logo/mfm-logo-outline.svg",
-            "sameAs": [
-              "https://www.instagram.com/momsfitnessmojo/",
-              "https://www.facebook.com/momsfitnessmojo/"
-            ],
-            "foundingDate": "2025",
+            "name": SEO_CONFIG.siteName,
+            "url": SEO_CONFIG.baseUrl,
+            "logo": SEO_CONFIG.defaultLogo,
+            "sameAs": Object.values(SEO_CONFIG.socialMedia),
+            "foundingDate": SEO_CONFIG.foundingDate,
             "areaServed": [
               "Short Hills, NJ", "Millburn, NJ", "Maplewood, NJ",
               "Summit, NJ", "Livingston, NJ", "South Orange, NJ"
             ],
-            "address": {
-              "@type": "PostalAddress",
-              "addressLocality": "Short Hills",
-              "addressRegion": "NJ",
-              "addressCountry": "US"
-            }
+            "address": SEO_CONFIG.address
           })}
         </script>
       </HelmetWrapper>

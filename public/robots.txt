@@ -1,6 +1,6 @@
 User-agent: *
 Allow: /
-Sitemap: https://momfitnessmojo.web.app/sitemap.xml
+Sitemap: https://momsfitnessmojo.com/sitemap.xml
 
 # Crawl-delay for respectful crawling
 Crawl-delay: 1
