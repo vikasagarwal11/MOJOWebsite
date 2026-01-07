@@ -5,6 +5,7 @@ import {
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  memoryLocalCache,
   connectFirestoreEmulator
 } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator } from 'firebase/storage';
@@ -97,6 +98,35 @@ if (shouldLogFirebaseConfig) {
 // Use different database based on environment
 const databaseId = import.meta.env.VITE_FIREBASE_DATABASE_ID || '(default)';
 
+// Helper function to clear corrupted IndexedDB cache
+const clearIndexedDBCache = async (): Promise<void> => {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    const dbName = `firestore/${projectId}/${databaseId}`;
+    const deleteRequest = indexedDB.deleteDatabase(dbName);
+    
+    return new Promise((resolve, reject) => {
+      deleteRequest.onsuccess = () => {
+        console.log('[Firebase] Cleared corrupted IndexedDB cache');
+        resolve();
+      };
+      deleteRequest.onerror = () => {
+        console.warn('[Firebase] Failed to clear IndexedDB cache:', deleteRequest.error);
+        resolve(); // Don't reject, just continue
+      };
+      deleteRequest.onblocked = () => {
+        console.warn('[Firebase] IndexedDB deletion blocked - close other tabs');
+        resolve(); // Don't reject, just continue
+      };
+    });
+  } catch (error) {
+    console.warn('[Firebase] Error clearing IndexedDB cache:', error);
+  }
+};
+
+// Initialize Firestore with persistent local cache
+// Note: Errors may occur later during queries, not during initialization
 export const db = initializeFirestore(app, {
   databaseId,
   localCache: persistentLocalCache({
@@ -105,6 +135,43 @@ export const db = initializeFirestore(app, {
     cacheSizeBytes: 50 * 1024 * 1024, // 50MB cache limit
   }),
 });
+
+// Export cache clearing utility for runtime errors
+export const clearFirestoreCache = clearIndexedDBCache;
+
+// Utility function to handle Firestore operations with IndexedDB error recovery
+export async function withFirestoreErrorHandling<T>(
+  operation: () => Promise<T>,
+  retries = 2
+): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      const isIndexedDBError = 
+        error?.code === 'unavailable' ||
+        error?.message?.includes('IndexedDB') ||
+        error?.message?.includes('IndexedDbTransactionError') ||
+        error?.message?.includes('Allocate target');
+      
+      if (isIndexedDBError && attempt < retries) {
+        console.warn(`[Firebase] IndexedDB error on attempt ${attempt + 1}, clearing cache and retrying...`, error);
+        
+        // Clear cache and wait a bit before retry
+        await clearIndexedDBCache();
+        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1))); // Exponential backoff
+        
+        continue;
+      }
+      
+      // If not IndexedDB error or out of retries, throw
+      throw error;
+    }
+  }
+  
+  // This should never be reached, but TypeScript needs it
+  throw new Error('Operation failed after retries');
+}
 
 export const auth = getAuth(app);
 export const storage = getStorage(app);

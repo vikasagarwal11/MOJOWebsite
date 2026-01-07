@@ -1,8 +1,12 @@
 import { useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import { Provider as RollbarProvider, ErrorBoundary as RollbarErrorBoundary, useRollbar } from '@rollbar/react';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { RollbarUserTracker } from './components/RollbarUserTracker';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { rollbarService } from './services/rollbarService';
+import { setRollbarInstance } from './services/errorService';
 import { setupGlobalErrorHandling } from './utils/globalErrorHandler';
 // import { OrganizationSchema } from './components/seo/StructuredData';
 import Login from './components/auth/Login';
@@ -33,13 +37,84 @@ import RSVPPageV2 from './pages/RSVPPageV2';
 import ShareYourStory from './pages/ShareYourStory';
 import Sponsors from './pages/Sponsors';
 import Testimonials from './pages/Testimonials';
+import ErrorLogs from './pages/ErrorLogs';
 // import SupportTools from './pages/SupportTools'; // Hidden for now - not rolling out in initial phase
 // import Workouts from './pages/Workouts'; // Hidden for now
 // import Challenges from './pages/Challenges'; // Hidden for now
 // import ChallengeDetail from './pages/ChallengeDetail'; // Hidden for now
 import AdminConsole from './pages/AdminConsole';
 
-function AppContent() {
+
+// Component to store Rollbar instance
+function RollbarInstanceTracker() {
+  const rollbar = useRollbar();
+  
+  useEffect(() => {
+    if (rollbar) {
+      setRollbarInstance(rollbar);
+      // Also store on window for global access
+      (window as any).Rollbar = rollbar;
+    }
+  }, [rollbar]);
+  
+  return null;
+}
+
+// Component to wrap app with Rollbar
+function AppWithRollbar() {
+  const rollbarConfig = rollbarService.getConfig();
+  const isRollbarEnabled = !!rollbarConfig;
+
+  if (!rollbarConfig) {
+    return <AppContent isRollbarEnabled={false} />;
+  }
+
+  return (
+    <RollbarProvider config={rollbarConfig}>
+      <RollbarInstanceTracker />
+      <RollbarErrorBoundary>
+        <AppContent isRollbarEnabled={true} />
+      </RollbarErrorBoundary>
+    </RollbarProvider>
+  );
+}
+
+// Inner app content
+function AppContent({ isRollbarEnabled }: { isRollbarEnabled: boolean }) {
+  // Set up global error handling
+  useEffect(() => {
+    setupGlobalErrorHandling();
+    
+    // Get Rollbar instance from context and store it
+    // This is a workaround since we can't use hooks in error service
+    const checkRollbar = () => {
+      try {
+        // Try to get Rollbar from window (set by Rollbar Provider)
+        const rollbar = (window as any).Rollbar;
+        if (rollbar) {
+          setRollbarInstance(rollbar);
+        }
+      } catch (e) {
+        // Ignore
+      }
+    };
+    
+    // Check after a short delay to allow Rollbar to initialize
+    setTimeout(checkRollbar, 100);
+  }, []);
+
+  return (
+    <ErrorBoundary>
+      <AuthProvider>
+        {isRollbarEnabled && <RollbarUserTracker />}
+        <AppRouter />
+      </AuthProvider>
+    </ErrorBoundary>
+  );
+}
+
+// Rename the original AppContent to AppRouter
+function AppRouter() {
   const { currentUser } = useAuth();
   
   return (
@@ -116,6 +191,7 @@ function AppContent() {
             <Route path="sponsors" element={<Sponsors />} />
             <Route path="profile" element={<Profile mode="profile" />} />
             <Route path="admin" element={<AdminConsole />} />
+            <Route path="admin/error-logs" element={<ErrorLogs />} />
             <Route path="family-management" element={<FamilyManagement />} />
             <Route path="founder" element={<Founder />} />
             <Route path="contact" element={<Contact />} />
@@ -137,18 +213,7 @@ function AppContent() {
 }
 
 function App() {
-  // Set up global error handling
-  useEffect(() => {
-    setupGlobalErrorHandling()
-  }, [])
-
-  return (
-    <ErrorBoundary>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ErrorBoundary>
-  );
+  return <AppWithRollbar />;
 }
 
 export default App;

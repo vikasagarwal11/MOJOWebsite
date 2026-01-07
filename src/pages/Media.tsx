@@ -47,8 +47,8 @@ const Media: React.FC = () => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const [displayedCount, setDisplayedCount] = useState(50); // Initial load: 50 items
-  const ITEMS_PER_PAGE = 50; // Load 50 items at a time
+  const [displayedCount, setDisplayedCount] = useState(12); // Initial load: 12 items (4 rows of 3 columns)
+  const ITEMS_PER_PAGE = 12; // Load 12 items at a time for better performance
 
   // Debounce search queries (300ms delay)
   useEffect(() => {
