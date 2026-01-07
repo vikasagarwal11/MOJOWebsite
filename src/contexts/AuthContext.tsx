@@ -1,37 +1,36 @@
 import {
-    ConfirmationResult,
-    User as FirebaseUser,
-    onAuthStateChanged,
-    RecaptchaVerifier,
-    signInWithPhoneNumber,
-    signOut,
+  ConfirmationResult,
+  User as FirebaseUser,
+  onAuthStateChanged,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  signOut,
 } from 'firebase/auth';
 import {
-    collection,
-    doc,
-    getDoc,
-    getDocs,
-    onSnapshot,
-    query,
-    serverTimestamp,
-    setDoc,
-    Unsubscribe,
-    updateDoc,
-    where,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  setDoc,
+  Unsubscribe,
+  updateDoc,
+  where,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import React, {
-    createContext,
-    useContext,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import toast from 'react-hot-toast';
 import app, { auth, db, USING_EMULATORS, withFirestoreErrorHandling } from '../config/firebase';
 import { AccountApprovalService } from '../services/accountApprovalService';
-import { useRollbar } from '@rollbar/react';
 import { User } from '../types';
 
 interface AuthContextType {
@@ -684,9 +683,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const displayName = `${data.firstName} ${data.lastName}`.trim();
       
+      // Create user reference outside the error handling wrapper so it's accessible throughout
+      const userRef = doc(db, 'users', data.userId);
+      
       // Use error handling wrapper for IndexedDB errors
       const userSnap = await withFirestoreErrorHandling(async () => {
-        const userRef = doc(db, 'users', data.userId);
         return await getDoc(userRef);
       });
       

@@ -1,15 +1,15 @@
 import { doc, onSnapshot } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-    AlertTriangle,
-    ArrowLeft,
-    Calendar,
-    CheckCircle2,
-    Clock,
-    DollarSign,
-    MapPin,
-    Users,
-    XCircle
+  AlertTriangle,
+  ArrowLeft,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  DollarSign,
+  MapPin,
+  Users,
+  XCircle
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -176,6 +176,16 @@ const RSVPPageV2: React.FC = () => {
   const currentStatus: AttendeeStatus | null = useMemo(() => {
     return primaryAttendee?.rsvpStatus ?? null;
   }, [primaryAttendee]);
+
+  // Check if user can add attendees based on event settings
+  const canAddAttendees = useMemo(() => {
+    if (!event) return false;
+    // Admins and event creators can always add attendees
+    if (isAdmin || event.createdBy === currentUser?.id) return true;
+    // Check if event allows members to add attendees (default to true for backward compatibility)
+    const allowMembersToAddAttendees = (event as any)?.allowMembersToAddAttendees;
+    return allowMembersToAddAttendees !== false; // Default to true if undefined
+  }, [event, isAdmin, currentUser]);
 
   const startDate = useMemo(() => safeToDate((event as any)?.startAt), [event]);
   const endDate = useMemo(() => safeToDate((event as any)?.endAt), [event]);
@@ -610,7 +620,10 @@ const RSVPPageV2: React.FC = () => {
                   <div className="mt-8 border-t border-black/5 pt-6">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <div className="text-sm font-semibold text-gray-900">Step 2: Add family or guests (optional)</div>
+                        <div className="text-sm font-semibold text-gray-900">
+                          Step 2: Add family or guests (optional)
+                          {!canAddAttendees && <span className="ml-1 text-gray-600">(Admin Only)</span>}
+                        </div>
                         <div className="mt-1 text-sm text-gray-600">
                           Available after you set yourself as <span className="font-semibold">Going</span>.
                         </div>
@@ -620,7 +633,7 @@ const RSVPPageV2: React.FC = () => {
                         <LoadingButton
                           onClick={quickAddFamily}
                           loading={saving}
-                          disabled={!familyMembers?.length || currentStatus !== 'going' || isEventPast}
+                          disabled={!familyMembers?.length || currentStatus !== 'going' || isEventPast || !canAddAttendees}
                           className="rounded-xl"
                         >
                           Add saved family
@@ -634,7 +647,13 @@ const RSVPPageV2: React.FC = () => {
                       </div>
                     )}
 
-                    {currentStatus === 'going' && (
+                    {currentStatus === 'going' && !canAddAttendees && (
+                      <div className="mt-4 rounded-2xl bg-gray-50 p-4 text-sm text-gray-700 ring-1 ring-inset ring-gray-200">
+                        Only administrators and the event creator can add attendees to this event.
+                      </div>
+                    )}
+
+                    {currentStatus === 'going' && canAddAttendees && (
                       <>
                         <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-6">
                           <div className="sm:col-span-2">

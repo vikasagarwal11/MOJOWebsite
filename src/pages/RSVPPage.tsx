@@ -849,14 +849,16 @@ const RSVPPage: React.FC = () => {
                         canAddAttendees ? 'active:bg-orange-100 cursor-pointer' : 'opacity-50 cursor-not-allowed'
                       }`}
                       aria-label={`${isAddSectionCollapsed ? 'Expand' : 'Collapse'} Add Attendees section`}
-                      title={!canAddAttendees ? 'Only event organizers can add attendees for this event. Contact the event organizer if you need to add additional attendees.' : undefined}
+                      title={!canAddAttendees ? 'Only organizers can add non-members for this event. Contact the organizer for details.' : undefined}
                     >
                       <div className="flex items-center gap-2 sm:gap-3 flex-1">
-                        <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm">
+                        <div className={`p-1.5 sm:p-2 bg-white rounded-lg shadow-sm ${!canAddAttendees ? 'opacity-60' : ''}`}>
                           <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
                         </div>
                         <div className="text-left flex-1">
-                          <h4 className="font-semibold text-gray-900 text-xs sm:text-sm">Add Attendees</h4>
+                          <h4 className={`font-semibold text-xs sm:text-sm ${!canAddAttendees ? 'text-gray-600' : 'text-gray-900'}`}>
+                            Add Attendees {!canAddAttendees && <span className="text-xs text-gray-500 font-normal">(Admin Only)</span>}
+                          </h4>
                           {canAddAttendees && readyToAddCount > 0 && (
                             <span className="text-xs text-orange-600 font-medium">
                               {readyToAddCount} ready to add
@@ -864,15 +866,10 @@ const RSVPPage: React.FC = () => {
                           )}
                           {!canAddAttendees && (
                             <span className="text-xs text-gray-500 font-normal block mt-0.5">
-                              Only event organizers can add attendees for this event
+                              Only organizers can add non-members for this event
                             </span>
                           )}
                         </div>
-                        {!canAddAttendees && (
-                          <span className="text-xs text-gray-600 bg-gray-200 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full font-medium">
-                            Admin Only
-                          </span>
-                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         {canAddAttendees && !isAddSectionCollapsed && (
@@ -895,7 +892,7 @@ const RSVPPage: React.FC = () => {
                       </div>
                     </motion.button>
 
-                    {!isAddSectionCollapsed && (
+                    {!isAddSectionCollapsed && canAddAttendees && (
                       <div className="px-4 pt-2">
                         {!canAddAttendees && (
                           <div className="mb-2 sm:mb-3 p-2.5 sm:p-3 rounded-lg text-xs sm:text-sm bg-gray-50 border border-gray-200">
@@ -904,7 +901,7 @@ const RSVPPage: React.FC = () => {
                               <span className="font-medium text-gray-700">Adding attendees is restricted</span>
                             </div>
                             <p className="mt-1 text-xs text-gray-600">
-                              Only event organizers can add attendees for this event. If you need to add additional attendees, please contact the event organizer.
+                              Only organizers can add non-members for this event. Contact the organizer for details.
                             </p>
                           </div>
                         )}
@@ -926,7 +923,7 @@ const RSVPPage: React.FC = () => {
                     )}
 
                     <AnimatePresence>
-                      {!isAddSectionCollapsed && (
+                      {!isAddSectionCollapsed && canAddAttendees && (
                         <motion.div
                           id="add-attendees-panel"
                           role="region"

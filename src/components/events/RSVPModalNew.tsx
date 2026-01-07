@@ -1,12 +1,12 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
-    AlertTriangle,
-    Calendar,
-    ChevronDown,
-    Heart,
-    QrCode,
-    UserPlus,
-    Users,
+  AlertTriangle,
+  Calendar,
+  ChevronDown,
+  Heart,
+  QrCode,
+  UserPlus,
+  Users,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
@@ -666,7 +666,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                             canAddAttendees ? 'hover:bg-[#F25129]/20 cursor-pointer' : 'opacity-50 cursor-not-allowed'
                           }`}
                           aria-label={`${isAddSectionCollapsed ? 'Expand' : 'Collapse'} Add Attendees section`}
-                          title={!canAddAttendees ? 'Only admins can add attendees for this event' : undefined}
+                          title={!canAddAttendees ? 'Only organizers can add non-members for this event. Contact the organizer for details.' : undefined}
                         >
                           <div className="flex items-center gap-2">
                             <UserPlus className="w-4 h-4 text-[#F25129]" />
@@ -710,7 +710,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                         )}
 
                         <AnimatePresence>
-                          {!isAddSectionCollapsed && (
+                          {!isAddSectionCollapsed && canAddAttendees && (
                             <motion.div
                               id="add-attendees-panel"
                               role="region"
