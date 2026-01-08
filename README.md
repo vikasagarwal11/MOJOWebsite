@@ -13,33 +13,18 @@ All documentation has been moved to the [`docs/`](./docs/) directory.
 
 ## 🚀 Quick Start
 
-### Local Development (with Emulators)
+### Local Development (Firebase Dev)
 
 ```bash
 # Install dependencies
 npm install
 
-# Build Cloud Functions first
-cd functions
-npm install
-npm run build
-cd ..
-
-# Switch to dev project
-firebase use dev
-
-# Terminal 1: Start Firebase Emulators
-firebase emulators:start
-
-# Terminal 2: Start development server
+# Start development server (connects to Firebase dev project)
 npm run dev
 
 # Access the app
 # - Frontend: http://localhost:5173
-# - Emulator UI: http://127.0.0.1:4000
-# - Firestore: http://127.0.0.1:4000/firestore
-# - Auth: http://127.0.0.1:4000/auth
-# - Functions: http://127.0.0.1:4000/functions
+# - Data persists in Firebase dev project (momsfitnessmojo-dev)
 ```
 
 ### Production Deployment
@@ -63,8 +48,8 @@ firebase use dev
 
 ### Environment Setup
 
-- **Local Dev**: Uses `.env` with `VITE_USE_EMULATORS=true` → Firebase project: `momsfitnessmojo-dev`
-- **Production**: Uses `.env.production` with `VITE_USE_EMULATORS=false` → Firebase project: `momsfitnessmojo-65d00`
+- **Local Dev**: Uses `.env` with `VITE_USE_EMULATORS=false` → Connects to Firebase project: `momsfitnessmojo-dev` (data persists in cloud)
+- **Production**: Uses `.env.production` with `VITE_USE_EMULATORS=false` → Connects to Firebase project: `momsfitnessmojo-65d00` (live site)
 
 ## 🛠️ Tech Stack
 
