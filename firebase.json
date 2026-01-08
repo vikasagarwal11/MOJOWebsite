@@ -11,7 +11,7 @@
   "functions": {
     "source": "functions",
     "runtime": "nodejs22",
-    "region": "us-east1"
+    "region": "us-central1"
   },
   "hosting": {
     "public": "dist",
@@ -75,8 +75,34 @@
     "cleanUrls": true,
     "trailingSlash": false
   },
-  "extensions": {
-    "firestore-vector-search": "googlecloud/firestore-vector-search@0.0.9",
-    "storage-resize-images": "firebase/storage-resize-images@0.2.10"
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "database": {
+      "port": 9000
+    },
+    "hosting": {
+      "port": 5000
+    },
+    "storage": {
+      "port": 9199
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
+    "singleProjectMode": false,
+    "export": {
+      "onExit": {
+        "path": "./emulator-data"
+      }
+    }
   }
 }

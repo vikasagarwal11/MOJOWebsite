@@ -322,154 +322,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('🔍 AuthContext: Current hostname:', window.location.hostname);
     console.log('🔍 AuthContext: Current origin:', window.location.origin);
     
-    // Emulator path: no reCAPTCHA required, avoids hostname issues entirely
-    if (USING_EMULATORS) {
-      console.log('🔍 AuthContext: Using emulator mode - no reCAPTCHA needed');
-      const fakeVerifier: any = {
-        type: 'recaptcha',
-        verify: async () => 'test-verifier-token',
-      };
-      const result = await signInWithPhoneNumber(auth, phoneNumber, fakeVerifier);
-      toast.success('Verification code (emulator) generated');
-      return result;
-    }
-
-    // Real Firebase: use reCAPTCHA
-    console.log('🔍 AuthContext: Using real Firebase - setting up reCAPTCHA');
-    console.log('🔍 AuthContext: Checking if grecaptcha is available...');
-    if (typeof (window as any).grecaptcha === 'undefined') {
-      console.error('🚨 AuthContext: reCAPTCHA script not loaded in sendVerificationCode!');
-    } else {
-      console.log('🔍 AuthContext: grecaptcha is available');
-    }
-    
+    // Get reCAPTCHA verifier (works for both emulator and production)
     let verifier = getOrCreateRecaptcha();
-    console.log('🔍 AuthContext: reCAPTCHA verifier ready, calling signInWithPhoneNumber');
+    console.log('🔍 AuthContext: reCAPTCHA verifier ready');
     
     try {
-      console.log('🔍 AuthContext: About to call signInWithPhoneNumber with:', {
-        phoneNumber,
-        verifierType: verifier?.type,
-        authApp: auth?.app?.name,
-        projectId: auth?.app?.options?.projectId
-      });
-      
       const result = await signInWithPhoneNumber(auth, phoneNumber, verifier);
-      console.log('🔍 AuthContext: signInWithPhoneNumber successful');
-      console.log('🔍 AuthContext: ConfirmationResult:', {
-        verificationId: result.verificationId,
-        hasConfirmationResult: !!result,
-        resultType: typeof result
-      });
+      console.log('✅ AuthContext: Verification code sent successfully');
       
-      // Enhanced SMS delivery logging
-      if (result.verificationId) {
-        console.log('🔍 AuthContext: SMS should have been sent to:', phoneNumber);
-        console.log('🔍 AuthContext: Verification ID:', result.verificationId);
-        console.log('🔍 AuthContext: SMS delivery details:');
-        console.log('  - Phone Number:', phoneNumber);
-        console.log('  - Project ID:', auth.app?.options?.projectId);
-        console.log('  - Auth Domain:', auth.app?.options?.authDomain);
-        console.log('  - reCAPTCHA Site Key:', import.meta.env.VITE_RECAPTCHA_SITE_KEY);
-        console.log('  - Current Domain:', window.location.hostname);
-        console.log('  - User Agent:', navigator.userAgent);
-        console.log('  - Timestamp:', new Date().toISOString());
-        
-        // Log to Firebase Analytics for tracking
-        if (typeof window !== 'undefined' && (window as any).gtag) {
-          (window as any).gtag('event', 'sms_verification_sent', {
-            phone_number: phoneNumber,
-            verification_id: result.verificationId,
-            timestamp: new Date().toISOString()
-          });
-        }
-        
-        console.log('🔍 AuthContext: If no SMS received, check:');
-        console.log('  1. Firebase Console → Authentication → Usage (SMS quota)');
-        console.log('  2. Firebase Console → Authentication → Settings (Phone provider enabled)');
-        console.log('  3. Firebase Console → Project Settings → Billing (SMS billing enabled)');
-        console.log('  4. Check phone carrier for SMS filtering');
-        console.log('  5. Try a different phone number for testing');
+      if (USING_EMULATORS) {
+        toast.success('Check emulator terminal for verification code');
+      } else {
+        toast.success('Verification code sent to your phone');
       }
       
-      toast.success('Verification code sent');
       return result;
-    } catch (err: any) {
-      console.error('🚨 AuthContext: Phone verification error:', {
-        error: err,
-        errorCode: err?.code,
-        errorMessage: err?.message,
-        errorStack: err?.stack
-      });
+    } catch (emulatorError: any) {
+      console.error('🚨 AuthContext: Phone auth error:', emulatorError);
       
-      const msg = String(err?.message || '').toLowerCase();
-
-      if (err?.code === 'auth/operation-not-allowed') {
-        console.error('🚨 AuthContext: Phone sign-in not enabled in Firebase Console');
-        toast.error('Enable Phone sign-in in Firebase Console → Authentication → Sign-in method → Phone.');
-      }
-      if (err?.code === 'auth/quota-exceeded') {
-        console.error('🚨 AuthContext: SMS quota exceeded');
-        toast.error('SMS quota exceeded. Check Firebase Console for billing/quota issues.');
-      }
-      if (err?.code === 'auth/invalid-phone-number') {
-        console.error('🚨 AuthContext: Invalid phone number format');
-        toast.error('Invalid phone number format. Please check the number and try again.');
-      }
-      if (err?.code === 'auth/too-many-requests') {
-        console.error('🚨 AuthContext: Too many SMS requests');
-        toast.error('Too many SMS requests. Please wait before trying again.');
-      }
-      if (err?.code === 'auth/captcha-check-failed' || msg.includes('hostname match not found')) {
-        const host =
-          typeof window !== 'undefined' && (window.location?.host || window.location?.hostname)
-            ? window.location.host
-            : '(unknown host)';
-        console.error('🚨 AuthContext: Domain not authorized:', host);
-        toast.error(
-          `This domain is not authorized: ${host}. Add it in Firebase Console → Authentication → Settings → Authorized domains.`
-        );
-        throw err;
-      }
-
-      // “already rendered” loop → reset & retry once
-      if (msg.includes('already been rendered') || msg.includes('already')) {
+      // Try to reset and retry once
+      if (emulatorError?.message?.includes('already been rendered') || emulatorError?.message?.includes('already')) {
         try {
-          console.log('🔍 AuthContext: reCAPTCHA already rendered error detected, retrying...');
+          console.log('🔍 AuthContext: Retrying with fresh reCAPTCHA...');
           clearRecaptcha();
-          console.log('🔍 AuthContext: reCAPTCHA cleared, creating new verifier');
           const verifier2 = getOrCreateRecaptcha();
-          console.log('🔍 AuthContext: New reCAPTCHA verifier ready, retrying signInWithPhoneNumber');
           const result = await signInWithPhoneNumber(auth, phoneNumber, verifier2);
-          console.log('🔍 AuthContext: Retry successful');
-          toast.success('Verification code sent');
+          toast.success(USING_EMULATORS ? 'Check emulator terminal for code' : 'Verification code sent');
           return result;
         } catch (retryErr: any) {
-          console.error('🚨 AuthContext: reCAPTCHA retry failed:', {
-            error: retryErr,
-            errorCode: retryErr?.code,
-            errorMessage: retryErr?.message
-          });
-          toast.error(retryErr?.message || 'Failed to send verification code');
+          console.error('🚨 AuthContext: Retry failed:', retryErr);
+          toast.error(`Failed: ${retryErr?.message || 'Unknown error'}`);
           throw retryErr;
         }
       }
-
-      console.error('🚨 AuthContext: Final phone verification error:', {
-        error: err,
-        errorCode: err?.code,
-        errorMessage: err?.message
-      });
-      toast.error(err?.message || 'Failed to send verification code');
-      throw err;
+      
+      toast.error(`Error: ${emulatorError?.message || 'Could not send verification code'}`);
+      throw emulatorError;
     }
   };
 
   const checkIfUserExists = async (phoneNumber: string): Promise<boolean | { exists: boolean; canReapply?: boolean; message?: string; reapplyDate?: string; daysRemaining?: number; userStatus?: string }> => {
     console.log('🔍 AuthContext: checkIfUserExists called with:', phoneNumber);
     
+    // In emulator mode, skip Cloud Function and check Firestore directly
+    if (USING_EMULATORS) {
+      console.log('🔍 AuthContext: Emulator mode - checking Firestore directly...');
+      try {
+        const usersQuery = query(
+          collection(db, 'users'),
+          where('phoneNumber', '==', phoneNumber)
+        );
+        const usersSnapshot = await getDocs(usersQuery);
+        
+        const exists = !usersSnapshot.empty;
+        console.log('🔍 AuthContext: Firestore result:', { phoneNumber, exists, count: usersSnapshot.size });
+        
+        return exists;
+      } catch (error) {
+        console.error('🚨 AuthContext: Firestore check failed:', error);
+        return false; // Allow registration on error in emulator
+      }
+    }
+    
     try {
-      // First try Cloud Function
+      // First try Cloud Function (Production only)
       const functions = getFunctions(app, (import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-east1');
       const checkPhoneNumber = httpsCallable(functions, 'checkPhoneNumberExists');
       

@@ -1,11 +1,18 @@
 {
   "projects": {
-    "default": "momsfitnessmojostage",
-    "dev": "momfitnessmojo",
+    "default": "momsfitnessmojo-dev",
+    "dev": "momsfitnessmojo-dev",
     "staging": "momsfitnessmojostage",
     "prod": "momsfitnessmojo-65d00"
   },
   "targets": {
+    "momsfitnessmojo-dev": {
+      "hosting": {
+        "momsfitnessmojo-dev": [
+          "momsfitnessmojo-dev"
+        ]
+      }
+    },
     "momfitnessmojo": {
       "hosting": {
         "momsfitnessmojo": [
