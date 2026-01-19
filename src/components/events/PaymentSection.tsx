@@ -1,6 +1,6 @@
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { CheckCircle, ChevronDown, CreditCard, DollarSign, Loader2, Users, XCircle } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -10,6 +10,7 @@ import { EventDoc } from '../../hooks/useEvents';
 import { PaymentService } from '../../services/paymentService';
 import { Attendee } from '../../types/attendee';
 import { PaymentStatusAnimation } from './PaymentStatusAnimation';
+import { ZelleQRModal } from './ZelleQRModal';
 
 // Initialize Stripe - load publishable key from environment
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
@@ -282,7 +283,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
   onPaymentError,
 }) => {
   const { currentUser } = useAuth();
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true); // Default to expanded
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isCreatingIntent, setIsCreatingIntent] = useState(false);
@@ -292,6 +293,10 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
   const [showErrorAnimation, setShowErrorAnimation] = useState(false);
   const [animationAmount, setAnimationAmount] = useState<number>(0);
+  
+  // Zelle payment state
+  const [showZelleModal, setShowZelleModal] = useState(false);
+  const isZellePayment = event.pricing?.paymentMethod === 'zelle';
 
   // Calculate payment summary directly in useMemo to prevent flash
   // Only calculate for UNPAID attendees to avoid charging for already-paid ones
@@ -337,7 +342,10 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
   );
 
   const unpaidAttendees = useMemo(() => 
-    goingAttendees.filter(attendee => attendee.paymentStatus !== 'paid'),
+    goingAttendees.filter(attendee => 
+      attendee.paymentStatus !== 'paid' && 
+      attendee.paymentStatus !== 'waiting_for_approval'
+    ),
     [goingAttendees]
   );
 
@@ -346,11 +354,23 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
     [goingAttendees]
   );
 
+  // Attendees waiting for admin approval (Zelle payments)
+  const waitingAttendees = useMemo(() =>
+    goingAttendees.filter(attendee => attendee.paymentStatus === 'waiting_for_approval'),
+    [goingAttendees]
+  );
+
   // Calculate summary for paid attendees to show their amounts
   const paidSummary = useMemo(() => {
     if (!event.pricing || paidAttendees.length === 0) return null;
     return PaymentService.calculatePaymentSummary(paidAttendees, event.pricing);
   }, [paidAttendees, event.pricing]);
+
+  // Calculate summary for waiting attendees
+  const waitingSummary = useMemo(() => {
+    if (!event.pricing || waitingAttendees.length === 0) return null;
+    return PaymentService.calculatePaymentSummary(waitingAttendees, event.pricing);
+  }, [waitingAttendees, event.pricing]);
 
   const hasPaymentRequired = useMemo(() => {
     const hasEventSupportAmount = event.pricing?.eventSupportAmount && event.pricing.eventSupportAmount > 0;
@@ -370,6 +390,40 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
     return unpaidAmount > 0;
   }, [paymentSummary, unpaidAttendees]);
 
+  /**
+   * Handle Zelle payment flow
+   * Shows QR modal and sets payment status to waiting_for_approval
+   */
+  const handleZellePayment = async () => {
+    console.log('💵 [ZELLE] Starting Zelle payment flow');
+    
+    // Show Zelle QR modal
+    setShowZelleModal(true);
+    
+    // Update all unpaid attendees to waiting_for_approval status
+    try {
+      console.log('💵 [ZELLE] Updating payment status to waiting_for_approval for', unpaidAttendees.length, 'attendees');
+      
+      for (const attendee of unpaidAttendees) {
+        const attendeeRef = doc(db, 'events', event.id, 'attendees', attendee.attendeeId);
+        await updateDoc(attendeeRef, {
+          paymentStatus: 'waiting_for_approval',
+          updatedAt: new Date()
+        });
+      }
+      
+      console.log('✅ [ZELLE] Successfully updated attendee payment statuses');
+      
+      // Trigger refresh to update UI
+      if (onPaymentComplete) {
+        await onPaymentComplete();
+      }
+    } catch (error) {
+      console.error('❌ [ZELLE] Error updating payment status:', error);
+      setPaymentError('Failed to initiate Zelle payment. Please try again.');
+    }
+  };
+
   const handlePayNow = async () => {
     if (!currentUser) {
       setPaymentError('You must be logged in to make a payment');
@@ -378,6 +432,12 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
 
     if (unpaidAttendees.length === 0) {
       setPaymentError('All attendees have already been paid for');
+      return;
+    }
+
+    // Check if this is a Zelle payment
+    if (isZellePayment) {
+      handleZellePayment();
       return;
     }
 
@@ -706,6 +766,56 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                   </>
                 )}
 
+                {/* Waiting for Approval Attendees Section (Zelle payments) */}
+                {waitingAttendees.length > 0 && waitingSummary?.breakdown && (
+                  <>
+                    <div className="text-xs font-semibold text-amber-700 mb-1 mt-3">⏳ Waiting for Approval</div>
+                    {waitingSummary.breakdown.map((breakdownItem) => {
+                      const attendee = attendees.find(a => a.attendeeId === breakdownItem.attendeeId);
+                      const hasEventSupport = !!(breakdownItem.eventSupport && breakdownItem.eventSupport > 0);
+
+                      return (
+                        <div 
+                          key={breakdownItem.attendeeId} 
+                          className="rounded-lg bg-amber-50 border border-amber-200"
+                        >
+                          {/* Attendee Header */}
+                          <div className="flex items-center justify-between py-2 px-2.5 sm:px-3">
+                            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                              <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                                  {breakdownItem.attendeeName}
+                                </p>
+                                <p className="text-xs text-gray-500 capitalize">
+                                  {breakdownItem.ageGroup === 'adult' ? 'Adult' : 
+                                   breakdownItem.ageGroup === '11+' ? '11+ Years' :
+                                   breakdownItem.ageGroup === '0-2' ? '0-2 Years' :
+                                   breakdownItem.ageGroup === '3-5' ? '3-5 Years' :
+                                   breakdownItem.ageGroup === '6-10' ? '6-10 Years' :
+                                   breakdownItem.ageGroup}
+                                  <span className="ml-2 text-amber-600 font-semibold">• PENDING APPROVAL</span>
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-xs sm:text-sm font-semibold flex-shrink-0 text-amber-700">
+                              ${(breakdownItem.subtotal / 100).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-xs text-blue-900">
+                        📧 Payment submitted via Zelle. Waiting for admin to verify payment screenshot sent to{' '}
+                        <span className="font-semibold">momsfitnessmojo@gmail.com</span>
+                      </p>
+                    </div>
+                  </>
+                )}
+
                 {/* Unpaid Attendees Section */}
                 {paymentSummary?.breakdown.length ? (
                   <>
@@ -809,12 +919,19 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                   <div className={`flex items-center justify-between p-2.5 sm:p-3 rounded-lg border ${
                     paymentSuccess 
                       ? 'bg-green-50 border-green-200' 
+                      : isZellePayment
+                      ? 'bg-purple-50 border-purple-200'
                       : 'bg-amber-50 border-amber-200'
                   }`}>
                     <div>
                       <span className="text-sm sm:text-base font-bold text-gray-900">
                         {hasUnpaidAmount ? 'Amount Due' : 'Total Amount'}
                       </span>
+                      {isZellePayment && hasUnpaidAmount && (
+                        <p className="text-xs text-purple-700 font-semibold">
+                          💵 Zelle - No fees!
+                        </p>
+                      )}
                       {hasUnpaidAmount && paidAttendees.length > 0 && (
                         <p className="text-xs text-gray-600">
                           {paidAttendees.length} attendee{paidAttendees.length !== 1 ? 's' : ''} already paid
@@ -822,7 +939,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                       )}
                     </div>
                     <span className={`text-lg sm:text-xl font-bold ${
-                      paymentSuccess ? 'text-green-600' : 'text-amber-600'
+                      paymentSuccess ? 'text-green-600' : isZellePayment ? 'text-purple-600' : 'text-amber-600'
                     }`}>
                       ${hasUnpaidAmount ? (
                         (unpaidAttendees.reduce((sum, attendee) => {
@@ -840,7 +957,11 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                     <button
                       onClick={handlePayNow}
                       disabled={isCreatingIntent || unpaidAttendees.length === 0}
-                      className="w-full mt-3 px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className={`w-full mt-3 px-4 py-3 ${
+                        isZellePayment 
+                          ? 'bg-purple-600 hover:bg-purple-700' 
+                          : 'bg-green-600 hover:bg-green-700'
+                      } text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
                     >
                       {isCreatingIntent ? (
                         <>
@@ -849,11 +970,25 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                         </>
                       ) : (
                         <>
-                          <CreditCard className="w-5 h-5" />
-                          Pay ${(unpaidAttendees.reduce((sum, attendee) => {
-                            const breakdownItem = paymentSummary.breakdown.find(b => b.attendeeId === attendee.attendeeId);
-                            return sum + (breakdownItem?.subtotal || 0);
-                          }, 0) / 100).toFixed(2)}
+                          {isZellePayment ? (
+                            <>
+                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                              </svg>
+                              Pay via Zelle ${(unpaidAttendees.reduce((sum, attendee) => {
+                                const breakdownItem = paymentSummary.breakdown.find(b => b.attendeeId === attendee.attendeeId);
+                                return sum + (breakdownItem?.subtotal || 0);
+                              }, 0) / 100).toFixed(2)}
+                            </>
+                          ) : (
+                            <>
+                              <CreditCard className="w-5 h-5" />
+                              Pay ${(unpaidAttendees.reduce((sum, attendee) => {
+                                const breakdownItem = paymentSummary.breakdown.find(b => b.attendeeId === attendee.attendeeId);
+                                return sum + (breakdownItem?.subtotal || 0);
+                              }, 0) / 100).toFixed(2)}
+                            </>
+                          )}
                         </>
                       )}
                     </button>
@@ -865,6 +1000,18 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
         </div>
       )}
     </div>
+    
+    {/* Zelle QR Modal */}
+    {isZellePayment && (
+      <ZelleQRModal
+        isOpen={showZelleModal}
+        onClose={() => setShowZelleModal(false)}
+        amount={unpaidAttendees.reduce((sum, attendee) => {
+          const breakdownItem = paymentSummary?.breakdown.find(b => b.attendeeId === attendee.attendeeId);
+          return sum + (breakdownItem?.subtotal || 0);
+        }, 0)}
+      />
+    )}
     </>
   );
 };

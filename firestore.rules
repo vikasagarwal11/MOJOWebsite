@@ -487,11 +487,16 @@ service cloud.firestore {
         
         // TEMPORARY RULE REMOVED - Security vulnerability fixed
         
-        // Users can update their own attendees, event creators can update all attendees
+        // Users can update their own attendees, event creators can update all attendees, admins can update any
+        // Admins can update without validation
+        allow update: if isSignedIn() && isAdmin();
+        
+        // Non-admin updates require validation
         allow update: if isSignedIn() && isApprovedUser() && (
+          // User owns this attendee
           request.resource.data.userId == request.auth.uid ||
-          get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
-          isAdmin()
+          // Event creator can update all attendees for their event
+          get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid
         ) && 
         // Validate only fields that are being updated (partial updates allowed)
         // request.resource.data contains merged document (existing + updated fields)
@@ -971,19 +976,24 @@ service cloud.firestore {
       // Users can read their own payment transactions, admins can read all
       allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
       
-      // Users can create payment transactions for their own RSVPs
-      allow create: if isSignedIn() && isApprovedUser() &&
-        request.auth.uid == request.resource.data.userId &&
-        isNonEmptyString(request.resource.data.eventId) &&
-        isNonEmptyString(request.resource.data.attendeeId) &&
-        request.resource.data.amount is number &&
-        request.resource.data.amount >= 0 &&
-        isNonEmptyString(request.resource.data.currency) &&
-        isNonEmptyString(request.resource.data.status) &&
-        request.resource.data.status in ['pending', 'paid', 'failed', 'refunded'] &&
-        isNonEmptyString(request.resource.data.method) &&
-        request.resource.data.method in ['card', 'bank_transfer', 'cash', 'paypal', 'venmo', 'zelle', 'other'] &&
-        request.resource.data.refundStatus in ['none', 'partial', 'full', 'requested'];
+      // Users can create payment transactions for their own RSVPs, admins can create for anyone
+      allow create: if isSignedIn() && (
+        // Admins can create transactions for anyone
+        isAdmin() ||
+        // Regular users can create their own transactions with validation
+        (isApprovedUser() &&
+         request.auth.uid == request.resource.data.userId &&
+         isNonEmptyString(request.resource.data.eventId) &&
+         isNonEmptyString(request.resource.data.attendeeId) &&
+         request.resource.data.amount is number &&
+         request.resource.data.amount >= 0 &&
+         isNonEmptyString(request.resource.data.currency) &&
+         isNonEmptyString(request.resource.data.status) &&
+         request.resource.data.status in ['pending', 'paid', 'failed', 'refunded'] &&
+         isNonEmptyString(request.resource.data.method) &&
+         request.resource.data.method in ['card', 'bank_transfer', 'cash', 'paypal', 'venmo', 'zelle', 'other'] &&
+         request.resource.data.refundStatus in ['none', 'partial', 'full', 'requested'])
+      );
       
       // Users can update their own payment transactions, admins can update any
       allow update: if isSignedIn() && (

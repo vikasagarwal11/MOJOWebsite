@@ -29,22 +29,29 @@ function getPriceLabel(event: EventDoc) {
   
   const requiresPayment = !!pricing.requiresPayment;
   const payThere = !!pricing.payThere;
+  const paymentMethod = pricing.paymentMethod; // 'stripe' or 'zelle'
   const adultNetPrice = pricing.adultPrice; // NET price (what admin receives)
   const support = pricing.eventSupportAmount;
 
   // Pay There event - payment handled separately
   if (payThere) return "Pay There";
 
-  // Paid event - show CHARGE price with proportional Stripe fees
+  // Paid event - show price based on payment method
   if (requiresPayment && typeof adultNetPrice === "number" && adultNetPrice > 0) {
-    // Calculate proportional Stripe fees for ticket + support (if any)
+    // For Zelle payments, show NET price directly (no Stripe fees)
+    if (paymentMethod === 'zelle') {
+      const totalNet = adultNetPrice + (support || 0);
+      return `$${(totalNet / 100).toFixed(2)}`;
+    }
+    
+    // For Stripe payments, calculate CHARGE price with proportional Stripe fees
     const components = [{ id: 'ticket', label: 'Ticket', netAmount: adultNetPrice }];
     if (support && support > 0) {
       components.push({ id: 'support', label: 'Event Support', netAmount: support });
     }
     const charged = distributeStripeFees(components);
-    const ticketCharge = charged.find(c => c.id === 'ticket')?.chargeAmount || 0;
-    return `$${(ticketCharge / 100).toFixed(2)}`;
+    const totalCharge = charged.reduce((sum, c) => sum + c.chargeAmount, 0);
+    return `$${(totalCharge / 100).toFixed(2)}`;
   }
 
   // Free event (no payment required)

@@ -178,7 +178,6 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
   const [showRSVPModal, setShowRSVPModal] = useState(false);
   const [showTeaserModal, setShowTeaserModal] = useState(false);
   const [showPastEventModal, setShowPastEventModal] = useState(false);
-  const [showPaymentInstructionModal, setShowPaymentInstructionModal] = useState(false);
   const [showNonRefundableModal, setShowNonRefundableModal] = useState(false);
   const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | 'waitlisted' | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -511,12 +510,6 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
       return;
     }
 
-    // For paid events, show payment instruction modal before proceeding with Going
-    if (status === 'going' && event.pricing && event.pricing.requiresPayment) {
-      setShowPaymentInstructionModal(true);
-      return;
-    }
-
     // For paid events with payment confirmed, show non-refundable warning when changing to Not Going
     if (status === 'not-going' && event.pricing && event.pricing.requiresPayment && rsvpStatus === 'going' && userPaymentStatus === 'paid') {
       setShowNonRefundableModal(true);
@@ -525,13 +518,6 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
 
     // For all other cases, proceed directly with RSVP
     await processRSVP(status);
-  };
-
-  // Handle payment instruction confirmation
-  const handlePaymentInstructionConfirm = async () => {
-    setShowPaymentInstructionModal(false);
-    // Proceed with RSVP as 'going' after user acknowledges payment instructions
-    await processRSVP('going');
   };
 
   // Handle non-refundable confirmation
@@ -913,7 +899,31 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                 <PayTherePrice />
               ) : event.pricing && event.pricing.requiresPayment && event.pricing.adultPrice ? (
                 (() => {
-                  // Calculate proportional Stripe fees for ticket + support
+                  const isZellePayment = event.pricing.paymentMethod === 'zelle';
+                  
+                  if (isZellePayment) {
+                    // For Zelle, show NET prices directly (no Stripe fees)
+                    const ticketNet = event.pricing.adultPrice;
+                    const supportNet = event.pricing.eventSupportAmount || 0;
+                    
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2.5">
+                          <Tag className="w-5 h-5 text-purple-600 flex-shrink-0" />
+                          <span className="font-semibold text-purple-600">
+                            ${(ticketNet / 100).toFixed(2)}
+                          </span>
+                        </div>
+                        {supportNet > 0 && (
+                          <div className="text-xs text-gray-600 ml-7">
+                            Event Support: ${(supportNet / 100).toFixed(2)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  
+                  // For Stripe, calculate proportional Stripe fees for ticket + support
                   const components = [];
                   components.push({
                     id: 'ticket',
@@ -949,7 +959,27 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                 })()
               ) : event.pricing?.eventSupportAmount && event.pricing.eventSupportAmount > 0 ? (
                 (() => {
-                  // Free event but with event support
+                  const isZellePayment = event.pricing.paymentMethod === 'zelle';
+                  
+                  if (isZellePayment) {
+                    // Free event with event support (Zelle) - show NET price
+                    const supportNet = event.pricing.eventSupportAmount;
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2.5">
+                          <Tag className="w-5 h-5 text-purple-600 flex-shrink-0" />
+                          <span className="font-semibold text-purple-600">
+                            Free
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-600 ml-7">
+                          Event Support: ${(supportNet / 100).toFixed(2)}
+                        </div>
+                      </div>
+                    );
+                  }
+                  
+                  // Free event but with event support (Stripe)
                   const charged = distributeStripeFees([{
                     id: 'support',
                     label: 'Event Support',
@@ -1154,82 +1184,13 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
             onClose={() => setShowPastEventModal(false)}
           />
         )}
-      </AnimatePresence>
 
-      {/* Payment Instruction Modal - Outside AnimatePresence for portal compatibility */}
-      {showPaymentInstructionModal && createPortal(
+        {showNonRefundableModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
-            onClick={() => setShowPaymentInstructionModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative"
-            >
-              {/* Close button */}
-              <button
-                onClick={() => setShowPaymentInstructionModal(false)}
-                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
-                aria-label="Close"
-              >
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-
-              {/* Icon */}
-              <div className="flex justify-center mb-4">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-                  <DollarSign className="w-8 h-8 text-blue-600" />
-                </div>
-              </div>
-
-              {/* Title */}
-              <h3 className="text-xl font-bold text-gray-900 text-center mb-4">
-                Payment Instructions
-              </h3>
-
-              {/* Message */}
-              <p className="text-gray-700 text-center mb-6 leading-relaxed">
-                Pay via Zelle to <span className="font-semibold text-blue-600">momsfitnessmojo@gmail.com</span>.<br />
-                Please notify the host after completing the payment.<br />
-                Your spot is not confirmed until payment is received.<br />
-                For questions, contact the host.
-              </p>
-
-              {/* Buttons */}
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowPaymentInstructionModal(false)}
-                  className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handlePaymentInstructionConfirm}
-                  className="flex-1 px-4 py-3 bg-gradient-to-r from-[#F25129] to-[#E0451F] hover:from-[#E0451F] hover:to-[#D03D1B] text-white font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl"
-                >
-                  Ok
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>,
-          document.body
-        )}
-
-      {/* Non-Refundable Confirmation Modal - Outside AnimatePresence for portal compatibility */}
-      {showNonRefundableModal && createPortal(
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
             onClick={() => setShowNonRefundableModal(false)}
           >
             <motion.div
@@ -1286,9 +1247,9 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                 </button>
               </div>
             </motion.div>
-          </motion.div>,
-          document.body
+          </motion.div>
         )}
+      </AnimatePresence>
 
       {/* Payment Required Tooltip - Portal for screen-friendly positioning */}
       {showPaymentTooltip && createPortal(

@@ -54,6 +54,7 @@ const eventSchema = z.object({
   // Payment fields
   requiresPayment: z.boolean().optional(),
   payThere: z.boolean().optional(),
+  paymentMethod: z.enum(['stripe', 'zelle']).optional(),
   adultPrice: z.string().optional(),
   teenPrice: z.string().optional(),
   childPrice: z.string().optional(),
@@ -116,6 +117,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   // Payment state
   const [requiresPayment, setRequiresPayment] = useState(false);
   const [payThere, setPayThere] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'zelle'>('stripe');
   const [eventSupportAmountEnabled, setEventSupportAmountEnabled] = useState(false);
   
   // Waitlist state
@@ -196,6 +198,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     // Payment fields
     requiresPayment: eventToEdit.pricing?.requiresPayment || false,
     payThere: eventToEdit.pricing?.payThere || false,
+    paymentMethod: eventToEdit.pricing?.paymentMethod || 'stripe',
     adultPrice: eventToEdit.pricing?.adultPrice ? centsToDollars(eventToEdit.pricing.adultPrice) : '',
     currency: eventToEdit.pricing?.currency || 'USD',
     refundAllowed: eventToEdit.pricing?.refundPolicy?.allowed === true,
@@ -210,6 +213,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     allowMembersToAddAttendees: false, // Default to false for new events
     requiresPayment: false, // Default to free events
     payThere: false, // Default to no pay there
+    paymentMethod: 'stripe', // Default to Stripe
     currency: 'USD', // Default currency
     refundAllowed: false, // Default no refunds
     eventSupportAmountEnabled: false, // Default to no event support amount
@@ -233,22 +237,53 @@ const watchedToddlerPrice = watch('toddlerPrice');
 const watchedInfantPrice = watch('infantPrice');
 const watchedEventSupportAmount = watch('eventSupportAmount');
 
-// Calculate Stripe-adjusted prices with proportional distribution
-// This shows what user actually pays when ticket + support are combined
+// Calculate prices based on payment method
+// For Zelle: Show NET prices directly (no Stripe fees)
+// For Stripe: Calculate with proportional Stripe fees
+const calculatePricingPreview = (ticketPrice: string, supportAmount: string) => {
+  if (!ticketPrice) return null;
+  
+  const ticketCents = dollarsToCents(ticketPrice);
+  const supportCents = dollarsToCents(supportAmount || '0');
+  
+  // For Zelle, show NET prices directly
+  if (paymentMethod === 'zelle') {
+    return {
+      ticketNet: ticketCents,
+      supportNet: supportCents,
+      ticketCharge: ticketCents,
+      supportCharge: supportCents,
+      totalCharge: ticketCents + supportCents,
+      ticketChargeDisplay: `$${(ticketCents / 100).toFixed(2)}`,
+      supportChargeDisplay: `$${(supportCents / 100).toFixed(2)}`,
+      totalChargeDisplay: `$${((ticketCents + supportCents) / 100).toFixed(2)}`,
+      ticketStripeFee: 0,
+      supportStripeFee: 0,
+      totalStripeFee: 0,
+      ticketStripeFeeDisplay: '$0.00',
+      supportStripeFeeDisplay: '$0.00',
+      totalStripeFeeDisplay: '$0.00'
+    };
+  }
+  
+  // For Stripe, calculate with proportional fees
+  return calculateProportionalPricing(ticketCents, supportCents);
+};
+
 const adultPricing = watchedAdultPrice 
-  ? calculateProportionalPricing(dollarsToCents(watchedAdultPrice), dollarsToCents(watchedEventSupportAmount || '0'))
+  ? calculatePricingPreview(watchedAdultPrice, watchedEventSupportAmount || '0')
   : null;
 const teenPricing = watchedTeenPrice 
-  ? calculateProportionalPricing(dollarsToCents(watchedTeenPrice), dollarsToCents(watchedEventSupportAmount || '0'))
+  ? calculatePricingPreview(watchedTeenPrice, watchedEventSupportAmount || '0')
   : null;
 const childPricing = watchedChildPrice 
-  ? calculateProportionalPricing(dollarsToCents(watchedChildPrice), dollarsToCents(watchedEventSupportAmount || '0'))
+  ? calculatePricingPreview(watchedChildPrice, watchedEventSupportAmount || '0')
   : null;
 const toddlerPricing = watchedToddlerPrice 
-  ? calculateProportionalPricing(dollarsToCents(watchedToddlerPrice), dollarsToCents(watchedEventSupportAmount || '0'))
+  ? calculatePricingPreview(watchedToddlerPrice, watchedEventSupportAmount || '0')
   : null;
 const infantPricing = watchedInfantPrice 
-  ? calculateProportionalPricing(dollarsToCents(watchedInfantPrice), dollarsToCents(watchedEventSupportAmount || '0'))
+  ? calculatePricingPreview(watchedInfantPrice, watchedEventSupportAmount || '0')
   : null;
 
 // Smart defaults: Set end date to start date when start date changes
@@ -844,6 +879,9 @@ useEffect(() => {
         }
         
         pricing = PaymentService.createPaidEventPricing(adultPrice, ageGroupPricing, data.currency || 'USD');
+        
+        // Add payment method (Stripe or Zelle)
+        pricing.paymentMethod = data.paymentMethod || 'stripe';
         
         // Add refund policy only if user explicitly allows refunds
         if (data.refundAllowed) {
@@ -1769,6 +1807,58 @@ useEffect(() => {
                 </div>
               </label>
 
+              {/* Payment Method Selection - Only show if requiresPayment is true and payThere is false */}
+              {requiresPayment && !payThere && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="bg-blue-50 p-4 rounded-lg border border-blue-200"
+                >
+                  <label className="block text-sm font-medium text-gray-900 mb-3">
+                    Select Payment Method
+                  </label>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        value="stripe"
+                        checked={paymentMethod === 'stripe'}
+                        onChange={(e) => {
+                          setPaymentMethod('stripe');
+                          setValue('paymentMethod', 'stripe');
+                        }}
+                        disabled={isLoading}
+                        className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
+                      />
+                      <div>
+                        <span className="text-sm font-semibold text-gray-900">Payment via Stripe</span>
+                        <p className="text-xs text-gray-600">Automated online payment processing with Stripe fees applied</p>
+                      </div>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        value="zelle"
+                        checked={paymentMethod === 'zelle'}
+                        onChange={(e) => {
+                          setPaymentMethod('zelle');
+                          setValue('paymentMethod', 'zelle');
+                        }}
+                        disabled={isLoading}
+                        className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
+                      />
+                      <div>
+                        <span className="text-sm font-semibold text-gray-900">Payment via Zelle</span>
+                        <p className="text-xs text-gray-600">Manual payment via Zelle QR code - requires admin approval</p>
+                      </div>
+                    </label>
+                  </div>
+                </motion.div>
+              )}
+
               {requiresPayment && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
@@ -1777,6 +1867,21 @@ useEffect(() => {
                   transition={{ duration: 0.3 }}
                   className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200"
                 >
+                  {/* Payment Method Info Banner */}
+                  {!payThere && (
+                    <div className={`p-3 rounded-lg border ${
+                      paymentMethod === 'stripe' 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-purple-50 border-purple-200'
+                    }`}>
+                      <p className="text-xs font-medium">
+                        {paymentMethod === 'stripe' 
+                          ? '💳 Stripe Mode: User prices shown below include automated Stripe fee calculation'
+                          : '💵 Zelle Mode: User will pay exactly the amounts you enter (no Stripe fees)'}
+                      </p>
+                    </div>
+                  )}
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">

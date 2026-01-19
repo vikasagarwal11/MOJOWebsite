@@ -1,8 +1,11 @@
 import { Timestamp } from 'firebase/firestore';
 
 // Payment status types
-export type PaymentStatus = 'unpaid' | 'paid' | 'refunded' | 'failed' | 'pending';
+export type PaymentStatus = 'unpaid' | 'paid' | 'refunded' | 'failed' | 'pending' | 'waiting_for_approval' | 'rejected';
 export type PaymentMethod = 'card' | 'bank_transfer' | 'cash' | 'paypal' | 'venmo' | 'zelle' | 'other';
+
+// Event payment method types (Stripe vs Zelle)
+export type EventPaymentMethod = 'stripe' | 'zelle';
 export type RefundStatus = 'none' | 'partial' | 'full' | 'requested';
 
 // Age group pricing configuration
@@ -18,6 +21,7 @@ export interface EventPricing {
   isFree: boolean;
   requiresPayment: boolean;
   payThere?: boolean; // Payment handled at event or with organization
+  paymentMethod?: EventPaymentMethod; // 'stripe' or 'zelle' - determines payment flow
   adultPrice: number; // NET price in cents for adults (what admin receives after Stripe fees)
   adultChargePrice?: number; // CHARGE price in cents for adults (what user pays, includes Stripe fees)
   ageGroupPricing: AgeGroupPricing[];

@@ -1,32 +1,34 @@
 import {
-    collection,
-    doc,
-    getDocs,
-    orderBy,
-    query,
-    Timestamp,
-    updateDoc,
-    where,
-    writeBatch
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  Timestamp,
+  updateDoc,
+  where,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { AgeGroup, Attendee } from '../types/attendee';
 import {
-    AgeGroupPricing,
-    EventPricing,
-    PaymentMethod,
-    PaymentStatus,
-    PaymentSummary,
-    PaymentTransaction,
-    RefundStatus
+  AgeGroupPricing,
+  EventPricing,
+  PaymentMethod,
+  PaymentStatus,
+  PaymentSummary,
+  PaymentTransaction,
+  RefundStatus
 } from '../types/payment';
-import { calculateChargeAmount, distributeStripeFees, PriceComponent } from '../utils/stripePricing';
+import { calculateChargeAmount } from '../utils/stripePricing';
 
 export class PaymentService {
   private static readonly TRANSACTIONS_COLLECTION = 'payment_transactions';
 
   /**
    * Calculate payment summary for attendees with Stripe fees applied proportionally
+   * For Zelle payments, uses manual amounts without Stripe fee calculations
    */
   static calculatePaymentSummary(
     attendees: Attendee[], 
@@ -46,62 +48,123 @@ export class PaymentService {
       };
     }
 
+    // Check if this is a Zelle payment (no Stripe fees)
+    const isZellePayment = eventPricing.paymentMethod === 'zelle';
+
     // Build price components for Stripe fee distribution
-    // CRITICAL: Calculate charge amount PER ATTENDEE to ensure consistent pricing
-    // Each attendee should pay the same amount as shown on the event card
-    const breakdown = attendees
-      .filter(attendee => attendee.rsvpStatus === 'going')
-      .map((attendee) => {
-        const netTicketPrice = eventPricing.requiresPayment && !eventPricing.isFree 
-          ? this.getPriceForAgeGroup(attendee.ageGroup, eventPricing)
-          : 0;
-        
-        const netEventSupport = hasEventSupportAmount ? eventPricing.eventSupportAmount : 0;
-        
-        // Build components for THIS attendee only
-        const attendeeComponents: PriceComponent[] = [];
-        
-        if (netTicketPrice > 0) {
-          attendeeComponents.push({
-            id: 'ticket',
-            label: 'Ticket',
-            netAmount: netTicketPrice
-          });
+    // CRITICAL: Calculate Stripe fees ONCE on the total, then distribute proportionally
+    // This matches how Stripe actually charges and prevents rounding discrepancies
+    const goingAttendees = attendees.filter(attendee => attendee.rsvpStatus === 'going');
+    
+    // First pass: Calculate NET amounts for all attendees
+    const attendeeNetPrices = goingAttendees.map((attendee) => {
+      const netTicketPrice = eventPricing.requiresPayment && !eventPricing.isFree 
+        ? this.getPriceForAgeGroup(attendee.ageGroup, eventPricing)
+        : 0;
+      
+      const netEventSupport = hasEventSupportAmount ? eventPricing.eventSupportAmount : 0;
+      
+      return {
+        attendeeId: attendee.attendeeId,
+        attendeeName: attendee.name,
+        ageGroup: attendee.ageGroup,
+        netTicketPrice,
+        netEventSupport,
+        netTotal: netTicketPrice + netEventSupport
+      };
+    });
+    
+    // For Zelle payments, use NET prices directly (no Stripe fees)
+    if (isZellePayment) {
+      const breakdown = attendeeNetPrices.map(({ attendeeId, attendeeName, ageGroup, netTicketPrice, netEventSupport, netTotal }) => ({
+        attendeeId,
+        attendeeName,
+        ageGroup,
+        price: netTotal,
+        quantity: 1,
+        subtotal: netTotal,
+        ticketPrice: netTicketPrice,
+        eventSupport: netEventSupport
+      }));
+      
+      const totalAmount = breakdown.reduce((sum, item) => sum + item.subtotal, 0);
+      
+      return {
+        totalAmount,
+        currency: eventPricing.currency,
+        breakdown,
+        status: 'unpaid' as PaymentStatus,
+        canRefund: eventPricing.refundPolicy?.allowed || false,
+        refundDeadline: eventPricing.refundPolicy?.deadline
+      };
+    }
+    
+    // For Stripe payments: Calculate total NET, then calculate total CHARGE, then distribute proportionally
+    const totalNet = attendeeNetPrices.reduce((sum, a) => sum + a.netTotal, 0);
+    const totalCharge = calculateChargeAmount(totalNet);
+    
+    // Distribute the total charge amount proportionally across attendees
+    const breakdown = attendeeNetPrices.map((attendee) => {
+      // Calculate this attendee's proportion of the total NET amount
+      const proportion = attendee.netTotal / totalNet;
+      const attendeeCharge = Math.round(totalCharge * proportion);
+      
+      // Now distribute this attendee's charge between ticket and support proportionally
+      const ticketProportion = attendee.netTicketPrice / attendee.netTotal;
+      const supportProportion = attendee.netEventSupport / attendee.netTotal;
+      
+      let ticketCharge = Math.round(attendeeCharge * ticketProportion);
+      let supportCharge = Math.round(attendeeCharge * supportProportion);
+      
+      // Handle rounding: ensure ticket + support = attendeeCharge
+      const roundingDiff = attendeeCharge - (ticketCharge + supportCharge);
+      if (roundingDiff !== 0) {
+        // Add rounding difference to the larger component
+        if (ticketCharge > supportCharge) {
+          ticketCharge += roundingDiff;
+        } else {
+          supportCharge += roundingDiff;
         }
-        
-        if (netEventSupport > 0) {
-          attendeeComponents.push({
-            id: 'support',
-            label: 'Event Support',
-            netAmount: netEventSupport
-          });
-        }
-        
-        // Calculate charge amounts for this attendee individually
-        // This ensures each attendee pays the same price as shown on event card
-        const chargedComponents = distributeStripeFees(attendeeComponents);
-        
-        const ticketCharge = chargedComponents.find(c => c.id === 'ticket')?.chargeAmount || 0;
-        const supportCharge = chargedComponents.find(c => c.id === 'support')?.chargeAmount || 0;
-        const totalChargePrice = ticketCharge + supportCharge;
-        
-        return {
-          attendeeId: attendee.attendeeId,
-          attendeeName: attendee.name,
-          ageGroup: attendee.ageGroup,
-          price: totalChargePrice,
-          quantity: 1,
-          subtotal: totalChargePrice,
-          ticketPrice: ticketCharge,
-          eventSupport: supportCharge
-        };
-      });
+      }
+      
+      return {
+        attendeeId: attendee.attendeeId,
+        attendeeName: attendee.attendeeName,
+        ageGroup: attendee.ageGroup,
+        price: attendeeCharge,
+        quantity: 1,
+        subtotal: attendeeCharge,
+        ticketPrice: ticketCharge,
+        eventSupport: supportCharge
+      };
+    });
+    
+    // Handle final rounding: ensure sum of attendee charges equals total charge
+    const calculatedSum = breakdown.reduce((sum, item) => sum + item.subtotal, 0);
+    const roundingDiff = totalCharge - calculatedSum;
+    
+    if (roundingDiff !== 0) {
+      // Add rounding difference to the largest attendee charge
+      const largestIndex = breakdown.reduce((maxIdx, current, idx, arr) => 
+        current.subtotal > arr[maxIdx].subtotal ? idx : maxIdx
+      , 0);
+      
+      breakdown[largestIndex].subtotal += roundingDiff;
+      breakdown[largestIndex].price += roundingDiff;
+      
+      // Adjust the larger component (ticket or support)
+      if (breakdown[largestIndex].ticketPrice > breakdown[largestIndex].eventSupport) {
+        breakdown[largestIndex].ticketPrice += roundingDiff;
+      } else {
+        breakdown[largestIndex].eventSupport += roundingDiff;
+      }
+    }
 
     // Calculate total charge amount (sum of all attendee charges)
     const totalAmount = breakdown.reduce((sum, item) => sum + item.subtotal, 0);
 
     return {
-      totalAmount, // Total CHARGE amount including Stripe fees
+      totalAmount, // Total CHARGE amount (including Stripe fees for Stripe, or NET for Zelle)
       currency: eventPricing.currency,
       breakdown,
       status: 'unpaid' as PaymentStatus,
@@ -284,17 +347,14 @@ export class PaymentService {
 
       // Get the transaction to find which attendees were paid
       const transactionRef = doc(db, this.TRANSACTIONS_COLLECTION, transactionId);
-      const transactionDoc = await getDocs(query(
-        collection(db, this.TRANSACTIONS_COLLECTION),
-        where('__name__', '==', transactionId)
-      ));
+      const transactionDoc = await getDoc(transactionRef);
 
-      if (transactionDoc.empty) {
+      if (!transactionDoc.exists()) {
         console.error('❌ Transaction not found:', transactionId);
         throw new Error(`Transaction ${transactionId} not found`);
       }
 
-      const transactionData = transactionDoc.docs[0].data() as PaymentTransaction;
+      const transactionData = transactionDoc.data() as PaymentTransaction;
       console.log('📋 Transaction data:', {
         eventId: transactionData.eventId,
         userId: transactionData.userId,
@@ -488,16 +548,13 @@ export class PaymentService {
   ): Promise<void> {
     try {
       const transactionRef = doc(db, this.TRANSACTIONS_COLLECTION, transactionId);
-      const transactionDoc = await getDocs(query(
-        collection(db, this.TRANSACTIONS_COLLECTION),
-        where('__name__', '==', transactionId)
-      ));
+      const transactionDoc = await getDoc(transactionRef);
 
-      if (transactionDoc.empty) {
+      if (!transactionDoc.exists()) {
         throw new Error('Transaction not found');
       }
 
-      const transactionData = transactionDoc.docs[0].data() as PaymentTransaction;
+      const transactionData = transactionDoc.data() as PaymentTransaction;
       const isFullRefund = refundAmount >= transactionData.amount;
 
       await updateDoc(transactionRef, {
@@ -643,16 +700,13 @@ export class PaymentService {
 
       // Get attendee data
       const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
-      const attendeeSnap = await getDocs(query(
-        collection(db, 'events', eventId, 'attendees'),
-        where('__name__', '==', attendeeId)
-      ));
+      const attendeeSnap = await getDoc(attendeeRef);
 
-      if (attendeeSnap.empty) {
+      if (!attendeeSnap.exists()) {
         throw new Error('Attendee not found');
       }
 
-      const attendeeData = attendeeSnap.docs[0].data() as Attendee;
+      const attendeeData = attendeeSnap.data() as Attendee;
       
       const batch = writeBatch(db);
 

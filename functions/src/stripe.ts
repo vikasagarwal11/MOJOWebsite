@@ -241,11 +241,20 @@ async function calculateIncrementalAmount(
 
   console.log(`📊 Net total (admin receives): $${(netTotal / 100).toFixed(2)}`);
   
-  // Apply Stripe fees ONCE at the transaction level
-  const totalAmount = calculateChargeAmount(netTotal);
-  console.log(`💳 Charge total (user pays, includes Stripe fees): $${(totalAmount / 100).toFixed(2)}`);
-  console.log(`📊 Stripe fee: $${((totalAmount - netTotal) / 100).toFixed(2)}`);
-
+  // Check if this is a Zelle payment (no Stripe fees)
+  const isZellePayment = pricing.paymentMethod === 'zelle';
+  
+  let totalAmount: number;
+  if (isZellePayment) {
+    // For Zelle payments, charge the exact NET amount (no Stripe fees)
+    totalAmount = netTotal;
+    console.log(`💵 Zelle payment - using NET amount: $${(totalAmount / 100).toFixed(2)}`);
+  } else {
+    // For Stripe payments, apply Stripe fees
+    totalAmount = calculateChargeAmount(netTotal);
+    console.log(`💳 Stripe payment - charge total (includes fees): $${(totalAmount / 100).toFixed(2)}`);
+    console.log(`📊 Stripe fee: $${((totalAmount - netTotal) / 100).toFixed(2)}`);
+  }
   return {
     totalAmount,
     currency,
