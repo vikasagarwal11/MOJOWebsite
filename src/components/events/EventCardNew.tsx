@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { EventDoc } from '../../hooks/useEvents';
 import { useUserBlocking } from '../../hooks/useUserBlocking';
 import { safeFormat, safeToDate } from '../../utils/dateUtils';
+import { distributeStripeFees } from '../../utils/stripePricing';
 import { EventTeaserModal } from './EventTeaserModal';
 import { PastEventModal } from './PastEventModal';
 import { RSVPModalNew as RSVPModal } from './RSVPModalNew';
@@ -182,6 +183,10 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
   const [rsvpStatus, setRsvpStatus] = useState<'going' | 'not-going' | 'waitlisted' | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  // Payment tooltip state
+  const [showPaymentTooltip, setShowPaymentTooltip] = useState(false);
+  const paymentBadgeRef = useRef<HTMLDivElement>(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
   // Overflow detection for description
   const descRef = useRef<HTMLParagraphElement | null>(null);
   const [isClamped, setIsClamped] = useState(false);
@@ -326,20 +331,61 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
 
   // Sync RSVP status from attendees and get payment status
   const [userPaymentStatus, setUserPaymentStatus] = useState<string | null>(null);
+  const [primaryUserPaid, setPrimaryUserPaid] = useState<boolean>(false);
+  const [unpaidAttendeesCount, setUnpaidAttendeesCount] = useState<number>(0);
+  const [totalGoingAttendeesCount, setTotalGoingAttendeesCount] = useState<number>(0);
   
   useEffect(() => {
     if (currentUser && attendees.length > 0) {
       const userAttendee = attendees.find(a => a.userId === currentUser.id && a.attendeeType === 'primary');
       const status = userAttendee ? userAttendee.rsvpStatus : null;
-      const paymentStatus = userAttendee?.paymentStatus || null;
+      const primaryPaymentStatus = userAttendee?.paymentStatus || null;
+      const isPrimaryPaid = primaryPaymentStatus === 'paid';
+      
+      // Get all user's attendees who are "going" (primary + family members + guests)
+      const userGoingAttendees = attendees.filter(
+        a => a.userId === currentUser.id && a.rsvpStatus === 'going'
+      );
+      
+      // Calculate how many are unpaid
+      const unpaidCount = userGoingAttendees.filter(
+        a => !a.paymentStatus || a.paymentStatus === 'unpaid' || a.paymentStatus === 'pending'
+      ).length;
+      
+      // Determine overall payment status:
+      // - If ALL attendees are paid => 'paid'
+      // - If primary is unpaid => 'pending' (show old behavior)
+      // - If primary is paid but others unpaid => 'payment_required' (show PAYMENT REQUIRED)
+      let overallPaymentStatus: string | null = null;
+      if (userGoingAttendees.length > 0) {
+        const allPaid = userGoingAttendees.every(a => a.paymentStatus === 'paid');
+        if (allPaid) {
+          overallPaymentStatus = 'paid';
+        } else if (!isPrimaryPaid) {
+          // Primary user not paid - show old "pending" behavior
+          overallPaymentStatus = 'pending';
+        } else {
+          // Primary paid but others unpaid - show "PAYMENT REQUIRED"
+          overallPaymentStatus = 'payment_required';
+        }
+      }
       
       console.log('[RSVP] Syncing status from attendees', {
         eventId: event.id,
         foundUserAttendee: !!userAttendee,
         status,
-        paymentStatus,
+        primaryPaymentStatus,
+        isPrimaryPaid,
+        overallPaymentStatus,
+        userGoingAttendeesCount: userGoingAttendees.length,
+        unpaidCount,
         previousRsvpStatus: rsvpStatus,
-        previousPaymentStatus: userPaymentStatus
+        previousPaymentStatus: userPaymentStatus,
+        allAttendees: userGoingAttendees.map(a => ({
+          name: a.name,
+          type: a.attendeeType,
+          paymentStatus: a.paymentStatus
+        }))
       });
       
       // Set status for going, not-going, and waitlisted
@@ -348,8 +394,12 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
       } else {
         setRsvpStatus(null);
       }
-      // Set payment status
-      setUserPaymentStatus(paymentStatus);
+      
+      // Set payment status and unpaid count
+      setUserPaymentStatus(overallPaymentStatus);
+      setPrimaryUserPaid(isPrimaryPaid);
+      setUnpaidAttendeesCount(unpaidCount);
+      setTotalGoingAttendeesCount(userGoingAttendees.length);
     } else if (currentUser) {
       console.log('[RSVP] No attendees found, resetting status', {
         eventId: event.id,
@@ -357,6 +407,9 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
       });
       setRsvpStatus(null);
       setUserPaymentStatus(null);
+      setPrimaryUserPaid(false);
+      setUnpaidAttendeesCount(0);
+      setTotalGoingAttendeesCount(0);
     }
   }, [currentUser, event.id, attendees]);
 
@@ -859,31 +912,65 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
               {event.pricing?.payThere ? (
                 <PayTherePrice />
               ) : event.pricing && event.pricing.requiresPayment && event.pricing.adultPrice ? (
-                <div className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-2.5">
-                    <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                    <span className="font-semibold text-blue-600">
-                      ${(event.pricing.adultPrice / 100).toFixed(2)}
-                    </span>
-                  </div>
-                  {event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
-                    <div className="text-xs text-gray-600 ml-7">
-                      Event Support Amt: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
+                (() => {
+                  // Calculate proportional Stripe fees for ticket + support
+                  const components = [];
+                  components.push({
+                    id: 'ticket',
+                    label: 'Ticket',
+                    netAmount: event.pricing.adultPrice
+                  });
+                  if (event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0) {
+                    components.push({
+                      id: 'support',
+                      label: 'Event Support',
+                      netAmount: event.pricing.eventSupportAmount
+                    });
+                  }
+                  const charged = distributeStripeFees(components);
+                  const ticketCharge = charged.find(c => c.id === 'ticket')?.chargeAmount || 0;
+                  const supportCharge = charged.find(c => c.id === 'support')?.chargeAmount || 0;
+                  
+                  return (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2.5">
+                        <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                        <span className="font-semibold text-blue-600">
+                          ${(ticketCharge / 100).toFixed(2)}
+                        </span>
+                      </div>
+                      {supportCharge > 0 && (
+                        <div className="text-xs text-gray-600 ml-7">
+                          Event Support: ${(supportCharge / 100).toFixed(2)}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()
               ) : event.pricing?.eventSupportAmount && event.pricing.eventSupportAmount > 0 ? (
-                <div className="flex flex-col gap-0.5">
-                  <div className="flex items-center gap-2.5">
-                    <Tag className="w-5 h-5 text-purple-600 flex-shrink-0" />
-                    <span className="font-semibold text-purple-600">
-                      Free
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-600 ml-7">
-                    Event Support Amt: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
-                  </div>
-                </div>
+                (() => {
+                  // Free event but with event support
+                  const charged = distributeStripeFees([{
+                    id: 'support',
+                    label: 'Event Support',
+                    netAmount: event.pricing.eventSupportAmount
+                  }]);
+                  const supportCharge = charged[0]?.chargeAmount || 0;
+                  
+                  return (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2.5">
+                        <Tag className="w-5 h-5 text-purple-600 flex-shrink-0" />
+                        <span className="font-semibold text-purple-600">
+                          Free
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-600 ml-7">
+                        Event Support: ${(supportCharge / 100).toFixed(2)}
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
                 <div className="flex items-center gap-2.5">
                   <Tag className="w-5 h-5 text-gray-500 flex-shrink-0" />
@@ -912,7 +999,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                 </div>
               )}
 
-              {/* RSVP Status - Paid Events with Payment Confirmed */}
+              {/* RSVP Status - Paid Events with ALL Attendees Payment Confirmed */}
               {currentUser && rsvpStatus === 'going' && event.pricing && event.pricing.requiresPayment && userPaymentStatus === 'paid' && (
                 <div className="inline-flex items-center gap-3">
                   <div className="flex items-center gap-2.5">
@@ -927,8 +1014,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                 </div>
               )}
 
-              {/* RSVP Status - Paid Events with Payment Pending */}
-              {currentUser && rsvpStatus === 'going' && event.pricing && event.pricing.requiresPayment && (userPaymentStatus === 'pending' || userPaymentStatus === 'unpaid' || !userPaymentStatus) && (
+              {/* RSVP Status - Primary User Not Paid (Old Behavior - Show You're Going + PENDING) */}
+              {currentUser && rsvpStatus === 'going' && event.pricing && event.pricing.requiresPayment && userPaymentStatus === 'pending' && (
                 <div className="inline-flex items-center gap-3">
                   <div className="flex items-center gap-2.5">
                     <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
@@ -939,6 +1026,28 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                     <Hourglass className="w-4 h-4 text-amber-600 flex-shrink-0" strokeWidth={2} />
                     <span className="font-semibold text-amber-600 text-xs">PENDING</span>
                   </div>
+                </div>
+              )}
+
+              {/* RSVP Status - Primary Paid but Family/Guests Unpaid (Show PAYMENT REQUIRED) */}
+              {currentUser && rsvpStatus === 'going' && event.pricing && event.pricing.requiresPayment && userPaymentStatus === 'payment_required' && (
+                <div 
+                  ref={paymentBadgeRef}
+                  className="inline-flex items-center gap-1.5 cursor-help"
+                  onMouseEnter={() => {
+                    setShowPaymentTooltip(true);
+                    if (paymentBadgeRef.current) {
+                      const rect = paymentBadgeRef.current.getBoundingClientRect();
+                      setTooltipPosition({
+                        top: rect.top - 10,
+                        left: rect.left + rect.width / 2
+                      });
+                    }
+                  }}
+                  onMouseLeave={() => setShowPaymentTooltip(false)}
+                >
+                  <DollarSign className="w-4 h-4 text-amber-600 flex-shrink-0" strokeWidth={2} />
+                  <span className="font-semibold text-amber-600 text-xs">PAYMENT REQUIRED</span>
                 </div>
               )}
 
@@ -1180,6 +1289,26 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
           </motion.div>,
           document.body
         )}
+
+      {/* Payment Required Tooltip - Portal for screen-friendly positioning */}
+      {showPaymentTooltip && createPortal(
+        <div 
+          className="fixed w-72 sm:w-80 bg-gray-900 text-white text-sm rounded-lg p-4 shadow-2xl z-[9999] pointer-events-none"
+          style={{
+            top: `${tooltipPosition.top}px`,
+            left: `${tooltipPosition.left}px`,
+            transform: 'translate(-50%, -100%)',
+            maxWidth: 'calc(100vw - 2rem)'
+          }}
+        >
+          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-gray-900 transform rotate-45"></div>
+          <p className="leading-relaxed">
+            <span className="font-semibold text-amber-300">{unpaidAttendeesCount} of {totalGoingAttendeesCount}</span> attendee{totalGoingAttendeesCount > 1 ? 's' : ''} still need{totalGoingAttendeesCount === 1 ? 's' : ''} payment.
+            {totalGoingAttendeesCount > 1 && ' Complete payment for all attendees to finalize your RSVP.'}
+          </p>
+        </div>,
+        document.body
+      )}
     </>
   );
 };

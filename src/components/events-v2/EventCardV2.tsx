@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { EventDoc } from "../../hooks/useEvents";
 import { safeFormat, safeToDate } from "../../utils/dateUtils";
+import { distributeStripeFees } from "../../utils/stripePricing";
 import { EventImage } from "../events/EventImage";
 
 type Props = {
@@ -22,27 +23,35 @@ function formatTime(d: any) {
 
 function getPriceLabel(event: EventDoc) {
   const pricing: any = (event as any).pricing;
+  
+  // No pricing object means free event
   if (!pricing) return "Free";
+  
   const requiresPayment = !!pricing.requiresPayment;
   const payThere = !!pricing.payThere;
-  const adultPrice = pricing.adultPrice;
+  const adultNetPrice = pricing.adultPrice; // NET price (what admin receives)
   const support = pricing.eventSupportAmount;
 
   // Pay There event - payment handled separately
   if (payThere) return "Pay There";
 
-  // Paid event with price in cents
-  if (requiresPayment && typeof adultPrice === "number" && adultPrice > 0) {
-    return `$${(adultPrice / 100).toFixed(2)}`;
+  // Paid event - show CHARGE price with proportional Stripe fees
+  if (requiresPayment && typeof adultNetPrice === "number" && adultNetPrice > 0) {
+    // Calculate proportional Stripe fees for ticket + support (if any)
+    const components = [{ id: 'ticket', label: 'Ticket', netAmount: adultNetPrice }];
+    if (support && support > 0) {
+      components.push({ id: 'support', label: 'Event Support', netAmount: support });
+    }
+    const charged = distributeStripeFees(components);
+    const ticketCharge = charged.find(c => c.id === 'ticket')?.chargeAmount || 0;
+    return `$${(ticketCharge / 100).toFixed(2)}`;
   }
 
-  // Free, but has support amount (still show Free + support)
+  // Free event (no payment required)
   if (!requiresPayment) return "Free";
 
-  // Paid but missing amount
-  if (requiresPayment) return "Paid";
-  if (typeof support === "number" && support > 0) return "Free";
-  return "Free";
+  // Paid event but missing price (shouldn't happen, but handle gracefully)
+  return "Paid";
 }
 
 export default function EventCardV2({ event, toDetails }: Props) {

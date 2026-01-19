@@ -20,7 +20,11 @@ import { v4 as uuidv4 } from 'uuid';
 const fsp = fs.promises;
 
 // Set global options for all functions - set to us-east1 to match prod bucket
-setGlobalOptions({ region: 'us-east1' });
+setGlobalOptions({ 
+  region: 'us-east1',
+  timeoutSeconds: 540,
+  memory: '512MiB'
+});
 
 // Central CORS allowlist for all callable/HTTP functions invoked from the web app
 const ALLOWED_CORS_ORIGINS = [
@@ -87,11 +91,28 @@ export function onRequestWithCors(
   return onRequest({ ...opts, cors: opts.cors ?? ALLOWED_CORS_ORIGINS }, handler);
 }
 // Initialize Firebase Admin BEFORE importing modules that use it
-initializeApp();
+// Explicitly set storage bucket to fix Firebase CLI deployment bug
+initializeApp({
+  storageBucket: process.env.STORAGE_BUCKET || 'momsfitnessmojo-dev.appspot.com'
+});
 
-// Initialize Cloud Tasks client
-const tasksClient = new CloudTasksClient();
-const speechClient = new SpeechClient();
+// Lazy-load Cloud Tasks and Speech clients to avoid deployment timeout
+let tasksClient: CloudTasksClient | null = null;
+let speechClient: SpeechClient | null = null;
+
+function getTasksClient() {
+  if (!tasksClient) {
+    tasksClient = new CloudTasksClient();
+  }
+  return tasksClient;
+}
+
+function getSpeechClient() {
+  if (!speechClient) {
+    speechClient = new SpeechClient();
+  }
+  return speechClient;
+}
 
 import { bulkAttendeeOperation, manualRecalculateCount, onAttendeeChange } from './attendeeCounts';
 import { manualRecalculateWaitlistPositions as _manualRecalcWaitlist } from './autoPromotionService';
@@ -382,31 +403,14 @@ const db = getFirestore();
  */
 async function sendSMSViaTwilio(phoneNumber: string, message: string): Promise<{ success: boolean; error?: string; sid?: string }> {
   try {
-    // For Firebase Functions v2, access config via runtime config
-    // Try to get from functions.config() first (for v1 compatibility), then fallback to process.env
-    let twilioAccountSid: string | undefined;
-    let twilioAuthToken: string | undefined;
-    let twilioPhoneNumber: string | undefined;
-    
-    try {
-      // Try to access via functions.config() (works with firebase functions:config:set)
-      const functions = require('firebase-functions');
-      const config = functions.config();
-      twilioAccountSid = config?.twilio?.account_sid;
-      twilioAuthToken = config?.twilio?.auth_token;
-      twilioPhoneNumber = config?.twilio?.phone_number;
-    } catch (configError) {
-      // functions.config() not available, will use process.env
-    }
-    
-    // Fallback to environment variables (for v2 direct env vars)
-    twilioAccountSid = twilioAccountSid || process.env.TWILIO_ACCOUNT_SID;
-    twilioAuthToken = twilioAuthToken || process.env.TWILIO_AUTH_TOKEN;
-    twilioPhoneNumber = twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+    // For Firebase Functions v2, use environment variables directly
+    const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+    const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 
     if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
       console.error('❌ Twilio credentials not configured');
-      return { success: false, error: 'Twilio credentials not configured. Please set twilio.account_sid, twilio.auth_token, and twilio.phone_number' };
+      return { success: false, error: 'Twilio credentials not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER environment variables' };
     }
 
     const twilio = await import('twilio');
@@ -1197,7 +1201,7 @@ async function enqueueQualityTask(
   const location = 'us-central1'; // Cloud Tasks queue location
   const queue = 'video-quality-generation';
   
-  const queuePath = tasksClient.queuePath(project, location, queue);
+  const queuePath = getTasksClient().queuePath(project, location, queue);
   
   // Get the function URL for processQualityLevel
   // In production, this will be the deployed function URL
@@ -1216,7 +1220,7 @@ async function enqueueQualityTask(
   };
   
   try {
-    const [response] = await tasksClient.createTask({
+    const [response] = await getTasksClient().createTask({
       parent: queuePath,
       task: task,
     });
@@ -2837,7 +2841,7 @@ export const transcribeLongAudio = onCallWithCors({ region: 'us-central1', timeo
     if (encoding) config.encoding = encoding;
     if (sampleRateHertz) config.sampleRateHertz = sampleRateHertz;
 
-    const [operation] = await speechClient.longRunningRecognize({
+    const [operation] = await getSpeechClient().longRunningRecognize({
       config,
       audio: { uri },
     } as any);
@@ -3345,17 +3349,7 @@ ${aiPrompts.tone ? `\nTONE: ${aiPrompts.tone}` : ''}`;
     };
 
     // Try Gemini first (with v1 API and correct model names)
-    let geminiApiKey = process.env.GEMINI_API_KEY;
-    if (!geminiApiKey) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const functions = require('firebase-functions');
-        const config = functions.config();
-        geminiApiKey = config?.gemini?.api_key;
-      } catch (error) {
-        // functions.config() not available in v2
-      }
-    }
+    const geminiApiKey = process.env.GEMINI_API_KEY;
 
     if (geminiApiKey) {
       try {
@@ -3408,17 +3402,7 @@ ${aiPrompts.tone ? `\nTONE: ${aiPrompts.tone}` : ''}`;
     }
 
     // Fallback to OpenAI
-    let openaiApiKey = process.env.OPENAI_API_KEY;
-    if (!openaiApiKey) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const functions = require('firebase-functions');
-        const config = functions.config();
-        openaiApiKey = config?.openai?.api_key;
-      } catch (error) {
-        // functions.config() not available in v2
-      }
-    }
+const openaiApiKey = process.env.OPENAI_API_KEY;
 
     if (!openaiApiKey) {
       console.error('❌ Neither GEMINI_API_KEY nor OPENAI_API_KEY configured');
@@ -3690,17 +3674,7 @@ export const classifyTestimonialTone = onCallWithCors({
 
   const sanitizedQuote = quote.replace(/\s+/g, ' ').trim();
 
-  let geminiApiKey = process.env.GEMINI_API_KEY;
-  if (!geminiApiKey) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const functions = require('firebase-functions');
-      const config = functions.config();
-      geminiApiKey = config?.gemini?.api_key;
-    } catch {
-      // ignore
-    }
-  }
+  const geminiApiKey = process.env.GEMINI_API_KEY;
 
   let tone: ToneClassification | null = null;
 
@@ -3709,17 +3683,7 @@ export const classifyTestimonialTone = onCallWithCors({
   }
 
   if (!tone) {
-    let openaiApiKey = process.env.OPENAI_API_KEY;
-    if (!openaiApiKey) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const functions = require('firebase-functions');
-        const config = functions.config();
-        openaiApiKey = config?.openai?.api_key;
-      } catch {
-        // ignore
-      }
-    }
+    const openaiApiKey = process.env.OPENAI_API_KEY;
     if (openaiApiKey) {
       tone = await classifyToneWithOpenAI(sanitizedQuote, openaiApiKey);
     }
@@ -4053,6 +4017,7 @@ export const getWatermarkedMedia = onCallWithCors({
 });
 
 export { generatePostSuggestionsV2 } from './postAI';
+export { sendAdminNotificationWithFallback };
 
 // ───────────────── AI WORKOUTS: Plan + Daily Suggestion (MVP) ─────────────────
 
@@ -4905,7 +4870,7 @@ Keep tone warm, empowering, and mom-to-mom. Respond with plain text only.
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const functions = require('firebase-functions');
-      geminiApiKey = functions.config()?.gemini?.api_key || null;
+      geminiApiKey = process.env.GEMINI_API_KEY || null;
     } catch (error) {
       // ignore config lookup failure
     }
@@ -4938,7 +4903,7 @@ Keep tone warm, empowering, and mom-to-mom. Respond with plain text only.
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const functions = require('firebase-functions');
-        openaiApiKey = functions.config()?.openai?.api_key || null;
+        openaiApiKey = process.env.OPENAI_API_KEY || null;
       } catch (error) {
         // ignore config lookup failure
       }
@@ -4948,12 +4913,12 @@ Keep tone warm, empowering, and mom-to-mom. Respond with plain text only.
       try {
         const { default: OpenAI } = await import('openai');
         const openai = new OpenAI({ apiKey: openaiApiKey });
-        const response = await openai.responses.create({
+        const response = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
-          input: basePrompt,
-          max_output_tokens: 200,
+          messages: [{ role: 'user', content: basePrompt }],
+          max_tokens: 200,
         });
-        note = response?.output_text?.trim() || null;
+        note = response?.choices?.[0]?.message?.content?.trim() || null;
       } catch (error) {
         console.error('❌ [AdaptiveCoach] OpenAI invocation failed:', (error as Error)?.message);
       }
@@ -4974,7 +4939,6 @@ Keep tone warm, empowering, and mom-to-mom. Respond with plain text only.
 
 // Import notification helper from utils
 import { sendAdminNotificationWithFallback } from './utils/notifications';
-export { sendAdminNotificationWithFallback };
 
 // Notify admins when new approval request is created
 export const onAccountApprovalCreated = onDocumentCreated(
@@ -6118,4 +6082,7 @@ export {
   onMediaCommentCreatedModeration, onMediaCreatedModeration,
   onPostCommentCreatedModeration, onPostCreatedModeration, onTestimonialCreatedModeration
 } from './contentModerationTriggers';
+
+// Stripe payment integration
+export { createPaymentIntent, stripeWebhook } from './stripe';
 

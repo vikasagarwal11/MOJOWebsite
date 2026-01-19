@@ -323,25 +323,56 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
             for (let i = 0; i < events.length; i += batchSize) {
               batches.push(events.slice(i, i + batchSize));
             }
+            // Set up real-time listeners for all attendee collections
+            // This ensures admin console updates immediately when payments are processed
+            const rsvpListenerUnsubscribes: (() => void)[] = [];
             const rsvps: { [eventId: string]: any[] } = {};
-            for (const batch of batches) {
-              await Promise.all(
-                batch.map(async (event) => {
-                  // Use new attendee system instead of old rsvps collection
-                  const attendeeQuery = query(collection(db, 'events', event.id, 'attendees'), orderBy('createdAt', 'desc'));
-                  const attendeeSnap = await getDocs(attendeeQuery);
-                  // Keep all attendee records for complete admin visibility
-                  rsvps[event.id] = attendeeSnap.docs.map(d => ({ 
-                    id: d.id, 
-                    eventId: event.id, 
+            
+            // Initialize empty arrays for all events
+            events.forEach(event => {
+              rsvps[event.id] = [];
+            });
+            
+            // Set initial state
+            setRsvpsByEvent({ ...rsvps });
+            
+            // Set up individual listeners for each event's attendees
+            for (const event of events) {
+              const attendeeQuery = query(
+                collection(db, 'events', event.id, 'attendees'),
+                orderBy('createdAt', 'desc')
+              );
+              
+              const unsubscribe = onSnapshot(
+                attendeeQuery,
+                (attendeeSnap) => {
+                  // Update the specific event's attendees in state
+                  const eventAttendees = attendeeSnap.docs.map(d => ({
+                    id: d.id,
+                    eventId: event.id,
                     userId: d.data().userId,
                     status: d.data().rsvpStatus, // Map rsvpStatus to status for compatibility
-                    ...sanitizeFirebaseData(d.data()) 
+                    ...sanitizeFirebaseData(d.data())
                   }));
-                })
+                  
+                  console.log('🔄 Real-time attendee update for event:', event.id, '- Count:', eventAttendees.length);
+                  
+                  // Update state immutably to trigger re-render
+                  setRsvpsByEvent(prev => ({
+                    ...prev,
+                    [event.id]: eventAttendees
+                  }));
+                },
+                (error) => {
+                  console.error('❌ Error listening to attendees for event', event.id, ':', error);
+                }
               );
+              
+              rsvpListenerUnsubscribes.push(unsubscribe);
             }
-            setRsvpsByEvent(rsvps);
+            
+            // Store unsubscribe functions to clean up later
+            (unsubAdmin as any).rsvpListeners = rsvpListenerUnsubscribes;
             fetchUserNames([...events.map(e => ({ id: e.createdBy })), ...Object.values(rsvps).flat().map(rsvp => ({ id: rsvp.userId }))]);
           } catch (e) {
             console.error('🚨 Profile: Failed to load admin events:', {
@@ -367,7 +398,14 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
 
       return () => {
         unsubUser();
-        unsubAdmin?.();
+        if (unsubAdmin) {
+          unsubAdmin();
+          // Also unsubscribe from all attendee listeners
+          const rsvpListeners = (unsubAdmin as any).rsvpListeners;
+          if (rsvpListeners && Array.isArray(rsvpListeners)) {
+            rsvpListeners.forEach((unsub: () => void) => unsub());
+          }
+        }
       };
     }, 400); // 400ms delay (slightly more than RSVPed events)
 
@@ -782,7 +820,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
                 rsvpStatus: attendee.status,
                 paymentStatus: attendee.paymentStatus || 'unpaid',
                 eventAmount: isPaid ? eventAmount.toFixed(2) : '',
-                eventSupportAmount: isPaid && eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
+                eventSupportAmount: eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
                 // User data
                 userId: attendee.userId,
                 firstName: userData.firstName || '',
@@ -809,7 +847,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               rsvpStatus: attendee.status,
               paymentStatus: attendee.paymentStatus || 'unpaid',
               eventAmount: isPaid ? eventAmount.toFixed(2) : '',
-              eventSupportAmount: isPaid && eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
+              eventSupportAmount: eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
               // User data
               userId: attendee.userId,
               firstName: 'Unknown',
@@ -836,7 +874,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               rsvpStatus: attendee.status,
               paymentStatus: attendee.paymentStatus || 'unpaid',
               eventAmount: isPaid ? eventAmount.toFixed(2) : '',
-              eventSupportAmount: isPaid && eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
+              eventSupportAmount: eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
               // User data
               userId: attendee.userId,
               firstName: 'Error',

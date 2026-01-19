@@ -1,23 +1,17 @@
 // EventsV2 - Same as Events but navigates to v2 detail pages
 // This is a copy of Events.tsx with modified navigation routes
-import { AnimatePresence, motion } from 'framer-motion';
-import { Calendar, Filter, Search, TrendingUp } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useDebounce } from 'use-debounce';
 import CreateEventModal from '../components/events/CreateEventModal';
 import EventCalendar from '../components/events/EventCalendar';
-import EventListV2 from '../components/events-v2/EventListV2';
+import EventList from '../components/events/EventList';
 import { EventsListSeo } from '../components/seo/EventsListSeo';
 import { useAuth } from '../contexts/AuthContext';
-import { useEvents } from '../hooks/useEvents';
+import { EventDoc, useEvents } from '../hooks/useEvents';
 import { useRealTimeEvents } from '../hooks/useRealTimeEvents';
 import { EventDeletionService } from '../services/eventDeletionService';
-import { EventTeaserModal } from '../components/events/EventTeaserModal';
-import { PastEventModal } from '../components/events/PastEventModal';
-import { RSVPModalNew as RSVPModal } from '../components/events/RSVPModalNew';
-import { EventDoc } from '../hooks/useEvents';
-import { useDebounce } from 'use-debounce';
 
 const RSVP_MODE: 'modal' | 'page' = 'page';
 
@@ -250,7 +244,7 @@ const EventsV2: React.FC = () => {
 
         {/* Event List with V2 components - routes to V2 detail pages */}
         {viewMode === 'grid' ? (
-          <EventListV2 
+          <EventList 
             events={safeFiltered} 
             loading={loading} 
             emptyText={activeTab === 'past' ? "No past events yet." : "No events yet."}

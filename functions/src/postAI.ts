@@ -1,5 +1,5 @@
-import { onCall } from 'firebase-functions/v2/https';
 import { getFirestore } from 'firebase-admin/firestore';
+import { onCall } from 'firebase-functions/v2/https';
 
 // Generate post suggestions using AI (tries Gemini first, falls back to OpenAI)
 export const generatePostSuggestionsV2 = onCall({
@@ -82,16 +82,8 @@ export const generatePostSuggestionsV2 = onCall({
       return posts;
     };
 
-    // Try Gemini first (with legacy fallback to functions.config for migration safety)
-    let geminiApiKey = process.env.GEMINI_API_KEY;
-    if (!geminiApiKey) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const functions = require('firebase-functions');
-        const config = functions.config();
-        geminiApiKey = config?.gemini?.api_key;
-      } catch {}
-    }
+    // Try Gemini first
+    const geminiApiKey = process.env.GEMINI_API_KEY;
 
     if (geminiApiKey) {
       try {
@@ -121,15 +113,7 @@ export const generatePostSuggestionsV2 = onCall({
     }
 
     // Fallback to OpenAI
-    let openaiApiKey = process.env.OPENAI_API_KEY;
-    if (!openaiApiKey) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const functions = require('firebase-functions');
-        const config = functions.config();
-        openaiApiKey = config?.openai?.api_key;
-      } catch {}
-    }
+    const openaiApiKey = process.env.OPENAI_API_KEY;
     if (!openaiApiKey) {
       console.error('❌ Neither GEMINI_API_KEY nor OPENAI_API_KEY configured');
       return { success: false, error: 'AI service not configured. Please add GEMINI_API_KEY or OPENAI_API_KEY to .env file.' } as const;

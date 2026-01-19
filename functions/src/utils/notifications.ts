@@ -1,4 +1,4 @@
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getFirestore } from 'firebase-admin/firestore';
 
 const db = getFirestore();
 
@@ -7,27 +7,10 @@ const db = getFirestore();
  */
 async function sendSMSViaTwilio(phoneNumber: string, message: string): Promise<{ success: boolean; error?: string; sid?: string }> {
   try {
-    // For Firebase Functions v2, access config via runtime config
-    // Try to get from functions.config() first (for v1 compatibility), then fallback to process.env
-    let twilioAccountSid: string | undefined;
-    let twilioAuthToken: string | undefined;
-    let twilioPhoneNumber: string | undefined;
-    
-    try {
-      // Try to access via functions.config() (works with firebase functions:config:set)
-      const functions = require('firebase-functions');
-      const config = functions.config();
-      twilioAccountSid = config?.twilio?.account_sid;
-      twilioAuthToken = config?.twilio?.auth_token;
-      twilioPhoneNumber = config?.twilio?.phone_number;
-    } catch (configError) {
-      // functions.config() not available, will use process.env
-    }
-    
-    // Fallback to environment variables (for v2 direct env vars)
-    twilioAccountSid = twilioAccountSid || process.env.TWILIO_ACCOUNT_SID;
-    twilioAuthToken = twilioAuthToken || process.env.TWILIO_AUTH_TOKEN;
-    twilioPhoneNumber = twilioPhoneNumber || process.env.TWILIO_PHONE_NUMBER;
+    // For Firebase Functions v2, use environment variables directly
+    const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+    const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+    const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 
     if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
       console.error('❌ Twilio credentials not configured');

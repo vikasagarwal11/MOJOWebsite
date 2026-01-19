@@ -20,12 +20,13 @@ import {
     PaymentTransaction,
     RefundStatus
 } from '../types/payment';
+import { calculateChargeAmount, distributeStripeFees, PriceComponent } from '../utils/stripePricing';
 
 export class PaymentService {
   private static readonly TRANSACTIONS_COLLECTION = 'payment_transactions';
 
   /**
-   * Calculate payment summary for attendees
+   * Calculate payment summary for attendees with Stripe fees applied proportionally
    */
   static calculatePaymentSummary(
     attendees: Attendee[], 
@@ -45,32 +46,62 @@ export class PaymentService {
       };
     }
 
+    // Build price components for Stripe fee distribution
+    // CRITICAL: Calculate charge amount PER ATTENDEE to ensure consistent pricing
+    // Each attendee should pay the same amount as shown on the event card
     const breakdown = attendees
       .filter(attendee => attendee.rsvpStatus === 'going')
-      .map(attendee => {
-        const price = eventPricing.requiresPayment && !eventPricing.isFree 
+      .map((attendee) => {
+        const netTicketPrice = eventPricing.requiresPayment && !eventPricing.isFree 
           ? this.getPriceForAgeGroup(attendee.ageGroup, eventPricing)
           : 0;
+        
+        const netEventSupport = hasEventSupportAmount ? eventPricing.eventSupportAmount : 0;
+        
+        // Build components for THIS attendee only
+        const attendeeComponents: PriceComponent[] = [];
+        
+        if (netTicketPrice > 0) {
+          attendeeComponents.push({
+            id: 'ticket',
+            label: 'Ticket',
+            netAmount: netTicketPrice
+          });
+        }
+        
+        if (netEventSupport > 0) {
+          attendeeComponents.push({
+            id: 'support',
+            label: 'Event Support',
+            netAmount: netEventSupport
+          });
+        }
+        
+        // Calculate charge amounts for this attendee individually
+        // This ensures each attendee pays the same price as shown on event card
+        const chargedComponents = distributeStripeFees(attendeeComponents);
+        
+        const ticketCharge = chargedComponents.find(c => c.id === 'ticket')?.chargeAmount || 0;
+        const supportCharge = chargedComponents.find(c => c.id === 'support')?.chargeAmount || 0;
+        const totalChargePrice = ticketCharge + supportCharge;
+        
         return {
           attendeeId: attendee.attendeeId,
           attendeeName: attendee.name,
           ageGroup: attendee.ageGroup,
-          price,
+          price: totalChargePrice,
           quantity: 1,
-          subtotal: price
+          subtotal: totalChargePrice,
+          ticketPrice: ticketCharge,
+          eventSupport: supportCharge
         };
       });
 
-    let totalAmount = breakdown.reduce((sum, item) => sum + item.subtotal, 0);
-    
-    // Add event support amount per attendee if applicable
-    if (hasEventSupportAmount) {
-      const goingAttendeesCount = attendees.filter(attendee => attendee.rsvpStatus === 'going').length;
-      totalAmount += eventPricing.eventSupportAmount * goingAttendeesCount;
-    }
+    // Calculate total charge amount (sum of all attendee charges)
+    const totalAmount = breakdown.reduce((sum, item) => sum + item.subtotal, 0);
 
     return {
-      totalAmount,
+      totalAmount, // Total CHARGE amount including Stripe fees
       currency: eventPricing.currency,
       breakdown,
       status: 'unpaid' as PaymentStatus,
@@ -80,22 +111,35 @@ export class PaymentService {
   }
 
   /**
-   * Get price for specific age group
+   * Get NET price for specific age group (what admin receives after Stripe fees)
+   * This returns the NET amount stored in the event pricing configuration
    */
   private static getPriceForAgeGroup(ageGroup: AgeGroup, pricing: EventPricing): number {
     if (pricing.isFree || !pricing.requiresPayment) return 0;
 
-    // Find specific age group pricing
+    // Find specific age group pricing (NET amount)
     const ageGroupPricing = pricing.ageGroupPricing.find(
       p => p.ageGroup === ageGroup
     );
 
     if (ageGroupPricing) {
-      return ageGroupPricing.price;
+      return ageGroupPricing.price; // NET price
     }
 
-    // Fallback to adult price
-    return pricing.adultPrice;
+    // Fallback to adult price (NET)
+    return pricing.adultPrice; // NET price
+  }
+
+  /**
+   * Get CHARGE price for specific age group (what user pays including Stripe fees)
+   * This calculates the charge amount from the NET amount
+   */
+  static getChargePriceForAgeGroup(ageGroup: AgeGroup, pricing: EventPricing): number {
+    const netPrice = this.getPriceForAgeGroup(ageGroup, pricing);
+    if (netPrice === 0) return 0;
+    
+    // Calculate charge amount including Stripe fees
+    return calculateChargeAmount(netPrice);
   }
 
   /**
@@ -239,6 +283,7 @@ export class PaymentService {
       console.log('📊 Transaction ID:', transactionId);
 
       // Get the transaction to find which attendees were paid
+      const transactionRef = doc(db, this.TRANSACTIONS_COLLECTION, transactionId);
       const transactionDoc = await getDocs(query(
         collection(db, this.TRANSACTIONS_COLLECTION),
         where('__name__', '==', transactionId)
@@ -246,25 +291,42 @@ export class PaymentService {
 
       if (transactionDoc.empty) {
         console.error('❌ Transaction not found:', transactionId);
-        return;
+        throw new Error(`Transaction ${transactionId} not found`);
       }
 
       const transactionData = transactionDoc.docs[0].data() as PaymentTransaction;
-      console.log('📋 Transaction data:', transactionData);
+      console.log('📋 Transaction data:', {
+        eventId: transactionData.eventId,
+        userId: transactionData.userId,
+        amount: transactionData.amount,
+        paidAttendeesCount: transactionData.metadata?.paidAttendees?.length || 0
+      });
 
       if (!transactionData.metadata?.paidAttendees) {
         console.log('⚠️ No paid attendees found in transaction metadata');
         return;
       }
 
+      if (!transactionData.eventId) {
+        console.error('❌ No eventId in transaction data');
+        throw new Error('Transaction missing eventId');
+      }
+
       const batch = writeBatch(db);
       const paidAttendees = transactionData.metadata.paidAttendees as any[];
 
-      console.log('👥 Updating payment status for attendees:', paidAttendees.length);
+      console.log('👥 Updating payment status for', paidAttendees.length, 'attendee(s)');
 
-      // Update each attendee's payment status
+      // Update each attendee's payment status in the correct subcollection
       for (const paidAttendee of paidAttendees) {
-        const attendeeRef = doc(db, 'attendees', paidAttendee.attendeeId);
+        // CRITICAL: Use events/{eventId}/attendees subcollection, not top-level attendees
+        const attendeeRef = doc(
+          db, 
+          'events', 
+          transactionData.eventId, 
+          'attendees', 
+          paidAttendee.attendeeId
+        );
         
         batch.update(attendeeRef, {
           paymentStatus: 'paid' as PaymentStatus,
@@ -273,14 +335,14 @@ export class PaymentService {
           updatedAt: Timestamp.now()
         });
 
-        console.log(`✅ Updated attendee ${paidAttendee.attendeeId} (${paidAttendee.name}) - $${(paidAttendee.amount / 100).toFixed(2)}`);
+        console.log(`✅ Queued update for attendee ${paidAttendee.attendeeId} (${paidAttendee.name}) - $${(paidAttendee.amount / 100).toFixed(2)}`);
       }
 
       await batch.commit();
-      console.log('✅ All attendee payment statuses updated successfully');
+      console.log('✅ All attendee payment statuses updated successfully in Firestore');
     } catch (error) {
       console.error('❌ Error updating attendee payment statuses:', error);
-      throw new Error('Failed to update attendee payment statuses');
+      throw new Error('Failed to update attendee payment statuses: ' + (error as Error).message);
     }
   }
 
@@ -557,5 +619,99 @@ export class PaymentService {
       currency
       // refundPolicy will be set separately based on user choice
     };
+  }
+
+  /**
+   * Admin manual payment status update
+   * Updates attendee payment status and creates/updates transaction record
+   * Used when admin manually marks payment as paid or unpaid
+   */
+  static async adminUpdatePaymentStatus(
+    eventId: string,
+    attendeeId: string,
+    newStatus: 'paid' | 'unpaid',
+    adminUserId: string,
+    eventPricing: EventPricing
+  ): Promise<void> {
+    try {
+      console.log('🔧 Admin updating payment status:', {
+        eventId,
+        attendeeId,
+        newStatus,
+        adminUserId
+      });
+
+      // Get attendee data
+      const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
+      const attendeeSnap = await getDocs(query(
+        collection(db, 'events', eventId, 'attendees'),
+        where('__name__', '==', attendeeId)
+      ));
+
+      if (attendeeSnap.empty) {
+        throw new Error('Attendee not found');
+      }
+
+      const attendeeData = attendeeSnap.docs[0].data() as Attendee;
+      
+      const batch = writeBatch(db);
+
+      // Update attendee status
+      batch.update(attendeeRef, {
+        paymentStatus: newStatus,
+        updatedAt: Timestamp.now()
+      });
+
+      // If marking as paid, create a transaction record for audit trail
+      if (newStatus === 'paid') {
+        const transactionRef = doc(collection(db, this.TRANSACTIONS_COLLECTION));
+        const amount = this.getPriceForAgeGroup(attendeeData.ageGroup, eventPricing);
+        
+        batch.set(transactionRef, {
+          eventId,
+          userId: attendeeData.userId,
+          attendeeId,
+          amount,
+          currency: eventPricing.currency,
+          status: 'paid' as PaymentStatus,
+          method: 'other' as PaymentMethod, // Admin manual marking
+          refundStatus: 'none' as RefundStatus,
+          metadata: {
+            attendeeName: attendeeData.name,
+            ageGroup: attendeeData.ageGroup,
+            eventTitle: '',
+            eventDate: '',
+            totalAttendees: 1,
+            breakdown: [{
+              attendeeId,
+              attendeeName: attendeeData.name,
+              ageGroup: attendeeData.ageGroup,
+              price: amount,
+              quantity: 1,
+              subtotal: amount
+            }],
+            paidAttendees: [{
+              attendeeId,
+              name: attendeeData.name,
+              ageGroup: attendeeData.ageGroup,
+              amount
+            }],
+            adminManualUpdate: true,
+            adminUserId
+          },
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+          paidAt: Timestamp.now()
+        });
+
+        console.log('✅ Created transaction record for manual payment');
+      }
+
+      await batch.commit();
+      console.log(`✅ Admin updated payment status to ${newStatus}`);
+    } catch (error) {
+      console.error('❌ Error in admin payment status update:', error);
+      throw new Error('Failed to update payment status: ' + (error as Error).message);
+    }
   }
 }

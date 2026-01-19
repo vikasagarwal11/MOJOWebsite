@@ -13,6 +13,7 @@ import { useStorage } from '../../hooks/useStorage';
 import { PaymentService } from '../../services/paymentService';
 import { AgeGroup, EventPricing } from '../../types/payment';
 import { safeFormat, safeISODate } from '../../utils/dateUtils';
+import { calculateProportionalPricing, centsToDollars, dollarsToCents } from '../../utils/stripePricing';
 
 // Firestore shouldn't see undefined fields
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
@@ -26,36 +27,6 @@ function tsToDate(v: any): Date {
   if (v instanceof Date) return v;
   if (typeof v === 'string') return new Date(v);
   return new Date(v);
-}
-
-// Helper function to convert dollars to cents safely (avoiding floating-point errors)
-function dollarsToCents(dollars: string | number): number {
-  const dollarValue = typeof dollars === 'string' ? dollars : dollars.toString();
-  if (!dollarValue || dollarValue.trim() === '') return 0;
-  
-  // Parse the dollar value and check if valid
-  const numValue = parseFloat(dollarValue);
-  if (isNaN(numValue) || numValue < 0) return 0;
-  
-  // Convert to string with exactly 2 decimal places, then remove the decimal point
-  // This avoids floating-point arithmetic entirely
-  // Example: "50" -> "50.00" -> "5000" -> 5000
-  // Example: "50.5" -> "50.50" -> "5050" -> 5050
-  // Example: "100" -> "100.00" -> "10000" -> 10000
-  const fixedStr = numValue.toFixed(2);
-  const centsStr = fixedStr.replace('.', '');
-  return parseInt(centsStr, 10);
-}
-
-// Helper function to convert cents to dollars (for displaying values from database)
-function centsToDollars(cents: number): string {
-  if (!cents || cents === 0) return '';
-  
-  // Round to nearest cent to fix any floating-point errors in database
-  // Example: 49999 -> round(499.99) -> 500.00 -> "500.00"
-  // Example: 50000 -> round(500.00) -> 500.00 -> "500.00"
-  const dollars = Math.round(cents) / 100;
-  return dollars.toFixed(2);
 }
 
 const eventSchema = z.object({
@@ -253,6 +224,32 @@ const watchedEndTime = watch('endTime');
 const watchedEndDate = watch('endDate');
 const watchedIsAllDay = watch('isAllDay');
 const watchedDuration = watch('duration');
+
+// Watch payment fields for live calculation
+const watchedAdultPrice = watch('adultPrice');
+const watchedTeenPrice = watch('teenPrice');
+const watchedChildPrice = watch('childPrice');
+const watchedToddlerPrice = watch('toddlerPrice');
+const watchedInfantPrice = watch('infantPrice');
+const watchedEventSupportAmount = watch('eventSupportAmount');
+
+// Calculate Stripe-adjusted prices with proportional distribution
+// This shows what user actually pays when ticket + support are combined
+const adultPricing = watchedAdultPrice 
+  ? calculateProportionalPricing(dollarsToCents(watchedAdultPrice), dollarsToCents(watchedEventSupportAmount || '0'))
+  : null;
+const teenPricing = watchedTeenPrice 
+  ? calculateProportionalPricing(dollarsToCents(watchedTeenPrice), dollarsToCents(watchedEventSupportAmount || '0'))
+  : null;
+const childPricing = watchedChildPrice 
+  ? calculateProportionalPricing(dollarsToCents(watchedChildPrice), dollarsToCents(watchedEventSupportAmount || '0'))
+  : null;
+const toddlerPricing = watchedToddlerPrice 
+  ? calculateProportionalPricing(dollarsToCents(watchedToddlerPrice), dollarsToCents(watchedEventSupportAmount || '0'))
+  : null;
+const infantPricing = watchedInfantPrice 
+  ? calculateProportionalPricing(dollarsToCents(watchedInfantPrice), dollarsToCents(watchedEventSupportAmount || '0'))
+  : null;
 
 // Smart defaults: Set end date to start date when start date changes
 useEffect(() => {
@@ -1782,7 +1779,9 @@ useEffect(() => {
                 >
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Adult Price ($)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Adult Price ($) - NET Amount
+                      </label>
                       <input
                         {...register('adultPrice')}
                         type="text"
@@ -1791,6 +1790,21 @@ useEffect(() => {
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="25.00"
                       />
+                      {adultPricing && adultPricing.ticketNet > 0 && (
+                        <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs space-y-1">
+                          <div className="font-semibold text-green-900">
+                            💳 Ticket charge: {adultPricing.ticketChargeDisplay}
+                          </div>
+                          {adultPricing.supportNet > 0 && (
+                            <div className="text-green-700">
+                              💳 Event Support charge: {adultPricing.supportChargeDisplay}
+                            </div>
+                          )}
+                          <div className="text-green-600 border-t border-green-300 pt-1 mt-1">
+                            📊 Total per person: {adultPricing.totalChargeDisplay} (Stripe fee: {adultPricing.totalStripeFeeDisplay})
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
@@ -1818,6 +1832,14 @@ useEffect(() => {
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="20.00"
                       />
+                      {teenPricing && teenPricing.ticketNet > 0 && (
+                        <div className="mt-1 p-1.5 bg-blue-50 border border-blue-200 rounded text-xs">
+                          <div className="font-medium text-blue-900">
+                            User pays: {teenPricing.ticketChargeDisplay}
+                            {teenPricing.supportNet > 0 && ` + ${teenPricing.supportChargeDisplay} support = ${teenPricing.totalChargeDisplay}`}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Children (6-10) ($)</label>
@@ -1829,6 +1851,14 @@ useEffect(() => {
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="15.00"
                       />
+                      {childPricing && childPricing.ticketNet > 0 && (
+                        <div className="mt-1 p-1.5 bg-blue-50 border border-blue-200 rounded text-xs">
+                          <div className="font-medium text-blue-900">
+                            User pays: {childPricing.ticketChargeDisplay}
+                            {childPricing.supportNet > 0 && ` + ${childPricing.supportChargeDisplay} support = ${childPricing.totalChargeDisplay}`}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Toddler (3-5) ($)</label>
@@ -1840,6 +1870,14 @@ useEffect(() => {
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="10.00"
                       />
+                      {toddlerPricing && toddlerPricing.ticketNet > 0 && (
+                        <div className="mt-1 p-1.5 bg-blue-50 border border-blue-200 rounded text-xs">
+                          <div className="font-medium text-blue-900">
+                            User pays: {toddlerPricing.ticketChargeDisplay}
+                            {toddlerPricing.supportNet > 0 && ` + ${toddlerPricing.supportChargeDisplay} support = ${toddlerPricing.totalChargeDisplay}`}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Infant (0-2) ($)</label>
@@ -1851,6 +1889,14 @@ useEffect(() => {
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="0.00"
                       />
+                      {infantPricing && infantPricing.ticketNet > 0 && (
+                        <div className="mt-1 p-1.5 bg-blue-50 border border-blue-200 rounded text-xs">
+                          <div className="font-medium text-blue-900">
+                            User pays: {infantPricing.ticketChargeDisplay}
+                            {infantPricing.supportNet > 0 && ` + ${infantPricing.supportChargeDisplay} support = ${infantPricing.totalChargeDisplay}`}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1921,7 +1967,9 @@ useEffect(() => {
                   className="bg-purple-50 p-4 rounded-lg border border-purple-200"
                 >
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Enter Amount ($) *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Enter Amount ($) - NET Amount *
+                    </label>
                     <input
                       {...register('eventSupportAmount')}
                       type="text"
@@ -1932,6 +1980,19 @@ useEffect(() => {
                       className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                       placeholder="5.00"
                     />
+                    {adultPricing && adultPricing.supportNet > 0 && (
+                      <div className="mt-2 p-2 bg-purple-100 border border-purple-300 rounded text-xs space-y-1">
+                        <div className="font-semibold text-purple-900">
+                          💳 Support charge per person: {adultPricing.supportChargeDisplay}
+                        </div>
+                        <div className="text-purple-700">
+                          Combined with ticket, Stripe fee is distributed proportionally
+                        </div>
+                        <div className="text-purple-600 font-medium">
+                          Example: Adult ticket {adultPricing.ticketChargeDisplay} + Support {adultPricing.supportChargeDisplay} = {adultPricing.totalChargeDisplay} total
+                        </div>
+                      </div>
+                    )}
                     <p className="text-xs text-gray-500 mt-1">This amount will be added to each attendee's total</p>
                   </div>
                 </motion.div>

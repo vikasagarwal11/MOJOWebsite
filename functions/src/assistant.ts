@@ -1,8 +1,8 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory, SafetySetting } from '@google/generative-ai';
 import { SpeechClient } from '@google-cloud/speech';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
+import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory, SafetySetting } from '@google/generative-ai';
+import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { v4 as uuidv4 } from 'uuid';
 import { embedText } from './utils/embeddings';
 
@@ -570,17 +570,7 @@ async function answerQuestion(question: string, context: string, profileSummary:
   }
 
   // Fallback to OpenAI
-  let openaiApiKey = process.env.OPENAI_API_KEY;
-  if (!openaiApiKey) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const functions = require('firebase-functions');
-      const config = functions.config();
-      openaiApiKey = config?.openai?.api_key;
-    } catch (error) {
-      // functions.config() not available in v2, ignore
-    }
-  }
+  const openaiApiKey = process.env.OPENAI_API_KEY;
 
   if (!openaiApiKey) {
     throw new Error('Neither GEMINI_API_KEY nor OPENAI_API_KEY is configured. Please add at least one API key.');

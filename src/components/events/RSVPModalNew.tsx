@@ -1,12 +1,12 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
-  AlertTriangle,
-  Calendar,
-  ChevronDown,
-  Heart,
-  QrCode,
-  UserPlus,
-  Users,
+    AlertTriangle,
+    Calendar,
+    ChevronDown,
+    Heart,
+    QrCode,
+    UserPlus,
+    Users,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
@@ -622,12 +622,17 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                     <PaymentSection 
                       event={event}
                       attendees={attendees.filter(attendee => attendee.userId === currentUser?.id)}
-                      onPaymentComplete={() => {
-                        refreshAttendees();
+                      onPaymentComplete={async () => {
+                        console.log('🔄 [RSVP] onPaymentComplete callback triggered');
+                        console.log('🔄 [RSVP] Refreshing attendees...');
+                        await refreshAttendees();
+                        console.log('🔄 [RSVP] Attendees refreshed successfully');
+                        console.log('🔄 [RSVP] Calling parent onAttendeeUpdate...');
                         onAttendeeUpdate?.();
+                        console.log('🔄 [RSVP] Parent onAttendeeUpdate called');
                       }}
                       onPaymentError={(error) => {
-                        console.error('Payment error:', error);
+                        console.error('❌ [RSVP] Payment error:', error);
                       }}
                     />
 

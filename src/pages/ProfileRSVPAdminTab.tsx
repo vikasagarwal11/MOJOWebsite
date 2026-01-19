@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import EventCardNew from '../components/events/EventCardNew';
 import { auth, db } from '../config/firebase';
 import { EventDoc } from '../hooks/useEvents';
+import { PaymentService } from '../services/paymentService';
 
 type ProfileRSVPAdminTabProps = {
   rsvpsByEvent: { [eventId: string]: any[] };
@@ -1194,13 +1195,28 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                       onClick={async () => {
                                         try {
                                           const newStatus = rsvp.paymentStatus === 'paid' ? 'unpaid' : 'paid';
-                                          await updateDoc(doc(db, 'events', event.id, 'attendees', rsvp.id), {
-                                            paymentStatus: newStatus,
-                                            updatedAt: serverTimestamp()
-                                          });
+                                          const adminUserId = auth.currentUser?.uid || 'unknown';
+                                          
+                                          // Use PaymentService to update with transaction logging
+                                          if (event.pricing) {
+                                            await PaymentService.adminUpdatePaymentStatus(
+                                              event.id,
+                                              rsvp.id,
+                                              newStatus,
+                                              adminUserId,
+                                              event.pricing
+                                            );
+                                          } else {
+                                            // Fallback for events without pricing
+                                            await updateDoc(doc(db, 'events', event.id, 'attendees', rsvp.id), {
+                                              paymentStatus: newStatus,
+                                              updatedAt: serverTimestamp()
+                                            });
+                                          }
+                                          
                                           toast.success(
                                             newStatus === 'paid' 
-                                              ? '✓ Marked as paid' 
+                                              ? '✓ Marked as paid (transaction logged)' 
                                               : '⏳ Marked as pending payment'
                                           );
                                         } catch (error) {
