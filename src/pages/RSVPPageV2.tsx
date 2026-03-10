@@ -1,21 +1,22 @@
 import { doc, onSnapshot } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  AlertTriangle,
-  ArrowLeft,
-  Calendar,
-  CheckCircle2,
-  Clock,
-  DollarSign,
-  MapPin,
-  Users,
-  XCircle
+    AlertTriangle,
+    ArrowLeft,
+    Calendar,
+    CheckCircle2,
+    Clock,
+    DollarSign,
+    MapPin,
+    Users,
+    XCircle
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PaymentSection } from '../components/events/PaymentSection';
 import { QRCodeTab } from '../components/events/QRCodeTab';
 import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
+import CommentSection from '../components/common/CommentSection';
 import { useCapacityState } from '../components/events/RSVPModalNew/hooks/useCapacityState';
 import { useEventDates } from '../components/events/RSVPModalNew/hooks/useEventDates';
 import { LoadingButton } from '../components/ui/LoadingSpinner';
@@ -43,6 +44,10 @@ function isPaidEvent(event?: EventDoc | null) {
   // Pay There events are treated as free (no payment processing in app)
   if (pricing?.payThere) return false;
   if (pricing?.type === 'free') return false;
+  // Check for event support amount
+  if (pricing?.eventSupportAmount && pricing.eventSupportAmount > 0) return true;
+  // Check for required payment
+  if (pricing?.requiresPayment && pricing?.adultPrice && pricing.adultPrice > 0) return true;
   const amount = pricing?.amount ?? pricing?.price ?? pricing?.perPersonAmount;
   return typeof amount === 'number' ? amount > 0 : Boolean(amount);
 }
@@ -53,6 +58,14 @@ function getPriceLabel(event?: EventDoc | null) {
   // Pay There events show "Pay There" instead of "Free"
   if (pricing?.payThere) return 'Pay There';
   if (pricing?.type === 'free') return 'Free';
+  // If no required payment but has event support, show event support as main price
+  if (!pricing?.requiresPayment && pricing?.eventSupportAmount && pricing.eventSupportAmount > 0) {
+    return `$${(pricing.eventSupportAmount / 100).toFixed(2)}`;
+  }
+  // If has required payment, show adult price
+  if (pricing?.requiresPayment && pricing?.adultPrice && pricing.adultPrice > 0) {
+    return `$${(pricing.adultPrice / 100).toFixed(2)}`;
+  }
   const amount = pricing?.amount ?? pricing?.price ?? pricing?.perPersonAmount;
   if (typeof amount === 'number') return `$${amount}`;
   if (typeof amount === 'string' && amount.trim()) return `$${amount}`;
@@ -69,7 +82,7 @@ function getVenueLine(event?: EventDoc | null) {
 const RSVPPageV2: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
-  const { currentUser, isAdmin } = useAuth();
+  const { currentUser } = useAuth();
 
   const [event, setEvent] = useState<EventDoc | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,10 +91,15 @@ const RSVPPageV2: React.FC = () => {
   const [activeView, setActiveView] = useState<ActiveView>('rsvp');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [showGuestRsvpModal, setShowGuestRsvpModal] = useState(false);
 
   const paid = useMemo(() => isPaidEvent(event), [event]);
   const priceLabel = useMemo(() => getPriceLabel(event), [event]);
   const venueLine = useMemo(() => getVenueLine(event), [event]);
+  const isAdmin = useMemo(
+    () => Boolean(currentUser?.role === 'admin' || (event?.createdBy && currentUser?.id === event.createdBy)),
+    [currentUser, event]
+  );
 
   // Safe event for hooks
   const emptyEvent = useMemo(() => ({} as EventDoc), []);
@@ -356,12 +374,6 @@ const RSVPPageV2: React.FC = () => {
     [removeAttendee, showToast]
   );
 
-  const canProceedPayment = useMemo(() => {
-    if (!paid) return true;
-    // PaymentSection will handle details; we only require primary going
-    return currentStatus === 'going';
-  }, [currentStatus, paid]);
-
   const headerStatusChip = useMemo(() => {
     if (currentStatus === 'going') return { label: "You're going", tone: 'good' as const, icon: CheckCircle2 };
     if (currentStatus === 'waitlisted') return { label: "Waitlisted", tone: 'warn' as const, icon: Calendar };
@@ -399,6 +411,90 @@ const RSVPPageV2: React.FC = () => {
             <div className="text-sm font-semibold">Unable to open RSVP</div>
             <div className="mt-1 text-sm">{error || 'Event not found'}</div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser && event.visibility !== 'truly_public') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-rose-50 to-white">
+        <div className="mx-auto max-w-3xl px-4 py-10">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
+            <div className="text-lg font-semibold">Sign in required</div>
+            <div className="mt-1 text-sm">Please login to RSVP for this event.</div>
+            <button
+              onClick={() => navigate('/login')}
+              className="mt-4 rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Go to Login
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser && event.visibility === 'truly_public') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-rose-50 to-white">
+        <div className="mx-auto max-w-3xl px-4 py-10">
+          <h1 className="text-2xl font-semibold text-gray-900">{event.title || 'Event'}</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            Truly Public Event. Review details, then tap Add RSVP.
+          </p>
+          {event.description && (
+            <p className="mt-3 whitespace-pre-wrap text-sm text-gray-700">{event.description}</p>
+          )}
+
+          <div className="mt-6 rounded-2xl border border-black/10 bg-white p-4">
+            <div className="space-y-1 text-sm text-gray-700">
+              <div><span className="font-semibold">Date:</span> {startDate ? safeFormat(startDate, 'EEEE, MMM d, yyyy') : 'TBD'}</div>
+              <div><span className="font-semibold">Time:</span> {startDate ? safeFormat(startDate, 'h:mm a') : 'TBD'}{endDate ? ` - ${safeFormat(endDate, 'h:mm a')}` : ''}</div>
+              <div><span className="font-semibold">Location:</span> {venueLine}</div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowGuestRsvpModal(true)}
+            className="mt-6 w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white hover:bg-black"
+          >
+            Add RSVP
+          </button>
+
+          {showGuestRsvpModal && (
+            <div
+              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+              onClick={() => setShowGuestRsvpModal(false)}
+            >
+              <div
+                className="w-full max-w-lg rounded-2xl bg-white p-4 sm:p-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-gray-900">Add RSVP</h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowGuestRsvpModal(false)}
+                    className="rounded-md px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
+                  >
+                    Close
+                  </button>
+                </div>
+                <p className="text-sm text-gray-700">
+                  Continue on the main RSVP page to submit your RSVP.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/events/${event.id}/rsvp`)}
+                  className="mt-4 w-full rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-black"
+                >
+                  Open RSVP Page
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -450,7 +546,6 @@ const RSVPPageV2: React.FC = () => {
           </div>
         </div>
       </div>
-
       <div className="mx-auto max-w-5xl px-4 pb-28 pt-6">
         {/* Event summary card */}
         <div className="rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
@@ -526,7 +621,12 @@ const RSVPPageV2: React.FC = () => {
         <div className="mt-6">
           {activeView === 'whosgoing' && (
             <div className="rounded-3xl border border-black/5 bg-white p-0 shadow-sm">
-              <WhosGoingTab event={event} />
+              <WhosGoingTab
+                event={event}
+                attendees={attendees}
+                isAdmin={Boolean(isAdmin)}
+                waitlistPositions={waitlistPositions}
+              />
             </div>
           )}
 
@@ -800,6 +900,18 @@ const RSVPPageV2: React.FC = () => {
                         attendees={myAttendees}
                         onPaymentComplete={() => showToast('Payment updated')}
                         onPaymentError={(msg) => showToast(msg)}
+                      />
+                    </div>
+
+                    <div className="mt-6 rounded-2xl border border-black/10 bg-white p-4">
+                      <h4 className="mb-1 text-base font-semibold text-gray-900">Event Comments</h4>
+                      <p className="mb-3 text-sm text-gray-600">
+                        Post updates or questions for this event.
+                      </p>
+                      <CommentSection
+                        collectionPath={`events/${event.id}/comments`}
+                        initialOpen={true}
+                        pageSize={20}
                       />
                     </div>
                   </div>

@@ -324,27 +324,31 @@ const Register: React.FC = () => {
       setConfirmationResult(result);
       setStep('code');
     } catch (err: any) {
-      let message = 'Could not send code. Please try again.';
-      
-      switch (err?.code) {
-        case 'auth/invalid-phone-number':
-          message = 'Invalid phone number. Please check and try again.';
-          break;
-        case 'auth/captcha-check-failed':
-          message = "reCAPTCHA failed. Please try again.";
-          break;
-        case 'auth/operation-not-allowed':
-          message = 'Phone sign-in is disabled. Please contact support.';
-          break;
-        case 'auth/too-many-requests':
-          message = 'Too many attempts. Please wait a minute and try again.';
-          break;
-        case 'auth/network-request-failed':
-          message = 'Network error. Check your connection and try again.';
-          break;
-      }
+      console.error('🚨 RegisterNew: Phone verification error:', {
+        error: err,
+        errorCode: err?.code,
+        errorMessage: err?.message,
+        hostname: typeof window !== 'undefined' ? window.location.hostname : 'unknown',
+        origin: typeof window !== 'undefined' ? window.location.origin : 'unknown',
+      });
 
-      phoneForm.setError('phoneNumber', { message });
+      // Keep UI error minimal; put full diagnosis in console.
+      let userMessage = "We couldn't send a verification code right now. Please try again.";
+      if (err?.code === 'auth/invalid-phone-number') {
+        userMessage = 'Please enter a valid phone number and try again.';
+      } else if (err?.code === 'auth/too-many-requests') {
+        userMessage = 'Too many attempts. Please wait a moment and try again.';
+      } else if (err?.code === 'auth/network-request-failed') {
+        userMessage = 'Network issue. Please check your connection and try again.';
+      }
+      phoneForm.setError('phoneNumber', { message: userMessage });
+
+      // Console-only guidance for debugging (no UI spam)
+      if (err?.code === 'auth/invalid-app-credential') {
+        console.warn(
+          '[PhoneAuth][INVALID_APP_CREDENTIAL] On localhost this is usually an API key restriction / origin issue. Verify the exact API key in use, then ensure Google Cloud Console → APIs & Services → Credentials → API key allows your dev origin (e.g. http://localhost:5175/*). You can also use Firebase emulators (VITE_USE_EMULATORS=true) to bypass reCAPTCHA for local testing.'
+        );
+      }
     } finally {
       setIsLoading(false);
     }
@@ -468,7 +472,21 @@ const Register: React.FC = () => {
       
       setConfirmationResult(result);
     } catch (err: any) {
-      setError('Failed to resend code. Please try again.');
+      console.error('🚨 RegisterNew: Resend code failed:', {
+        error: err,
+        errorCode: err?.code,
+        errorMessage: err?.message,
+      });
+
+      let resendMessage = 'Failed to resend code. Please try again.';
+      if (err?.code === 'auth/too-many-requests') {
+        resendMessage = 'Too many attempts. Please wait a minute and try again.';
+      } else if (err?.code === 'auth/invalid-app-credential') {
+        resendMessage =
+          'Firebase rejected app verification on this host. See the guidance above about Authorized domains / API key referrer restrictions (or use emulators).';
+      }
+
+      setError(resendMessage);
     } finally {
       setIsResending(false);
     }

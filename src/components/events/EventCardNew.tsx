@@ -91,7 +91,7 @@ interface EventCardProps {
   onClick?: () => void;
 }
 
-const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onClick }) => {
+const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete }) => {
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
   const navigate = useNavigate();
@@ -474,8 +474,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
   }, [event.startAt, currentTime]);
 
   // Handle view event details click
-  // This should ALWAYS navigate to the read-only event details page for ALL users
-  // (pending approval users can view details but cannot RSVP)
+  // Route to the main RSVP page for all users.
   const handleViewEventDetails = (e: React.SyntheticEvent) => {
     e.stopPropagation();
     console.log('🔍 View Event Details clicked for event:', {
@@ -485,13 +484,6 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
       currentUser: currentUser?.id
     });
     
-    // If custom onClick handler is provided, use it
-    if (safeCall(onClick)) {
-      // onClick was called safely
-      return;
-    }
-    
-    // Navigate directly to RSVP page
     navigate(`/events/${event.id}/rsvp`);
   };
 
@@ -511,7 +503,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
     }
 
     // For paid events with payment confirmed, show non-refundable warning when changing to Not Going
-    if (status === 'not-going' && event.pricing && event.pricing.requiresPayment && rsvpStatus === 'going' && userPaymentStatus === 'paid') {
+    if (status === 'not-going' && event.pricing && (event.pricing.requiresPayment || (event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0)) && rsvpStatus === 'going' && userPaymentStatus === 'paid') {
       setShowNonRefundableModal(true);
       return;
     }
@@ -667,8 +659,13 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
         setShowRSVPModal(true);
       }
     } else {
-      // User is not logged in - show teaser modal
-      setShowTeaserModal(true);
+      // User is not logged in - navigate to guest RSVP page for truly_public events
+      if (event.visibility === 'truly_public') {
+        navigate(`/events/${event.id}/rsvp`);
+      } else {
+        // Show teaser modal for non-public events
+        setShowTeaserModal(true);
+      }
     }
   };
 
@@ -962,24 +959,24 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                   const isZellePayment = event.pricing.paymentMethod === 'zelle';
                   
                   if (isZellePayment) {
-                    // Free event with event support (Zelle) - show NET price
+                    // Event with only event support (Zelle) - show NET price as main price
                     const supportNet = event.pricing.eventSupportAmount;
                     return (
                       <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-2.5">
-                          <Tag className="w-5 h-5 text-purple-600 flex-shrink-0" />
-                          <span className="font-semibold text-purple-600">
-                            Free
+                          <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          <span className="font-semibold text-blue-600">
+                            ${(supportNet / 100).toFixed(2)}
                           </span>
                         </div>
                         <div className="text-xs text-gray-600 ml-7">
-                          Event Support: ${(supportNet / 100).toFixed(2)}
+                          Event Support
                         </div>
                       </div>
                     );
                   }
                   
-                  // Free event but with event support (Stripe)
+                  // Event with only event support (Stripe) - show charge amount as main price
                   const charged = distributeStripeFees([{
                     id: 'support',
                     label: 'Event Support',
@@ -990,13 +987,13 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
                   return (
                     <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-2.5">
-                        <Tag className="w-5 h-5 text-purple-600 flex-shrink-0" />
-                        <span className="font-semibold text-purple-600">
-                          Free
+                        <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                        <span className="font-semibold text-blue-600">
+                          ${(supportCharge / 100).toFixed(2)}
                         </span>
                       </div>
                       <div className="text-xs text-gray-600 ml-7">
-                        Event Support: ${(supportCharge / 100).toFixed(2)}
+                        Event Support
                       </div>
                     </div>
                   );
@@ -1014,7 +1011,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
             {/* RSVP Status Section - Enhanced Professional Badges */}
             <div className="space-y-2 mt-5">
               {/* RSVP Status - Non-Paid Going */}
-              {currentUser && rsvpStatus === 'going' && (!event.pricing || !event.pricing.requiresPayment) && (
+              {currentUser && rsvpStatus === 'going' && (!event.pricing || (!event.pricing.requiresPayment && (!event.pricing.eventSupportAmount || event.pricing.eventSupportAmount === 0))) && (
                 <div className="inline-flex items-center gap-2.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
                   <span className="font-medium text-green-700 text-sm">You're Going</span>
@@ -1022,7 +1019,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
               )}
 
               {/* RSVP Status - Non-Paid Not Going */}
-              {currentUser && rsvpStatus === 'not-going' && (!event.pricing || !event.pricing.requiresPayment) && (
+              {currentUser && rsvpStatus === 'not-going' && (!event.pricing || (!event.pricing.requiresPayment && (!event.pricing.eventSupportAmount || event.pricing.eventSupportAmount === 0))) && (
                 <div className="inline-flex items-center gap-2.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
                   <span className="font-medium text-red-700 text-sm">Not Going</span>
@@ -1030,7 +1027,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
               )}
 
               {/* RSVP Status - Paid Events with ALL Attendees Payment Confirmed */}
-              {currentUser && rsvpStatus === 'going' && event.pricing && event.pricing.requiresPayment && userPaymentStatus === 'paid' && (
+              {currentUser && rsvpStatus === 'going' && event.pricing && (event.pricing.requiresPayment || (event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0)) && userPaymentStatus === 'paid' && (
                 <div className="inline-flex items-center gap-3">
                   <div className="flex items-center gap-2.5">
                     <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
@@ -1045,7 +1042,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
               )}
 
               {/* RSVP Status - Primary User Not Paid (Old Behavior - Show You're Going + PENDING) */}
-              {currentUser && rsvpStatus === 'going' && event.pricing && event.pricing.requiresPayment && userPaymentStatus === 'pending' && (
+              {currentUser && rsvpStatus === 'going' && event.pricing && (event.pricing.requiresPayment || (event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0)) && userPaymentStatus === 'pending' && (
                 <div className="inline-flex items-center gap-3">
                   <div className="flex items-center gap-2.5">
                     <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
@@ -1060,7 +1057,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
               )}
 
               {/* RSVP Status - Primary Paid but Family/Guests Unpaid (Show PAYMENT REQUIRED) */}
-              {currentUser && rsvpStatus === 'going' && event.pricing && event.pricing.requiresPayment && userPaymentStatus === 'payment_required' && (
+              {currentUser && rsvpStatus === 'going' && event.pricing && (event.pricing.requiresPayment || (event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0)) && userPaymentStatus === 'payment_required' && (
                 <div 
                   ref={paymentBadgeRef}
                   className="inline-flex items-center gap-1.5 cursor-help"
@@ -1082,7 +1079,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete, onCli
               )}
 
               {/* RSVP Status - Paid Events with Not Going */}
-              {currentUser && rsvpStatus === 'not-going' && event.pricing && event.pricing.requiresPayment && (
+              {currentUser && rsvpStatus === 'not-going' && event.pricing && (event.pricing.requiresPayment || (event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0)) && (
                 <div className="inline-flex items-center gap-2.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
                   <span className="font-medium text-red-700 text-sm">Not Going</span>

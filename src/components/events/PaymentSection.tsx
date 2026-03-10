@@ -86,6 +86,8 @@ interface PaymentSectionProps {
   attendees: Attendee[];
   onPaymentComplete?: () => void;
   onPaymentError?: (error: string) => void;
+  isGuest?: boolean;
+  guestUserId?: string;
 }
 
 interface PaymentIntentResponse {
@@ -281,6 +283,8 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
   attendees,
   onPaymentComplete,
   onPaymentError,
+  isGuest = false,
+  guestUserId,
 }) => {
   const { currentUser } = useAuth();
   const [isExpanded, setIsExpanded] = useState(true); // Default to expanded
@@ -425,7 +429,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
   };
 
   const handlePayNow = async () => {
-    if (!currentUser) {
+    if (!currentUser && !isGuest) {
       setPaymentError('You must be logged in to make a payment');
       return;
     }
@@ -454,7 +458,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
     setPaymentSuccess(false); // Reset success state
 
     try {
-      const functions = getFunctions();
+      const functions = getFunctions(undefined, 'us-east1');
       const createPaymentIntentFn = httpsCallable<
         { eventId: string; userId: string; attendeeIds: string[] },
         PaymentIntentResponse
@@ -464,7 +468,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
       
       const result = await createPaymentIntentFn({
         eventId: event.id,
-        userId: currentUser.id,
+        userId: isGuest ? (guestUserId || attendees[0]?.userId || 'guest') : currentUser!.id,
         attendeeIds: unpaidAttendees.map(a => a.attendeeId),
       });
 
@@ -740,9 +744,9 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                           </div>
                           
                           {/* Detailed Breakdown - Show ticket and event support separately */}
-                          {(breakdownItem.ticketPrice || hasEventSupport) && (
+                          {((breakdownItem.ticketPrice > 0) || (breakdownItem.eventSupport > 0)) && (
                             <div className="px-2.5 sm:px-3 pb-2 pt-0 space-y-1 border-t border-green-300/50 mt-1">
-                              {breakdownItem.ticketPrice && breakdownItem.ticketPrice > 0 && (
+                              {breakdownItem.ticketPrice > 0 && (
                                 <div className="flex items-center justify-between text-xs">
                                   <span className="text-gray-600 ml-6 sm:ml-7">Ticket Price</span>
                                   <span className="text-gray-700 font-medium">
@@ -750,7 +754,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                                   </span>
                                 </div>
                               )}
-                              {hasEventSupport && breakdownItem.eventSupport > 0 && (
+                              {breakdownItem.eventSupport > 0 && (
                                 <div className="flex items-center justify-between text-xs">
                                   <span className="text-gray-600 ml-6 sm:ml-7">Event Support</span>
                                   <span className="text-gray-700 font-medium">
@@ -874,9 +878,9 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                             </div>
                             
                             {/* Detailed Breakdown - Show ticket and event support separately */}
-                            {(breakdownItem.ticketPrice || hasEventSupport) && (
+                            {((breakdownItem.ticketPrice > 0) || (breakdownItem.eventSupport > 0)) && (
                               <div className="px-2.5 sm:px-3 pb-2 pt-0 space-y-1 border-t border-gray-200/50 mt-1">
-                                {breakdownItem.ticketPrice && breakdownItem.ticketPrice > 0 && (
+                                {breakdownItem.ticketPrice > 0 && (
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="text-gray-600 ml-6 sm:ml-7">Ticket Price</span>
                                     <span className="text-gray-700 font-medium">
@@ -884,7 +888,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                                     </span>
                                   </div>
                                 )}
-                                {hasEventSupport && breakdownItem.eventSupport > 0 && (
+                                {breakdownItem.eventSupport > 0 && (
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="text-gray-600 ml-6 sm:ml-7">Event Support</span>
                                     <span className="text-gray-700 font-medium">

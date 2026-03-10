@@ -27,6 +27,57 @@ npm run dev
 # - Data persists in Firebase dev project (momsfitnessmojo-dev)
 ```
 
+Note: `npm run dev` uses the **dev Firebase project** from `.env`.
+If you run `npm run preview` (or deploy) without rebuilding, you might accidentally be serving the last **production-mode** build from `dist` (which reads `.env.production`).
+
+### Local Development (Recommended for Phone Auth)
+
+Firebase Phone Authentication often fails on `localhost` due to reCAPTCHA/app verification (`auth/invalid-app-credential`).
+For reliable local development, use the Firebase **Auth Emulator**.
+
+1. Set `VITE_USE_EMULATORS=auto` (or `true`) in your local env (example: `.env.local`).
+
+2. Start emulators:
+
+```bash
+npm run emulators
+```
+
+3. Start the web app:
+
+```bash
+npm run dev
+```
+
+Emulator UI: `http://localhost:4000`
+
+### Local Development (Real SMS on localhost)
+
+If you want to test **real SMS** from `localhost` (no emulators), `auth/invalid-app-credential` is almost always caused by Firebase/Google Cloud configuration (not React code).
+
+Checklist:
+
+1. Firebase Console → **Authentication** → **Settings** → **Authorized domains**
+   - Ensure `localhost` (and optionally `127.0.0.1`) is present.
+
+2. Google Cloud Console → **APIs & Services** → **Credentials** → your **API key**
+   - If **Application restrictions** = HTTP referrers, add:
+     - `http://localhost:*/*`
+     - `http://127.0.0.1:*/*`
+   - For quick testing, temporarily set restrictions to **None**.
+   - If you use **API restrictions**, ensure Firebase/Auth related APIs are allowed.
+
+3. Firebase Phone Auth + reCAPTCHA Enterprise
+   - If you see logs like: "Failed to initialize reCAPTCHA Enterprise config. Triggering the reCAPTCHA v2 verification." and still get `INVALID_APP_CREDENTIAL`, your **reCAPTCHA Enterprise setup is blocking localhost**.
+   - Fix options:
+     - Firebase Console → **Authentication** → **Settings** → **reCAPTCHA / Enterprise**: disable Enterprise (or switch to v2) for the dev project, OR
+     - Google Cloud Console → **reCAPTCHA Enterprise** → **Keys**: ensure the web key allows `localhost` / `127.0.0.1`.
+
+4. Browser checks
+   - Disable ad blockers / privacy extensions for localhost.
+   - Try a clean Incognito window.
+   - Ensure third-party cookies aren’t fully blocked.
+
 ### Production Deployment
 
 ```bash
@@ -45,6 +96,19 @@ firebase deploy --project=prod
 # Switch back to dev
 firebase use dev
 ```
+
+### Deploy Dev vs Prod (separate Firebase projects)
+
+- Dev deploy (builds with development env and deploys to the dev hosting site):
+  - `firebase deploy --only hosting:momsfitnessmojo-dev --project momsfitnessmojo-dev`
+
+- Prod deploy (builds with production env and deploys to the prod hosting site):
+  - `firebase deploy --only hosting:momsfitnessmojo-65d00 --project momsfitnessmojo-65d00`
+
+Notes:
+
+- Vite environment variables are baked into the built JS bundle. The Firebase Hosting project you deploy to does **not** change which Firebase project the frontend calls.
+- This repo uses Firebase Hosting targets (see firebase.json / .firebaserc) so dev and prod builds use different predeploy build modes.
 
 ### Environment Setup
 

@@ -9,11 +9,12 @@ import { db } from '../../../../config/firebase';
 import { safeStringConversion } from '../../../../utils/dataSanitizer';
 import { safeISODate } from '../../../../utils/dateUtils';
 import { EllipsisScroller } from '../../../common/EllipsisScroller';
+import CommentSection from '../../../common/CommentSection';
 
 interface WhosGoingTabProps {
   event: EventDoc;
-  attendees: Attendee[];
-  isAdmin: boolean;
+  attendees?: Attendee[];
+  isAdmin?: boolean;
   waitlistPositions?: Map<string, number>;
 }
 
@@ -33,8 +34,8 @@ type StatusFilter = 'all' | 'going' | 'not-going' | 'waitlisted';
 
 export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
   event,
-  attendees,
-  isAdmin,
+  attendees = [],
+  isAdmin = false,
   waitlistPositions = new Map()
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -603,6 +604,19 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
           Showing {filteredAttendees.length} of {groupedAttendees.length} attendees
         </div>
       )}
+
+      {/* Event Comments */}
+      <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
+        <h4 className="mb-1 text-base font-semibold text-gray-900">Event Comments</h4>
+        <p className="mb-4 text-sm text-gray-600">
+          Share updates or questions with members for this event.
+        </p>
+        <CommentSection
+          collectionPath={`events/${event.id}/comments`}
+          initialOpen={true}
+          pageSize={20}
+        />
+      </div>
     </div>
   );
 };

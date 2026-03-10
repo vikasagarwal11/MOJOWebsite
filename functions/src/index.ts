@@ -120,6 +120,7 @@ import { backfillKnowledgeBaseEmbeddings, ensureChunkEmbedding, getKnowledgeEmbe
 import { manualDeleteKnowledgeSource, manualUpsertKnowledgeSource, type KnowledgeVisibilityLevel } from './knowledgeBase';
 import { syncStaticKnowledgeEntries } from './staticContent';
 import { ensureAdmin } from './utils/admin';
+import { sendEventCreatedSMS } from './utils/notifications';
 
 // Export the new attendee count management functions
 export { backfillKnowledgeBaseEmbeddings, bulkAttendeeOperation, ensureChunkEmbedding, getKnowledgeEmbeddingStatus, manualRecalculateCount, onAttendeeChange, retryFailedKnowledgeEmbeddings };
@@ -198,7 +199,7 @@ export const onAttendeeCancellation = onDocumentWritten(
 );
 
 // Callable: Manually recalc waitlist positions (admin only)
-export const recalcWaitlistPositions = onCallWithCors({ region: 'us-central1' }, async (request) => {
+export const recalcWaitlistPositions = onCallWithCors({ region: 'us-east1' }, async (request) => {
   const { data, auth } = request;
   const eventId = data?.eventId as string | undefined;
   if (!auth) throw new Error('Unauthenticated');
@@ -211,7 +212,7 @@ export const recalcWaitlistPositions = onCallWithCors({ region: 'us-central1' },
 
 const ALLOWED_KB_VISIBILITY: KnowledgeVisibilityLevel[] = ['public', 'members', 'private'];
 
-export const saveManualKnowledgeEntry = onCallWithCors({ region: 'us-central1' }, async request => {
+export const saveManualKnowledgeEntry = onCallWithCors({ region: 'us-east1' }, async request => {
   await ensureAdmin(request.auth);
 
   const rawData = request.data || {};
@@ -264,7 +265,7 @@ export const saveManualKnowledgeEntry = onCallWithCors({ region: 'us-central1' }
   };
 });
 
-export const deleteManualKnowledgeEntry = onCallWithCors({ region: 'us-central1' }, async request => {
+export const deleteManualKnowledgeEntry = onCallWithCors({ region: 'us-east1' }, async request => {
   await ensureAdmin(request.auth);
   const id = (request.data?.id ?? '').toString().trim();
   if (!id) {
@@ -275,7 +276,7 @@ export const deleteManualKnowledgeEntry = onCallWithCors({ region: 'us-central1'
   return { success: true, id };
 });
 
-export const syncSiteCopyToKnowledgeBase = onCallWithCors({ region: 'us-central1' }, async request => {
+export const syncSiteCopyToKnowledgeBase = onCallWithCors({ region: 'us-east1' }, async request => {
   await ensureAdmin(request.auth);
   const result = await syncStaticKnowledgeEntries();
   return {
@@ -357,16 +358,7 @@ const sendPromotionNotifications = async (
         // 3. Send SMS immediately (time-sensitive - user needs to RSVP within 24h)
         const phoneNumber = userData?.phoneNumber;
         const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
-        if (smsEnabled && phoneNumber) {
-          const smsMessage = `🎉 MOMS FITNESS MOJO: You've been promoted from waitlist! Confirm attendance at "${eventTitle}" within 24h.`;
-          const smsResult = await sendSMSViaTwilio(phoneNumber, smsMessage);
-          
-          if (smsResult.success) {
-            console.log(`✅ Immediate SMS sent to ${user.userId} for promotion`);
-          } else {
-            console.error(`❌ SMS failed for ${user.userId}:`, smsResult.error);
-          }
-        }
+        await sendWaitlistPromotionSMS(user.userId, phoneNumber || '', eventTitle, smsEnabled);
         
         // 4. Mark for popup alert on next visit
         await db.collection('popup_alerts').add({
@@ -712,6 +704,83 @@ export const onPostLikeWrite = onDocumentWritten("posts/{postId}/likes/{userId}"
     .update({ likesCount: FieldValue.increment(delta) });
 });
 
+// ───────────────── POSTS reactions aggregation ─────────────────
+// Aggregates a single reaction per user into:
+// - reactionsCount: { heart, like, celebrate, appreciate, funny, wow, sad }
+// - totalReactions: number
+export const onPostReactionWrite = onDocumentWritten("posts/{postId}/reactions/{userId}", async (event) => {
+  const beforeExists = event.data?.before.exists || false;
+  const afterExists = event.data?.after.exists || false;
+
+  const beforeData = beforeExists ? (event.data?.before.data() as any) : null;
+  const afterData = afterExists ? (event.data?.after.data() as any) : null;
+
+  // Ignore legacy docs where the document id isn't the actual uid.
+  // Older schemas sometimes used ids like `${uid}_${emoji}`.
+  const effectiveUid =
+    (afterData?.userId as string | undefined) ?? (beforeData?.userId as string | undefined) ?? undefined;
+  if (effectiveUid && event.params.userId !== effectiveUid) {
+    return;
+  }
+
+  const allowed = new Set(['heart', 'like', 'celebrate', 'appreciate', 'funny', 'wow', 'sad']);
+  const rawBefore = (beforeData?.reaction as string | undefined) ?? undefined;
+  const rawAfter = (afterData?.reaction as string | undefined) ?? undefined;
+  const beforeReaction = rawBefore && allowed.has(rawBefore) ? rawBefore : undefined;
+  const afterReaction = rawAfter && allowed.has(rawAfter) ? rawAfter : undefined;
+
+  // No-op
+  if (beforeExists && afterExists && beforeReaction === afterReaction) return;
+
+  const updates: Record<string, any> = {};
+
+  // Create (new valid reaction)
+  if (!beforeExists && afterExists && afterReaction) {
+    updates[`reactionsCount.${afterReaction}`] = FieldValue.increment(1);
+    updates.totalReactions = FieldValue.increment(1);
+  }
+
+  // Delete (remove valid reaction)
+  if (beforeExists && !afterExists && beforeReaction) {
+    updates[`reactionsCount.${beforeReaction}`] = FieldValue.increment(-1);
+    updates.totalReactions = FieldValue.increment(-1);
+  }
+
+  // Change (valid -> valid)
+  if (beforeExists && afterExists && beforeReaction && afterReaction && beforeReaction !== afterReaction) {
+    updates[`reactionsCount.${beforeReaction}`] = FieldValue.increment(-1);
+    updates[`reactionsCount.${afterReaction}`] = FieldValue.increment(1);
+    // totalReactions unchanged
+  }
+
+  // Legacy repair cases:
+  // - invalid/missing -> valid : treat like create (adds to totals)
+  if (beforeExists && afterExists && !beforeReaction && afterReaction) {
+    updates[`reactionsCount.${afterReaction}`] = FieldValue.increment(1);
+    updates.totalReactions = FieldValue.increment(1);
+  }
+  // - valid -> invalid/missing : treat like delete (removes from totals)
+  if (beforeExists && afterExists && beforeReaction && !afterReaction) {
+    updates[`reactionsCount.${beforeReaction}`] = FieldValue.increment(-1);
+    updates.totalReactions = FieldValue.increment(-1);
+  }
+
+  if (Object.keys(updates).length === 0) return;
+
+  try {
+    await db.doc(`posts/${event.params.postId}`).update(updates);
+  } catch (error) {
+    console.error('❌ Failed to update post reactions counts:', error, {
+      postId: event.params.postId,
+      userId: event.params.userId,
+      beforeReaction,
+      afterReaction,
+      rawBefore,
+      rawAfter,
+    });
+  }
+});
+
 export const onPostCommentWrite = onDocumentWritten("posts/{postId}/comments/{commentId}", async (event) => {
   const beforeExists = event.data?.before.exists || false;
   const afterExists = event.data?.after.exists || false;
@@ -919,6 +988,87 @@ export const onEventTeaserSync = onDocumentWritten("events/{eventId}", async (ev
       startAt: data.startAt,
       createdAt: FieldValue.serverTimestamp()
     }, { merge: true });
+  }
+});
+
+// ───────────────── EVENTS: SMS Notification on Creation ─────────────────
+export const onEventCreatedNotification = onDocumentCreated("events/{eventId}", async (event) => {
+  try {
+    const eventId = event.params.eventId;
+    const eventData = event.data?.data();
+    
+    if (!eventData) {
+      console.log(`⏭️ No event data found for ${eventId}`);
+      return;
+    }
+    
+    // Send SMS for public and members events; skip private events
+    const visibility = String(eventData.visibility || '').toLowerCase();
+    const shouldNotifyCommunity =
+      visibility === 'public' ||
+      visibility === 'truly_public' ||
+      visibility === 'members' ||
+      (!!eventData.public && !visibility);
+    if (!shouldNotifyCommunity) {
+      console.log(`⏭️ Event ${eventId} visibility="${visibility || 'unknown'}", skipping community SMS notification`);
+      return;
+    }
+    
+    const eventTitle = eventData.title || 'New Event';
+    const startAt = eventData.startAt;
+    const startAtDate: Date = 
+      startAt instanceof Timestamp ? startAt.toDate() :
+        typeof startAt?.toDate === "function" ? startAt.toDate() :
+          new Date(startAt);
+    
+    // Format date for SMS (e.g., "Jan 15, 2024 at 10:00 AM")
+    const eventDate = startAtDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+    
+    // Generate event link (adjust domain based on environment)
+    const projectId = process.env.GCLOUD_PROJECT || 'momsfitnessmojo-65d00';
+    const isDev = projectId.includes('dev');
+    const domain = isDev 
+      ? 'https://momsfitnessmojo-dev.web.app'
+      : 'https://momsfitnessmojo.com';
+    const eventLink = `${domain}/events/${eventId}`;
+    
+    console.log(`📱 Sending SMS notifications for new event: ${eventTitle}`);
+    
+    // Send SMS to all approved users
+    const result = await sendEventCreatedSMS(
+      eventId,
+      eventTitle,
+      eventDate,
+      eventLink
+    );
+    
+    // Log results to Firestore for tracking
+    await db.collection('sms_broadcasts').add({
+      eventId,
+      eventTitle,
+      type: 'event_created',
+      sentCount: result.sentCount,
+      failedCount: result.failedCount,
+      errors: result.errors,
+      createdAt: FieldValue.serverTimestamp(),
+      success: result.success
+    });
+    
+    console.log(`✅ Event SMS broadcast completed:`, {
+      eventId,
+      sentCount: result.sentCount,
+      failedCount: result.failedCount
+    });
+    
+  } catch (error) {
+    console.error('❌ Error in event creation SMS notification:', error);
   }
 });
 
@@ -2812,7 +2962,7 @@ export const processQualityLevel = onRequestWithCors({
 });
 
 // Long-running transcription for multi-minute audio (GCS URI or base64 -> upload then transcribe)
-export const transcribeLongAudio = onCallWithCors({ region: 'us-central1', timeoutSeconds: 540, memory: '1GiB' }, async (request) => {
+export const transcribeLongAudio = onCallWithCors({ region: 'us-east1', timeoutSeconds: 540, memory: '1GiB' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in required');
   const { gcsUri, audioContent, encoding, sampleRateHertz, languageCode } = request.data as {
     gcsUri?: string;
@@ -2977,6 +3127,164 @@ export const checkPhoneNumberExists = onCallWithCors({ region: 'us-east1' }, asy
       exists: false, 
       error: 'Failed to check phone number',
       phoneNumber 
+    };
+  }
+});
+
+function normalizeUSPhoneToE164OrNull(input: string): string | null {
+  const raw = String(input || '').trim();
+  if (!raw) return null;
+
+  if (raw.startsWith('+')) {
+    const cleaned = raw.replace(/[^\d+]/g, '');
+    return /^\+[1-9]\d{6,14}$/.test(cleaned) ? cleaned : null;
+  }
+
+  const digits = raw.replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return null;
+}
+
+// One-time guest RSVP for truly public events (no user account creation)
+export const submitTrulyPublicGuestRsvp = onCallWithCors({ region: 'us-east1' }, async (request) => {
+  try {
+    const data = request.data || {};
+    const eventId = String(data.eventId || '').trim();
+    const guest = data.guest || {};
+    const additionalAttendeesRaw = Array.isArray(data.additionalAttendees) ? data.additionalAttendees : [];
+
+    const firstName = String(guest.firstName || '').trim();
+    const lastName = String(guest.lastName || '').trim();
+    const email = String(guest.email || '').trim().toLowerCase();
+    const phoneNumberInput = String(guest.phoneNumber || '').trim();
+    const phoneE164 = normalizeUSPhoneToE164OrNull(phoneNumberInput);
+
+    if (!eventId) {
+      return { success: false, error: 'eventId is required' };
+    }
+    if (!firstName || !lastName) {
+      return { success: false, error: 'First name and last name are required' };
+    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return { success: false, error: 'Valid email is required' };
+    }
+    if (!phoneE164) {
+      return { success: false, error: 'Valid phone number is required' };
+    }
+
+    const eventDoc = await db.collection('events').doc(eventId).get();
+    if (!eventDoc.exists) {
+      return { success: false, error: 'Event not found' };
+    }
+
+    const eventData = eventDoc.data() || {};
+    const visibility = String(eventData.visibility || '').toLowerCase();
+    if (visibility !== 'truly_public') {
+      return { success: false, error: 'Guest RSVP is only available for truly public events' };
+    }
+
+    // Existing members should sign in instead of creating one-time RSVP records.
+    const existingMemberSnapshot = await db.collection('users')
+      .where('phoneNumber', '==', phoneE164)
+      .limit(1)
+      .get();
+
+    if (!existingMemberSnapshot.empty) {
+      return {
+        success: false,
+        memberExists: true,
+        message: 'You are already a member. Please login to RSVP.'
+      };
+    }
+
+    // Prevent duplicate guest RSVP for the same event+phone pair using deterministic doc id.
+    const deterministicGuestId = `${eventId}_${phoneE164.replace(/[^\d]/g, '')}`;
+    const existingGuestDoc = await db.collection('event_guest_rsvps').doc(deterministicGuestId).get();
+    if (existingGuestDoc.exists) {
+      return {
+        success: true,
+        alreadySubmitted: true,
+        message: 'Your RSVP is already submitted for this event.'
+      };
+    }
+
+    const additionalAttendees = additionalAttendeesRaw
+      .map((a: any) => ({
+        name: String(a?.name || '').trim(),
+        relationship: String(a?.relationship || 'guest').trim() || 'guest',
+      }))
+      .filter((a: any) => a.name.length > 0)
+      .slice(0, 10);
+
+    const primaryName = `${firstName} ${lastName}`.trim();
+    const guestUserId = `guest_${deterministicGuestId}`;
+    const attendeesList = [
+      { name: primaryName, relationship: 'self', attendeeType: 'primary' },
+      ...additionalAttendees.map((a: any) => ({ ...a, attendeeType: 'family_member' })),
+    ];
+
+    const now = FieldValue.serverTimestamp();
+    const batch = db.batch();
+    const attendeeIds: string[] = [];
+    for (const a of attendeesList) {
+      const aRef = db.collection('events').doc(eventId).collection('attendees').doc();
+      attendeeIds.push(aRef.id);
+      batch.set(aRef, {
+        eventId,
+        userId: guestUserId,
+        attendeeType: a.attendeeType,
+        relationship: a.relationship,
+        name: a.name,
+        ageGroup: 'adult',
+        rsvpStatus: 'going',
+        paymentStatus: eventData?.pricing?.requiresPayment ? 'unpaid' : 'not_required',
+        isGuest: true,
+        guestEmail: email,
+        guestPhone: phoneE164,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    const payload = {
+      eventId,
+      eventTitle: String(eventData.title || 'Event'),
+      source: 'truly_public_guest',
+      status: 'submitted',
+      primaryFirstName: firstName,
+      primaryLastName: lastName,
+      primaryName,
+      primaryEmail: email,
+      primaryPhoneE164: phoneE164,
+      attendees: attendeesList,
+      attendeeIds,
+      guestUserId,
+      totalAttendees: attendeesList.length,
+      paymentRequired: !!eventData?.pricing?.requiresPayment,
+      paymentStatus: 'pending',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const writeRef = db.collection('event_guest_rsvps').doc(deterministicGuestId);
+    const eventScopedRef = db.collection('events').doc(eventId).collection('guest_rsvps').doc(writeRef.id);
+    batch.set(writeRef, payload);
+    batch.set(eventScopedRef, payload);
+    await batch.commit();
+
+    return {
+      success: true,
+      rsvpId: writeRef.id,
+      attendeeIds,
+      guestUserId,
+      message: 'Guest RSVP submitted successfully'
+    };
+  } catch (error: any) {
+    console.error('❌ submitTrulyPublicGuestRsvp failed:', error);
+    return {
+      success: false,
+      error: error?.message || 'Failed to submit guest RSVP'
     };
   }
 });
@@ -3214,7 +3522,7 @@ export const checkSMSDeliveryStatus = onCall(async (request) => {
       projectId,
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'production',
-      region: process.env.FUNCTION_REGION || 'us-central1'
+      region: process.env.FUNCTION_REGION || 'us-east1'
     };
     
     console.log('🔍 SMS Delivery Debug Info:', debugInfo);
@@ -4938,7 +5246,15 @@ Keep tone warm, empowering, and mom-to-mom. Respond with plain text only.
 // ───────────────── ACCOUNT APPROVALS: Notifications ─────────────────
 
 // Import notification helper from utils
-import { sendAdminNotificationWithFallback } from './utils/notifications';
+import {
+  queueAccountApprovalSMS,
+  queueAdminQuestionSMS,
+  sendAccountApprovalSMSNow,
+  sendAccountRejectionSMS,
+  sendAdminNotificationWithFallback,
+  sendAdminQuestionSMSNow,
+  sendWaitlistPromotionSMS,
+} from './utils/notifications';
 
 // Notify admins when new approval request is created
 export const onAccountApprovalCreated = onDocumentCreated(
@@ -5111,30 +5427,29 @@ export const onAccountApprovalUpdated = onDocumentWritten(
       try {
         const userDoc = await db.collection('users').doc(userId).get();
         const userData = userDoc.data();
-        if (userData?.phoneNumber) {
-          // Check if user has SMS notifications enabled (default to true)
-          const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
-          
-          if (smsEnabled) {
-            
-            // Queue SMS with 5-minute delay
-            const dispatchAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now
-            await db.collection('sms_dispatch_queue').add({
-              userId: userId,
-              phoneNumber: userData.phoneNumber,
-              message: `🎉 MOMS FITNESS MOJO: Your account has been approved! Welcome ${userName}! You can now access all features.`,
-              notificationId: notificationId,
-              type: 'account_approved',
-              status: 'pending',
-              createdAt: FieldValue.serverTimestamp(),
-              dispatchAt: Timestamp.fromDate(dispatchAt),
-            });
-            console.log(`✅ SMS approval notification queued with 5-minute delay for user ${userId}`);
-          } else {
-            console.log(`ℹ️ SMS notifications disabled for user ${userId}, skipping SMS`);
-          }
+        const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
+        const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
+
+        const project = process.env.GCLOUD_PROJECT || '';
+        const isDev = project === 'momsfitnessmojo-dev' || project.endsWith('-dev');
+
+        if (isDev) {
+          // Dev behavior: send immediately so testing doesn't depend on scheduler timing.
+          await sendAccountApprovalSMSNow(
+            userId,
+            userName,
+            userData?.phoneNumber || '',
+            smsEnabled
+          );
         } else {
-          console.warn(`⚠️ No phone number found for user ${userId} - cannot send SMS`);
+          // Prod behavior: queue (cost-saving) and allow read-suppression.
+          await queueAccountApprovalSMS(
+            userId,
+            userName,
+            userData?.phoneNumber || '',
+            notificationId,
+            smsEnabled
+          );
         }
       } catch (smsError) {
         console.error('❌ Failed to queue SMS for user:', smsError);
@@ -5192,26 +5507,14 @@ export const onAccountApprovalUpdated = onDocumentWritten(
       try {
         const userDoc = await db.collection('users').doc(userId).get();
         const userData = userDoc.data();
-        if (userData?.phoneNumber) {
-          // Check if user has SMS notifications enabled (default to true)
-          const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
-          
-          if (smsEnabled) {
-            // Send SMS immediately (rejections are critical)
-            const smsMessage = `MOMS FITNESS MOJO: Your account request was not approved. Reason: ${rejectionReason}. You can view details and reapply after 30 days.`;
-            const result = await sendSMSViaTwilio(userData.phoneNumber, smsMessage);
-            
-            if (result.success) {
-              console.log(`✅ SMS rejection notification sent immediately to user ${userId}`);
-            } else {
-              console.error(`❌ Failed to send SMS rejection to user ${userId}:`, result.error);
-            }
-          } else {
-            console.log(`ℹ️ SMS notifications disabled for user ${userId}, skipping SMS`);
-          }
-        } else {
-          console.warn(`⚠️ No phone number found for user ${userId} - cannot send SMS`);
-        }
+        const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
+        
+        await sendAccountRejectionSMS(
+          userId,
+          userData?.phoneNumber || '',
+          rejectionReason,
+          smsEnabled
+        );
       } catch (smsError) {
         console.error('❌ Failed to send SMS for user:', smsError);
       }
@@ -5222,7 +5525,6 @@ export const onAccountApprovalUpdated = onDocumentWritten(
         const userData = userDoc.data();
         const fcmToken = userData?.fcmToken;
         const pushEnabled = userData?.notificationPreferences?.pushEnabled !== false;
-        
         if (pushEnabled && fcmToken) {
           const { getMessaging } = await import('firebase-admin/messaging');
           const messaging = getMessaging();
@@ -5697,35 +5999,31 @@ export const onApprovalMessageCreated = onDocumentCreated(
         lastMessageAt: FieldValue.serverTimestamp(),
       });
 
-      // Queue SMS for admin questions (time-sensitive - user needs to respond, but use queue for consistency)
+      // Admin asked question: SMS user (dev = immediate, prod = queued for scheduler suppression/retries)
       try {
         const userDoc = await db.collection('users').doc(approvalData.userId).get();
         const userData = userDoc.data();
-        if (userData?.phoneNumber) {
-          const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false; // Default to true
-          
-          if (smsEnabled) {
-            // Queue SMS immediately (no delay for time-sensitive questions)
-            const dispatchAt = new Date(); // Immediate dispatch
-            await db.collection('sms_dispatch_queue').add({
-              userId: approvalData.userId,
-              phoneNumber: userData.phoneNumber,
-              message: `MOMS FITNESS MOJO: An admin has a question about your account request. Please check your pending approval page to respond.`,
-              notificationId: notificationId,
-              type: 'approval_question',
-              status: 'pending',
-              createdAt: FieldValue.serverTimestamp(),
-              dispatchAt: Timestamp.fromDate(dispatchAt),
-            });
-            console.log(`✅ SMS question notification queued for user: ${approvalData.userId}`);
-          } else {
-            console.log(`ℹ️ SMS notifications disabled for user ${approvalData.userId}, skipping SMS`);
-          }
+        const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
+
+        const project = process.env.GCLOUD_PROJECT || '';
+        const isDev = project === 'momsfitnessmojo-dev' || project.endsWith('-dev');
+
+        if (isDev) {
+          await sendAdminQuestionSMSNow(
+            approvalData.userId,
+            userData?.phoneNumber || '',
+            smsEnabled
+          );
         } else {
-          console.warn(`⚠️ No phone number found for user ${approvalData.userId} - cannot send SMS`);
+          await queueAdminQuestionSMS(
+            approvalData.userId,
+            userData?.phoneNumber || '',
+            notificationId,
+            smsEnabled
+          );
         }
       } catch (smsError) {
-        console.error('❌ Failed to queue SMS question notification:', smsError);
+        console.error('❌ Failed to send/queue admin question SMS:', smsError);
       }
     } else {
       // User responded - notify all admins with push + SMS fallback
@@ -6079,6 +6377,7 @@ export {
 
 export { moderateContent } from './contentModeration';
 export {
+  onEventCommentCreatedModeration,
   onMediaCommentCreatedModeration, onMediaCreatedModeration,
   onPostCommentCreatedModeration, onPostCreatedModeration, onTestimonialCreatedModeration
 } from './contentModerationTriggers';

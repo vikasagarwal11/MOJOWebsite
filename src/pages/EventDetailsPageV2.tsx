@@ -1,17 +1,17 @@
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  ArrowLeft,
-  Calendar,
-  CalendarCheck,
-  CheckCircle,
-  Clock,
-  DollarSign,
-  ExternalLink,
-  MapPin,
-  Share2,
-  Users,
-  XCircle
+    ArrowLeft,
+    Calendar,
+    CalendarCheck,
+    CheckCircle,
+    Clock,
+    DollarSign,
+    ExternalLink,
+    MapPin,
+    Share2,
+    Users,
+    XCircle
 } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -41,6 +41,10 @@ function isPaidEvent(event?: EventDoc | null) {
   const pricing: any = (event as any)?.pricing;
   if (!pricing) return false;
   if (pricing?.type === 'free') return false;
+  // Check for event support amount
+  if (pricing?.eventSupportAmount && pricing.eventSupportAmount > 0) return true;
+  // Check for required payment
+  if (pricing?.requiresPayment && pricing?.adultPrice && pricing.adultPrice > 0) return true;
   // Defensive: treat any configured amount as paid
   const amount = pricing?.amount ?? pricing?.price ?? pricing?.perPersonAmount;
   return typeof amount === 'number' ? amount > 0 : Boolean(amount);
@@ -50,6 +54,14 @@ function getPriceLabel(event?: EventDoc | null) {
   const pricing: any = (event as any)?.pricing;
   if (!pricing) return 'Free';
   if (pricing?.type === 'free') return 'Free';
+  // If no required payment but has event support, show event support as main price
+  if (!pricing?.requiresPayment && pricing?.eventSupportAmount && pricing.eventSupportAmount > 0) {
+    return `$${(pricing.eventSupportAmount / 100).toFixed(2)}`;
+  }
+  // If has required payment, show adult price
+  if (pricing?.requiresPayment && pricing?.adultPrice && pricing.adultPrice > 0) {
+    return `$${(pricing.adultPrice / 100).toFixed(2)}`;
+  }
   const amount = pricing?.amount ?? pricing?.price ?? pricing?.perPersonAmount;
   if (typeof amount === 'number') return `$${amount}`;
   if (typeof amount === 'string' && amount.trim()) return `$${amount}`;
@@ -364,7 +376,7 @@ const EventDetailsPageV2: React.FC = () => {
                       target="_blank"
                       rel="noreferrer"
                       className="inline-flex items-center gap-2 underline decoration-white/30 underline-offset-4 hover:decoration-white/60"
-                      onClick={(e) => {
+                      onClick={() => {
                         // allow normal navigation; do not intercept
                       }}
                     >

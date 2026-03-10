@@ -1,6 +1,6 @@
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Calendar, CalendarCheck, CheckCircle, Clock, DollarSign, MapPin, Tag, Users, XCircle } from 'lucide-react';
+import { ArrowLeft, Calendar, CalendarCheck, CheckCircle, Clock, DollarSign, ExternalLink, MapPin, Tag, Users, XCircle } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { EventImage } from '../components/events/EventImage';
@@ -302,7 +302,7 @@ const EventDetailsPage: React.FC = () => {
                     </div>
                     
                     {/* Payment Status for paid events */}
-                    {event.pricing?.requiresPayment && userAttendee.rsvpStatus === 'going' && (
+                    {(event.pricing?.requiresPayment || (event.pricing?.eventSupportAmount && event.pricing.eventSupportAmount > 0)) && userAttendee.rsvpStatus === 'going' && (
                       <div className="mt-2 flex items-center gap-2">
                         <DollarSign className="w-4 h-4 text-gray-600" />
                         <span className={`text-sm font-semibold ${
@@ -401,16 +401,25 @@ const EventDetailsPage: React.FC = () => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-lg font-bold text-[#F25129]">
-                      {event.pricing.adultPrice ? `$${(event.pricing.adultPrice / 100).toFixed(2)}` : 'Free'}
+                      {event.pricing.requiresPayment && event.pricing.adultPrice 
+                        ? `$${(event.pricing.adultPrice / 100).toFixed(2)}` 
+                        : event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0
+                        ? `$${(event.pricing.eventSupportAmount / 100).toFixed(2)}`
+                        : 'Free'}
                     </div>
                     {event.pricing.childPrice && (
                       <div className="text-xs text-gray-500 mt-0.5">
                         Child: ${(event.pricing.childPrice / 100).toFixed(2)}
                       </div>
                     )}
-                    {event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
+                    {event.pricing.requiresPayment && event.pricing.adultPrice && event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
                       <div className="text-xs text-gray-600 mt-0.5 font-medium">
-                        Event Support Amt: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
+                        Event Support: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
+                      </div>
+                    )}
+                    {!event.pricing.requiresPayment && event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
+                      <div className="text-xs text-gray-600 mt-0.5 font-medium">
+                        Event Support
                       </div>
                     )}
                   </div>
@@ -430,7 +439,7 @@ const EventDetailsPage: React.FC = () => {
               )}
 
               {/* Payment Status - Only show for paid events and if user has RSVP'd */}
-              {event.pricing && event.pricing.requiresPayment && userAttendee && userAttendee.status === 'going' && (
+              {event.pricing && (event.pricing.requiresPayment || (event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0)) && userAttendee && userAttendee.status === 'going' && (
                 <div className="flex items-center">
                   <div className="flex flex-col gap-1">
                     <span className="text-sm font-medium text-gray-700">Payment Status</span>

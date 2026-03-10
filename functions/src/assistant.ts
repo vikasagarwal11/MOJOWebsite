@@ -1244,7 +1244,7 @@ async function handleMessageQuestion(
 }
 
 export const chatAsk = onCall(
-  { region: 'us-central1', timeoutSeconds: 60, memory: '1GiB' },
+  { region: 'us-east1', timeoutSeconds: 60, memory: '1GiB' },
   async request => {
     console.log('=== chatAsk v2.5: KB Confidence Fix (Simplified Logic) ===');
     try {
@@ -1701,7 +1701,7 @@ export const chatAsk = onCall(
 );
 
 export const transcribeAudio = onCall(
-  { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' },
+  { region: 'us-east1', timeoutSeconds: 60, memory: '512MiB' },
   async request => {
     const audioContent = (request.data?.audioContent || '').toString();
     if (!audioContent) {
@@ -1742,7 +1742,7 @@ export const transcribeAudio = onCall(
 );
 
 export const synthesizeSpeech = onCall(
-  { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' },
+  { region: 'us-east1', timeoutSeconds: 60, memory: '512MiB' },
   async request => {
     let text = (request.data?.text || '').toString().trim();
     if (!text) {

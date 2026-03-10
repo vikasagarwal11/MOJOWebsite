@@ -16,7 +16,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { useAttendees } from '../hooks/useAttendees';
 import { EventDoc } from '../hooks/useEvents';
 import { useUserBlocking } from '../hooks/useUserBlocking';
-import { AgeGroup, AttendeeStatus, CreateAttendeeData, Relationship } from '../types/attendee';
+import { AgeGroup, AttendeeStatus, Attendee, CreateAttendeeData, Relationship } from '../types/attendee';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { normalizeUSPhoneToE164OrNull } from '../utils/phone';
 
 import { doc, onSnapshot } from 'firebase/firestore';
 import toast from 'react-hot-toast';
@@ -51,7 +53,7 @@ const RSVPPage: React.FC = () => {
   // ============================================================================
   
   // Initialize all state hooks (must be unconditional)
-  const [isAddSectionCollapsed, setIsAddSectionCollapsed] = useState(true);
+  const [isAddSectionCollapsed, setIsAddSectionCollapsed] = useState(false);
   const [isEventDetailsCollapsed, setIsEventDetailsCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<'attendees' | 'qr' | 'whosGoing'>('attendees');
   const [isAdding, setIsAdding] = useState(false);
@@ -140,11 +142,30 @@ const RSVPPage: React.FC = () => {
   // Check if current user is the event creator (admin) or has admin role
   const isEventCreator = currentUser?.id === event?.createdBy;
   const isAdmin = currentUser?.role === 'admin' || isEventCreator;
+  const isGuestTrulyPublic = !currentUser && event?.visibility === 'truly_public';
   
   // Check if members are allowed to add attendees
   // Note: allowMembersToAddAttendees may exist on event but not in EventDoc type
   const allowMembersToAddAttendees = (event as any)?.allowMembersToAddAttendees;
-  const canAddAttendees = isAdmin || (allowMembersToAddAttendees === true);
+  const canAddAttendees = isGuestTrulyPublic || isAdmin || (allowMembersToAddAttendees === true);
+
+  // Helper to generate unique IDs (defined early for use in state initializers)
+  const makeId = () =>
+    (globalThis as any).crypto?.randomUUID
+      ? (globalThis as any).crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+
+  // Guest RSVP modal state
+  type GuestRow = { id: string; name: string; relationship: Relationship };
+  const [guestFirstName, setGuestFirstName] = useState('');
+  const [guestLastName, setGuestLastName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestRows, setGuestRows] = useState<GuestRow[]>(() => [{ id: makeId(), name: '', relationship: 'guest' }]);
+  const [guestSubmitting, setGuestSubmitting] = useState(false);
+  const [guestSubmitted, setGuestSubmitted] = useState(false);
+  const [guestMemberExists, setGuestMemberExists] = useState(false);
+  const [guestAttendees, setGuestAttendees] = useState<Attendee[]>([]);
   
   // Debug log to verify event settings
   useEffect(() => {
@@ -187,11 +208,6 @@ const RSVPPage: React.FC = () => {
     relationship: Relationship;
     rsvpStatus: AttendeeStatus;
   };
-
-  const makeId = () =>
-    (globalThis as any).crypto?.randomUUID
-      ? (globalThis as any).crypto.randomUUID()
-      : Math.random().toString(36).slice(2);
 
   // Bulk form data hook - must be unconditional
   const [bulkFormData, setBulkFormData] = useState<{ familyMembers: BulkRow[] }>(() => ({
@@ -340,8 +356,8 @@ const RSVPPage: React.FC = () => {
     );
   }
 
-  // Return early if no user
-  if (!currentUser) {
+  // Return early if no user and event is not truly public
+  if (!currentUser && event?.visibility !== 'truly_public') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center">
         <div className="text-center">
@@ -412,6 +428,74 @@ const RSVPPage: React.FC = () => {
     }
 
     await refreshAttendees();
+  };
+
+  const handleSubmitGuestRsvp = async () => {
+    if (!event?.id) return;
+    const firstName = guestFirstName.trim();
+    const lastName = guestLastName.trim();
+    const email = guestEmail.trim().toLowerCase();
+    const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+    const additionalAttendees = guestRows
+      .map((r) => ({ name: r.name.trim(), relationship: (r.relationship || 'guest') as Relationship }))
+      .filter((r) => r.name.length > 0);
+
+    if (!firstName || !lastName) { toast.error('First and last name are required'); return; }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error('Please enter a valid email address'); return; }
+    if (!phoneE164) { toast.error('Please enter a valid US phone number'); return; }
+
+    try {
+      setGuestSubmitting(true);
+      setGuestMemberExists(false);
+      const fn = httpsCallable<
+        { eventId: string; guest: { firstName: string; lastName: string; email: string; phoneNumber: string }; additionalAttendees: Array<{ name: string; relationship: string }> },
+        { success: boolean; memberExists?: boolean; message?: string; error?: string; attendeeIds?: string[]; guestUserId?: string }
+      >(getFunctions(undefined, 'us-east1'), 'submitTrulyPublicGuestRsvp');
+
+      const result = await fn({ eventId: event.id, guest: { firstName, lastName, email, phoneNumber: phoneE164 }, additionalAttendees });
+
+      if (!result.data?.success) {
+        if (result.data?.memberExists) {
+          setGuestMemberExists(true);
+          toast.error(result.data?.message || 'You are already a member. Please login.');
+          return;
+        }
+        toast.error(result.data?.error || result.data?.message || 'Unable to submit RSVP');
+        return;
+      }
+
+      // Build local attendee objects for PaymentSection using real IDs from backend
+      const returnedIds = result.data.attendeeIds || [];
+      const guestUserId = result.data.guestUserId || `guest-${email}`;
+      const allMembers = [{ name: `${firstName} ${lastName}`, relationship: 'self', attendeeType: 'primary' as const }, ...additionalAttendees.map(a => ({ name: a.name, relationship: a.relationship, attendeeType: 'family_member' as const }))];
+      const built: Attendee[] = allMembers.map((m, i) => ({
+        attendeeId: returnedIds[i] || `guest-${Date.now()}-${i}`,
+        eventId: event.id,
+        userId: guestUserId,
+        attendeeType: m.attendeeType,
+        relationship: m.relationship as Relationship,
+        name: m.name,
+        ageGroup: 'adult',
+        rsvpStatus: 'going',
+        paymentStatus: 'unpaid',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
+      setGuestAttendees(built);
+      setGuestSubmitted(true);
+      setGuestSubmitted(true);
+      toast.success(result.data?.message || 'RSVP submitted successfully!');
+    } catch (err: any) {
+      console.error('Failed to submit guest RSVP:', err);
+      const msg = err?.message || 'Unable to submit RSVP';
+      if (msg.includes('CORS') || msg.includes('internal')) {
+        toast.error('Server configuration error. Please contact support.');
+      } else {
+        toast.error(msg);
+      }
+    } finally {
+      setGuestSubmitting(false);
+    }
   };
 
   const handleBulkAddFamilyMembers = async () => {
@@ -807,17 +891,20 @@ const RSVPPage: React.FC = () => {
                 {/* Payment Section */}
                 <PaymentSection 
                   event={event}
-                  attendees={attendees.filter(attendee => attendee.userId === currentUser?.id)}
-                  onPaymentComplete={() => {
-                    refreshAttendees();
-                  }}
-                  onPaymentError={(error) => {
-                    console.error('Payment error:', error);
-                  }}
+                  attendees={isGuestTrulyPublic ? guestAttendees : attendees.filter(attendee => attendee.userId === currentUser?.id)}
+                  onPaymentComplete={() => { if (!isGuestTrulyPublic) refreshAttendees(); }}
+                  onPaymentError={(error) => { console.error('Payment error:', error); }}
+                  isGuest={isGuestTrulyPublic}
+                  guestUserId={isGuestTrulyPublic ? guestAttendees[0]?.userId : undefined}
                 />
 
-                {isAdmin && (
-                  <div className="mb-3 sm:mb-4 bg-gray-50 rounded-lg p-2.5 sm:p-3 border border-gray-200">
+                {isGuestTrulyPublic && guestSubmitted && (
+                  <div className="mb-3 sm:mb-4 bg-emerald-50 border border-emerald-200 rounded-lg p-3 sm:p-4">
+                    <p className="text-sm text-emerald-700 font-medium">✓ RSVP submitted! Complete payment below if required.</p>
+                  </div>
+                )}
+
+                <div className="mb-3 sm:mb-4 bg-gray-50 rounded-lg p-2.5 sm:p-3 border border-gray-200">
                     <h3 className="text-xs sm:text-sm font-semibold text-gray-900 mb-1.5 sm:mb-2">Manage Attendees</h3>
                     <div className="flex flex-wrap gap-2 sm:gap-3 text-xs text-gray-600">
                       <span className="flex items-center gap-1 sm:gap-1.5">
@@ -834,7 +921,6 @@ const RSVPPage: React.FC = () => {
                       </span>
                     </div>
                   </div>
-                )}
 
                   {/* Add Attendees Section - Show based on event settings */}
                   <div className="bg-orange-50 border border-orange-200 rounded-lg mb-3 sm:mb-4">
@@ -871,18 +957,7 @@ const RSVPPage: React.FC = () => {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {canAddAttendees && !isAddSectionCollapsed && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              addBulkFormRow();
-                            }}
-                            className="text-xs sm:text-sm text-[#F25129] hover:text-[#E0451F] font-medium transition-colors touch-manipulation"
-                            title="Add a row"
-                          >
-                            Add a row
-                          </button>
-                        )}
+                        
                         {canAddAttendees && (
                           <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.3 }}>
                             <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
@@ -933,6 +1008,59 @@ const RSVPPage: React.FC = () => {
                           transition={{ duration: 0.3, ease: 'easeInOut' }}
                           className="overflow-hidden"
                         >
+                          {isGuestTrulyPublic ? (
+                            <div className="p-4 pt-2 space-y-3">
+                              {guestMemberExists ? (
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                                  <p className="text-sm text-amber-700 font-medium">You are already a member. Please login to RSVP.</p>
+                                  <button type="button" onClick={() => navigate('/login')} className="mt-2 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">Go to Login</button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">First Name *</label>
+                                      <input value={guestFirstName} onChange={(e) => setGuestFirstName(e.target.value)} placeholder="First name" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">Last Name *</label>
+                                      <input value={guestLastName} onChange={(e) => setGuestLastName(e.target.value)} placeholder="Last name" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Email *</label>
+                                    <input type="email" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} placeholder="Email address" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Phone *</label>
+                                    <input type="tel" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} placeholder="Phone number" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                  </div>
+                                  <div className="rounded-lg border border-gray-200 p-3">
+                                    <div className="mb-2 flex items-center justify-between">
+                                      <h4 className="text-sm font-semibold text-gray-900">Additional Members <span className="text-xs font-normal text-gray-500">(Optional)</span></h4>
+                                      <button type="button" onClick={() => setGuestRows((prev) => [...prev, { id: makeId(), name: '', relationship: 'guest' }])} className="text-xs font-semibold text-[#F25129] hover:text-[#E0451F]">+ Add Row</button>
+                                    </div>
+                                    <div className="space-y-2">
+                                      {guestRows.map((row) => (
+                                        <div key={row.id} className="flex gap-2">
+                                          <input value={row.name} onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, name: e.target.value } : r))} placeholder="Member name" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                          <select value={row.relationship} onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, relationship: e.target.value as Relationship } : r))} className="rounded-lg border border-gray-300 px-2 py-2 text-sm">
+                                            <option value="guest">Guest</option>
+                                            <option value="spouse">Spouse</option>
+                                            <option value="child">Child</option>
+                                          </select>
+                                          <button type="button" onClick={() => setGuestRows((prev) => prev.length > 1 ? prev.filter((r) => r.id !== row.id) : prev)} className="px-2 py-2 text-xs text-gray-500 hover:text-red-500 border border-gray-200 rounded-lg">✕</button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <button type="button" onClick={handleSubmitGuestRsvp} disabled={guestSubmitting} className="w-full py-2.5 text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation">
+                                    {guestSubmitting ? 'Submitting...' : 'Submit RSVP'}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          ) : (
                           <div className="p-4 pt-2 space-y-3">
                             {/* Mobile-Friendly Attendee Input - No table layout */}
                             {bulkFormData.familyMembers.map((member) => (
@@ -969,6 +1097,7 @@ const RSVPPage: React.FC = () => {
                               </button>
                             </div>
                           </div>
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>

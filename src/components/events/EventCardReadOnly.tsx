@@ -174,12 +174,21 @@ const EventCardReadOnly: React.FC<EventCardReadOnlyProps> = ({ event }) => {
                       <span className="text-sm font-bold text-green-600">$</span>
                     </span>
                     <span className="text-sm font-semibold text-green-600">
-                      {event.pricing.adultPrice ? `$${(event.pricing.adultPrice / 100).toFixed(2)}` : 'Free'}
+                      {event.pricing.requiresPayment && event.pricing.adultPrice 
+                        ? `$${(event.pricing.adultPrice / 100).toFixed(2)}` 
+                        : event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0
+                        ? `$${(event.pricing.eventSupportAmount / 100).toFixed(2)}`
+                        : 'Free'}
                     </span>
                   </div>
-                  {event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
+                  {event.pricing.requiresPayment && event.pricing.adultPrice && event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
                     <div className="text-xs text-gray-600 ml-7">
-                      Event Support Amt: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
+                      Event Support: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
+                    </div>
+                  )}
+                  {!event.pricing.requiresPayment && event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
+                    <div className="text-xs text-gray-600 ml-7">
+                      Event Support
                     </div>
                   )}
                 </div>

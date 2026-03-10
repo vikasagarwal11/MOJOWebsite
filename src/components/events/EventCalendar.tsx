@@ -123,7 +123,7 @@ const EventCalendar: React.FC<Props> = ({ events, onSelect }) => {
         eventPropGetter={(ev: any) => {
           const event: EventDoc = ev.resource;
           const isTeaser = !!event.isTeaser;
-          const isPublic = event.visibility === 'public';
+          const isPublic = event.visibility === 'public' || event.visibility === 'truly_public';
           
           // Get user's RSVP status for color coding
           const userRSVPStatus = getRSVPStatus(event.id || '');

@@ -54,7 +54,18 @@ function getPriceLabel(event: EventDoc) {
     return `$${(totalCharge / 100).toFixed(2)}`;
   }
 
-  // Free event (no payment required)
+  // No required payment but has event support - show event support as main price
+  if (!requiresPayment && support && support > 0) {
+    if (paymentMethod === 'zelle') {
+      return `$${(support / 100).toFixed(2)}`;
+    }
+    // For Stripe, calculate charge amount with fees
+    const charged = distributeStripeFees([{ id: 'support', label: 'Event Support', netAmount: support }]);
+    const supportCharge = charged[0]?.chargeAmount || 0;
+    return `$${(supportCharge / 100).toFixed(2)}`;
+  }
+
+  // Free event (no payment required and no event support)
   if (!requiresPayment) return "Free";
 
   // Paid event but missing price (shouldn't happen, but handle gracefully)

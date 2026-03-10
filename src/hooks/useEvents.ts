@@ -11,7 +11,7 @@ export type EventDoc = {
   startAt: any;
   endAt?: any;
   duration?: number;
-  visibility?: 'public' | 'members' | 'private';
+  visibility?: 'public' | 'truly_public' | 'members' | 'private';
   createdBy?: string;
   invitedUserIds?: string[];
   tags?: string[];
@@ -74,12 +74,14 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
       // Use separate queries instead of 'in' operator - Firestore security rules can't evaluate 'in' queries efficiently
       return [
         query(eventsRef, where('visibility', '==', 'public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+        query(eventsRef, where('visibility', '==', 'truly_public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
         query(eventsRef, where('visibility', '==', 'members'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc'))
       ];
     }
     return [
       // Use separate queries instead of 'in' operator for better security rule evaluation
       query(eventsRef, where('visibility', '==', 'public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+      query(eventsRef, where('visibility', '==', 'truly_public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
       query(eventsRef, where('visibility', '==', 'members'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
       query(eventsRef, where('createdBy', '==', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
       // Check for both new and legacy field names

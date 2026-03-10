@@ -304,7 +304,7 @@ function calculateAttendeePrice(
  * attendees, it will only charge for unpaid attendees.
  */
 export const createPaymentIntent = onCall(
-  { region: 'us-central1' },
+  { region: 'us-east1' },
   async (
     request: CallableRequest<CreatePaymentIntentRequest>
   ): Promise<CreatePaymentIntentResponse> => {
@@ -530,7 +530,7 @@ export const createPaymentIntent = onCall(
  * 4. Handles payment failures
  */
 export const stripeWebhook = onRequest(
-  { region: 'us-central1' },
+  { region: 'us-east1' },
   async (req, res) => {
   const sig = req.headers['stripe-signature'];
 

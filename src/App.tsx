@@ -34,6 +34,7 @@ import Profile from './pages/Profile';
 import Reset from './pages/Reset';
 import RSVPPage from './pages/RSVPPage';
 import RSVPPageV2 from './pages/RSVPPageV2';
+import GuestRSVPPage from './pages/GuestRSVPPage';
 import ShareYourStory from './pages/ShareYourStory';
 import Sponsors from './pages/Sponsors';
 import Testimonials from './pages/Testimonials';
@@ -174,6 +175,7 @@ function AppRouter() {
             <Route path="events" element={<Events />} />
             <Route path="events/:eventId" element={<EventDetailsPage />} />
             <Route path="events/:eventId/rsvp" element={<RSVPPage />} />
+            <Route path="events/:eventId/guest-rsvp" element={<GuestRSVPPage />} />
             <Route path="events-v2" element={<EventsV2 />} />
             <Route path="events-v2/:eventId" element={<EventDetailsPageV2 />} />
             <Route path="events-v2/:eventId/rsvp" element={<RSVPPageV2 />} />

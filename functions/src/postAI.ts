@@ -9,6 +9,7 @@ export const generatePostSuggestionsV2 = onCall({
     'https://momfitnessmojo.web.app',
     'https://momfitnessmojo.firebaseapp.com',
     'http://localhost:5173',
+    'http://localhost:5175',
     'http://localhost:3000',
   ],
 }, async (request) => {

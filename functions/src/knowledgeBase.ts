@@ -1,6 +1,6 @@
-import { onDocumentWritten, onDocumentDeleted } from 'firebase-functions/v2/firestore';
-import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { createHash } from 'crypto';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { onDocumentDeleted, onDocumentWritten } from 'firebase-functions/v2/firestore';
 
 const db = getFirestore();
 
@@ -149,7 +149,7 @@ function getEventVisibility(data: any): VisibilityLevel {
 
 export const syncPostToKnowledgeBase = onDocumentWritten(
   {
-    region: 'us-central1',
+    region: 'us-east1',
     document: 'posts/{postId}',
     retry: false,
   },
@@ -193,7 +193,7 @@ export const syncPostToKnowledgeBase = onDocumentWritten(
 
 export const syncEventToKnowledgeBase = onDocumentWritten(
   {
-    region: 'us-central1',
+    region: 'us-east1',
     document: 'events/{eventId}',
     retry: false,
   },
@@ -261,7 +261,7 @@ export const syncEventToKnowledgeBase = onDocumentWritten(
 
 export const syncChallengeToKnowledgeBase = onDocumentWritten(
   {
-    region: 'us-central1',
+    region: 'us-east1',
     document: 'challenges/{challengeId}',
     retry: false,
   },
@@ -309,7 +309,7 @@ export const syncChallengeToKnowledgeBase = onDocumentWritten(
 
 export const removeKnowledgeChunksOnDelete = onDocumentDeleted(
   {
-    region: 'us-central1',
+    region: 'us-east1',
     document: 'kb_sources/{sourceId}',
     retry: false,
   },

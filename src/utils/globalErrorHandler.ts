@@ -2,6 +2,12 @@ import React from 'react'
 import { errorService } from '../services/errorService'
 
 export function setupGlobalErrorHandling() {
+  // Avoid installing multiple sets of global handlers (can cause repeated logs/toasts).
+  if ((window as any).__mojoGlobalErrorHandlersInstalled) {
+    return
+  }
+  ;(window as any).__mojoGlobalErrorHandlersInstalled = true
+
   // Handle unhandled promise rejections
   window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason)

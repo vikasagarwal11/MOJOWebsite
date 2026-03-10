@@ -709,65 +709,6 @@
     },
     {
       "collectionGroup": "kb_chunks",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "visibility",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "embedding",
-          "vectorConfig": {
-            "dimension": 768,
-            "flat": {}
-          }
-        }
-      ]
-    },
-    {
-      "collectionGroup": "kb_chunks",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "visibility",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "__name__",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "embedding",
-          "vectorConfig": {
-            "dimension": 768,
-            "flat": {}
-          }
-        }
-      ]
-    },
-    {
-      "collectionGroup": "kb_chunks",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "__name__",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "embedding",
-          "vectorConfig": {
-            "dimension": 768,
-            "flat": {}
-          }
-        }
-      ]
-    },
-    {
-      "collectionGroup": "kb_chunks",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "embeddingStatus", "order": "ASCENDING" },

@@ -81,6 +81,7 @@ export const useAuth = () => {
    ============================================================================ */
 const RECAPTCHA_ID = 'recaptcha-container';
 let _recaptchaVerifierSingleton: RecaptchaVerifier | null = null;
+let _recaptchaRenderTarget: HTMLElement | null = null;
 
 function ensureRecaptchaHostEl(): HTMLElement {
   if (typeof document === 'undefined') {
@@ -88,23 +89,15 @@ function ensureRecaptchaHostEl(): HTMLElement {
   }
   let el = document.getElementById(RECAPTCHA_ID);
   if (!el) {
-    // Fallback: create one if shell hasn’t rendered it yet
+    // Fallback: create one if the shell hasn’t rendered it yet.
+    // IMPORTANT: Never replace/remove this node once reCAPTCHA has rendered into it.
     el = document.createElement('div');
     el.id = RECAPTCHA_ID;
     el.style.position = 'fixed';
-    el.style.bottom = '20px';
-    el.style.right = '20px';
-    el.style.zIndex = '9999';
-    el.style.width = '300px';
-    el.style.height = '80px';
-    el.style.backgroundColor = 'rgba(255, 0, 0, 0.1)'; // Red tint for debugging
-    el.style.border = '2px solid red'; // Red border for debugging
-    el.style.display = 'flex';
-    el.style.alignItems = 'center';
-    el.style.justifyContent = 'center';
-    el.style.color = 'red';
-    el.style.fontSize = '12px';
-    el.innerHTML = 'reCAPTCHA Container';
+    el.style.width = '1px';
+    el.style.height = '1px';
+    el.style.top = '-9999px';
+    el.style.left = '-9999px';
     document.body.appendChild(el);
     console.log('🔍 AuthContext: Created reCAPTCHA container:', el);
   } else {
@@ -113,39 +106,27 @@ function ensureRecaptchaHostEl(): HTMLElement {
   return el;
 }
 
-/** Replace the recaptcha container element with a fresh node (same id). */
-function swapRecaptchaContainer(): HTMLElement {
-  console.log('🔍 AuthContext: Swapping reCAPTCHA container...');
-  const oldEl = ensureRecaptchaHostEl();
-  console.log('🔍 AuthContext: Old container:', oldEl);
-  const fresh = oldEl.cloneNode(false) as HTMLElement;
-  fresh.id = RECAPTCHA_ID;
-  oldEl.parentNode?.replaceChild(fresh, oldEl);
-  console.log('🔍 AuthContext: New container ready:', fresh);
-  return fresh;
-}
-
 function createRecaptcha(): RecaptchaVerifier {
   console.log('🔍 AuthContext: Creating new reCAPTCHA verifier...');
-  
-  // Check if reCAPTCHA script is loaded
-  if (typeof (window as any).grecaptcha === 'undefined') {
-    console.error('🚨 AuthContext: reCAPTCHA script not loaded! grecaptcha is undefined');
-    throw new Error('reCAPTCHA script not loaded. Please check if the script is included in your HTML.');
-  }
-  
-  // Ensure we're using v2 and disable Enterprise
-  if ((window as any).grecaptcha.enterprise) {
-    console.log('🔍 AuthContext: Disabling reCAPTCHA Enterprise to prevent warnings');
-    (window as any).grecaptcha.enterprise = undefined;
-  }
-  
-  // Fully detach any previous grecaptcha widget by swapping the container node.
-  const container = swapRecaptchaContainer();
-  console.log('🔍 AuthContext: reCAPTCHA container ready:', container);
+  const container = ensureRecaptchaHostEl();
+
+  // IMPORTANT:
+  // reCAPTCHA (v2) throws "already been rendered" if you try to render twice into the same element.
+  // To avoid replacing the global container (which can crash reCAPTCHA internals), we create a
+  // fresh *child* element each time and render into that.
+  try {
+    _recaptchaRenderTarget?.remove();
+  } catch {}
+
+  const target = document.createElement('div');
+  target.id = `${RECAPTCHA_ID}-render-target`;
+  container.appendChild(target);
+  _recaptchaRenderTarget = target;
+
+  console.log('🔍 AuthContext: reCAPTCHA render target ready:', target);
 
   // ✅ Modular SDK: (auth, containerOrId, parameters)
-  const verifier = new RecaptchaVerifier(auth, RECAPTCHA_ID, {
+  const verifier = new RecaptchaVerifier(auth, target, {
     size: 'invisible',
     callback: () => console.log('🔍 AuthContext: reCAPTCHA solved'),
     'expired-callback': () => console.log('🔍 AuthContext: reCAPTCHA expired'),
@@ -180,18 +161,33 @@ function clearRecaptcha() {
     console.warn('🚨 AuthContext: reCAPTCHA clear error:', e);
   }
   _recaptchaVerifierSingleton = null;
-  
-  // Wait a bit before swapping container to let reCAPTCHA finish cleanup
-  setTimeout(() => {
-    try {
-      swapRecaptchaContainer();
-      console.log('🔍 AuthContext: reCAPTCHA container swapped');
-    } catch (e) {
-      console.warn('🚨 AuthContext: reCAPTCHA container swap error:', e);
-    }
-  }, 100);
+
+  // Remove the last render target (do not replace the global container node).
+  try {
+    _recaptchaRenderTarget?.remove();
+  } catch (e) {
+    console.warn('🚨 AuthContext: reCAPTCHA render target cleanup error:', e);
+  }
+  _recaptchaRenderTarget = null;
 }
 /* ============================================================================= */
+
+async function safeRenderRecaptcha(verifier: RecaptchaVerifier): Promise<void> {
+  try {
+    // Rendering ahead of signInWithPhoneNumber reduces flakiness on localhost and
+    // helps avoid stale/unrendered verifier states.
+    await verifier.render();
+    console.log('🔍 AuthContext: reCAPTCHA rendered');
+  } catch (e: any) {
+    // Ignore known benign cases; Firebase may auto-render internally.
+    const msg = String(e?.message || e || '');
+    if (msg.toLowerCase().includes('already been rendered')) {
+      console.log('🔍 AuthContext: reCAPTCHA already rendered');
+      return;
+    }
+    console.warn('🚨 AuthContext: reCAPTCHA render error:', e);
+  }
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -321,24 +317,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('🔍 AuthContext: USING_EMULATORS:', USING_EMULATORS);
     console.log('🔍 AuthContext: Current hostname:', window.location.hostname);
     console.log('🔍 AuthContext: Current origin:', window.location.origin);
+
+    // Localhost can get into a broken/stale reCAPTCHA state across attempts.
+    // Force a fresh verifier each send when not using the Auth emulator.
+    if (!USING_EMULATORS && window.location.hostname === 'localhost') {
+      clearRecaptcha();
+    }
     
     // Get reCAPTCHA verifier (works for both emulator and production)
-    let verifier = getOrCreateRecaptcha();
+    const verifier = getOrCreateRecaptcha();
     console.log('🔍 AuthContext: reCAPTCHA verifier ready');
+    await safeRenderRecaptcha(verifier);
     
     try {
       const result = await signInWithPhoneNumber(auth, phoneNumber, verifier);
       console.log('✅ AuthContext: Verification code sent successfully');
-      
-      if (USING_EMULATORS) {
-        toast.success('Check emulator terminal for verification code');
-      } else {
-        toast.success('Verification code sent to your phone');
-      }
-      
+
+      // Caller controls any user-facing messaging. Keep this layer console-only.
       return result;
     } catch (emulatorError: any) {
       console.error('🚨 AuthContext: Phone auth error:', emulatorError);
+
+      // If Firebase says the app credential is invalid, the most common cause is a bad/expired
+      // reCAPTCHA token or a broken widget state. Tear down so the next attempt is fresh.
+      const isInvalidCredential = emulatorError?.code === 'auth/invalid-app-credential';
+      if (isInvalidCredential) {
+        clearRecaptcha();
+      }
+
+      // Retry once on invalid credential with a freshly-rendered verifier.
+      // This addresses the common localhost case where the first token is stale/invalid.
+      if (isInvalidCredential) {
+        try {
+          console.log('🔍 AuthContext: Retrying after invalid-app-credential with fresh reCAPTCHA...');
+          const verifier2 = getOrCreateRecaptcha();
+          await safeRenderRecaptcha(verifier2);
+          const result = await signInWithPhoneNumber(auth, phoneNumber, verifier2);
+          return result;
+        } catch (retryErr: any) {
+          console.error('🚨 AuthContext: Retry after invalid-app-credential failed:', retryErr);
+          // fall through to standard handling
+        }
+      }
       
       // Try to reset and retry once
       if (emulatorError?.message?.includes('already been rendered') || emulatorError?.message?.includes('already')) {
@@ -346,17 +366,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('🔍 AuthContext: Retrying with fresh reCAPTCHA...');
           clearRecaptcha();
           const verifier2 = getOrCreateRecaptcha();
+          await safeRenderRecaptcha(verifier2);
           const result = await signInWithPhoneNumber(auth, phoneNumber, verifier2);
-          toast.success(USING_EMULATORS ? 'Check emulator terminal for code' : 'Verification code sent');
           return result;
         } catch (retryErr: any) {
           console.error('🚨 AuthContext: Retry failed:', retryErr);
-          toast.error(`Failed: ${retryErr?.message || 'Unknown error'}`);
           throw retryErr;
         }
       }
       
-      toast.error(`Error: ${emulatorError?.message || 'Could not send verification code'}`);
+      // Provide a clearer hint for the common localhost + reCAPTCHA failure.
+      if (isInvalidCredential) {
+        console.warn('[PhoneAuth] INVALID_APP_CREDENTIAL', {
+          hostname: window.location.hostname,
+          origin: window.location.origin,
+          message: emulatorError?.message,
+        });
+
+        console.warn('[PhoneAuth] Likely causes:', {
+          hint1: 'Firebase Console: Authentication -> Settings -> reCAPTCHA Enterprise (disable/misconfig can break web Phone Auth)',
+          hint2: 'Browser extensions/VPN/adblock can block reCAPTCHA endpoints',
+          hint3: 'If you just changed Firebase settings, try hard refresh / clear site data',
+          hint4: 'Consider using Auth emulator for local dev',
+        });
+      }
+
       throw emulatorError;
     }
   };

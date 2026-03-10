@@ -1,19 +1,21 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { format } from 'date-fns';
 import { addDoc, collection, doc, getDocs, limit, query, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
-import { motion } from 'framer-motion';
-import { Calendar, Clock, DollarSign, FileText, Loader2, MapPin, QrCode, Search, Tag, Users, X } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowLeft, Calendar, Clock, DollarSign, Eye, FileText, Loader2, MapPin, QrCode, Search, Tag, Users, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import type { EventDoc } from '../../hooks/useEvents';
 import { useStorage } from '../../hooks/useStorage';
 import { PaymentService } from '../../services/paymentService';
 import { AgeGroup, EventPricing } from '../../types/payment';
 import { safeFormat, safeISODate } from '../../utils/dateUtils';
-import { calculateProportionalPricing, centsToDollars, dollarsToCents } from '../../utils/stripePricing';
+import { calculateProportionalPricing, centsToDollars, distributeStripeFees, dollarsToCents } from '../../utils/stripePricing';
+import { EventImage } from './EventImage';
 
 // Firestore shouldn't see undefined fields
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
@@ -103,8 +105,9 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const { currentUser } = useAuth();
   const { uploadFile, getStoragePath } = useStorage();
   const [isLoading, setIsLoading] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [eventVisibility, setEventVisibility] = useState<'public' | 'members' | 'private'>('public'); // Default to public
+  const [eventVisibility, setEventVisibility] = useState<'public' | 'truly_public' | 'members' | 'private'>('public'); // Default to public
   const [invitedUserIds, setInvitedUserIds] = useState<string[]>([]);
   const [invitedUserDetails, setInvitedUserDetails] = useState<{[key: string]: any}>({});
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -147,6 +150,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const isEditing = !!eventToEdit;
 
   const handleClose = () => {
+    setPreviewMode(false);
     reset();
     setSelectedFile(null);
     setTags([]);
@@ -176,6 +180,21 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     
     onClose();
   };
+
+  const previewObjectUrl = useMemo(() => {
+    if (!selectedFile) return null;
+    try {
+      return URL.createObjectURL(selectedFile);
+    } catch {
+      return null;
+    }
+  }, [selectedFile]);
+
+  useEffect(() => {
+    return () => {
+      if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+    };
+  }, [previewObjectUrl]);
 
   const { register, handleSubmit, formState: { errors }, reset, watch, setValue, getValues } = useForm<EventFormData>({
   resolver: zodResolver(eventSchema),
@@ -228,6 +247,13 @@ const watchedEndTime = watch('endTime');
 const watchedEndDate = watch('endDate');
 const watchedIsAllDay = watch('isAllDay');
 const watchedDuration = watch('duration');
+const watchedTitle = watch('title');
+const watchedDescription = watch('description');
+const watchedVenueName = watch('venueName');
+const watchedVenueAddress = watch('venueAddress');
+const watchedLocation = watch('location');
+const watchedImageUrl = watch('imageUrl');
+const watchedMaxAttendees = watch('maxAttendees');
 
 // Watch payment fields for live calculation
 const watchedAdultPrice = watch('adultPrice');
@@ -236,6 +262,379 @@ const watchedChildPrice = watch('childPrice');
 const watchedToddlerPrice = watch('toddlerPrice');
 const watchedInfantPrice = watch('infantPrice');
 const watchedEventSupportAmount = watch('eventSupportAmount');
+const watchedCurrency = watch('currency');
+const watchedRefundAllowed = watch('refundAllowed');
+const watchedRefundDeadline = watch('refundDeadline');
+const watchedEventSupportAmountEnabled = watch('eventSupportAmountEnabled');
+const watchedRequiresPayment = watch('requiresPayment');
+const watchedPayThere = watch('payThere');
+const watchedPaymentMethod = watch('paymentMethod');
+
+  const parseLocalDateTime = (dateStr?: string | null, timeStr?: string | null): Date => {
+    const d = (dateStr || '').trim();
+    const t = (timeStr || '').trim();
+    if (!d) return new Date();
+    // Safari-safe: always include seconds
+    const iso = t ? `${d}T${t}:00` : `${d}T00:00:00`;
+    const parsed = new Date(iso);
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  };
+
+  const buildPricingConfig = (data: EventFormData): EventPricing | undefined => {
+    // Mirrors the onSubmit pricing logic so preview matches saved events.
+    let pricing: EventPricing | undefined;
+
+    if (data.requiresPayment) {
+      const adultPrice = data.adultPrice ? dollarsToCents(data.adultPrice) : 0;
+
+      const ageGroupPricing: Partial<Record<AgeGroup, number>> = {
+        adult: adultPrice,
+      };
+
+      if (data.infantPrice && data.infantPrice.trim()) {
+        ageGroupPricing['0-2'] = dollarsToCents(data.infantPrice);
+      }
+      if (data.toddlerPrice && data.toddlerPrice.trim()) {
+        ageGroupPricing['3-5'] = dollarsToCents(data.toddlerPrice);
+      }
+      if (data.childPrice && data.childPrice.trim()) {
+        ageGroupPricing['6-10'] = dollarsToCents(data.childPrice);
+      }
+      if (data.teenPrice && data.teenPrice.trim()) {
+        ageGroupPricing['11+'] = dollarsToCents(data.teenPrice);
+      }
+
+      pricing = PaymentService.createPaidEventPricing(adultPrice, ageGroupPricing, data.currency || 'USD');
+      pricing.paymentMethod = data.paymentMethod || 'stripe';
+
+      if (data.refundAllowed) {
+        pricing.refundPolicy = {
+          allowed: true,
+          deadline: data.refundDeadline ? Timestamp.fromDate(new Date(data.refundDeadline + 'T00:00:00')) : undefined,
+          feePercentage: 5,
+        };
+      } else {
+        pricing.refundPolicy = { allowed: false };
+      }
+    } else if (data.payThere) {
+      pricing = PaymentService.createDefaultPricing();
+      pricing.payThere = true;
+    } else {
+      pricing = PaymentService.createDefaultPricing();
+    }
+
+    if (data.eventSupportAmountEnabled && data.eventSupportAmount) {
+      const eventSupportAmount = dollarsToCents(data.eventSupportAmount);
+      if (eventSupportAmount > 0) {
+        if (!pricing) pricing = PaymentService.createDefaultPricing();
+        pricing.eventSupportAmount = eventSupportAmount;
+      }
+    }
+
+    return pricing;
+  };
+
+  const previewEvent = useMemo<EventDoc>(() => {
+    const startAt = parseLocalDateTime(watchedDate, watchedTime);
+
+    let endAt: Date | undefined;
+    if (!watchedIsAllDay) {
+      if (watchedEndDate && watchedEndTime) {
+        endAt = parseLocalDateTime(watchedEndDate, watchedEndTime);
+      } else if (watchedDuration) {
+        const hours = Number(watchedDuration);
+        if (!Number.isNaN(hours) && hours > 0) {
+          endAt = new Date(startAt.getTime() + hours * 60 * 60 * 1000);
+        }
+      }
+    }
+
+    const title = (watchedTitle || '').trim() || 'Untitled event';
+    const description = (watchedDescription || '').trim() || 'Add a description to see it here.';
+    const imageUrl =
+      imageRemoved ? undefined : (previewObjectUrl || (watchedImageUrl || '').trim() || undefined);
+
+    const maxAttendeesNum = Number(watchedMaxAttendees);
+    const maxAttendees = Number.isFinite(maxAttendeesNum) && maxAttendeesNum > 0 ? maxAttendeesNum : undefined;
+
+    const previewPricing = buildPricingConfig(getValues());
+
+    return {
+      id: 'preview',
+      title,
+      description,
+      startAt,
+      endAt,
+      allDay: !!watchedIsAllDay,
+      duration: watchedDuration ? Number(watchedDuration) : undefined,
+      location: watchedLocation?.trim() || undefined,
+      venueName: watchedVenueName?.trim() || undefined,
+      venueAddress: watchedVenueAddress?.trim() || undefined,
+      imageUrl,
+      maxAttendees,
+      tags: tags.length ? tags : undefined,
+      visibility: eventVisibility,
+      invitedUserIds: eventVisibility === 'private' ? invitedUserIds : undefined,
+      waitlistEnabled,
+      waitlistCount: waitlistCount ? Number(waitlistCount) : undefined,
+      pricing: previewPricing,
+      attendanceEnabled: !!getValues('attendanceEnabled'),
+      isReadOnly,
+      attendingCount: 0,
+    };
+  }, [
+    buildPricingConfig,
+    eventVisibility,
+    getValues,
+    imageRemoved,
+    invitedUserIds,
+    previewObjectUrl,
+    tags,
+    waitlistCount,
+    waitlistEnabled,
+    watchedAdultPrice,
+    watchedChildPrice,
+    watchedCurrency,
+    watchedDate,
+    watchedDescription,
+    watchedDuration,
+    watchedEndDate,
+    watchedEndTime,
+    watchedEventSupportAmountEnabled,
+    watchedImageUrl,
+    watchedIsAllDay,
+    watchedLocation,
+    watchedMaxAttendees,
+    watchedPayThere,
+    watchedPaymentMethod,
+    watchedRefundAllowed,
+    watchedRefundDeadline,
+    watchedRequiresPayment,
+    watchedTeenPrice,
+    watchedTime,
+    watchedTitle,
+    watchedToddlerPrice,
+    watchedInfantPrice,
+    watchedEventSupportAmount,
+    watchedVenueAddress,
+    watchedVenueName,
+    isReadOnly,
+  ]);
+
+  const EventPreviewCard: React.FC<{ event: EventDoc }> = ({ event }) => {
+    const start = tsToDate(event.startAt);
+    const end = event.endAt ? tsToDate(event.endAt) : null;
+
+    const formatEventDate = (date: any) => safeFormat(date, 'MMM dd, yyyy', 'Date TBD');
+    const formatEventTime = (date: any) => safeFormat(date, 'h:mm a', '');
+
+    const totalAttendeeCount = typeof event.attendingCount === 'number' ? event.attendingCount : 0;
+    const hasEnd = !event.allDay && !!end;
+
+    const startingPriceCents =
+      [
+        event.pricing?.adultPrice,
+        event.pricing?.teenPrice,
+        event.pricing?.childPrice,
+        event.pricing?.toddlerPrice,
+        event.pricing?.infantPrice,
+      ]
+        .filter((v): v is number => typeof v === 'number' && v > 0)
+        .sort((a, b) => a - b)[0] ?? null;
+
+    const supportNetCents =
+      typeof event.pricing?.eventSupportAmount === 'number' && event.pricing.eventSupportAmount > 0
+        ? event.pricing.eventSupportAmount
+        : 0;
+
+    return (
+      <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden border border-gray-200 flex flex-col scroll-mt-20 relative w-full max-w-lg mx-auto h-auto">
+        {/* Event Image */}
+        <div className="w-full h-48 sm:h-56 md:h-64 flex-shrink-0 relative bg-gray-100">
+          <div className="w-full h-full overflow-hidden rounded-t-xl">
+            <EventImage
+              src={event.imageUrl}
+              alt={event.title}
+              fit="contain"
+              aspect="16/9"
+              className="w-full h-full object-contain"
+              title={event.title}
+            />
+          </div>
+        </div>
+
+        {/* Event Content */}
+        <div className="p-6 flex flex-col flex-1">
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 line-clamp-1 truncate flex-shrink-0">
+            {event.title}
+          </h3>
+
+          <div className="mb-4 relative flex flex-col">
+            {event.description?.trim() ? (
+              <p className="text-gray-600 text-sm md:text-base leading-5 md:leading-6 line-clamp-2 overflow-hidden break-words">
+                {event.description}
+              </p>
+            ) : (
+              <p className="text-gray-400 italic text-sm h-full flex items-center">No description available</p>
+            )}
+          </div>
+
+          <div className="space-y-3 mb-4">
+            {/* Line 1: Date and Time */}
+            <div className="flex items-center gap-4 text-gray-700 text-sm sm:text-base flex-wrap">
+              <div className="flex items-center gap-2.5">
+                <Calendar className="w-5 h-5 text-[#F25129] flex-shrink-0" />
+                <span className="font-normal">{formatEventDate(start)}</span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-5 h-5 text-[#F25129] flex-shrink-0" />
+                <span className="font-normal">
+                  {event.allDay ? 'All day' : formatEventTime(start)}
+                  {hasEnd ? ` - ${formatEventTime(end)}` : ''}
+                </span>
+              </div>
+            </div>
+
+            {/* Line 2: Attendees and Price */}
+            <div className="flex items-center gap-4 text-gray-700 text-sm sm:text-base flex-wrap">
+              <div className="flex items-center gap-2.5">
+                <Users className="w-5 h-5 text-[#F25129] flex-shrink-0" />
+                <span className="font-normal">
+                  {totalAttendeeCount} attending
+                  {event.maxAttendees ? ` / ${event.maxAttendees} max` : ''}
+                </span>
+              </div>
+
+              {event.pricing?.payThere ? (
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-2.5">
+                    <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                    <span className="font-semibold text-blue-600">Pay There</span>
+                  </div>
+                </div>
+              ) : event.pricing && event.pricing.requiresPayment && startingPriceCents ? (
+                (() => {
+                  const isZellePayment = (event.pricing?.paymentMethod ?? 'zelle') === 'zelle';
+
+                  if (isZellePayment) {
+                    // For Zelle, show NET prices directly (no Stripe fees)
+                    const ticketNet = startingPriceCents;
+                    const supportNet = supportNetCents;
+
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2.5">
+                          <Tag className="w-5 h-5 text-purple-600 flex-shrink-0" />
+                          <span className="font-semibold text-purple-600">${(ticketNet / 100).toFixed(2)}</span>
+                        </div>
+                        {supportNet > 0 && (
+                          <div className="text-xs text-gray-600 ml-7">Event Support: ${(supportNet / 100).toFixed(2)}</div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // For Stripe, calculate proportional Stripe fees for ticket + support
+                  const components: Array<{ id: string; label: string; netAmount: number }> = [];
+                  components.push({
+                    id: 'ticket',
+                    label: 'Ticket',
+                    netAmount: startingPriceCents,
+                  });
+                  if (supportNetCents > 0) {
+                    components.push({
+                      id: 'support',
+                      label: 'Event Support',
+                      netAmount: supportNetCents,
+                    });
+                  }
+                  const charged = distributeStripeFees(components);
+                  const ticketCharge = charged.find((c) => c.id === 'ticket')?.chargeAmount || 0;
+                  const supportCharge = charged.find((c) => c.id === 'support')?.chargeAmount || 0;
+
+                  return (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2.5">
+                        <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                        <span className="font-semibold text-blue-600">${(ticketCharge / 100).toFixed(2)}</span>
+                      </div>
+                      {supportCharge > 0 && (
+                        <div className="text-xs text-gray-600 ml-7">Event Support: ${(supportCharge / 100).toFixed(2)}</div>
+                      )}
+                    </div>
+                  );
+                })()
+              ) : supportNetCents > 0 ? (
+                (() => {
+                  const isZellePayment = (event.pricing?.paymentMethod ?? 'zelle') === 'zelle';
+
+                  if (isZellePayment) {
+                    // Event with only event support (Zelle) - show NET price as main price
+                    const supportNet = supportNetCents;
+
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2.5">
+                          <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          <span className="font-semibold text-blue-600">${(supportNet / 100).toFixed(2)}</span>
+                        </div>
+                        <div className="text-xs text-gray-600 ml-7">Event Support</div>
+                      </div>
+                    );
+                  }
+
+                  // Event with only event support (Stripe) - show charge amount as main price
+                  const charged = distributeStripeFees([
+                    {
+                      id: 'support',
+                      label: 'Event Support',
+                      netAmount: supportNetCents,
+                    },
+                  ]);
+                  const supportCharge = charged[0]?.chargeAmount || 0;
+
+                  return (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2.5">
+                        <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                        <span className="font-semibold text-blue-600">${(supportCharge / 100).toFixed(2)}</span>
+                      </div>
+                      <div className="text-xs text-gray-600 ml-7">Event Support</div>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="flex items-center gap-2.5">
+                  <Tag className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                  <span className="font-semibold text-gray-500">Free</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Action Buttons (preview-only, disabled) */}
+          <div className="flex items-center justify-between mt-auto pt-2 pb-4 relative z-10" style={{ minHeight: '60px' }}>
+            <div className="flex gap-1 flex-1">
+              <button
+                type="button"
+                disabled
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg font-semibold transition-all duration-200 text-xs shadow-sm bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+              >
+                Going
+              </button>
+              <button
+                type="button"
+                disabled
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg font-semibold transition-all duration-200 text-xs shadow-sm bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+              >
+                Can't Go
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
 // Calculate prices based on payment method
 // For Zelle: Show NET prices directly (no Stripe fees)
@@ -975,17 +1374,71 @@ useEffect(() => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 12, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 12, scale: 0.98 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+        className={`relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5 ${
+          previewMode ? 'max-w-6xl' : 'max-w-2xl'
+        }`}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white">
-          <h2 className="text-2xl font-bold text-white">{isEditing ? 'Edit Event' : 'Create New Event'}</h2>
-          <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
-            <X className="w-6 h-6 text-white" />
-          </button>
+        <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] px-4 py-3 text-white sm:px-6 sm:py-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              {previewMode && (
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode(false)}
+                  className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white shadow-sm hover:bg-white/20"
+                  aria-label="Back to editor"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+              )}
+              <h2 className="truncate text-lg font-bold sm:text-2xl">
+                {isEditing ? 'Edit Event' : 'Create New Event'}
+              </h2>
+            </div>
+            <p className="mt-0.5 hidden truncate text-sm text-white/90 sm:block">
+              Preview your event before publishing.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPreviewMode((v) => !v)}
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/30 bg-white/10 shadow-sm transition hover:bg-white/20 ${
+                previewMode ? 'ring-2 ring-white/30' : ''
+              }`}
+              title={previewMode ? 'Hide preview' : 'Show preview'}
+              aria-pressed={previewMode}
+            >
+              <Eye className={`h-5 w-5 ${previewMode ? 'text-white' : 'text-white'}`} />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleClose}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white shadow-sm transition hover:bg-white/20"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
-        {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
+
+        {/* Body */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+          {/* Editor */}
+          <div className={`min-h-0 flex-1 overflow-y-auto ${previewMode ? 'hidden md:block' : 'block'}`}>
+            <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Event Title</label>
             <div className="relative">
@@ -1611,13 +2064,29 @@ useEffect(() => {
                   name="visibility"
                   value="public"
                   checked={eventVisibility === 'public'}
-                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
+                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'truly_public' | 'members' | 'private')}
                   disabled={isLoading}
                   className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
                 />
                 <div>
                   <span className="text-sm font-medium text-gray-700">🌍 Public Event</span>
                   <p className="text-xs text-gray-500">Visible to everyone, anyone can RSVP</p>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3">
+                <input
+                  type="radio"
+                  name="visibility"
+                  value="truly_public"
+                  checked={eventVisibility === 'truly_public'}
+                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'truly_public' | 'members' | 'private')}
+                  disabled={isLoading || currentUser?.role !== 'admin'}
+                  className="h-4 w-4 text-[#F25129] focus:ring-[#F25129] disabled:opacity-50"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">🌐 Truly Public Event</span>
+                  <p className="text-xs text-gray-500">Visitors can RSVP as one-time guests without creating an account {currentUser?.role !== 'admin' && '(Admin only)'}</p>
                 </div>
               </label>
               
@@ -1627,7 +2096,7 @@ useEffect(() => {
                   name="visibility"
                   value="members"
                   checked={eventVisibility === 'members'}
-                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
+                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'truly_public' | 'members' | 'private')}
                   disabled={isLoading || currentUser?.role !== 'admin'}
                   className="h-4 w-4 text-[#F25129] focus:ring-[#F25129] disabled:opacity-50"
                 />
@@ -1643,7 +2112,7 @@ useEffect(() => {
                   name="visibility"
                   value="private"
                   checked={eventVisibility === 'private'}
-                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
+                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'truly_public' | 'members' | 'private')}
                   disabled={isLoading || currentUser?.role !== 'admin'}
                   className="h-4 w-4 text-[#F25129] focus:ring-[#F25129] disabled:opacity-50"
                 />
@@ -2124,7 +2593,63 @@ useEffect(() => {
             </button>
           </div>
         </form>
-      </div>
+
+          </div>
+
+          {/* Mobile preview (inside modal) */}
+          <AnimatePresence mode="wait" initial={false}>
+            {previewMode && (
+              <motion.div
+                key="mobile-preview"
+                initial={{ opacity: 0, x: 12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 12 }}
+                transition={{ duration: 0.18 }}
+                className="md:hidden flex-1 overflow-y-auto bg-gradient-to-br from-[#fff7f3] via-[#fffbe6] to-[#ffe3c2] px-3 py-4"
+              >
+                <div className="w-full">
+                  <EventPreviewCard event={previewEvent} />
+                </div>
+
+                <div className="mt-4 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode(false)}
+                    className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50"
+                  >
+                    Back to editor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmit(onSubmit)}
+                    disabled={isLoading}
+                    className="flex-1 rounded-xl bg-gradient-to-r from-[#F25129] to-[#FFC107] px-4 py-3 text-sm font-semibold text-white shadow hover:from-[#E0451F] hover:to-[#E55A2A] disabled:opacity-50"
+                  >
+                    {isLoading ? (isEditing ? 'Updating…' : 'Creating…') : (isEditing ? 'Update' : 'Create')}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Desktop preview panel */}
+          <AnimatePresence>
+            {previewMode && (
+              <motion.aside
+                initial={{ opacity: 0, x: 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 24 }}
+                transition={{ duration: 0.22 }}
+                className="hidden md:flex w-[420px] flex-col border-l border-gray-200/70 bg-gradient-to-br from-[#fff7f3] via-[#fffbe6] to-[#ffe3c2]"
+              >
+                <div className="flex-1 overflow-y-auto p-5 sm:p-6 pb-16 min-h-[120px]">
+                  <EventPreviewCard event={previewEvent} />
+                </div>
+              </motion.aside>
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
     </div>
   );
 };

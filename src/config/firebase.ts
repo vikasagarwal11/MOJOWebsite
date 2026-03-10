@@ -1,17 +1,15 @@
 // src/config/firebase.ts
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { Analytics, getAnalytics, isSupported } from 'firebase/analytics';
+import { getApp, getApps, initializeApp } from 'firebase/app';
+import { connectAuthEmulator, getAuth } from 'firebase/auth';
 import {
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-  memoryLocalCache,
-  connectFirestoreEmulator
+    connectFirestoreEmulator,
+    initializeFirestore,
+    persistentLocalCache,
+    persistentMultipleTabManager
 } from 'firebase/firestore';
-import { getStorage, connectStorageEmulator } from 'firebase/storage';
-import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
-import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
-import { getPerformance } from 'firebase/performance';
+import { connectFunctionsEmulator, getFunctions } from 'firebase/functions';
+import { connectStorageEmulator, getStorage } from 'firebase/storage';
 
 const normalizeStorageBucket = (rawBucket: string | undefined, fallbackProjectId: string): string => {
   const trimmed = rawBucket?.trim();
@@ -56,13 +54,37 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || 'G-XXXXXXXXXX',
 };
 
+const maskSensitive = (value: string | undefined, keepPrefix = 6, keepSuffix = 4) => {
+  if (!value) return value;
+  if (value.length <= keepPrefix + keepSuffix) return value;
+  return `${value.slice(0, keepPrefix)}…${value.slice(-keepSuffix)}`;
+};
+
 // 🚨 CRITICAL DEBUG: Always log the project ID being used
 const shouldLogFirebaseConfig =
   (import.meta as any).env?.DEV ||
   ((import.meta as any).env?.VITE_DEBUG_FIREBASE === 'true');
 
-// Flag to control local emulators (set VITE_USE_EMULATORS=true in .env.local)
-export const USING_EMULATORS = import.meta.env.VITE_USE_EMULATORS === 'true';
+// Flag to control local emulators.
+// Primary control: VITE_USE_EMULATORS=true|false|auto
+// DEV override: localStorage[MOJO_USE_EMULATORS] = 'true' (useful when Phone Auth is blocked on localhost).
+const EMULATOR_OVERRIDE_KEY = 'MOJO_USE_EMULATORS';
+const emulatorOverrideFromStorage = (() => {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return false;
+  try {
+    return window.localStorage?.getItem(EMULATOR_OVERRIDE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+})();
+
+export const USING_EMULATORS =
+  emulatorOverrideFromStorage ||
+  import.meta.env.VITE_USE_EMULATORS === 'true' ||
+  (import.meta.env.VITE_USE_EMULATORS === 'auto' &&
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'));
 
 // Helpful runtime check - only warn in development
 if (import.meta.env.DEV) {
@@ -70,6 +92,52 @@ if (import.meta.env.DEV) {
   console.log(`[Firebase] Environment: ${import.meta.env.VITE_ENVIRONMENT || 'development'}`);
   console.log(`[Firebase] Project ID: ${firebaseConfig.projectId}`);
   console.log(`[Firebase] Using emulators: ${USING_EMULATORS ? 'YES' : 'NO'}`);
+  console.log('[Firebase] Runtime config (masked):', {
+    origin: typeof window !== 'undefined' ? window.location.origin : 'server',
+    mode: import.meta.env.MODE,
+    apiKey: maskSensitive(firebaseConfig.apiKey),
+    authDomain: firebaseConfig.authDomain,
+    appId: maskSensitive(firebaseConfig.appId, 10, 6),
+  });
+
+  // Safety guard: prevent accidental prod Firebase usage on localhost.
+  // This usually happens when someone runs `vite preview` or deploys a build that was made
+  // with `--mode production` (which reads `.env.production`).
+  if (typeof window !== 'undefined') {
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1';
+    const PROD_PROJECT_ID = 'momsfitnessmojo-65d00';
+    if (isLocalhost && firebaseConfig.projectId === PROD_PROJECT_ID) {
+      console.error(
+        '[Firebase] Localhost is configured for the PRODUCTION Firebase project. This is almost always an env/build-mode mixup.',
+        {
+          hostname: window.location.hostname,
+          origin: window.location.origin,
+          mode: import.meta.env.MODE,
+          projectId: firebaseConfig.projectId,
+          fix: 'Use `npm run dev` for local dev, or rebuild with `npm run build:dev` before `vite preview` / dev hosting deploy.'
+        }
+      );
+    }
+
+    // Same problem, but on the *dev hosting* URL.
+    // If this triggers, it means a production-mode build was deployed to the dev site.
+    const isDevHosting =
+      window.location.hostname === 'momsfitnessmojo-dev.web.app' ||
+      window.location.hostname === 'momsfitnessmojo-dev.firebaseapp.com';
+    if (isDevHosting && firebaseConfig.projectId === PROD_PROJECT_ID) {
+      console.error(
+        '[Firebase] Dev hosting is serving a PRODUCTION-configured build. Rebuild with development mode and redeploy to the dev hosting target.',
+        {
+          hostname: window.location.hostname,
+          mode: import.meta.env.MODE,
+          projectId: firebaseConfig.projectId,
+          fix: 'Run `firebase deploy --only hosting:momsfitnessmojo-dev --project momsfitnessmojo-dev` (predeploy will run `npm run build:dev`).'
+        }
+      );
+    }
+  }
   
   // Check for placeholder values
   for (const [k, v] of Object.entries(firebaseConfig)) {
@@ -106,7 +174,7 @@ const clearIndexedDBCache = async (): Promise<void> => {
     const dbName = `firestore/${projectId}/${databaseId}`;
     const deleteRequest = indexedDB.deleteDatabase(dbName);
     
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       deleteRequest.onsuccess = () => {
         console.log('[Firebase] Cleared corrupted IndexedDB cache');
         resolve();
@@ -128,13 +196,12 @@ const clearIndexedDBCache = async (): Promise<void> => {
 // Initialize Firestore with persistent local cache
 // Note: Errors may occur later during queries, not during initialization
 export const db = initializeFirestore(app, {
-  databaseId,
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager(),
     // Set cache size to prevent SDK compatibility issues
     cacheSizeBytes: 50 * 1024 * 1024, // 50MB cache limit
   }),
-});
+}, databaseId);
 
 // Export cache clearing utility for runtime errors
 export const clearFirestoreCache = clearIndexedDBCache;
@@ -188,6 +255,10 @@ export const functionsUsCentral1 =
 
 // Connect to emulators in dev (Auth emulator does not require reCAPTCHA)
 if (USING_EMULATORS) {
+  // Phone auth: bypass reCAPTCHA in test/emulator mode.
+  try {
+    (auth as any).settings.appVerificationDisabledForTesting = true;
+  } catch {}
   try { connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true }); } catch {}
   try { connectFirestoreEmulator(db, '127.0.0.1', 8080); } catch {}
   try { connectStorageEmulator(storage, '127.0.0.1', 9199); } catch {}

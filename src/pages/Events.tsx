@@ -401,22 +401,24 @@ const Events: React.FC = () => {
       return;
     }
 
-    // For non-past events, handle based on user authentication
-    if (!currentUser) {
-      console.log('🔍 Opening EventTeaserModal for non-authenticated user from calendar');
-      setSelectedEvent(e);
-      setShowTeaserModal(true);
-    } else {
+    // Keep logged-in behavior unchanged; mirror the same RSVP flow for guests.
+    if (currentUser) {
       console.log('🔍 Opening RSVP for authenticated user from calendar');
-      // Flexible RSVP handling based on toggle
       if (RSVP_MODE === 'page') {
-        // Navigate to new RSVP page
         navigate(`/events/${e.id}/rsvp`);
       } else {
-        // Use original modal (revert option)
         setSelectedEvent(e);
         setShowRSVPModal(true);
       }
+      return;
+    }
+
+    console.log('🔍 Opening RSVP for non-authenticated user from calendar');
+    if (RSVP_MODE === 'page') {
+      navigate(`/events/${e.id}/rsvp`);
+    } else {
+      setSelectedEvent(e);
+      setShowRSVPModal(true);
     }
   };
 
@@ -967,7 +969,7 @@ const Events: React.FC = () => {
               />
             ) : (
               <EventList 
-                events={filtered.filter(e => e.visibility === 'public')} 
+                events={filtered.filter(e => e.visibility === 'public' || e.visibility === 'truly_public')} 
                 loading={loading} 
                 emptyText="No public events yet."
               />

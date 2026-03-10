@@ -3,13 +3,53 @@ import { createRoot } from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
 import App from './App.tsx';
 import './index.css';
-import { registerSW } from './sw-register';
-import { configureRecaptcha } from './utils/recaptcha';
 import { loggingService } from './services/loggingService';
 import { performanceService } from './services/performanceService';
+import { registerSW } from './sw-register';
 import { initializeGlobalErrorPrevention } from './utils/globalErrorPrevention';
+import { configureRecaptcha } from './utils/recaptcha';
 
 console.log('🚀 Main.tsx - Starting application initialization...');
+
+// Dev-only: log Firebase Phone Auth verification failures with server response body.
+// This helps diagnose auth/invalid-app-credential (often returned as a 400 with a detailed JSON error).
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : (input as any)?.url?.toString?.() || input.toString();
+    const isSendVerification = url.includes('identitytoolkit.googleapis.com') && url.includes('accounts:sendVerificationCode');
+
+    const response = await originalFetch(input as any, init);
+    if (isSendVerification && !response.ok) {
+      try {
+        const cloned = response.clone();
+        const text = await cloned.text();
+        let message: string | undefined;
+        try {
+          const parsed = JSON.parse(text);
+          message = parsed?.error?.message;
+        } catch {
+          // ignore JSON parse failures
+        }
+
+        // Keep it readable; Firebase returns JSON like { error: { message, status, ... } }
+        console.warn('🚨 [PhoneAuth] sendVerificationCode failed', {
+          status: response.status,
+          statusText: response.statusText,
+          url,
+          message,
+        });
+
+        // Also log the raw body so it can be copied easily.
+        console.warn('🚨 [PhoneAuth] Raw responseBody:', text);
+      } catch (e) {
+        console.warn('🚨 [PhoneAuth] Failed to read error body', e);
+      }
+    }
+
+    return response;
+  };
+}
 
 // Initialize global error prevention FIRST - before anything else
 try {

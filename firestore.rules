@@ -130,7 +130,7 @@ service cloud.firestore {
         (!('titleLower' in newData) || isNonEmptyString(newData.titleLower)) &&
         (!('allDay' in newData) || newData.allDay is bool) &&
         (!('imageUrl' in newData) || (newData.imageUrl is string || newData.imageUrl == null)) &&
-        (!('visibility' in newData) || newData.visibility in ['public', 'members', 'private']) &&
+        (!('visibility' in newData) || newData.visibility in ['public', 'truly_public', 'members', 'private']) &&
         (!('status' in newData) || newData.status in ['scheduled', 'canceled', 'postponed', 'draft']) &&
         (!('isReadOnly' in newData) || newData.isReadOnly is bool);
     }
@@ -353,6 +353,7 @@ service cloud.firestore {
         // Public events: readable by everyone (query-friendly evaluation)
         // Check both new 'visibility' field and legacy 'public' field
         (resource.data.visibility == 'public' || 
+         resource.data.visibility == 'truly_public' ||
          (!('visibility' in resource.data) && resource.data.public == true) ||
          // Allow if visibility field doesn't exist and public field is true (legacy events)
          (!('visibility' in resource.data) && 'public' in resource.data && resource.data.public == true)) ||
@@ -396,6 +397,7 @@ service cloud.firestore {
           (
             // Public events: approved members can RSVP
             get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+            get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'truly_public' ||
             // Members-only events: only approved members can RSVP (non-members can see but not RSVP)
             (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members' && isMember() && isApprovedUser()) ||
             // Event creator can always RSVP
@@ -423,6 +425,7 @@ service cloud.firestore {
         allow read: if 
           // Public events: anyone can read (for RSVP counts)
           (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+           get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'truly_public' ||
            (!('visibility' in get(/databases/$(database)/documents/events/$(eventId)).data) && 
             get(/databases/$(database)/documents/events/$(eventId)).data.public == true)) ||
           // Authenticated users can read attendees for events they have access to
@@ -439,7 +442,8 @@ service cloud.firestore {
             (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'private' && 
              request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds) ||
             // Fallback: Allow any authenticated user to read their own attendees for public events
-            (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' &&
+            ((get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+              get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'truly_public') &&
              resource.data.userId == request.auth.uid)
           ));
         
@@ -463,6 +467,7 @@ service cloud.firestore {
             (request.resource.data.userId == request.auth.uid &&
              (// Users can add attendees to public events (with fallback for legacy events)
               (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+               get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'truly_public' ||
                (!('visibility' in get(/databases/$(database)/documents/events/$(eventId)).data) && 
                 get(/databases/$(database)/documents/events/$(eventId)).data.public == true)) ||
               // Members can add attendees to members-only events (only approved members can RSVP)
@@ -533,6 +538,57 @@ service cloud.firestore {
           get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
           isAdmin()
         );
+      }
+
+      // Event comments
+      match /comments/{commentId} {
+        allow read: if
+          isAdmin() ||
+          (isSignedIn() && resource.data.authorId == request.auth.uid) ||
+          (!('moderationStatus' in resource.data) || resource.data.moderationStatus == 'approved');
+
+        allow create: if isSignedIn() &&
+          isApprovedUser() &&
+          request.auth.uid == request.resource.data.authorId &&
+          (isNonEmptyString(request.resource.data.text) || ('mediaUrls' in request.resource.data && request.resource.data.mediaUrls is list)) &&
+          (!('text' in request.resource.data) || request.resource.data.text.size() <= 1000) &&
+          request.resource.data.keys().hasOnly(['authorId','authorName','text','mediaUrls','createdAt','threadLevel','parentCommentId','replyCount','moderationStatus','requiresApproval','moderationReason','moderationDetectedIssues']) &&
+          (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus in ['pending', 'approved']) &&
+          !isUserBlockedFromRsvp(request.auth.uid);
+
+        allow update: if isSignedIn() &&
+          (request.auth.uid == resource.data.authorId || isAdmin()) &&
+          (request.resource.data.diff(resource.data).changedKeys().hasOnly(['text','updatedAt']) ||
+           (isAdmin() && request.resource.data.diff(resource.data).changedKeys().hasOnly(['moderationStatus','requiresApproval','moderationReason','moderationDetectedIssues','moderatedAt','moderatedBy'])));
+
+        allow delete: if isSignedIn() &&
+          (request.auth.uid == resource.data.authorId || isAdmin());
+
+        match /likes/{userId} {
+          allow read: if true;
+          allow create: if isSignedIn() &&
+            isApprovedUser() &&
+            request.auth.uid == userId &&
+            request.resource.data.keys().hasOnly(['userId','createdAt']) &&
+            request.resource.data.userId == userId;
+          allow update: if false;
+          allow delete: if isSignedIn() &&
+            (request.auth.uid == userId || isAdmin());
+        }
+
+        match /reactions/{userId_emoji} {
+          allow read: if true;
+          allow create: if isSignedIn() &&
+            isApprovedUser() &&
+            request.auth.uid == request.resource.data.userId &&
+            request.resource.data.keys().hasOnly(['userId','emoji','createdAt']) &&
+            request.resource.data.userId == request.auth.uid &&
+            request.resource.data.emoji in ['❤️','😂','😮','👍','👎','😢','😡'] &&
+            userId_emoji == request.resource.data.userId + '_' + request.resource.data.emoji;
+          allow update: if false;
+          allow delete: if isSignedIn() &&
+            (request.auth.uid == resource.data.userId || isAdmin());
+        }
       }
     }
 
@@ -605,6 +661,32 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if isSignedIn() && 
           (request.auth.uid == userId || isAdmin());
+      }
+
+      // Post reactions (one per user): posts/{postId}/reactions/{userId}
+      // Stores a single selected reaction type for each user.
+      match /reactions/{userId} {
+        allow read: if true;
+
+        allow create: if isSignedIn() &&
+          isApprovedUser() &&
+          request.auth.uid == userId &&
+          request.resource.data.userId == userId &&
+          request.resource.data.keys().hasOnly(['userId','reaction','createdAt','updatedAt']) &&
+          request.resource.data.createdAt is timestamp &&
+          (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp) &&
+          request.resource.data.reaction in ['heart','like','celebrate','appreciate','funny','wow','sad'];
+
+        allow update: if isSignedIn() &&
+          isApprovedUser() &&
+          request.auth.uid == userId &&
+          request.resource.data.userId == userId &&
+          request.resource.data.keys().hasOnly(['userId','reaction','createdAt','updatedAt']) &&
+          request.resource.data.createdAt is timestamp &&
+          (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp) &&
+          request.resource.data.reaction in ['heart','like','celebrate','appreciate','funny','wow','sad'];
+
+        allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       }
       
       match /comments/{commentId} {

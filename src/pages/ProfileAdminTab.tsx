@@ -30,7 +30,7 @@ interface Event {
   startAt: any;
   endAt?: any;
   duration?: number;
-  visibility?: 'public' | 'members' | 'private';
+  visibility?: 'public' | 'truly_public' | 'members' | 'private';
   createdBy?: string;
   invitedUserIds?: string[];
   tags?: string[];

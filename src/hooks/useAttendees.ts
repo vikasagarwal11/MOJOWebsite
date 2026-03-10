@@ -35,11 +35,9 @@ interface UseAttendeesReturn {
 }
 
 export const useAttendees = (eventId: string, userId: string, isAdmin: boolean = false): UseAttendeesReturn => {
-  const [attendees, setAttendees] = useState<Attendee[]>([]);
-  const [counts, setCounts] = useState<AttendeeCounts>({
+  const emptyCounts: AttendeeCounts = {
     goingCount: 0,
     notGoingCount: 0,
-    pendingCount: 0,
     waitlistedCount: 0,
     totalGoingByAgeGroup: {
       '0-2': 0,
@@ -49,13 +47,21 @@ export const useAttendees = (eventId: string, userId: string, isAdmin: boolean =
       'adult': 0
     },
     totalGoing: 0
-  });
-  const [loading, setLoading] = useState(true);
+  };
+  const [attendees, setAttendees] = useState<Attendee[]>([]);
+  const [counts, setCounts] = useState<AttendeeCounts>(emptyCounts);
+  const [loading, setLoading] = useState(Boolean(eventId && userId));
   const [error, setError] = useState<string | null>(null);
 
   // Load attendees on mount
   useEffect(() => {
-    if (!eventId || !userId) return;
+    if (!eventId || !userId) {
+      setAttendees([]);
+      setCounts(emptyCounts);
+      setError(null);
+      setLoading(false);
+      return;
+    }
 
     const loadAttendees = async () => {
       try {
@@ -270,6 +276,14 @@ export const useAttendees = (eventId: string, userId: string, isAdmin: boolean =
 
   // Refresh attendees
   const refreshAttendees = useCallback(async (): Promise<void> => {
+    if (!eventId || !userId) {
+      setAttendees([]);
+      setCounts(emptyCounts);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);

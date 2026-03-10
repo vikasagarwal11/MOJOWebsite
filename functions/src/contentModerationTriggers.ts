@@ -376,6 +376,29 @@ export const onMediaCommentCreatedModeration = onDocumentCreated(
   }
 );
 
+export const onEventCommentCreatedModeration = onDocumentCreated(
+  {
+    document: 'events/{eventId}/comments/{commentId}',
+    region: 'us-east1',
+  },
+  async (event) => {
+    const data = event.data?.data();
+    if (!data || shouldSkipModeration(data)) return;
+
+    const docRef =
+      event.data?.ref ||
+      db.collection('events').doc(event.params.eventId).collection('comments').doc(event.params.commentId);
+
+    await handleModeration({
+      ref: docRef,
+      contentType: 'comment',
+      text: (data.text || '').trim(),
+      userId: data.authorId,
+      allowAutoApproveWithoutText: false,
+    });
+  }
+);
+
 export const onTestimonialCreatedModeration = onDocumentCreated(
   {
     document: 'testimonials/{testimonialId}',

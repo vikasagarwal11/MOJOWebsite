@@ -80,6 +80,30 @@ export interface Post {
   updatedAt: Date;
   likes: string[];
   comments: Comment[];
+
+  // Visibility / moderation (stored on docs; optional for older data)
+  isPublic?: boolean;
+  moderationStatus?: string;
+  requiresApproval?: boolean;
+  moderationReason?: string;
+  moderationDetectedIssues?: string[];
+  moderationPipeline?: string;
+
+  // Denormalized counts (some docs store counts, PostCard also supports subcollections)
+  likesCount?: number;
+  commentsCount?: number;
+
+  // Multi-reaction aggregation (new)
+  reactionsCount?: {
+    heart?: number;
+    like?: number;
+    celebrate?: number;
+    appreciate?: number;
+    funny?: number;
+    wow?: number;
+    sad?: number;
+  };
+  totalReactions?: number;
 }
 
 export interface Comment {
