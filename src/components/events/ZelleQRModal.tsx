@@ -15,10 +15,11 @@ import React, { useEffect, useState } from 'react';
 interface ZelleQRModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onPaid: () => void;
   amount: number; // Amount in cents
 }
 
-export const ZelleQRModal: React.FC<ZelleQRModalProps> = ({ isOpen, onClose, amount }) => {
+export const ZelleQRModal: React.FC<ZelleQRModalProps> = ({ isOpen, onClose, onPaid, amount }) => {
   const [timeRemaining, setTimeRemaining] = useState(60); // 60 seconds
   const [showEmailInstructions, setShowEmailInstructions] = useState(false);
 
@@ -30,8 +31,8 @@ export const ZelleQRModal: React.FC<ZelleQRModalProps> = ({ isOpen, onClose, amo
     }
 
     if (timeRemaining <= 0) {
-      // Timer expired - close QR modal and show email instructions
-      handleTimerExpired();
+      // Timer expired - just close QR modal (no pending approval state)
+      onClose();
       return;
     }
 
@@ -42,9 +43,10 @@ export const ZelleQRModal: React.FC<ZelleQRModalProps> = ({ isOpen, onClose, amo
     return () => clearInterval(timer);
   }, [isOpen, timeRemaining]);
 
-  const handleTimerExpired = () => {
-    onClose(); // Close QR modal
-    setShowEmailInstructions(true); // Show email instructions
+  const handlePaidClick = () => {
+    onPaid();
+    onClose();
+    setShowEmailInstructions(true);
   };
 
   const handleCloseEmailInstructions = () => {
@@ -140,6 +142,14 @@ export const ZelleQRModal: React.FC<ZelleQRModalProps> = ({ isOpen, onClose, amo
               >
                 Close
               </button>
+
+              {/* Payment Done Button */}
+              <button
+                onClick={handlePaidClick}
+                className="w-full mt-3 px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors"
+              >
+                Payment Done
+              </button>
             </motion.div>
           </motion.div>
         )}
@@ -211,10 +221,9 @@ export const ZelleQRModal: React.FC<ZelleQRModalProps> = ({ isOpen, onClose, amo
               {/* Action Button */}
               <button
                 onClick={handleCloseEmailInstructions}
-                className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
               >
-                <Mail className="w-5 h-5" />
-                Got It
+                Got it
               </button>
             </motion.div>
           </motion.div>

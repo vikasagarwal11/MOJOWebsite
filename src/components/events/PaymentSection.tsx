@@ -449,15 +449,21 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
 
   /**
    * Handle Zelle payment flow
-   * Shows QR modal and sets payment status to waiting_for_approval
+   * Shows QR modal only. Do NOT update payment status here.
    */
-  const handleZellePayment = async () => {
+  const handleZellePayment = () => {
+    if (isZelleLocked) return;
+    console.log('?? [ZELLE] Starting Zelle payment flow');
+    setShowZelleModal(true);
+  };
+
+  /**
+   * Confirmed Zelle payment flow
+   * Only when user clicks "Payment Done"
+   */
+  const handleZellePaymentConfirmed = async () => {
     if (isZelleLocked) return;
     setIsZelleLocked(true);
-    console.log('?? [ZELLE] Starting Zelle payment flow');
-
-    // Show Zelle QR modal
-    setShowZelleModal(true);
 
     try {
       if (isGuest) {
@@ -1230,6 +1236,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
         <ZelleQRModal
           isOpen={showZelleModal}
           onClose={() => setShowZelleModal(false)}
+          onPaid={handleZellePaymentConfirmed}
           amount={unpaidAttendees.reduce((sum, attendee) => {
             const breakdownItem = paymentSummary?.breakdown.find(b => b.attendeeId === attendee.attendeeId);
             return sum + (breakdownItem?.subtotal || 0);
