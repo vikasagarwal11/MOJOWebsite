@@ -1,5 +1,6 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { CallableRequest, HttpsError, onCall } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
 import { GuestPaymentService } from '../services/guestPaymentService';
 import { GuestSessionService } from '../services/guestSessionService';
 import { PaymentIntentResponse } from '../types/paymentTransaction';
@@ -16,8 +17,10 @@ interface CreateGuestPaymentIntentRequest {
     attendeeIds?: string[];
 }
 
+const stripeSecret = defineSecret('STRIPE_SECRET_KEY');
+
 export const createGuestPaymentIntent = onCall(
-    { region: 'us-east1' },
+    { region: 'us-east1', secrets: [stripeSecret] },
     async (request: CallableRequest<CreateGuestPaymentIntentRequest>): Promise<PaymentIntentResponse> => {
         try {
             const { sessionToken, eventId, paymentMethod, attendeeIds } = request.data;
@@ -47,7 +50,7 @@ export const createGuestPaymentIntent = onCall(
             const db = getFirestore();
             const sessionService = new GuestSessionService(db);
 
-            const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+            const stripeSecretKey = stripeSecret.value() || process.env.STRIPE_SECRET_KEY;
             if (!stripeSecretKey) {
                 throw new HttpsError(
                     'failed-precondition',

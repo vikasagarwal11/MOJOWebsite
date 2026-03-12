@@ -405,6 +405,9 @@ export class GuestPaymentService {
             const paymentIntent = await this.stripe.paymentIntents.create({
                 amount: transaction.amount!,
                 currency: transaction.currency!,
+                automatic_payment_methods: {
+                    enabled: true,
+                },
                 metadata: {
                     transactionId,
                     eventId: transaction.eventId!,

@@ -10,6 +10,7 @@
 
 import * as admin from 'firebase-admin';
 import { CallableRequest, HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
+import { defineSecret } from 'firebase-functions/params';
 import Stripe from 'stripe';
 
 const db = admin.firestore();
@@ -20,6 +21,10 @@ const db = admin.firestore();
 const STRIPE_FEE_PERCENTAGE = 0.029; // 2.9%
 const STRIPE_FEE_FIXED_CENTS = 30; // $0.30
 const STRIPE_FEE_MULTIPLIER = 1 - STRIPE_FEE_PERCENTAGE; // 0.971
+
+// Stripe secrets (configured in Firebase)
+const stripeSecret = defineSecret('STRIPE_SECRET_KEY');
+const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
 
 /**
  * Calculate the total charge amount that includes Stripe fees
@@ -44,7 +49,7 @@ export function calculateChargeAmount(netTotalCents: number): number {
 let stripe: Stripe | null = null;
 function getStripe(): Stripe {
   if (!stripe) {
-    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    const stripeSecretKey = stripeSecret.value() || process.env.STRIPE_SECRET_KEY;
 
     console.log('🔑 Stripe Key Check:', {
       hasEnvVar: !!stripeSecretKey,
@@ -304,7 +309,7 @@ export function calculateAttendeePrice(
  * attendees, it will only charge for unpaid attendees.
  */
 export const createPaymentIntent = onCall(
-  { region: 'us-east1' },
+  { region: 'us-east1', secrets: [stripeSecret] },
   async (
     request: CallableRequest<CreatePaymentIntentRequest>
   ): Promise<CreatePaymentIntentResponse> => {
@@ -441,6 +446,9 @@ export const createPaymentIntent = onCall(
         {
           amount: totalAmount,
           currency,
+          automatic_payment_methods: {
+            enabled: true,
+          },
           metadata: {
             eventId,
             userId,
@@ -530,7 +538,7 @@ export const createPaymentIntent = onCall(
  * 4. Handles payment failures
  */
 export const stripeWebhook = onRequest(
-  { region: 'us-east1' },
+  { region: 'us-east1', secrets: [stripeSecret, stripeWebhookSecret] },
   async (req, res) => {
     const sig = req.headers['stripe-signature'];
 
@@ -540,7 +548,7 @@ export const stripeWebhook = onRequest(
       return;
     }
 
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    const webhookSecret = stripeWebhookSecret.value() || process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
       console.error('❌ STRIPE_WEBHOOK_SECRET not configured');
       res.status(500).send('Webhook secret not configured');

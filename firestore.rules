@@ -372,8 +372,11 @@ service cloud.firestore {
         ));
       
       // Enhanced create/update/delete permissions
-      allow create: if isSignedIn() && 
-        (isAdmin() || (isMember() && isApprovedUser())) && 
+      allow create: if isSignedIn() &&
+        // Standard creators: admins or approved members
+        (isAdmin() || (isMember() && isApprovedUser()) ||
+         // Allow any signed-in user to create truly_public events
+         request.resource.data.visibility == 'truly_public') &&
         request.auth.uid == request.resource.data.createdBy &&
         validEventData(request.resource.data);
       

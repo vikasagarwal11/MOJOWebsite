@@ -14,8 +14,8 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "emulators": "firebase emulators:start",
-    "deploy:dev": "npm run build:dev && firebase deploy --project momsfitnessmojo-dev",
-    "deploy:prod": "npm run build && firebase deploy --project momsfitnessmojo-65d00"
+    "deploy:dev": "npm run build:dev && firebase deploy --project dev --only hosting:momsfitnessmojo-dev,functions",
+    "deploy:prod": "npm run build && firebase deploy --project prod --only hosting:momsfitnessmojo-65d00,functions"
   },
   "dependencies": {
     "@ffprobe-installer/ffprobe": "^2.1.2",
