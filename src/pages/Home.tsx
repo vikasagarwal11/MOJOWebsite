@@ -162,8 +162,9 @@ const Home: React.FC = () => {
         } else if (media.eventLocation) {
           displaySubtitleParts.push(media.eventLocation);
         }
-        if (media.createdAt instanceof Date) {
-          displaySubtitleParts.push(formatter.format(media.createdAt));
+        const mediaDisplayDate = media.mediaDate instanceof Date ? media.mediaDate : media.createdAt;
+        if (mediaDisplayDate instanceof Date) {
+          displaySubtitleParts.push(formatter.format(mediaDisplayDate));
         }
 
         return {

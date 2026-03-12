@@ -20,7 +20,7 @@ import { v4 as uuidv4 } from 'uuid';
 const fsp = fs.promises;
 
 // Set global options for all functions - set to us-east1 to match prod bucket
-setGlobalOptions({ 
+setGlobalOptions({
   region: 'us-east1',
   timeoutSeconds: 540,
   memory: '512MiB'
@@ -33,13 +33,16 @@ const ALLOWED_CORS_ORIGINS = [
   // Primary Firebase Hosting domains (project-specific)
   'https://momsfitnessmojo-65d00.web.app',
   'https://momsfitnessmojo-65d00.firebaseapp.com',
+  // Dev environment Firebase Hosting domains
+  'https://momsfitnessmojo-dev.web.app',
+  'https://momsfitnessmojo-dev.firebaseapp.com',
   // Historical/typo variants kept for backward compatibility with older clients
   'https://momfitnessmojo.web.app',
   'https://momfitnessmojo.firebaseapp.com',
-    // Local development
-    'http://localhost:5173',
-    'http://localhost:5175',
-    'http://localhost:3000',
+  // Local development
+  'http://localhost:5173',
+  'http://localhost:5175',
+  'http://localhost:3000',
 ];
 
 function wrapWithOriginGuard<T, R>(fn: (request: CallableRequest<T>) => R | Promise<R>) {
@@ -64,7 +67,7 @@ export function onCallWithCors<T = any, R = any>(
   handler?: (request: CallableRequest<T>) => R | Promise<R>
 ) {
   if (typeof optsOrHandler === 'function') {
-    return onCall({}, wrapWithOriginGuard(optsOrHandler));
+    return onCall({ cors: ALLOWED_CORS_ORIGINS }, wrapWithOriginGuard(optsOrHandler));
   }
   const opts: CallableOptions = optsOrHandler || {};
   if (!handler) {
@@ -72,7 +75,7 @@ export function onCallWithCors<T = any, R = any>(
   }
   const merged: CallableOptions = {
     ...opts,
-    cors: opts.cors ?? ALLOWED_CORS_ORIGINS,
+    cors: ALLOWED_CORS_ORIGINS,
   };
   return onCall(merged, wrapWithOriginGuard(handler));
 }
@@ -132,15 +135,15 @@ export const onAttendeeCancellation = onDocumentWritten(
     try {
       const beforeData = event.data?.before?.data();
       const afterData = event.data?.after?.data();
-      
+
       // Check if this is a cancellation (going/not-going → waitlisted or going → not-going)
-      const isGoingToWaitlist = afterData?.rsvpStatus === 'waitlisted' && 
-                               beforeData?.rsvpStatus === 'going';
-      const isGoingToNotGoing = afterData?.rsvpStatus === 'not-going' && 
-                               beforeData?.rsvpStatus === 'going';
-      const isWaitlistToNotGoing = afterData?.rsvpStatus === 'not-going' && 
-                                   beforeData?.rsvpStatus === 'waitlisted';
-      
+      const isGoingToWaitlist = afterData?.rsvpStatus === 'waitlisted' &&
+        beforeData?.rsvpStatus === 'going';
+      const isGoingToNotGoing = afterData?.rsvpStatus === 'not-going' &&
+        beforeData?.rsvpStatus === 'going';
+      const isWaitlistToNotGoing = afterData?.rsvpStatus === 'not-going' &&
+        beforeData?.rsvpStatus === 'waitlisted';
+
       // Trigger auto-promotion if someone left or cancelled
       // Trigger promotions when a primary seat frees up: going->not-going, going->waitlisted, or deletion of a going primary
       const isDeletion = !event.data?.after?.exists && !!beforeData;
@@ -153,18 +156,18 @@ export const onAttendeeCancellation = onDocumentWritten(
         const eventId = event.params.eventId;
         console.log(`🚀 Attendee cancellation detected: ${afterData?.name} → ${afterData?.rsvpStatus}`);
         console.log(`🔄 Starting auto-promotion for event: ${eventId}`);
-        
+
         // Call our auto-promotion service
         try {
           // Import the auto-promotion service
           const { triggerAutomaticPromotions } = await import('./autoPromotionService');
-          
+
           const promotionResult = await triggerAutomaticPromotions(eventId);
-          
+
           if (promotionResult.success && promotionResult.promotionsCount > 0) {
             console.log(`✅ Auto-promotion completed: ${promotionResult.promotionsCount} users promoted`);
             console.log(`👥 Promoted users:`, promotionResult.promotedUsers.map(u => u.message));
-            
+
             // TODO: Send notifications to promoted users
             await sendPromotionNotifications(promotionResult.promotedUsers, eventId);
           } else {
@@ -174,12 +177,12 @@ export const onAttendeeCancellation = onDocumentWritten(
           console.error('🚨 Auto-promotion failed:', promoError);
         }
       }
-      
+
       // Check if someone joined waitlist (trigger manual admin notifications)
       if (isGoingToWaitlist) {
         const eventId = event.params.eventId;
         console.log(`📝 New waitlist join: ${afterData?.name} at position ${afterData?.waitlistPosition}`);
-        
+
         // Log for admin monitoring (could lead to admin notifications)
         await db.collection('waitlist_activities').add({
           eventId: eventId,
@@ -191,7 +194,7 @@ export const onAttendeeCancellation = onDocumentWritten(
           timestamp: new Date()
         });
       }
-      
+
     } catch (error) {
       console.error('🚨 Error in attendee cancellation handler:', error);
     }
@@ -298,23 +301,23 @@ const sendPromotionNotifications = async (
 ): Promise<void> => {
   try {
     console.log(`📱 Sending notifications to ${promotedUsers.length} promoted users`);
-    
+
     // Get event data for notification
     const eventDoc = await db.collection('events').doc(eventId).get();
     const eventData = eventDoc.exists ? eventDoc.data() : null;
     const eventTitle = eventData?.title || 'Event';
-    
+
     for (const user of promotedUsers) {
       try {
         // Get user data for phone number and preferences
         const userDoc = await db.collection('users').doc(user.userId).get();
         const userData = userDoc.exists ? userDoc.data() : null;
-        
+
         if (!userData) {
           console.warn(`⚠️ User data not found for ${user.userId}`);
           continue;
         }
-        
+
         // 1. Create in-app notification
         await db.collection('notifications').add({
           userId: user.userId,
@@ -330,7 +333,7 @@ const sendPromotionNotifications = async (
             promotionTime: new Date().toISOString()
           }
         });
-        
+
         // 2. Send push notification (if enabled)
         const fcmToken = userData?.fcmToken;
         const pushEnabled = userData?.notificationPreferences?.pushEnabled !== false;
@@ -354,12 +357,12 @@ const sendPromotionNotifications = async (
             console.warn(`⚠️ Push notification failed for ${user.userId}:`, pushError);
           }
         }
-        
+
         // 3. Send SMS immediately (time-sensitive - user needs to RSVP within 24h)
         const phoneNumber = userData?.phoneNumber;
         const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
         await sendWaitlistPromotionSMS(user.userId, phoneNumber || '', eventTitle, smsEnabled);
-        
+
         // 4. Mark for popup alert on next visit
         await db.collection('popup_alerts').add({
           userId: user.userId,
@@ -370,13 +373,13 @@ const sendPromotionNotifications = async (
           createdAt: FieldValue.serverTimestamp(),
           acknowledged: false
         });
-        
+
         console.log(`✅ All notifications sent for ${user.name} (${user.userId})`);
       } catch (userError) {
         console.error(`❌ Failed to send notifications for ${user.userId}:`, userError);
       }
     }
-    
+
     console.log(`✅ Promotion notifications processed for ${promotedUsers.length} users`);
   } catch (error) {
     console.error('🚨 Error sending promotion notifications:', error);
@@ -451,7 +454,7 @@ function getEncodingPreset(videoInfo: {
   frameRate: number;
 }): EncodingPreset {
   const { duration, width, height, fileSize, frameRate } = videoInfo;
-  
+
   // Short videos (<30s): Prioritize speed
   if (duration && duration < 30) {
     console.log(`⚡ [SMART] Short video detected (${duration}s), using ultrafast preset for speed`);
@@ -462,7 +465,7 @@ function getEncodingPreset(videoInfo: {
       priority: 'speed'
     };
   }
-  
+
   // Very short videos (<10s): Even faster
   if (duration && duration < 10) {
     console.log(`⚡ [SMART] Very short video detected (${duration}s), using ultrafast preset`);
@@ -473,11 +476,11 @@ function getEncodingPreset(videoInfo: {
       priority: 'speed'
     };
   }
-  
+
   // High resolution (>1080p): Prioritize quality
   const isHighRes = (width && width > 1920) || (height && height > 1080);
   const is4K = (width && width >= 3840) || (height && height >= 2160);
-  
+
   if (is4K) {
     console.log(`🎬 [SMART] 4K video detected (${width}x${height}), using medium preset for quality`);
     return {
@@ -487,7 +490,7 @@ function getEncodingPreset(videoInfo: {
       priority: 'quality'
     };
   }
-  
+
   if (isHighRes) {
     console.log(`🎬 [SMART] High-res video detected (${width}x${height}), using balanced preset`);
     return {
@@ -497,7 +500,7 @@ function getEncodingPreset(videoInfo: {
       priority: 'quality'
     };
   }
-  
+
   // High frame rate (>50fps): Use faster preset (frame rate adds encoding complexity)
   if (frameRate > 50) {
     console.log(`📹 [SMART] High frame rate detected (${frameRate}fps), using fast preset`);
@@ -508,7 +511,7 @@ function getEncodingPreset(videoInfo: {
       priority: 'balanced'
     };
   }
-  
+
   // Large files (>100MB): Use faster preset to reduce processing time
   if (fileSize > 100 * 1024 * 1024) {
     console.log(`📦 [SMART] Large file detected (${(fileSize / 1024 / 1024).toFixed(1)}MB), using fast preset`);
@@ -519,7 +522,7 @@ function getEncodingPreset(videoInfo: {
       priority: 'balanced'
     };
   }
-  
+
   // Standard: Balanced settings
   console.log(`⚙️ [SMART] Standard video, using balanced preset`);
   return {
@@ -795,20 +798,20 @@ export const onPostCommentWrite = onDocumentWritten("posts/{postId}/comments/{co
 export const onCommentReplyWrite = onDocumentWritten("posts/{postId}/comments/{commentId}", async (event) => {
   const beforeData = event.data?.before.exists ? event.data?.before.data() : null;
   const afterData = event.data?.after.exists ? event.data?.after.data() : null;
-  
+
   // Only process if this is a reply (has parentCommentId)
   if (!afterData?.parentCommentId) return;
-  
+
   const parentCommentId = afterData.parentCommentId;
   const wasReply = beforeData?.parentCommentId === parentCommentId;
   const isReply = afterData?.parentCommentId === parentCommentId;
-  
+
   let delta = 0;
   if (isReply && !wasReply) delta = 1;  // New reply added
   if (!isReply && wasReply) delta = -1; // Reply removed
-  
+
   if (delta === 0) return;
-  
+
   try {
     await db.doc(`posts/${event.params.postId}/comments/${parentCommentId}`)
       .update({ replyCount: FieldValue.increment(delta) });
@@ -824,7 +827,7 @@ export const onCommentLikeWrite = onDocumentWritten("posts/{postId}/comments/{co
   const afterExists = event.data?.after.exists || false;
   const delta = afterExists && !beforeExists ? 1 : !afterExists && beforeExists ? -1 : 0;
   if (delta === 0) return;
-  
+
   try {
     await db.doc(`posts/${event.params.postId}/comments/${event.params.commentId}`)
       .update({ likesCount: FieldValue.increment(delta) });
@@ -838,20 +841,20 @@ export const onCommentLikeWrite = onDocumentWritten("posts/{postId}/comments/{co
 export const onCommentReactionWrite = onDocumentWritten("posts/{postId}/comments/{commentId}/reactions/{userId_emoji}", async (event) => {
   const beforeExists = event.data?.before.exists || false;
   const afterExists = event.data?.after.exists || false;
-  
+
   if (beforeExists === afterExists) return; // No change
-  
+
   const commentRef = db.doc(`posts/${event.params.postId}/comments/${event.params.commentId}`);
-  
+
   try {
     // Get current reaction summary
     const commentDoc = await commentRef.get();
     const currentSummary = commentDoc.data()?.reactionSummary || {};
-    
+
     // Extract emoji from compound key (userId_emoji)
     const emoji = event.params.userId_emoji.split('_').pop();
     if (!emoji) return;
-    
+
     if (afterExists && !beforeExists) {
       // Reaction added
       currentSummary[emoji] = (currentSummary[emoji] || 0) + 1;
@@ -862,7 +865,7 @@ export const onCommentReactionWrite = onDocumentWritten("posts/{postId}/comments
         delete currentSummary[emoji];
       }
     }
-    
+
     await commentRef.update({ reactionSummary: currentSummary });
     console.log(`✅ Comment reaction summary updated for ${event.params.commentId}:`, currentSummary);
   } catch (error) {
@@ -875,20 +878,20 @@ export const onCommentReactionWrite = onDocumentWritten("posts/{postId}/comments
 export const onMediaCommentReplyWrite = onDocumentWritten("media/{mediaId}/comments/{commentId}", async (event) => {
   const beforeData = event.data?.before.exists ? event.data?.before.data() : null;
   const afterData = event.data?.after.exists ? event.data?.after.data() : null;
-  
+
   // Only process if this is a reply (has parentCommentId)
   if (!afterData?.parentCommentId) return;
-  
+
   const parentCommentId = afterData.parentCommentId;
   const wasReply = beforeData?.parentCommentId === parentCommentId;
   const isReply = afterData?.parentCommentId === parentCommentId;
-  
+
   let delta = 0;
   if (isReply && !wasReply) delta = 1;  // New reply added
   if (!isReply && wasReply) delta = -1; // Reply removed
-  
+
   if (delta === 0) return;
-  
+
   try {
     await db.doc(`media/${event.params.mediaId}/comments/${parentCommentId}`)
       .update({ replyCount: FieldValue.increment(delta) });
@@ -904,7 +907,7 @@ export const onMediaCommentLikeWrite = onDocumentWritten("media/{mediaId}/commen
   const afterExists = event.data?.after.exists || false;
   const delta = afterExists && !beforeExists ? 1 : !afterExists && beforeExists ? -1 : 0;
   if (delta === 0) return;
-  
+
   try {
     await db.doc(`media/${event.params.mediaId}/comments/${event.params.commentId}`)
       .update({ likesCount: FieldValue.increment(delta) });
@@ -918,20 +921,20 @@ export const onMediaCommentLikeWrite = onDocumentWritten("media/{mediaId}/commen
 export const onMediaCommentReactionWrite = onDocumentWritten("media/{mediaId}/comments/{commentId}/reactions/{userId_emoji}", async (event) => {
   const beforeExists = event.data?.before.exists || false;
   const afterExists = event.data?.after.exists || false;
-  
+
   if (beforeExists === afterExists) return; // No change
-  
+
   const commentRef = db.doc(`media/${event.params.mediaId}/comments/${event.params.commentId}`);
-  
+
   try {
     // Get current reaction summary
     const commentDoc = await commentRef.get();
     const currentSummary = commentDoc.data()?.reactionSummary || {};
-    
+
     // Extract emoji from compound key (userId_emoji)
     const emoji = event.params.userId_emoji.split('_').pop();
     if (!emoji) return;
-    
+
     if (afterExists && !beforeExists) {
       // Reaction added
       currentSummary[emoji] = (currentSummary[emoji] || 0) + 1;
@@ -942,7 +945,7 @@ export const onMediaCommentReactionWrite = onDocumentWritten("media/{mediaId}/co
         delete currentSummary[emoji];
       }
     }
-    
+
     await commentRef.update({ reactionSummary: currentSummary });
     console.log(`✅ Media comment reaction summary updated for ${event.params.commentId}:`, currentSummary);
   } catch (error) {
@@ -968,12 +971,12 @@ export const onRsvpWrite = onDocumentWritten("events/{eventId}/rsvps/{userId}", 
 export const onEventTeaserSync = onDocumentWritten("events/{eventId}", async (event) => {
   const teaserRef = db.doc(`event_teasers/${event.params.eventId}`);
   if (!event.data?.after.exists) {
-    await teaserRef.delete().catch(() => {});
+    await teaserRef.delete().catch(() => { });
     return;
   }
   const data = event.data.after.data()!;
-    // Check if post is public (hybrid approach for backward compatibility)
-    const isPublic = data.visibility === 'public' || !!data.public;
+  // Check if post is public (hybrid approach for backward compatibility)
+  const isPublic = data.visibility === 'public' || !!data.public;
   const raw = data.startAt;
   const startAtDate: Date =
     raw instanceof Timestamp ? raw.toDate() :
@@ -981,7 +984,7 @@ export const onEventTeaserSync = onDocumentWritten("events/{eventId}", async (ev
         new Date(raw);
   const isPast = startAtDate.getTime() < Date.now();
   if (isPublic || isPast) {
-    await teaserRef.delete().catch(() => {});
+    await teaserRef.delete().catch(() => { });
   } else {
     await teaserRef.set({
       title: data.title || "Upcoming event",
@@ -996,12 +999,12 @@ export const onEventCreatedNotification = onDocumentCreated("events/{eventId}", 
   try {
     const eventId = event.params.eventId;
     const eventData = event.data?.data();
-    
+
     if (!eventData) {
       console.log(`⏭️ No event data found for ${eventId}`);
       return;
     }
-    
+
     // Send SMS for public and members events; skip private events
     const visibility = String(eventData.visibility || '').toLowerCase();
     const shouldNotifyCommunity =
@@ -1013,14 +1016,14 @@ export const onEventCreatedNotification = onDocumentCreated("events/{eventId}", 
       console.log(`⏭️ Event ${eventId} visibility="${visibility || 'unknown'}", skipping community SMS notification`);
       return;
     }
-    
+
     const eventTitle = eventData.title || 'New Event';
     const startAt = eventData.startAt;
-    const startAtDate: Date = 
+    const startAtDate: Date =
       startAt instanceof Timestamp ? startAt.toDate() :
         typeof startAt?.toDate === "function" ? startAt.toDate() :
           new Date(startAt);
-    
+
     // Format date for SMS (e.g., "Jan 15, 2024 at 10:00 AM")
     const eventDate = startAtDate.toLocaleDateString('en-US', {
       month: 'short',
@@ -1030,17 +1033,17 @@ export const onEventCreatedNotification = onDocumentCreated("events/{eventId}", 
       minute: '2-digit',
       hour12: true
     });
-    
+
     // Generate event link (adjust domain based on environment)
     const projectId = process.env.GCLOUD_PROJECT || 'momsfitnessmojo-65d00';
     const isDev = projectId.includes('dev');
-    const domain = isDev 
+    const domain = isDev
       ? 'https://momsfitnessmojo-dev.web.app'
       : 'https://momsfitnessmojo.com';
     const eventLink = `${domain}/events/${eventId}`;
-    
+
     console.log(`📱 Sending SMS notifications for new event: ${eventTitle}`);
-    
+
     // Send SMS to all approved users
     const result = await sendEventCreatedSMS(
       eventId,
@@ -1048,7 +1051,7 @@ export const onEventCreatedNotification = onDocumentCreated("events/{eventId}", 
       eventDate,
       eventLink
     );
-    
+
     // Log results to Firestore for tracking
     await db.collection('sms_broadcasts').add({
       eventId,
@@ -1060,13 +1063,13 @@ export const onEventCreatedNotification = onDocumentCreated("events/{eventId}", 
       createdAt: FieldValue.serverTimestamp(),
       success: result.success
     });
-    
+
     console.log(`✅ Event SMS broadcast completed:`, {
       eventId,
       sentCount: result.sentCount,
       failedCount: result.failedCount
     });
-    
+
   } catch (error) {
     console.error('❌ Error in event creation SMS notification:', error);
   }
@@ -1076,31 +1079,31 @@ export const onEventCreatedNotification = onDocumentCreated("events/{eventId}", 
 // ───────────────── EVENTS: RSVP notifications (New Attendee System) ─────────────────
 export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attendeeId}", async (event) => {
   console.log(`🔍 notifyRsvp: Function triggered for eventId=${event.params.eventId}, attendeeId=${event.params.attendeeId}`);
-  
+
   const beforeData = event.data?.before.exists ? event.data?.before.data() : null;
   const afterData = event.data?.after.exists ? event.data?.after.data() : null;
-  
+
   console.log(`🔍 notifyRsvp: beforeData=`, beforeData);
   console.log(`🔍 notifyRsvp: afterData=`, afterData);
 
   const wasGoing = beforeData?.rsvpStatus === "going";
   const isGoing = afterData?.rsvpStatus === "going";
-  
+
   console.log(`🔍 notifyRsvp triggered: wasGoing=${wasGoing}, isGoing=${isGoing}, eventId=${event.params.eventId}, attendeeId=${event.params.attendeeId}`);
-  
+
   // Only trigger notification when someone changes TO "going" status
   // (was not going before, but is going now)
   if (!isGoing || wasGoing) {
     console.log(`🔍 notifyRsvp: Skipping notification (wasGoing=${wasGoing}, isGoing=${isGoing})`);
     return;
   }
-  
+
   console.log(`🔍 notifyRsvp: Proceeding with notification creation`);
 
   try {
     const eventId = event.params.eventId;
     const attendeeId = event.params.attendeeId;
-    
+
     // Get attendee data to find the user ID
     const attendeeData = afterData;
     const userId = attendeeData?.userId;
@@ -1116,7 +1119,7 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attende
     const eventData = eventDoc.data()!;
     const eventCreatorId = eventData.createdBy;
     console.log(`🔍 notifyRsvp: eventCreatorId:`, eventCreatorId, `userId:`, userId);
-    
+
     // Allow notifications for everyone, including event creators
     // Event creators should also receive notifications for their own events
 
@@ -1126,13 +1129,13 @@ export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attende
       const userData = userDoc.data()!;
       userName = userData.displayName || userData.firstName || userData.lastName || 'Member';
     }
-    
+
     // Get attendee name for more specific notification
     const attendeeName = attendeeData?.name || userName;
-    
+
     // Create appropriate message based on whether it's the event creator or not
     const isEventCreator = eventCreatorId === userId;
-    const notificationMessage = isEventCreator 
+    const notificationMessage = isEventCreator
       ? `You RSVP'd for ${eventData.title}!`
       : `${attendeeName} is going to ${eventData.title}!`;
 
@@ -1185,7 +1188,7 @@ export const onRsvpNotification = notifyRsvp;
 export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async (event) => {
   const mediaId = event.params.mediaId;
   const deletedData = event.data?.data();
-  
+
   if (!deletedData) {
     console.log(`🗑️ [CLOUD] No data found for deleted media document: ${mediaId}`);
     return;
@@ -1204,27 +1207,27 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
   // Use the bucket from environment variable or default
   const bucketName = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
   const bucket = getStorage().bucket(bucketName);
-  
+
   // Debug logging
   console.log('🔧 STORAGE_BUCKET env:', process.env.STORAGE_BUCKET || 'undefined');
   console.log('🔧 Final bucket used:', bucketName);
-  const filesToDelete: Array<{path: string, type: string, isFolder?: boolean}> = [];
-  
+  const filesToDelete: Array<{ path: string, type: string, isFolder?: boolean }> = [];
+
   // 1. Original file
   if (deletedData.filePath) {
     filesToDelete.push({ path: deletedData.filePath, type: 'original' });
   }
-  
+
   // 2. Custom thumbnail  
   if (deletedData.thumbnailPath) {
     filesToDelete.push({ path: deletedData.thumbnailPath, type: 'thumbnail' });
   }
-  
+
   // 3. Rotated image
   if (deletedData.rotatedImagePath) {
     filesToDelete.push({ path: deletedData.rotatedImagePath, type: 'rotated' });
   }
-  
+
   // 4. HLS segments for videos (delete entire HLS folder)
   if (deletedData.type === 'video' && deletedData.filePath) {
     const folderPath = deletedData.filePath.substring(0, deletedData.filePath.lastIndexOf('/'));
@@ -1238,14 +1241,14 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
       filesToDelete.push({ path: deletedData.sources.hls, type: 'hls-playlist' });
     }
   }
-  
+
   // 5. Extension thumbnails (cleanup all formats in correct location)
   if (deletedData.filePath && (deletedData.type === 'image' || deletedData.type === 'video')) {
     const fileName = deletedData.filePath.split('/').pop(); // Get just filename
     const folderPath = deletedData.filePath.substring(0, deletedData.filePath.lastIndexOf('/'));
     const baseName = fileName.substring(0, fileName.lastIndexOf('.')); // Remove extension
     const originalExt = fileName.substring(fileName.lastIndexOf('.') + 1); // Get original extension
-    
+
     console.log(`🗑️ [CLOUD] [DEBUG] Filename parsing:`, {
       fullPath: deletedData.filePath,
       fileName: fileName,
@@ -1253,39 +1256,39 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
       originalExt: originalExt,
       folderPath: folderPath
     });
-    
+
     // Extensions create: original format + other formats for all sizes
     // Pattern: baseName_{size}.originalExt + baseName_{size}.format
     // Sizes: 400x400, 800x800, 1200x1200
     const thumbnailSizes = ['400x400', '800x800', '1200x1200'];
     const extensionFormats = [originalExt.toLowerCase(), 'webp', 'jpeg', 'png', 'avif', 'gif', 'tiff'];
     const uniqueFormats = [...new Set(extensionFormats)]; // Remove duplicates
-    
+
     // Delete thumbnails for all sizes and formats
     thumbnailSizes.forEach(size => {
       uniqueFormats.forEach(format => {
         const thumbnailPath = `${folderPath}/thumbnails/${baseName}_${size}.${format}`;
         console.log(`🗑️ [CLOUD] [DEBUG] Generated thumbnail path:`, thumbnailPath);
-        filesToDelete.push({ 
-          path: thumbnailPath, 
-          type: `extension-thumbnail-${size}-${format}` 
+        filesToDelete.push({
+          path: thumbnailPath,
+          type: `extension-thumbnail-${size}-${format}`
         });
       });
     });
-    
+
     // Also attempt to delete the thumbnails folder itself (after individual files)
-    filesToDelete.push({ 
-      path: `${folderPath}/thumbnails/`, 
+    filesToDelete.push({
+      path: `${folderPath}/thumbnails/`,
       type: 'thumbnails-folder',
-      isFolder: true 
+      isFolder: true
     });
   }
 
   console.log(`🗑️ [CLOUD] Files to delete:`, filesToDelete);
-  
+
   let deletedCount = 0;
   let failedCount = 0;
-  
+
   for (const file of filesToDelete) {
     try {
       if (file.isFolder) {
@@ -1293,7 +1296,7 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
         console.log(`🗑️ [CLOUD] [DEBUG] Deleting folder: ${file.path}`);
         const [files] = await bucket.getFiles({ prefix: file.path });
         if (files.length > 0) {
-          await Promise.all(files.map(f => f.delete().catch(() => {})));
+          await Promise.all(files.map(f => f.delete().catch(() => { })));
           console.log(`🗑️ [CLOUD] ✅ Deleted ${file.type}: ${files.length} files in ${file.path}`);
           deletedCount += files.length;
         } else {
@@ -1315,7 +1318,7 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
       }
     }
   }
-  
+
   console.log(`🗑️ [CLOUD] Storage cleanup complete: ${deletedCount} deleted, ${failedCount} failed`);
 });
 
@@ -1350,14 +1353,14 @@ async function enqueueQualityTask(
   const project = process.env.GCLOUD_PROJECT || 'momsfitnessmojo-65d00';
   const location = 'us-central1'; // Cloud Tasks queue location
   const queue = 'video-quality-generation';
-  
+
   const queuePath = getTasksClient().queuePath(project, location, queue);
-  
+
   // Get the function URL for processQualityLevel
   // In production, this will be the deployed function URL
-  const functionUrl = process.env.PROCESS_QUALITY_FUNCTION_URL || 
+  const functionUrl = process.env.PROCESS_QUALITY_FUNCTION_URL ||
     `https://us-east1-${project}.cloudfunctions.net/processQualityLevel`;
-  
+
   const task = {
     httpRequest: {
       httpMethod: 'POST' as const,
@@ -1368,13 +1371,13 @@ async function enqueueQualityTask(
       body: Buffer.from(JSON.stringify(taskPayload)).toString('base64'),
     },
   };
-  
+
   try {
     const [response] = await getTasksClient().createTask({
       parent: queuePath,
       task: task,
     });
-    
+
     console.log(`✅ [CLOUD TASKS] Enqueued task for ${qualityLevel}: ${response.name}`);
   } catch (error) {
     console.error(`❌ [CLOUD TASKS] Failed to enqueue task for ${qualityLevel}:`, error);
@@ -1384,7 +1387,7 @@ async function enqueueQualityTask(
 
 // ───────────────── MEDIA: FFmpeg + Manifest Rewrite ─────────────────
 
-export const onMediaFileFinalize = onObjectFinalized({ 
+export const onMediaFileFinalize = onObjectFinalized({
   region: 'us-east1',
   memory: '8GiB', // Maximum memory for fastest video processing
   timeoutSeconds: 539, // Max allowed for event-triggered functions (slightly under 9 minutes to avoid API limit)
@@ -1392,790 +1395,570 @@ export const onMediaFileFinalize = onObjectFinalized({
   maxInstances: 20 // Handle spike days with many concurrent uploads (default: 80)
 }, async (event) => {
   const object = event.data;
-    console.log('🎬 onMediaFileFinalize triggered for:', object.name);
-    console.log('Bucket:', object.bucket);
-    console.log('Content type:', object.contentType);
-    console.log('Size:', object.size);
+  console.log('🎬 onMediaFileFinalize triggered for:', object.name);
+  console.log('Bucket:', object.bucket);
+  console.log('Content type:', object.contentType);
+  console.log('Size:', object.size);
 
-    const name = object.name || '';
-    const ctype = object.contentType || '';
+  const name = object.name || '';
+  const ctype = object.contentType || '';
 
-    // Only process files from our target bucket (use bucket from event if env var not set)
-    const expectedBucket = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
-    if (object.bucket !== expectedBucket) {
-      console.log(`⏭️ Skipping file from bucket: ${object.bucket}, expected: ${expectedBucket}`);
+  // Only process files from our target bucket (use bucket from event if env var not set)
+  const expectedBucket = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
+  if (object.bucket !== expectedBucket) {
+    console.log(`⏭️ Skipping file from bucket: ${object.bucket}, expected: ${expectedBucket}`);
+    return;
+  }
+
+  // Skip generated outputs
+  if (!name.startsWith('media/')) {
+    console.log('⏭️ Skipping file not in media/ folder:', name);
+    return;
+  }
+
+  // Handle extension-generated thumbnails - update Firestore when ready
+  // Firebase Extensions create thumbnails in format: .../thumbnails/filename_{size}.ext
+  // Sizes: 400x400, 800x800, 1200x1200
+  if (name.includes('/thumbnails/')) {
+    console.log('🖼️ [THUMBNAIL FINALIZE] Thumbnail finalized:', name);
+
+    // Extract thumbnail size and parent directory
+    let thumbnailSize: 'small' | 'medium' | 'large' | null = null;
+    if (name.includes('_400x400.')) {
+      thumbnailSize = 'small';
+    } else if (name.includes('_800x800.')) {
+      thumbnailSize = 'medium';
+    } else if (name.includes('_1200x1200.')) {
+      thumbnailSize = 'large';
+    }
+
+    if (!thumbnailSize) {
+      console.log('⏭️ Skipping thumbnail with unknown size:', name);
       return;
     }
 
-    // Skip generated outputs
-    if (!name.startsWith('media/')) {
-      console.log('⏭️ Skipping file not in media/ folder:', name);
+    // Extract parent directory (media/{userId}/{batchId})
+    // Thumbnail path: media/{userId}/{batchId}/thumbnails/{filename}_{size}.ext
+    // Parent dir: media/{userId}/{batchId}
+    const thumbnailsIndex = name.indexOf('/thumbnails/');
+    if (thumbnailsIndex === -1) {
+      console.log('⏭️ Skipping thumbnail with invalid path:', name);
       return;
     }
-    
-    // Handle extension-generated thumbnails - update Firestore when ready
-    // Firebase Extensions create thumbnails in format: .../thumbnails/filename_{size}.ext
-    // Sizes: 400x400, 800x800, 1200x1200
-    if (name.includes('/thumbnails/')) {
-      console.log('🖼️ [THUMBNAIL FINALIZE] Thumbnail finalized:', name);
-      
-      // Extract thumbnail size and parent directory
-      let thumbnailSize: 'small' | 'medium' | 'large' | null = null;
-      if (name.includes('_400x400.')) {
-        thumbnailSize = 'small';
-      } else if (name.includes('_800x800.')) {
-        thumbnailSize = 'medium';
-      } else if (name.includes('_1200x1200.')) {
-        thumbnailSize = 'large';
-      }
-      
-      if (!thumbnailSize) {
-        console.log('⏭️ Skipping thumbnail with unknown size:', name);
-        return;
-      }
-      
-      // Extract parent directory (media/{userId}/{batchId})
-      // Thumbnail path: media/{userId}/{batchId}/thumbnails/{filename}_{size}.ext
-      // Parent dir: media/{userId}/{batchId}
-      const thumbnailsIndex = name.indexOf('/thumbnails/');
-      if (thumbnailsIndex === -1) {
-        console.log('⏭️ Skipping thumbnail with invalid path:', name);
-        return;
-      }
-      
-      const parentDir = name.substring(0, thumbnailsIndex);
-      console.log('🔍 [THUMBNAIL] Parent directory:', parentDir);
-      
-      // Find the media document by storageFolder (with fallback to filePath)
-      // Try multiple path formats to handle edge cases
-      const searchFolderWithSlash = parentDir.endsWith('/') ? parentDir : `${parentDir}/`;
-      const searchFolderWithoutSlash = parentDir.endsWith('/') ? parentDir.slice(0, -1) : parentDir;
-      
-      let mediaSnapshot = await db.collection('media')
-        .where('storageFolder', '==', searchFolderWithSlash)
+
+    const parentDir = name.substring(0, thumbnailsIndex);
+    console.log('🔍 [THUMBNAIL] Parent directory:', parentDir);
+
+    // Find the media document by storageFolder (with fallback to filePath)
+    // Try multiple path formats to handle edge cases
+    const searchFolderWithSlash = parentDir.endsWith('/') ? parentDir : `${parentDir}/`;
+    const searchFolderWithoutSlash = parentDir.endsWith('/') ? parentDir.slice(0, -1) : parentDir;
+
+    let mediaSnapshot = await db.collection('media')
+      .where('storageFolder', '==', searchFolderWithSlash)
+      .limit(1)
+      .get();
+
+    // Try without trailing slash if first attempt failed
+    if (mediaSnapshot.empty) {
+      mediaSnapshot = await db.collection('media')
+        .where('storageFolder', '==', searchFolderWithoutSlash)
         .limit(1)
         .get();
-      
-      // Try without trailing slash if first attempt failed
+    }
+
+    // Fallback: If no match by storageFolder, try to find by filePath pattern
+    // Extract the original filename from thumbnail path (remove _size suffix)
+    if (mediaSnapshot.empty) {
+      console.log('⚠️ [THUMBNAIL] No match by storageFolder, trying fallback query...');
+
+      // Extract original filename from thumbnail: thumbnails/image_800x800.jpg -> image.jpg
+      const thumbnailFileName = name.substring(name.lastIndexOf('/') + 1);
+      const originalFileName = thumbnailFileName
+        .replace(/_400x400\./, '.')
+        .replace(/_800x800\./, '.')
+        .replace(/_1200x1200\./, '.');
+
+      // Try to find by filePath pattern (any file in the same folder)
+      const filePathPattern = `${parentDir}/${originalFileName}`;
+      mediaSnapshot = await db.collection('media')
+        .where('filePath', '==', filePathPattern)
+        .limit(1)
+        .get();
+
+      // If still no match, try to find ANY document in the same folder
       if (mediaSnapshot.empty) {
-        mediaSnapshot = await db.collection('media')
-          .where('storageFolder', '==', searchFolderWithoutSlash)
-          .limit(1)
+        console.log('⚠️ [THUMBNAIL] No match by filePath, trying any document in folder...');
+        // Get recent documents and filter by folder (fallback for when query fails)
+        // Note: This is a fallback, so we get a reasonable number of recent docs
+        const allDocs = await db.collection('media')
+          .orderBy('createdAt', 'desc')
+          .limit(200) // Increased from 100 to catch more recent uploads
           .get();
-      }
-      
-      // Fallback: If no match by storageFolder, try to find by filePath pattern
-      // Extract the original filename from thumbnail path (remove _size suffix)
-      if (mediaSnapshot.empty) {
-        console.log('⚠️ [THUMBNAIL] No match by storageFolder, trying fallback query...');
-        
-        // Extract original filename from thumbnail: thumbnails/image_800x800.jpg -> image.jpg
-        const thumbnailFileName = name.substring(name.lastIndexOf('/') + 1);
-        const originalFileName = thumbnailFileName
-          .replace(/_400x400\./, '.')
-          .replace(/_800x800\./, '.')
-          .replace(/_1200x1200\./, '.');
-        
-        // Try to find by filePath pattern (any file in the same folder)
-        const filePathPattern = `${parentDir}/${originalFileName}`;
-        mediaSnapshot = await db.collection('media')
-          .where('filePath', '==', filePathPattern)
-          .limit(1)
-          .get();
-        
-        // If still no match, try to find ANY document in the same folder
-        if (mediaSnapshot.empty) {
-          console.log('⚠️ [THUMBNAIL] No match by filePath, trying any document in folder...');
-          // Get recent documents and filter by folder (fallback for when query fails)
-          // Note: This is a fallback, so we get a reasonable number of recent docs
-          const allDocs = await db.collection('media')
-            .orderBy('createdAt', 'desc')
-            .limit(200) // Increased from 100 to catch more recent uploads
-            .get();
-          
-          const matchingDoc = allDocs.docs.find(doc => {
-            const docFolder = doc.data()?.storageFolder || '';
-            const docFilePath = doc.data()?.filePath || '';
-            // Match if storageFolder matches (with or without trailing slash) or filePath is in parentDir
-            const normalizedDocFolder = docFolder.endsWith('/') ? docFolder : `${docFolder}/`;
-            const normalizedParentDir = parentDir.endsWith('/') ? parentDir : `${parentDir}/`;
-            return normalizedDocFolder === normalizedParentDir || 
-                   docFolder === parentDir ||
-                   docFilePath.startsWith(parentDir) ||
-                   docFilePath.includes(parentDir);
-          });
-          
-          if (matchingDoc) {
-            mediaSnapshot = { docs: [matchingDoc], empty: false } as any;
-            console.log('✅ [THUMBNAIL] Found document using fallback filter');
-          }
+
+        const matchingDoc = allDocs.docs.find(doc => {
+          const docFolder = doc.data()?.storageFolder || '';
+          const docFilePath = doc.data()?.filePath || '';
+          // Match if storageFolder matches (with or without trailing slash) or filePath is in parentDir
+          const normalizedDocFolder = docFolder.endsWith('/') ? docFolder : `${docFolder}/`;
+          const normalizedParentDir = parentDir.endsWith('/') ? parentDir : `${parentDir}/`;
+          return normalizedDocFolder === normalizedParentDir ||
+            docFolder === parentDir ||
+            docFilePath.startsWith(parentDir) ||
+            docFilePath.includes(parentDir);
+        });
+
+        if (matchingDoc) {
+          mediaSnapshot = { docs: [matchingDoc], empty: false } as any;
+          console.log('✅ [THUMBNAIL] Found document using fallback filter');
         }
       }
-      
-      if (mediaSnapshot.empty) {
-        console.error('❌ [THUMBNAIL] No media document found for thumbnail after all attempts:', name);
-        console.error('❌ [THUMBNAIL] Parent directory:', parentDir);
-        console.error('❌ [THUMBNAIL] Search folder (with slash):', searchFolderWithSlash);
-        console.error('❌ [THUMBNAIL] Search folder (without slash):', searchFolderWithoutSlash);
-        // Log available documents for debugging
-        const debugDocs = await db.collection('media').orderBy('createdAt', 'desc').limit(10).get();
-        console.error('❌ [THUMBNAIL] Sample documents:', debugDocs.docs.map(d => ({
+    }
+
+    if (mediaSnapshot.empty) {
+      console.error('❌ [THUMBNAIL] No media document found for thumbnail after all attempts:', name);
+      console.error('❌ [THUMBNAIL] Parent directory:', parentDir);
+      console.error('❌ [THUMBNAIL] Search folder (with slash):', searchFolderWithSlash);
+      console.error('❌ [THUMBNAIL] Search folder (without slash):', searchFolderWithoutSlash);
+      // Log available documents for debugging
+      const debugDocs = await db.collection('media').orderBy('createdAt', 'desc').limit(10).get();
+      console.error('❌ [THUMBNAIL] Sample documents:', debugDocs.docs.map(d => ({
+        id: d.id,
+        filePath: d.data()?.filePath,
+        storageFolder: d.data()?.storageFolder,
+        createdAt: d.data()?.createdAt
+      })));
+      return;
+    }
+
+    const mediaRef = mediaSnapshot.docs[0].ref;
+    const mediaId = mediaRef.id;
+    console.log('✅ [THUMBNAIL] Found media document:', mediaId);
+
+    // Update Firestore with thumbnail status (wrapped in try/catch for safety)
+    try {
+      const thumbnailUpdate: any = {
+        [`thumbnails.${thumbnailSize}Ready`]: true,
+        [`thumbnails.${thumbnailSize}Path`]: name,
+        [`thumbnails.updatedAt`]: FieldValue.serverTimestamp()
+      };
+
+      await mediaRef.set(thumbnailUpdate, { merge: true });
+      console.log(`✅ [THUMBNAIL] Updated media document ${mediaId} with ${thumbnailSize} thumbnail ready:`, name);
+    } catch (error) {
+      // Server-side fallback: If Firestore update fails, log it but don't break
+      // The UI will continue using the original image (graceful degradation)
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`❌ [THUMBNAIL] Failed to update Firestore for ${mediaId}:`, errorMessage);
+      console.error(`❌ [THUMBNAIL] Thumbnail exists at: ${name}, but Firestore update failed`);
+      console.error(`❌ [THUMBNAIL] UI will continue using original image (graceful degradation)`);
+      // Don't throw - let the function complete successfully
+      // The original image path is still available, so nothing breaks visually
+    }
+
+    return; // Don't process thumbnails further
+  }
+
+  if (name.includes('/hls/') || name.endsWith('.m3u8') || name.endsWith('.ts')) {
+    console.log('⏭️ Skipping HLS output file:', name);
+    return;
+  }
+
+  const baseName = path.basename(name);
+  if (baseName.startsWith('thumb_') || baseName.startsWith('poster_')) {
+    console.log('⏭️ Skipping thumbnail/poster file:', name);
+    return;
+  }
+
+  const ext = path.extname(name).toLowerCase();
+  const looksLikeVideo =
+    (ctype || '').startsWith('video/') ||
+    ['.mp4', '.mov', '.m4v', '.webm', '.mkv'].includes(ext);
+
+  const looksLikeImage =
+    (ctype || '').startsWith('image/') ||
+    ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext);
+
+  if (!looksLikeImage && !looksLikeVideo) {
+    console.log('Unknown media type, skipping', { ctype, name, ext });
+    return;
+  }
+
+  // Use the bucket from environment variable or default
+  const bucketName = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
+  const bucket = getStorage().bucket(bucketName);
+  const dir = path.dirname(name);   // media/<uid>/<batchId>
+  const base = path.parse(name).name;
+
+  // Debug logging to confirm bucket usage
+  console.log(`🔧 Using bucket for file operations: ${bucket.name}`);
+  console.log(`🔧 Environment STORAGE_BUCKET: ${process.env.STORAGE_BUCKET || 'undefined (using default)'}`);
+  console.log(`🔧 Final bucket used: ${bucketName}`);
+
+  // Add initial delay to allow Firestore document creation to complete
+  // This prevents race condition where storage trigger fires before Firestore write is replicated
+  console.log(`⏳ Waiting 2 seconds for Firestore document creation...`);
+  await sleep(2000);
+
+  console.log(`🔍 Looking for media document for file: ${name}`);
+  let mediaRef = await findMediaDocRef(name, dir, 15); // Increased retries from 10 to 15
+  if (!mediaRef) {
+    console.error(`❌ CRITICAL: No media doc found for ${name} after retries!`);
+    console.error(`❌ This video will remain stuck in 'processing' state. Please check if the Firestore document was created properly.`);
+
+    // Try one more time with a broader search - look for any document with matching filename in the folder
+    try {
+      const filename = path.basename(name);
+      const searchFolder = dir.endsWith('/') ? dir : `${dir}/`;
+      console.log(`🔍 Attempting fallback search for filename: ${filename} in folder: ${searchFolder}`);
+
+      // Get all media documents and try to find a match by filename
+      const allMedia = await db.collection('media')
+        .where('storageFolder', '==', searchFolder)
+        .limit(10)
+        .get();
+
+      console.log(`🔍 Found ${allMedia.docs.length} documents in folder ${searchFolder}:`,
+        allMedia.docs.map(d => ({
           id: d.id,
           filePath: d.data()?.filePath,
           storageFolder: d.data()?.storageFolder,
-          createdAt: d.data()?.createdAt
-        })));
-        return;
-      }
-      
-      const mediaRef = mediaSnapshot.docs[0].ref;
-      const mediaId = mediaRef.id;
-      console.log('✅ [THUMBNAIL] Found media document:', mediaId);
-      
-      // Update Firestore with thumbnail status (wrapped in try/catch for safety)
-      try {
-        const thumbnailUpdate: any = {
-          [`thumbnails.${thumbnailSize}Ready`]: true,
-          [`thumbnails.${thumbnailSize}Path`]: name,
-          [`thumbnails.updatedAt`]: FieldValue.serverTimestamp()
-        };
-        
-        await mediaRef.set(thumbnailUpdate, { merge: true });
-        console.log(`✅ [THUMBNAIL] Updated media document ${mediaId} with ${thumbnailSize} thumbnail ready:`, name);
-      } catch (error) {
-        // Server-side fallback: If Firestore update fails, log it but don't break
-        // The UI will continue using the original image (graceful degradation)
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`❌ [THUMBNAIL] Failed to update Firestore for ${mediaId}:`, errorMessage);
-        console.error(`❌ [THUMBNAIL] Thumbnail exists at: ${name}, but Firestore update failed`);
-        console.error(`❌ [THUMBNAIL] UI will continue using original image (graceful degradation)`);
-        // Don't throw - let the function complete successfully
-        // The original image path is still available, so nothing breaks visually
-      }
-      
-      return; // Don't process thumbnails further
-    }
-    
-    if (name.includes('/hls/') || name.endsWith('.m3u8') || name.endsWith('.ts')) {
-      console.log('⏭️ Skipping HLS output file:', name);
-      return;
-    }
-    
-    const baseName = path.basename(name);
-    if (baseName.startsWith('thumb_') || baseName.startsWith('poster_')) {
-      console.log('⏭️ Skipping thumbnail/poster file:', name);
-      return;
-    }
-
-    const ext = path.extname(name).toLowerCase();
-    const looksLikeVideo =
-      (ctype || '').startsWith('video/') ||
-      ['.mp4','.mov','.m4v','.webm','.mkv'].includes(ext);
-
-    const looksLikeImage =
-      (ctype || '').startsWith('image/') ||
-      ['.jpg','.jpeg','.png','.webp','.gif'].includes(ext);
-
-    if (!looksLikeImage && !looksLikeVideo) {
-      console.log('Unknown media type, skipping', { ctype, name, ext });
-      return;
-    }
-
-    // Use the bucket from environment variable or default
-    const bucketName = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
-    const bucket = getStorage().bucket(bucketName);
-    const dir = path.dirname(name);   // media/<uid>/<batchId>
-    const base = path.parse(name).name;
-    
-    // Debug logging to confirm bucket usage
-    console.log(`🔧 Using bucket for file operations: ${bucket.name}`);
-    console.log(`🔧 Environment STORAGE_BUCKET: ${process.env.STORAGE_BUCKET || 'undefined (using default)'}`);
-    console.log(`🔧 Final bucket used: ${bucketName}`);
-
-    // Add initial delay to allow Firestore document creation to complete
-    // This prevents race condition where storage trigger fires before Firestore write is replicated
-    console.log(`⏳ Waiting 2 seconds for Firestore document creation...`);
-    await sleep(2000);
-
-    console.log(`🔍 Looking for media document for file: ${name}`);
-    let mediaRef = await findMediaDocRef(name, dir, 15); // Increased retries from 10 to 15
-    if (!mediaRef) {
-      console.error(`❌ CRITICAL: No media doc found for ${name} after retries!`);
-      console.error(`❌ This video will remain stuck in 'processing' state. Please check if the Firestore document was created properly.`);
-      
-      // Try one more time with a broader search - look for any document with matching filename in the folder
-      try {
-        const filename = path.basename(name);
-        const searchFolder = dir.endsWith('/') ? dir : `${dir}/`;
-        console.log(`🔍 Attempting fallback search for filename: ${filename} in folder: ${searchFolder}`);
-        
-        // Get all media documents and try to find a match by filename
-        const allMedia = await db.collection('media')
-          .where('storageFolder', '==', searchFolder)
-          .limit(10)
-          .get();
-        
-        console.log(`🔍 Found ${allMedia.docs.length} documents in folder ${searchFolder}:`, 
-          allMedia.docs.map(d => ({
-            id: d.id,
-            filePath: d.data()?.filePath,
-            storageFolder: d.data()?.storageFolder,
-            transcodeStatus: d.data()?.transcodeStatus
-          }))
-        );
-        
-        // Try to find a document where the filePath ends with the filename
-        const matchingDoc = allMedia.docs.find(doc => {
-          const docPath = doc.data()?.filePath || '';
-          return docPath.endsWith(filename) || docPath.includes(filename);
-        });
-        
-        if (matchingDoc) {
-          console.log(`✅ Found matching document via fallback search: ${matchingDoc.id}`);
-          mediaRef = matchingDoc.ref; // Assign to outer variable
-        } else {
-          console.error(`❌ No matching document found even with fallback search`);
-          return;
-        }
-      } catch (fallbackError) {
-        console.error('❌ Fallback search also failed:', fallbackError);
-        return;
-      }
-    }
-
-    const tmpOriginal = path.join(
-      os.tmpdir(),
-      `${base}-${Date.now()}-${Math.random().toString(36).slice(2)}${path.extname(name)}`
-    );
-
-    // Declare these for error logging (will be set in try block)
-    let videoDuration: number | null = null;
-    let videoWidth: number | null = null;
-    let videoHeight: number | null = null;
-
-    try {
-      await bucket.file(name).download({ destination: tmpOriginal });
-
-      const mediaSnapshot = await mediaRef.get();
-      if (!mediaSnapshot.exists) {
-        console.warn(`⚠️ Media document ${name} no longer exists. Skipping processing.`);
-        try { fs.unlinkSync(tmpOriginal); } catch {}
-        return;
-      }
-
-      const mediaData = mediaSnapshot.data();
-      console.log(`Processing media file: ${name}`);
-      console.log(`Found media doc: ${mediaRef.id}, current status: ${mediaData?.transcodeStatus || 'none'}`);
-      console.log(`Media type: ${mediaData?.type}, uploaded by: ${mediaData?.uploadedBy}`);
-
-      // Images → Let Firebase Extensions handle processing
-      if (looksLikeImage) {
-        console.log(`📸 [EXTENSION] Image uploaded: ${name} - Firebase Extensions will handle processing`);
-        console.log(`📸 [EXTENSION] Media document:`, {
-          mediaId: mediaRef.id,
-          type: mediaData?.type,
-          filePath: mediaData?.filePath,
-          extensionWillProcess: true
-        });
-        
-        // Just mark as ready - Firebase Extensions will process automatically
-        await mediaRef.set({
-          transcodeStatus: 'ready', // Extensions work independently
-          processedBy: 'firebase-extension',
-          processedAt: FieldValue.serverTimestamp()
-        }, { merge: true });
-
-        console.log(`📸 [EXTENSION] ✅ Image marked as ready - Extensions will handle thumbnails and optimization`);
-        return;
-      }
-
-      // Videos → poster + HLS + metadata
-      await mediaRef.set({ transcodeStatus: 'processing' }, { merge: true });
-
-      // ⚡ FAST THUMBNAIL GENERATION - Extract thumbnail IMMEDIATELY after download
-      // This happens before probing to provide instant visual feedback
-      console.log(`🖼️ [FAST] Generating thumbnail immediately for ${mediaRef.id}...`);
-      let thumbnailPath: string | null = null;
-      try {
-        const posterLocal = path.join(os.tmpdir(), `poster_${base}-${Date.now()}.jpg`);
-        // Extract frame at 1 second (fast, doesn't require duration)
-        await new Promise<void>((res, rej) =>
-          ffmpeg(tmpOriginal)
-            .inputOptions(['-ss', '1']) // Seek to 1 second
-            .outputOptions(['-frames:v', '1', '-q:v', '2'])
-            .output(posterLocal)
-            .on('end', () => res())
-            .on('error', rej)
-            .run()
-        );
-
-        const posterPath = `${dir}/poster_${base}.jpg`;
-        await bucket.upload(posterLocal, {
-          destination: posterPath,
-          metadata: {
-            contentType: 'image/jpeg',
-            cacheControl: 'public,max-age=31536000,immutable'
-          },
-        });
-
-        thumbnailPath = posterPath;
-        // Update Firestore IMMEDIATELY so UI shows thumbnail right away
-        await mediaRef.set({
-          thumbnailPath: posterPath,
-          transcodingMessage: 'Thumbnail ready, processing video...'
-        }, { merge: true });
-
-        console.log(`✅ [FAST] Thumbnail uploaded immediately for ${mediaRef.id}, poster: ${posterPath}`);
-        fs.unlinkSync(posterLocal);
-      } catch (e) {
-        console.warn('⚠️ [FAST] Thumbnail generation failed (non-fatal), continuing with processing:', e);
-      }
-
-      // Probe video (can happen in parallel, but we need it for encoding decisions)
-      const probe: any = await new Promise((res, rej) =>
-        ffmpeg(tmpOriginal).ffprobe((err: any, data: any) => err ? rej(err) : res(data))
+          transcodeStatus: d.data()?.transcodeStatus
+        }))
       );
-      const stream = (probe.streams || []).find((s: any) => s.width && s.height) || {};
-      const duration = probe.format?.duration != null ? Number(probe.format.duration) : null;
-      const width = stream.width || null;
-      const height = stream.height || null;
-      const fileSize = object.size || 0;
-      const frameRate = stream.r_frame_rate ? 
-        parseFloat(stream.r_frame_rate.split('/')[0]) / parseFloat(stream.r_frame_rate.split('/')[1] || '1') : 
-        30;
-      
-      // Store these for error logging
-      videoDuration = duration;
-      videoWidth = width;
-      videoHeight = height;
 
-      // Update Firestore with video metadata (including thumbnail if generated)
+      // Try to find a document where the filePath ends with the filename
+      const matchingDoc = allMedia.docs.find(doc => {
+        const docPath = doc.data()?.filePath || '';
+        return docPath.endsWith(filename) || docPath.includes(filename);
+      });
+
+      if (matchingDoc) {
+        console.log(`✅ Found matching document via fallback search: ${matchingDoc.id}`);
+        mediaRef = matchingDoc.ref; // Assign to outer variable
+      } else {
+        console.error(`❌ No matching document found even with fallback search`);
+        return;
+      }
+    } catch (fallbackError) {
+      console.error('❌ Fallback search also failed:', fallbackError);
+      return;
+    }
+  }
+
+  const tmpOriginal = path.join(
+    os.tmpdir(),
+    `${base}-${Date.now()}-${Math.random().toString(36).slice(2)}${path.extname(name)}`
+  );
+
+  // Declare these for error logging (will be set in try block)
+  let videoDuration: number | null = null;
+  let videoWidth: number | null = null;
+  let videoHeight: number | null = null;
+
+  try {
+    await bucket.file(name).download({ destination: tmpOriginal });
+
+    const mediaSnapshot = await mediaRef.get();
+    if (!mediaSnapshot.exists) {
+      console.warn(`⚠️ Media document ${name} no longer exists. Skipping processing.`);
+      try { fs.unlinkSync(tmpOriginal); } catch { }
+      return;
+    }
+
+    const mediaData = mediaSnapshot.data();
+    console.log(`Processing media file: ${name}`);
+    console.log(`Found media doc: ${mediaRef.id}, current status: ${mediaData?.transcodeStatus || 'none'}`);
+    console.log(`Media type: ${mediaData?.type}, uploaded by: ${mediaData?.uploadedBy}`);
+
+    // Images → Let Firebase Extensions handle processing
+    if (looksLikeImage) {
+      console.log(`📸 [EXTENSION] Image uploaded: ${name} - Firebase Extensions will handle processing`);
+      console.log(`📸 [EXTENSION] Media document:`, {
+        mediaId: mediaRef.id,
+        type: mediaData?.type,
+        filePath: mediaData?.filePath,
+        extensionWillProcess: true
+      });
+
+      // Just mark as ready - Firebase Extensions will process automatically
       await mediaRef.set({
-        duration,
-        dimensions: { width, height },
-        ...(thumbnailPath ? { thumbnailPath } : {})
+        transcodeStatus: 'ready', // Extensions work independently
+        processedBy: 'firebase-extension',
+        processedAt: FieldValue.serverTimestamp()
       }, { merge: true });
 
-      // 🎬 MULTI-QUALITY ADAPTIVE STREAMING
-      // Determine which quality levels to generate based on video resolution
-      const is4K = (width && width >= 3840) || (height && height >= 2160);
-      const is1080pOrHigher = (width && width >= 1920) || (height && height >= 1080);
-      
-      // Define quality levels to generate
-      interface QualityLevel {
-        name: string;
-        label: string;
-        resolution: string;
-        scaleFilter: string;
-        preset: string;
-        crf: number;
-        bandwidth: number; // Estimated bandwidth in bits per second
-      }
-      
-      const qualityLevels: QualityLevel[] = [];
-      
-      // Always generate 720p
+      console.log(`📸 [EXTENSION] ✅ Image marked as ready - Extensions will handle thumbnails and optimization`);
+      return;
+    }
+
+    // Videos → poster + HLS + metadata
+    await mediaRef.set({ transcodeStatus: 'processing' }, { merge: true });
+
+    // ⚡ FAST THUMBNAIL GENERATION - Extract thumbnail IMMEDIATELY after download
+    // This happens before probing to provide instant visual feedback
+    console.log(`🖼️ [FAST] Generating thumbnail immediately for ${mediaRef.id}...`);
+    let thumbnailPath: string | null = null;
+    try {
+      const posterLocal = path.join(os.tmpdir(), `poster_${base}-${Date.now()}.jpg`);
+      // Extract frame at 1 second (fast, doesn't require duration)
+      await new Promise<void>((res, rej) =>
+        ffmpeg(tmpOriginal)
+          .inputOptions(['-ss', '1']) // Seek to 1 second
+          .outputOptions(['-frames:v', '1', '-q:v', '2'])
+          .output(posterLocal)
+          .on('end', () => res())
+          .on('error', rej)
+          .run()
+      );
+
+      const posterPath = `${dir}/poster_${base}.jpg`;
+      await bucket.upload(posterLocal, {
+        destination: posterPath,
+        metadata: {
+          contentType: 'image/jpeg',
+          cacheControl: 'public,max-age=31536000,immutable'
+        },
+      });
+
+      thumbnailPath = posterPath;
+      // Update Firestore IMMEDIATELY so UI shows thumbnail right away
+      await mediaRef.set({
+        thumbnailPath: posterPath,
+        transcodingMessage: 'Thumbnail ready, processing video...'
+      }, { merge: true });
+
+      console.log(`✅ [FAST] Thumbnail uploaded immediately for ${mediaRef.id}, poster: ${posterPath}`);
+      fs.unlinkSync(posterLocal);
+    } catch (e) {
+      console.warn('⚠️ [FAST] Thumbnail generation failed (non-fatal), continuing with processing:', e);
+    }
+
+    // Probe video (can happen in parallel, but we need it for encoding decisions)
+    const probe: any = await new Promise((res, rej) =>
+      ffmpeg(tmpOriginal).ffprobe((err: any, data: any) => err ? rej(err) : res(data))
+    );
+    const stream = (probe.streams || []).find((s: any) => s.width && s.height) || {};
+    const duration = probe.format?.duration != null ? Number(probe.format.duration) : null;
+    const width = stream.width || null;
+    const height = stream.height || null;
+    const fileSize = object.size || 0;
+    const frameRate = stream.r_frame_rate ?
+      parseFloat(stream.r_frame_rate.split('/')[0]) / parseFloat(stream.r_frame_rate.split('/')[1] || '1') :
+      30;
+
+    // Store these for error logging
+    videoDuration = duration;
+    videoWidth = width;
+    videoHeight = height;
+
+    // Update Firestore with video metadata (including thumbnail if generated)
+    await mediaRef.set({
+      duration,
+      dimensions: { width, height },
+      ...(thumbnailPath ? { thumbnailPath } : {})
+    }, { merge: true });
+
+    // 🎬 MULTI-QUALITY ADAPTIVE STREAMING
+    // Determine which quality levels to generate based on video resolution
+    const is4K = (width && width >= 3840) || (height && height >= 2160);
+    const is1080pOrHigher = (width && width >= 1920) || (height && height >= 1080);
+
+    // Define quality levels to generate
+    interface QualityLevel {
+      name: string;
+      label: string;
+      resolution: string;
+      scaleFilter: string;
+      preset: string;
+      crf: number;
+      bandwidth: number; // Estimated bandwidth in bits per second
+    }
+
+    const qualityLevels: QualityLevel[] = [];
+
+    // Always generate 720p
+    qualityLevels.push({
+      name: '720p',
+      label: '720p',
+      resolution: '1280x720',
+      scaleFilter: 'scale=w=min(iw\\,1280):h=-2',
+      preset: 'ultrafast',
+      crf: 26,
+      bandwidth: 2000000 // 2 Mbps
+    });
+
+    // Generate 1080p if video is at least 1080p
+    if (is1080pOrHigher) {
       qualityLevels.push({
-        name: '720p',
-        label: '720p',
-        resolution: '1280x720',
-        scaleFilter: 'scale=w=min(iw\\,1280):h=-2',
-        preset: 'ultrafast',
-        crf: 26,
-        bandwidth: 2000000 // 2 Mbps
+        name: '1080p',
+        label: '1080p',
+        resolution: '1920x1080',
+        scaleFilter: 'scale=w=min(iw\\,1920):h=-2',
+        preset: 'fast',
+        crf: 23,
+        bandwidth: 5000000 // 5 Mbps
       });
-      
-      // Generate 1080p if video is at least 1080p
-      if (is1080pOrHigher) {
-        qualityLevels.push({
-          name: '1080p',
-          label: '1080p',
-          resolution: '1920x1080',
-          scaleFilter: 'scale=w=min(iw\\,1920):h=-2',
-          preset: 'fast',
-          crf: 23,
-          bandwidth: 5000000 // 5 Mbps
-        });
-      }
-      
-      // Generate 2160p (4K) if video is at least 4K
-      if (is4K) {
-        qualityLevels.push({
-          name: '2160p',
-          label: '4K',
-          resolution: '3840x2160',
-          scaleFilter: 'scale=iw:ih', // Keep original resolution
-          preset: 'medium',
-          crf: 21,
-          bandwidth: 20000000 // 20 Mbps
-        });
-      }
-      
-      console.log(`🎬 [ADAPTIVE] Generating ${qualityLevels.length} quality levels for ${mediaRef.id}:`, {
-        qualities: qualityLevels.map(q => q.label),
-        originalResolution: `${width}x${height}`,
-        duration: `${duration}s`,
-        fileSize: `${(fileSize / 1024 / 1024).toFixed(1)}MB`,
-        frameRate: `${frameRate}fps`
-      });
-      
-      // Update status
-      await mediaRef.set({
-        transcodeStartTime: FieldValue.serverTimestamp(),
-        transcodingMessage: `Generating ${qualityLevels.length} quality levels...`
-      }, { merge: true });
-      
-      const transcodeStartTime = Date.now();
-      const TRANSCODE_TIMEOUTS: Record<string, number> = {
-        '720p': 300000,  // 5 minutes
-        '1080p': 600000, // 10 minutes - increased to handle large videos and resource contention during bulk uploads
-        '2160p': 840000  // 14 minutes - increased from 12 to ensure completion
-      };
-      
-      // Shared token for all HLS files
-      const sharedToken = uuidv4();
-      const hlsBasePath = `${dir}/hls/${base}/`; // media/<uid>/<batch>/hls/<base>/
-      console.log(`🔑 Shared token for HLS: ${sharedToken}`);
-      const cleanupHlsArtifacts = async () => {
-        try {
-          const [files] = await bucket.getFiles({ prefix: hlsBasePath });
-          if (files.length) {
-            await Promise.all(files.map(f => f.delete().catch(() => {})));
-            console.log(`🧹 [ADAPTIVE] Cleaned up ${files.length} HLS artifacts at ${hlsBasePath}`);
-          }
-        } catch (cleanupError) {
-          console.warn(`⚠️ [ADAPTIVE] Failed to clean HLS artifacts at ${hlsBasePath}:`, cleanupError);
-        }
-      };
-      
-      // Helper function to generate a single quality level
-      const generateQualityLevel = async (quality: QualityLevel): Promise<{ quality: QualityLevel; storagePath: string }> => {
-        const qualityDirLocal = path.join(os.tmpdir(), `hls_${base}_${quality.name}`);
-        fs.mkdirSync(qualityDirLocal, { recursive: true });
-        const qualityDirStorage = `${hlsBasePath}${quality.name}/`;
-        
-        console.log(`🎬 [ADAPTIVE] Starting ${quality.label} transcoding...`);
-        
-        await new Promise<void>((res, rej) => {
-          const timeoutForQuality = TRANSCODE_TIMEOUTS[quality.name] ?? TRANSCODE_TIMEOUTS['720p'];
-          const timeoutId = setTimeout(() => {
-            rej(new Error(`Transcode timeout for ${quality.label}: Processing exceeded ${timeoutForQuality / 1000} seconds`));
-          }, timeoutForQuality);
-          
-          ffmpeg(tmpOriginal)
-            .addOptions([
-              '-preset', quality.preset,
-              '-crf', String(quality.crf),
-              '-profile:v', 'main',
-              '-vf', quality.scaleFilter,
-              // Audio quality improvements
-              '-c:a', 'aac',
-              '-b:a', '192k',
-              '-ar', '48000',
-              '-ac', '2',
-              // Optimized HLS settings for better adaptive streaming
-              '-start_number', '0',
-              '-hls_time', '6',              // 6-second segments (better for adaptation)
-              '-hls_list_size', '10',        // Keep last 10 segments (reduces manifest size)
-              '-hls_flags', 'independent_segments', // Better seeking
-              '-hls_segment_type', 'mpegts',  // Explicit segment type
-              '-f', 'hls'
-            ])
-            .output(path.join(qualityDirLocal, 'index.m3u8'))
-            .on('start', (cmdline) => {
-              console.log(`🎬 [ADAPTIVE] ${quality.label} FFmpeg started:`, cmdline.substring(0, 100) + '...');
-            })
-            .on('progress', (progress) => {
-              const elapsed = (Date.now() - transcodeStartTime) / 1000;
-              if (elapsed % 30 < 1) {
-                console.log(`📊 [ADAPTIVE] ${quality.label} progress: ${progress.percent || 'unknown'}% (${elapsed.toFixed(1)}s)`);
-              }
-            })
-            .on('end', () => {
-              clearTimeout(timeoutId);
-              console.log(`✅ [ADAPTIVE] ${quality.label} transcoding completed`);
-              res();
-            })
-            .on('error', (err) => {
-              clearTimeout(timeoutId);
-              console.error(`❌ [ADAPTIVE] ${quality.label} FFmpeg error:`, err);
-              rej(err);
-            })
-            .run();
-        });
-        
-        const manifestLocalPath = path.join(qualityDirLocal, 'index.m3u8');
-        rewriteManifestWithAbsoluteUrls(manifestLocalPath, bucket.name, qualityDirStorage, sharedToken);
-        
-        const files = fs.readdirSync(qualityDirLocal);
-        await Promise.all(files.map(f => {
-          const dest = `${qualityDirStorage}${f}`;
-          const ct = f.endsWith('.m3u8')
-            ? 'application/vnd.apple.mpegurl'
-            : 'video/mp2t';
-          return bucket.upload(path.join(qualityDirLocal, f), {
-            destination: dest,
-            metadata: {
-              contentType: ct,
-              cacheControl: 'public,max-age=31536000,immutable',
-              metadata: { firebaseStorageDownloadTokens: sharedToken }
-            },
-          });
-        }));
-        
-        fs.rmSync(qualityDirLocal, { recursive: true, force: true });
-        
-        return {
-          quality,
-          storagePath: `${qualityDirStorage}index.m3u8`
-        };
-      };
+    }
 
-      // Helper function to create/update master playlist
-      const createOrUpdateMasterPlaylist = async (completedQualities: { quality: QualityLevel; storagePath: string }[]): Promise<string> => {
-        const masterPlaylistContent = [
-          '#EXTM3U',
-          '#EXT-X-VERSION:3'
-        ];
-        
-        const createAbsoluteUrl = (storagePath: string) => {
-          const encodedPath = encodeURIComponent(storagePath);
-          return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${sharedToken}`;
-        };
-        
-        completedQualities
-          .sort((a, b) => a.quality.bandwidth - b.quality.bandwidth)
-          .forEach(({ quality, storagePath }) => {
-            const absoluteUrl = createAbsoluteUrl(storagePath);
-            masterPlaylistContent.push(
-              `#EXT-X-STREAM-INF:BANDWIDTH=${quality.bandwidth},RESOLUTION=${quality.resolution}`,
-              absoluteUrl
-            );
-          });
-        
-        const masterPlaylistLocal = path.join(os.tmpdir(), `master_${base}.m3u8`);
-        fs.writeFileSync(masterPlaylistLocal, masterPlaylistContent.join('\n') + '\n');
-        
-        const masterPlaylistStorage = `${hlsBasePath}master.m3u8`;
-        await bucket.upload(masterPlaylistLocal, {
-          destination: masterPlaylistStorage,
+    // Generate 2160p (4K) if video is at least 4K
+    if (is4K) {
+      qualityLevels.push({
+        name: '2160p',
+        label: '4K',
+        resolution: '3840x2160',
+        scaleFilter: 'scale=iw:ih', // Keep original resolution
+        preset: 'medium',
+        crf: 21,
+        bandwidth: 20000000 // 20 Mbps
+      });
+    }
+
+    console.log(`🎬 [ADAPTIVE] Generating ${qualityLevels.length} quality levels for ${mediaRef.id}:`, {
+      qualities: qualityLevels.map(q => q.label),
+      originalResolution: `${width}x${height}`,
+      duration: `${duration}s`,
+      fileSize: `${(fileSize / 1024 / 1024).toFixed(1)}MB`,
+      frameRate: `${frameRate}fps`
+    });
+
+    // Update status
+    await mediaRef.set({
+      transcodeStartTime: FieldValue.serverTimestamp(),
+      transcodingMessage: `Generating ${qualityLevels.length} quality levels...`
+    }, { merge: true });
+
+    const transcodeStartTime = Date.now();
+    const TRANSCODE_TIMEOUTS: Record<string, number> = {
+      '720p': 300000,  // 5 minutes
+      '1080p': 600000, // 10 minutes - increased to handle large videos and resource contention during bulk uploads
+      '2160p': 840000  // 14 minutes - increased from 12 to ensure completion
+    };
+
+    // Shared token for all HLS files
+    const sharedToken = uuidv4();
+    const hlsBasePath = `${dir}/hls/${base}/`; // media/<uid>/<batch>/hls/<base>/
+    console.log(`🔑 Shared token for HLS: ${sharedToken}`);
+    const cleanupHlsArtifacts = async () => {
+      try {
+        const [files] = await bucket.getFiles({ prefix: hlsBasePath });
+        if (files.length) {
+          await Promise.all(files.map(f => f.delete().catch(() => { })));
+          console.log(`🧹 [ADAPTIVE] Cleaned up ${files.length} HLS artifacts at ${hlsBasePath}`);
+        }
+      } catch (cleanupError) {
+        console.warn(`⚠️ [ADAPTIVE] Failed to clean HLS artifacts at ${hlsBasePath}:`, cleanupError);
+      }
+    };
+
+    // Helper function to generate a single quality level
+    const generateQualityLevel = async (quality: QualityLevel): Promise<{ quality: QualityLevel; storagePath: string }> => {
+      const qualityDirLocal = path.join(os.tmpdir(), `hls_${base}_${quality.name}`);
+      fs.mkdirSync(qualityDirLocal, { recursive: true });
+      const qualityDirStorage = `${hlsBasePath}${quality.name}/`;
+
+      console.log(`🎬 [ADAPTIVE] Starting ${quality.label} transcoding...`);
+
+      await new Promise<void>((res, rej) => {
+        const timeoutForQuality = TRANSCODE_TIMEOUTS[quality.name] ?? TRANSCODE_TIMEOUTS['720p'];
+        const timeoutId = setTimeout(() => {
+          rej(new Error(`Transcode timeout for ${quality.label}: Processing exceeded ${timeoutForQuality / 1000} seconds`));
+        }, timeoutForQuality);
+
+        ffmpeg(tmpOriginal)
+          .addOptions([
+            '-preset', quality.preset,
+            '-crf', String(quality.crf),
+            '-profile:v', 'main',
+            '-vf', quality.scaleFilter,
+            // Audio quality improvements
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-ar', '48000',
+            '-ac', '2',
+            // Optimized HLS settings for better adaptive streaming
+            '-start_number', '0',
+            '-hls_time', '6',              // 6-second segments (better for adaptation)
+            '-hls_list_size', '10',        // Keep last 10 segments (reduces manifest size)
+            '-hls_flags', 'independent_segments', // Better seeking
+            '-hls_segment_type', 'mpegts',  // Explicit segment type
+            '-f', 'hls'
+          ])
+          .output(path.join(qualityDirLocal, 'index.m3u8'))
+          .on('start', (cmdline) => {
+            console.log(`🎬 [ADAPTIVE] ${quality.label} FFmpeg started:`, cmdline.substring(0, 100) + '...');
+          })
+          .on('progress', (progress) => {
+            const elapsed = (Date.now() - transcodeStartTime) / 1000;
+            if (elapsed % 30 < 1) {
+              console.log(`📊 [ADAPTIVE] ${quality.label} progress: ${progress.percent || 'unknown'}% (${elapsed.toFixed(1)}s)`);
+            }
+          })
+          .on('end', () => {
+            clearTimeout(timeoutId);
+            console.log(`✅ [ADAPTIVE] ${quality.label} transcoding completed`);
+            res();
+          })
+          .on('error', (err) => {
+            clearTimeout(timeoutId);
+            console.error(`❌ [ADAPTIVE] ${quality.label} FFmpeg error:`, err);
+            rej(err);
+          })
+          .run();
+      });
+
+      const manifestLocalPath = path.join(qualityDirLocal, 'index.m3u8');
+      rewriteManifestWithAbsoluteUrls(manifestLocalPath, bucket.name, qualityDirStorage, sharedToken);
+
+      const files = fs.readdirSync(qualityDirLocal);
+      await Promise.all(files.map(f => {
+        const dest = `${qualityDirStorage}${f}`;
+        const ct = f.endsWith('.m3u8')
+          ? 'application/vnd.apple.mpegurl'
+          : 'video/mp2t';
+        return bucket.upload(path.join(qualityDirLocal, f), {
+          destination: dest,
           metadata: {
-            contentType: 'application/vnd.apple.mpegurl',
+            contentType: ct,
             cacheControl: 'public,max-age=31536000,immutable',
             metadata: { firebaseStorageDownloadTokens: sharedToken }
           },
         });
-        
-        fs.unlinkSync(masterPlaylistLocal);
-        return masterPlaylistStorage;
+      }));
+
+      fs.rmSync(qualityDirLocal, { recursive: true, force: true });
+
+      return {
+        quality,
+        storagePath: `${qualityDirStorage}index.m3u8`
       };
+    };
 
-      // Feature flag for progressive quality generation (mark ready after 720p)
-      const ENABLE_PROGRESSIVE_QUALITY = process.env.ENABLE_PROGRESSIVE_QUALITY !== 'false'; // Default: true
-      
-      let qualityResults: { quality: QualityLevel; storagePath: string }[];
-      
-      if (ENABLE_PROGRESSIVE_QUALITY) {
-        // PROGRESSIVE MODE: Generate 720p first, mark as ready, then continue others in background
-        console.log(`🚀 [PROGRESSIVE] Progressive quality generation enabled - marking ready after 720p`);
-        
-        const quality720p = qualityLevels.find(q => q.name === '720p');
-        if (!quality720p) {
-          throw new Error('720p quality level not found - cannot proceed with progressive generation');
-        }
-        
-        let quality720pResult: { quality: QualityLevel; storagePath: string };
-        try {
-          quality720pResult = await generateQualityLevel(quality720p);
-          qualityResults = [quality720pResult];
-        } catch (error) {
-          console.error(`❌ [PROGRESSIVE] 720p generation failed:`, error);
-          await cleanupHlsArtifacts();
-          throw new Error('720p transcoding failed - video cannot play');
-        }
-        
-        const masterPlaylistStorage = await createOrUpdateMasterPlaylist(qualityResults);
-        const fallbackHlsPath = quality720pResult.storagePath;
-        
-        // Mark video as READY immediately (user can play now!)
-        const currentDoc = await mediaRef.get();
-        const currentData = currentDoc.exists ? currentDoc.data() : {};
-        const currentSources = currentData?.sources || {};
-        
-        const mergedSources = {
-          ...currentSources,
-          hlsMaster: masterPlaylistStorage,
-          hls: fallbackHlsPath
-        };
-        
-        // Store sharedToken in Firestore for worker function to access
-        await mediaRef.set({
-          sources: mergedSources,
-          transcodeStatus: 'ready',
-          transcodeUpdatedAt: FieldValue.serverTimestamp(),
-          qualityLevels: [{
-            name: quality720p.name,
-            label: quality720p.label,
-            resolution: quality720p.resolution,
-            bandwidth: quality720p.bandwidth,
-            storagePath: quality720pResult.storagePath // Store path for master playlist
-          }],
-          transcodingMessage: '720p ready, generating higher qualities...',
-          hlsSharedToken: sharedToken // Store for worker function
-        }, { merge: true });
-        
-        console.log(`✅ [PROGRESSIVE] Video marked as READY after 720p completion - user can play now!`);
-        
-        // Continue with higher qualities via Cloud Tasks (proper background processing)
-        const otherQualities = qualityLevels.filter(q => q.name !== '720p');
-        if (otherQualities.length > 0) {
-          console.log(`🔄 [PROGRESSIVE] Enqueuing ${otherQualities.length} higher quality levels via Cloud Tasks...`);
-          
-          // Store full quality configs in Firestore for worker function to access
-          const qualityConfigsMap: Record<string, any> = {};
-          qualityLevels.forEach(q => {
-            qualityConfigsMap[q.name] = {
-              name: q.name,
-              label: q.label,
-              resolution: q.resolution,
-              scaleFilter: q.scaleFilter,
-              preset: q.preset,
-              crf: q.crf,
-              bandwidth: q.bandwidth
-            };
-          });
-          
-          // Initialize background processing tracking
-          await mediaRef.set({
-            backgroundProcessingStatus: 'processing',
-            backgroundProcessingStarted: FieldValue.serverTimestamp(),
-            backgroundProcessingTargetQualities: otherQualities.map(q => q.name),
-            failedQualities: [],
-            qualityConfigs: qualityConfigsMap // Store for worker function
-          }, { merge: true });
-          
-          // Get base name for HLS paths
-          const base = path.parse(name).name;
-          
-          // Enqueue only the FIRST quality (others will be chained by the worker)
-          // This ensures sequential processing and prevents overwhelming the system
-          const firstQuality = otherQualities[0];
-          const remainingAfterFirst = otherQualities.slice(1).map(q => q.name);
-          
-          try {
-            await enqueueQualityTask(mediaRef.id, firstQuality.name, {
-              mediaId: mediaRef.id,
-              qualityLevel: firstQuality.name,
-              filePath: name,
-              storageFolder: dir,
-              hlsBasePath: `${dir}/hls/${base}/`,
-              sharedToken: sharedToken,
-              originalResolution: `${width}x${height}`,
-              remainingQualities: remainingAfterFirst,
-              qualityConfig: {
-                name: firstQuality.name,
-                label: firstQuality.label,
-                resolution: firstQuality.resolution,
-                scaleFilter: firstQuality.scaleFilter,
-                preset: firstQuality.preset,
-                crf: firstQuality.crf,
-                bandwidth: firstQuality.bandwidth
-              }
-            });
-            
-            console.log(`✅ [PROGRESSIVE] Enqueued first Cloud Task for ${firstQuality.label} (remaining will chain)`);
-          } catch (enqueueError) {
-            console.error(`❌ [PROGRESSIVE] Failed to enqueue task for ${firstQuality.label}:`, enqueueError);
-            
-            // Track failed enqueue in Firestore
-            try {
-              const currentDocForFailure = await mediaRef.get();
-              const currentDataForFailure = currentDocForFailure.exists ? currentDocForFailure.data() : {};
-              const currentFailedQualities = currentDataForFailure?.failedQualities || [];
-              
-              await mediaRef.set({
-                failedQualities: [
-                  ...currentFailedQualities,
-                  {
-                    name: firstQuality.name,
-                    label: firstQuality.label,
-                    error: `Failed to enqueue task: ${enqueueError instanceof Error ? enqueueError.message : String(enqueueError)}`,
-                    failedAt: FieldValue.serverTimestamp()
-                  }
-                ]
-              }, { merge: true });
-            } catch (updateError) {
-              console.error(`❌ Failed to update failedQualities for ${firstQuality.label}:`, updateError);
-            }
-          }
-          
-          console.log(`✅ [PROGRESSIVE] First quality task enqueued, chaining will continue automatically`);
-        }
-        
-        return; // Return early in progressive mode
-      } else {
-        // STANDARD MODE: Generate all qualities in parallel, wait for all
-        console.log(`⏳ [ADAPTIVE] Standard mode - generating all qualities in parallel`);
-        
-        const qualitySettled = await Promise.allSettled(
-          qualityLevels.map(async (quality) => {
-            return await generateQualityLevel(quality);
-          })
-        );
-        
-        qualityResults = qualitySettled
-          .map((result, index) => {
-            if (result.status === 'fulfilled') return result.value;
-            console.warn(`⚠️ [ADAPTIVE] ${qualityLevels[index].label} failed:`, result.reason);
-            return null;
-          })
-          .filter((value): value is { quality: QualityLevel; storagePath: string } => value !== null);
-      }
-
-      if (!qualityResults.length) {
-        throw new Error('All quality levels failed to transcode');
-      }
-      const has720p = qualityResults.some(r => r.quality.name === '720p');
-      if (!has720p) {
-        console.error(`❌ [ADAPTIVE] Critical: 720p failed for ${mediaRef.id}`);
-        await cleanupHlsArtifacts();
-        throw new Error('720p transcoding failed - video cannot play');
-      }
-      
-      // Create master playlist with absolute URLs (with tokens)
+    // Helper function to create/update master playlist
+    const createOrUpdateMasterPlaylist = async (completedQualities: { quality: QualityLevel; storagePath: string }[]): Promise<string> => {
       const masterPlaylistContent = [
         '#EXTM3U',
         '#EXT-X-VERSION:3'
       ];
-      
-      // Helper function to create absolute Firebase Storage URL with token
+
       const createAbsoluteUrl = (storagePath: string) => {
         const encodedPath = encodeURIComponent(storagePath);
         return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${sharedToken}`;
       };
-      
-      // Add stream info for each quality (sorted by bandwidth, lowest first)
-      qualityResults
+
+      completedQualities
         .sort((a, b) => a.quality.bandwidth - b.quality.bandwidth)
         .forEach(({ quality, storagePath }) => {
-          // Use absolute URL with token instead of relative path
           const absoluteUrl = createAbsoluteUrl(storagePath);
-          console.log(`📋 [ADAPTIVE] Master playlist: Adding ${quality.name} with absolute URL:`, {
-            quality: quality.name,
-            storagePath,
-            absoluteUrl: absoluteUrl.substring(0, 100) + '...'
-          });
           masterPlaylistContent.push(
             `#EXT-X-STREAM-INF:BANDWIDTH=${quality.bandwidth},RESOLUTION=${quality.resolution}`,
             absoluteUrl
           );
         });
-      
-      // Write master playlist locally
+
       const masterPlaylistLocal = path.join(os.tmpdir(), `master_${base}.m3u8`);
       fs.writeFileSync(masterPlaylistLocal, masterPlaylistContent.join('\n') + '\n');
-      
-      // Upload master playlist
+
       const masterPlaylistStorage = `${hlsBasePath}master.m3u8`;
       await bucket.upload(masterPlaylistLocal, {
         destination: masterPlaylistStorage,
@@ -2185,131 +1968,351 @@ export const onMediaFileFinalize = onObjectFinalized({
           metadata: { firebaseStorageDownloadTokens: sharedToken }
         },
       });
-      
-      // Cleanup master playlist local file
+
       fs.unlinkSync(masterPlaylistLocal);
-      
-      // Use first quality (720p) as fallback single manifest for backward compatibility
-      const fallbackHlsPath = qualityResults.find(r => r.quality.name === '720p')?.storagePath || qualityResults[0].storagePath;
-      
-      if (!fallbackHlsPath) {
-        throw new Error(`❌ [ADAPTIVE] No fallback HLS path found for ${mediaRef.id}`);
+      return masterPlaylistStorage;
+    };
+
+    // Feature flag for progressive quality generation (mark ready after 720p)
+    const ENABLE_PROGRESSIVE_QUALITY = process.env.ENABLE_PROGRESSIVE_QUALITY !== 'false'; // Default: true
+
+    let qualityResults: { quality: QualityLevel; storagePath: string }[];
+
+    if (ENABLE_PROGRESSIVE_QUALITY) {
+      // PROGRESSIVE MODE: Generate 720p first, mark as ready, then continue others in background
+      console.log(`🚀 [PROGRESSIVE] Progressive quality generation enabled - marking ready after 720p`);
+
+      const quality720p = qualityLevels.find(q => q.name === '720p');
+      if (!quality720p) {
+        throw new Error('720p quality level not found - cannot proceed with progressive generation');
       }
-      
-      console.log(`🔍 [ADAPTIVE] Starting final Firestore update for ${mediaRef.id}`, {
-        masterPlaylist: masterPlaylistStorage,
-        fallbackHls: fallbackHlsPath,
-        qualityCount: qualityLevels.length
-      });
-      
-      // Manual merge approach: Read current document, merge sources object, then update
-      console.log(`🔍 [ADAPTIVE] Reading current Firestore document for ${mediaRef.id}`);
-      const currentDoc = await mediaRef.get();
-      if (!currentDoc.exists) {
-        console.warn(`⚠️ [ADAPTIVE] Media document ${mediaRef.id} deleted during processing - skipping Firestore update.`);
+
+      let quality720pResult: { quality: QualityLevel; storagePath: string };
+      try {
+        quality720pResult = await generateQualityLevel(quality720p);
+        qualityResults = [quality720pResult];
+      } catch (error) {
+        console.error(`❌ [PROGRESSIVE] 720p generation failed:`, error);
         await cleanupHlsArtifacts();
-        return;
+        throw new Error('720p transcoding failed - video cannot play');
       }
-      const currentData = currentDoc.data() || {};
+
+      const masterPlaylistStorage = await createOrUpdateMasterPlaylist(qualityResults);
+      const fallbackHlsPath = quality720pResult.storagePath;
+
+      // Mark video as READY immediately (user can play now!)
+      const currentDoc = await mediaRef.get();
+      const currentData = currentDoc.exists ? currentDoc.data() : {};
       const currentSources = currentData?.sources || {};
-      
-      console.log(`🔍 [ADAPTIVE] Current document data:`, {
-        hasSources: !!currentData?.sources,
-        sourcesKeys: currentData?.sources ? Object.keys(currentData.sources) : [],
-        transcodeStatus: currentData?.transcodeStatus
-      });
-      
-      // Merge sources object manually
+
       const mergedSources = {
         ...currentSources,
         hlsMaster: masterPlaylistStorage,
         hls: fallbackHlsPath
       };
-      
-      console.log(`🔍 [ADAPTIVE] About to update Firestore with merged sources:`, {
-        mergedSourcesKeys: Object.keys(mergedSources),
-        hasHlsMaster: !!mergedSources.hlsMaster,
-        hasHls: !!mergedSources.hls
-      });
-      
-      // Final write - use manual merge approach
-      const updateData = {
+
+      // Store sharedToken in Firestore for worker function to access
+      await mediaRef.set({
         sources: mergedSources,
         transcodeStatus: 'ready',
         transcodeUpdatedAt: FieldValue.serverTimestamp(),
-        qualityLevels: qualityLevels.map(q => ({
-          name: q.name,
-          label: q.label,
-          resolution: q.resolution,
-          bandwidth: q.bandwidth
-        }))
-      };
-      
-      await mediaRef.set(updateData, { merge: true });
-      
-      // Verify the update
-      const verifyDoc = await mediaRef.get();
-      const verifyData = verifyDoc.exists ? verifyDoc.data() : {};
-      console.log(`✅ [ADAPTIVE] Firestore updated with sources:`, {
-        hasSources: !!verifyData?.sources,
-        sourcesKeys: verifyData?.sources ? Object.keys(verifyData.sources) : [],
-        hasHlsMaster: !!verifyData?.sources?.hlsMaster,
-        hasHls: !!verifyData?.sources?.hls,
-        hlsMasterValue: verifyData?.sources?.hlsMaster,
-        hlsValue: verifyData?.sources?.hls
-      });
-      
-      console.log(`✅ [ADAPTIVE] Multi-quality HLS ready for ${mediaRef.id}:`, {
-        masterPlaylist: masterPlaylistStorage,
-        fallbackHls: fallbackHlsPath,
-        qualityCount: qualityLevels.length,
-        qualities: qualityLevels.map(q => q.label).join(', ')
-      });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('exceeded');
-      
-      console.error(`❌ Transcode error for ${name}:`, {
-        error: errorMessage,
-        isTimeout,
-        mediaId: mediaRef?.id,
-        videoDuration: videoDuration,
-        resolution: `${videoWidth}x${videoHeight}`
-      });
-      
-      try {
-        const errorDetails = {
-          transcodeStatus: 'failed',
-          transcodeError: errorMessage,
-          transcodeFailedAt: FieldValue.serverTimestamp(),
-          transcodingMessage: isTimeout 
-            ? 'Processing timed out - video may be too large. Please try uploading a smaller file.' 
-            : 'Processing failed. Please try uploading again.'
-        };
-        await mediaRef.set(errorDetails, { merge: true });
-        console.log(`✅ Marked ${mediaRef.id} as failed with error details`);
-      } catch (updateError) {
-        console.error('Failed to update media document with error status:', updateError);
+        qualityLevels: [{
+          name: quality720p.name,
+          label: quality720p.label,
+          resolution: quality720p.resolution,
+          bandwidth: quality720p.bandwidth,
+          storagePath: quality720pResult.storagePath // Store path for master playlist
+        }],
+        transcodingMessage: '720p ready, generating higher qualities...',
+        hlsSharedToken: sharedToken // Store for worker function
+      }, { merge: true });
+
+      console.log(`✅ [PROGRESSIVE] Video marked as READY after 720p completion - user can play now!`);
+
+      // Continue with higher qualities via Cloud Tasks (proper background processing)
+      const otherQualities = qualityLevels.filter(q => q.name !== '720p');
+      if (otherQualities.length > 0) {
+        console.log(`🔄 [PROGRESSIVE] Enqueuing ${otherQualities.length} higher quality levels via Cloud Tasks...`);
+
+        // Store full quality configs in Firestore for worker function to access
+        const qualityConfigsMap: Record<string, any> = {};
+        qualityLevels.forEach(q => {
+          qualityConfigsMap[q.name] = {
+            name: q.name,
+            label: q.label,
+            resolution: q.resolution,
+            scaleFilter: q.scaleFilter,
+            preset: q.preset,
+            crf: q.crf,
+            bandwidth: q.bandwidth
+          };
+        });
+
+        // Initialize background processing tracking
+        await mediaRef.set({
+          backgroundProcessingStatus: 'processing',
+          backgroundProcessingStarted: FieldValue.serverTimestamp(),
+          backgroundProcessingTargetQualities: otherQualities.map(q => q.name),
+          failedQualities: [],
+          qualityConfigs: qualityConfigsMap // Store for worker function
+        }, { merge: true });
+
+        // Get base name for HLS paths
+        const base = path.parse(name).name;
+
+        // Enqueue only the FIRST quality (others will be chained by the worker)
+        // This ensures sequential processing and prevents overwhelming the system
+        const firstQuality = otherQualities[0];
+        const remainingAfterFirst = otherQualities.slice(1).map(q => q.name);
+
+        try {
+          await enqueueQualityTask(mediaRef.id, firstQuality.name, {
+            mediaId: mediaRef.id,
+            qualityLevel: firstQuality.name,
+            filePath: name,
+            storageFolder: dir,
+            hlsBasePath: `${dir}/hls/${base}/`,
+            sharedToken: sharedToken,
+            originalResolution: `${width}x${height}`,
+            remainingQualities: remainingAfterFirst,
+            qualityConfig: {
+              name: firstQuality.name,
+              label: firstQuality.label,
+              resolution: firstQuality.resolution,
+              scaleFilter: firstQuality.scaleFilter,
+              preset: firstQuality.preset,
+              crf: firstQuality.crf,
+              bandwidth: firstQuality.bandwidth
+            }
+          });
+
+          console.log(`✅ [PROGRESSIVE] Enqueued first Cloud Task for ${firstQuality.label} (remaining will chain)`);
+        } catch (enqueueError) {
+          console.error(`❌ [PROGRESSIVE] Failed to enqueue task for ${firstQuality.label}:`, enqueueError);
+
+          // Track failed enqueue in Firestore
+          try {
+            const currentDocForFailure = await mediaRef.get();
+            const currentDataForFailure = currentDocForFailure.exists ? currentDocForFailure.data() : {};
+            const currentFailedQualities = currentDataForFailure?.failedQualities || [];
+
+            await mediaRef.set({
+              failedQualities: [
+                ...currentFailedQualities,
+                {
+                  name: firstQuality.name,
+                  label: firstQuality.label,
+                  error: `Failed to enqueue task: ${enqueueError instanceof Error ? enqueueError.message : String(enqueueError)}`,
+                  failedAt: FieldValue.serverTimestamp()
+                }
+              ]
+            }, { merge: true });
+          } catch (updateError) {
+            console.error(`❌ Failed to update failedQualities for ${firstQuality.label}:`, updateError);
+          }
+        }
+
+        console.log(`✅ [PROGRESSIVE] First quality task enqueued, chaining will continue automatically`);
       }
-    } finally {
-      try { if (fs.existsSync(tmpOriginal)) fs.unlinkSync(tmpOriginal); } catch {}
+
+      return; // Return early in progressive mode
+    } else {
+      // STANDARD MODE: Generate all qualities in parallel, wait for all
+      console.log(`⏳ [ADAPTIVE] Standard mode - generating all qualities in parallel`);
+
+      const qualitySettled = await Promise.allSettled(
+        qualityLevels.map(async (quality) => {
+          return await generateQualityLevel(quality);
+        })
+      );
+
+      qualityResults = qualitySettled
+        .map((result, index) => {
+          if (result.status === 'fulfilled') return result.value;
+          console.warn(`⚠️ [ADAPTIVE] ${qualityLevels[index].label} failed:`, result.reason);
+          return null;
+        })
+        .filter((value): value is { quality: QualityLevel; storagePath: string } => value !== null);
     }
+
+    if (!qualityResults.length) {
+      throw new Error('All quality levels failed to transcode');
+    }
+    const has720p = qualityResults.some(r => r.quality.name === '720p');
+    if (!has720p) {
+      console.error(`❌ [ADAPTIVE] Critical: 720p failed for ${mediaRef.id}`);
+      await cleanupHlsArtifacts();
+      throw new Error('720p transcoding failed - video cannot play');
+    }
+
+    // Create master playlist with absolute URLs (with tokens)
+    const masterPlaylistContent = [
+      '#EXTM3U',
+      '#EXT-X-VERSION:3'
+    ];
+
+    // Helper function to create absolute Firebase Storage URL with token
+    const createAbsoluteUrl = (storagePath: string) => {
+      const encodedPath = encodeURIComponent(storagePath);
+      return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${sharedToken}`;
+    };
+
+    // Add stream info for each quality (sorted by bandwidth, lowest first)
+    qualityResults
+      .sort((a, b) => a.quality.bandwidth - b.quality.bandwidth)
+      .forEach(({ quality, storagePath }) => {
+        // Use absolute URL with token instead of relative path
+        const absoluteUrl = createAbsoluteUrl(storagePath);
+        console.log(`📋 [ADAPTIVE] Master playlist: Adding ${quality.name} with absolute URL:`, {
+          quality: quality.name,
+          storagePath,
+          absoluteUrl: absoluteUrl.substring(0, 100) + '...'
+        });
+        masterPlaylistContent.push(
+          `#EXT-X-STREAM-INF:BANDWIDTH=${quality.bandwidth},RESOLUTION=${quality.resolution}`,
+          absoluteUrl
+        );
+      });
+
+    // Write master playlist locally
+    const masterPlaylistLocal = path.join(os.tmpdir(), `master_${base}.m3u8`);
+    fs.writeFileSync(masterPlaylistLocal, masterPlaylistContent.join('\n') + '\n');
+
+    // Upload master playlist
+    const masterPlaylistStorage = `${hlsBasePath}master.m3u8`;
+    await bucket.upload(masterPlaylistLocal, {
+      destination: masterPlaylistStorage,
+      metadata: {
+        contentType: 'application/vnd.apple.mpegurl',
+        cacheControl: 'public,max-age=31536000,immutable',
+        metadata: { firebaseStorageDownloadTokens: sharedToken }
+      },
+    });
+
+    // Cleanup master playlist local file
+    fs.unlinkSync(masterPlaylistLocal);
+
+    // Use first quality (720p) as fallback single manifest for backward compatibility
+    const fallbackHlsPath = qualityResults.find(r => r.quality.name === '720p')?.storagePath || qualityResults[0].storagePath;
+
+    if (!fallbackHlsPath) {
+      throw new Error(`❌ [ADAPTIVE] No fallback HLS path found for ${mediaRef.id}`);
+    }
+
+    console.log(`🔍 [ADAPTIVE] Starting final Firestore update for ${mediaRef.id}`, {
+      masterPlaylist: masterPlaylistStorage,
+      fallbackHls: fallbackHlsPath,
+      qualityCount: qualityLevels.length
+    });
+
+    // Manual merge approach: Read current document, merge sources object, then update
+    console.log(`🔍 [ADAPTIVE] Reading current Firestore document for ${mediaRef.id}`);
+    const currentDoc = await mediaRef.get();
+    if (!currentDoc.exists) {
+      console.warn(`⚠️ [ADAPTIVE] Media document ${mediaRef.id} deleted during processing - skipping Firestore update.`);
+      await cleanupHlsArtifacts();
+      return;
+    }
+    const currentData = currentDoc.data() || {};
+    const currentSources = currentData?.sources || {};
+
+    console.log(`🔍 [ADAPTIVE] Current document data:`, {
+      hasSources: !!currentData?.sources,
+      sourcesKeys: currentData?.sources ? Object.keys(currentData.sources) : [],
+      transcodeStatus: currentData?.transcodeStatus
+    });
+
+    // Merge sources object manually
+    const mergedSources = {
+      ...currentSources,
+      hlsMaster: masterPlaylistStorage,
+      hls: fallbackHlsPath
+    };
+
+    console.log(`🔍 [ADAPTIVE] About to update Firestore with merged sources:`, {
+      mergedSourcesKeys: Object.keys(mergedSources),
+      hasHlsMaster: !!mergedSources.hlsMaster,
+      hasHls: !!mergedSources.hls
+    });
+
+    // Final write - use manual merge approach
+    const updateData = {
+      sources: mergedSources,
+      transcodeStatus: 'ready',
+      transcodeUpdatedAt: FieldValue.serverTimestamp(),
+      qualityLevels: qualityLevels.map(q => ({
+        name: q.name,
+        label: q.label,
+        resolution: q.resolution,
+        bandwidth: q.bandwidth
+      }))
+    };
+
+    await mediaRef.set(updateData, { merge: true });
+
+    // Verify the update
+    const verifyDoc = await mediaRef.get();
+    const verifyData = verifyDoc.exists ? verifyDoc.data() : {};
+    console.log(`✅ [ADAPTIVE] Firestore updated with sources:`, {
+      hasSources: !!verifyData?.sources,
+      sourcesKeys: verifyData?.sources ? Object.keys(verifyData.sources) : [],
+      hasHlsMaster: !!verifyData?.sources?.hlsMaster,
+      hasHls: !!verifyData?.sources?.hls,
+      hlsMasterValue: verifyData?.sources?.hlsMaster,
+      hlsValue: verifyData?.sources?.hls
+    });
+
+    console.log(`✅ [ADAPTIVE] Multi-quality HLS ready for ${mediaRef.id}:`, {
+      masterPlaylist: masterPlaylistStorage,
+      fallbackHls: fallbackHlsPath,
+      qualityCount: qualityLevels.length,
+      qualities: qualityLevels.map(q => q.label).join(', ')
+    });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    const isTimeout = errorMessage.includes('timeout') || errorMessage.includes('exceeded');
+
+    console.error(`❌ Transcode error for ${name}:`, {
+      error: errorMessage,
+      isTimeout,
+      mediaId: mediaRef?.id,
+      videoDuration: videoDuration,
+      resolution: `${videoWidth}x${videoHeight}`
+    });
+
+    try {
+      const errorDetails = {
+        transcodeStatus: 'failed',
+        transcodeError: errorMessage,
+        transcodeFailedAt: FieldValue.serverTimestamp(),
+        transcodingMessage: isTimeout
+          ? 'Processing timed out - video may be too large. Please try uploading a smaller file.'
+          : 'Processing failed. Please try uploading again.'
+      };
+      await mediaRef.set(errorDetails, { merge: true });
+      console.log(`✅ Marked ${mediaRef.id} as failed with error details`);
+    } catch (updateError) {
+      console.error('Failed to update media document with error status:', updateError);
+    }
+  } finally {
+    try { if (fs.existsSync(tmpOriginal)) fs.unlinkSync(tmpOriginal); } catch { }
   }
+}
 );
 
 // ───────────────── FAMILY MEMBER: Clean up linked attendees ─────────────────
 export const onFamilyMemberDeleted = onDocumentDeleted("users/{userId}/familyMembers/{familyMemberId}", async (event) => {
   const { userId, familyMemberId } = event.params;
-  
+
   console.log(`🧹 Family member deleted: ${familyMemberId} for user ${userId}`);
-  
+
   try {
     // Find all events where this user has attendees linked to this family member
     const eventsSnapshot = await db.collection('events').get();
-    
+
     const batch = db.batch();
     let totalUpdated = 0;
-    
+
     for (const eventDoc of eventsSnapshot.docs) {
       const attendeesSnapshot = await db.collection('events')
         .doc(eventDoc.id)
@@ -2317,7 +2320,7 @@ export const onFamilyMemberDeleted = onDocumentDeleted("users/{userId}/familyMem
         .where('userId', '==', userId)
         .where('familyMemberId', '==', familyMemberId)
         .get();
-      
+
       attendeesSnapshot.docs.forEach(attendeeDoc => {
         // Option 1: Clear the familyMemberId but keep the attendee record
         batch.update(attendeeDoc.ref, {
@@ -2325,16 +2328,16 @@ export const onFamilyMemberDeleted = onDocumentDeleted("users/{userId}/familyMem
           updatedAt: FieldValue.serverTimestamp()
         });
         totalUpdated++;
-        
+
         // Option 2: Delete the attendee entirely (uncomment if preferred)
         // batch.delete(attendeeDoc.ref);
         // totalUpdated++;
       });
     }
-    
+
     await batch.commit();
     console.log(`✅ Updated ${totalUpdated} attendee records after family member deletion`);
-    
+
   } catch (error) {
     console.error('❌ Failed to clean up attendees after family member deletion:', error);
   }
@@ -2478,9 +2481,9 @@ export const onExerciseMediaUpload = onObjectFinalized({
   } catch (error) {
     console.error('[ExerciseMedia] Failed to process upload', { slug, name, error: (error as any)?.message });
   } finally {
-    try { fs.existsSync(tmpSrc) && fs.unlinkSync(tmpSrc); } catch {}
-    try { fs.existsSync(tmpPoster) && fs.unlinkSync(tmpPoster); } catch {}
-    try { fs.existsSync(tmpLoop) && fs.unlinkSync(tmpLoop); } catch {}
+    try { fs.existsSync(tmpSrc) && fs.unlinkSync(tmpSrc); } catch { }
+    try { fs.existsSync(tmpPoster) && fs.unlinkSync(tmpPoster); } catch { }
+    try { fs.existsSync(tmpLoop) && fs.unlinkSync(tmpLoop); } catch { }
   }
 });
 
@@ -2669,7 +2672,7 @@ export const processQualityLevel = onRequestWithCors({
 
     // Upload all HLS files with retry logic for network errors
     const files = fs.readdirSync(qualityDirLocal);
-    
+
     const uploadWithRetry = async (filePath: string, dest: string, contentType: string, maxRetries = 3) => {
       let lastError: any;
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -2690,12 +2693,12 @@ export const processQualityLevel = onRequestWithCors({
           return;
         } catch (error: any) {
           lastError = error;
-          const isNetworkError = error.code === 'ECONNRESET' || 
-                                 error.code === 'ETIMEDOUT' || 
-                                 error.code === 'ENOTFOUND' ||
-                                 error.message?.includes('socket hang up') ||
-                                 error.message?.includes('timeout');
-          
+          const isNetworkError = error.code === 'ECONNRESET' ||
+            error.code === 'ETIMEDOUT' ||
+            error.code === 'ENOTFOUND' ||
+            error.message?.includes('socket hang up') ||
+            error.message?.includes('timeout');
+
           if (isNetworkError && attempt < maxRetries) {
             const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Exponential backoff, max 10s
             console.warn(`⚠️ [WORKER] Upload failed (attempt ${attempt}/${maxRetries}) for ${dest}: ${error.message}. Retrying in ${delay}ms...`);
@@ -2707,7 +2710,7 @@ export const processQualityLevel = onRequestWithCors({
       }
       throw lastError;
     };
-    
+
     await Promise.all(files.map(f => {
       const dest = `${qualityDirStorage}${f}`;
       const ct = f.endsWith('.m3u8')
@@ -2732,7 +2735,7 @@ export const processQualityLevel = onRequestWithCors({
     // Check for duplicate quality level (prevent duplicates from retries or race conditions)
     const existingQualityIndex = currentQualityLevels.findIndex((q: any) => q.name === qualityConfig.name);
     let updatedQualityLevels: any[];
-    
+
     if (existingQualityIndex !== -1) {
       console.log(`⚠️ [WORKER] Quality level ${qualityConfig.name} already exists, updating instead of duplicating`);
       // Update existing entry instead of creating duplicate
@@ -2851,23 +2854,23 @@ export const processQualityLevel = onRequestWithCors({
       updateData.backgroundProcessingStatus = 'completed';
       updateData.backgroundProcessingCompleted = FieldValue.serverTimestamp();
       updateData.transcodingMessage = 'All qualities ready';
-      
+
       // Get unique quality names to calculate accurate summary (use uniqueQualityLevels from above)
       const uniqueQualityNames = new Set(uniqueQualityLevels.map((q: any) => q.name));
       const uniqueQualityCount = uniqueQualityNames.size;
-      
+
       updateData.backgroundProcessingSummary = {
         totalExpected: currentData?.backgroundProcessingTargetQualities?.length || 1,
         succeeded: uniqueQualityCount, // Use unique count to avoid duplicates
         failed: currentData?.failedQualities?.length || 0,
         completedAt: Timestamp.now() // Use Timestamp.now() instead of FieldValue for nested objects
       };
-      
+
       // Set transcodeStatus to 'ready' when all background processing completes
       // This ensures status sync between transcodeStatus and backgroundProcessingStatus
       updateData.transcodeStatus = 'ready';
       updateData.transcodeUpdatedAt = FieldValue.serverTimestamp();
-      
+
       console.log(`✅ [WORKER] All background processing completed - setting transcodeStatus to 'ready'`);
     } else {
       updateData.transcodingMessage = `${uniqueQualityLevels.length} quality levels ready, ${remainingQualities.length} remaining...`;
@@ -2881,20 +2884,20 @@ export const processQualityLevel = onRequestWithCors({
     if (remainingQualities.length > 0) {
       const nextQuality = remainingQualities[0];
       const nextRemaining = remainingQualities.slice(1);
-      
+
       // Get quality config from Firestore (stored during initialization)
       const qualityConfigs = currentData?.qualityConfigs || {};
       const nextQualityConfig = qualityConfigs[nextQuality];
-      
+
       if (!nextQualityConfig) {
         console.error(`❌ [WORKER] Quality config not found for ${nextQuality} in Firestore`);
-        response.status(500).json({ 
+        response.status(500).json({
           error: 'Quality config not found',
           qualityLevel: nextQuality
         });
         return;
       }
-      
+
       console.log(`🔄 [WORKER] Enqueuing next quality: ${nextQuality}`);
       try {
         await enqueueQualityTask(mediaId, nextQuality, {
@@ -2915,10 +2918,10 @@ export const processQualityLevel = onRequestWithCors({
       }
     }
 
-    response.status(200).json({ 
-      success: true, 
+    response.status(200).json({
+      success: true,
       qualityLevel,
-      message: `${qualityConfig.label} processing completed` 
+      message: `${qualityConfig.label} processing completed`
     });
 
   } catch (error) {
@@ -2951,12 +2954,12 @@ export const processQualityLevel = onRequestWithCors({
     // Cleanup
     try {
       if (fs.existsSync(tmpOriginal)) fs.unlinkSync(tmpOriginal);
-    } catch {}
+    } catch { }
 
-    response.status(500).json({ 
-      error: 'Processing failed', 
+    response.status(500).json({
+      error: 'Processing failed',
       qualityLevel,
-      message: errorMessage 
+      message: errorMessage
     });
   }
 });
@@ -3034,39 +3037,39 @@ export const onAttendeeMirror = onDocumentWritten('events/{eventId}/attendees/{u
 // ───────────────── PHONE NUMBER VALIDATION ─────────────────
 export const checkPhoneNumberExists = onCallWithCors({ region: 'us-east1' }, async (request) => {
   console.log('🔍 checkPhoneNumberExists called with:', request.data);
-  
+
   const { phoneNumber } = request.data;
-  
+
   if (!phoneNumber) {
     console.log('❌ No phone number provided');
     return { exists: false, error: 'Phone number is required' };
   }
-  
+
   try {
     console.log('🔍 Checking if phone number exists:', phoneNumber);
-    
+
     // Query Firestore for users with this phone number
     const usersSnapshot = await db.collection('users')
       .where('phoneNumber', '==', phoneNumber)
       .limit(1)
       .get();
-    
+
     if (usersSnapshot.empty) {
       console.log('🔍 Phone number not found - new user can register');
-      return { 
-        exists: false, 
+      return {
+        exists: false,
         phoneNumber,
         message: 'Phone number not found'
       };
     }
-    
+
     // User exists - check status
     const userDoc = usersSnapshot.docs[0];
     const userData = userDoc.data();
     const userStatus = userData.status || 'pending';
-    
+
     console.log('🔍 User found with status:', userStatus);
-    
+
     // If user is rejected, check if cooldown period has passed
     if (userStatus === 'rejected' && userData.rejectedAt) {
       const rejectedAt = (userData.rejectedAt as Timestamp).toDate();
@@ -3074,18 +3077,18 @@ export const checkPhoneNumberExists = onCallWithCors({ region: 'us-east1' }, asy
       const reapplyDate = new Date(rejectedAt);
       reapplyDate.setDate(reapplyDate.getDate() + cooldownDays);
       const now = new Date();
-      
+
       console.log('🔍 Rejected user - checking cooldown:', {
         rejectedAt: rejectedAt.toISOString(),
         reapplyDate: reapplyDate.toISOString(),
         now: now.toISOString(),
         canReapply: now >= reapplyDate
       });
-      
+
       // If cooldown has passed, allow reapplication
       if (now >= reapplyDate) {
         console.log('✅ Cooldown expired - user can reapply');
-        return { 
+        return {
           exists: false,  // Allow reapplication
           phoneNumber,
           canReapply: true,
@@ -3096,7 +3099,7 @@ export const checkPhoneNumberExists = onCallWithCors({ region: 'us-east1' }, asy
         // Still in cooldown period
         const daysRemaining = Math.ceil((reapplyDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         console.log('⏳ Cooldown active - user cannot reapply yet', { daysRemaining });
-        return { 
+        return {
           exists: true,  // Block registration
           phoneNumber,
           canReapply: false,
@@ -3107,26 +3110,26 @@ export const checkPhoneNumberExists = onCallWithCors({ region: 'us-east1' }, asy
         };
       }
     }
-    
+
     // For all other statuses (pending, approved, needs_clarification), block registration
     console.log('🔍 User exists with status:', userStatus, '- blocking registration');
-    return { 
-      exists: true, 
+    return {
+      exists: true,
       phoneNumber,
-      message: userStatus === 'pending' 
+      message: userStatus === 'pending'
         ? 'This phone number is already registered. Your account is pending approval.'
         : userStatus === 'approved'
-        ? 'This phone number is already registered. Please sign in instead.'
-        : 'This phone number is already registered. Please sign in instead.',
+          ? 'This phone number is already registered. Please sign in instead.'
+          : 'This phone number is already registered. Please sign in instead.',
       userStatus
     };
-    
+
   } catch (error) {
     console.error('❌ Error checking phone number:', error);
-    return { 
-      exists: false, 
+    return {
+      exists: false,
       error: 'Failed to check phone number',
-      phoneNumber 
+      phoneNumber
     };
   }
 });
@@ -3147,7 +3150,8 @@ function normalizeUSPhoneToE164OrNull(input: string): string | null {
 }
 
 // One-time guest RSVP for truly public events (no user account creation)
-export const submitTrulyPublicGuestRsvp = onCallWithCors({ region: 'us-east1' }, async (request) => {
+// Note: Using onCall directly without origin guard since this is for truly public access
+export const submitTrulyPublicGuestRsvp = onCall({ region: 'us-east1', cors: ALLOWED_CORS_ORIGINS }, async (request) => {
   try {
     const data = request.data || {};
     const eventId = String(data.eventId || '').trim();
@@ -3200,29 +3204,111 @@ export const submitTrulyPublicGuestRsvp = onCallWithCors({ region: 'us-east1' },
 
     // Prevent duplicate guest RSVP for the same event+phone pair using deterministic doc id.
     const deterministicGuestId = `${eventId}_${phoneE164.replace(/[^\d]/g, '')}`;
-    const existingGuestDoc = await db.collection('event_guest_rsvps').doc(deterministicGuestId).get();
-    if (existingGuestDoc.exists) {
-      return {
-        success: true,
-        alreadySubmitted: true,
-        message: 'Your RSVP is already submitted for this event.'
-      };
-    }
+      const existingGuestDoc = await db.collection('event_guest_rsvps').doc(deterministicGuestId).get();
+      if (existingGuestDoc.exists) {
+        const existingData = existingGuestDoc.data() || {};
+
+        const additionalAttendees = additionalAttendeesRaw
+          .map((a: any) => ({
+            name: String(a?.name || '').trim(),
+            relationship: String(a?.relationship || 'guest').trim() || 'guest',
+            ageGroup: String(a?.ageGroup || 'adult').trim() || 'adult',
+          }))
+          .filter((a: any) => a.name.length > 0)
+          .slice(0, 10);
+
+        // If no new attendees provided, return existing RSVP data.
+        if (additionalAttendees.length === 0) {
+          return {
+            success: true,
+            alreadySubmitted: true,
+            attendeeIds: existingData.attendeeIds || [],
+            guestUserId: existingData.guestUserId,
+            attendees: existingData.attendees || [],
+            message: 'Your RSVP is already submitted for this event.'
+          };
+        }
+
+        // Append new attendees to existing RSVP
+        const guestUserId = existingData.guestUserId || `guest_${deterministicGuestId}`;
+        const newAttendees = additionalAttendees.map((a: any) => ({
+          name: a.name,
+          relationship: a.relationship,
+          attendeeType: 'family_member',
+          ageGroup: a.ageGroup || 'adult'
+        }));
+
+        const now = FieldValue.serverTimestamp();
+        const batch = db.batch();
+        const newAttendeeIds: string[] = [];
+
+        for (const a of newAttendees) {
+          const aRef = db.collection('events').doc(eventId).collection('attendees').doc();
+          newAttendeeIds.push(aRef.id);
+          batch.set(aRef, {
+            eventId,
+            userId: guestUserId,
+            attendeeType: a.attendeeType,
+            relationship: a.relationship,
+            name: a.name,
+            ageGroup: a.ageGroup || 'adult',
+            rsvpStatus: 'going',
+            paymentStatus: eventData?.pricing?.requiresPayment ? 'unpaid' : 'not_required',
+            isGuest: true,
+            guestEmail: email,
+            guestPhone: phoneE164,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+
+        const newAttendeesWithIds = newAttendees.map((a: any, i: number) => ({
+          ...a,
+          attendeeId: newAttendeeIds[i]
+        }));
+
+        const updatedAttendees = [...(existingData.attendees || []), ...newAttendeesWithIds];
+        const updatedAttendeeIds = [...(existingData.attendeeIds || []), ...newAttendeeIds];
+
+        const updatedPayload = {
+          ...existingData,
+          attendees: updatedAttendees,
+          attendeeIds: updatedAttendeeIds,
+          totalAttendees: updatedAttendees.length,
+          updatedAt: now,
+        };
+
+        const writeRef = db.collection('event_guest_rsvps').doc(deterministicGuestId);
+        const eventScopedRef = db.collection('events').doc(eventId).collection('guest_rsvps').doc(writeRef.id);
+        batch.set(writeRef, updatedPayload, { merge: true });
+        batch.set(eventScopedRef, updatedPayload, { merge: true });
+        await batch.commit();
+
+        return {
+          success: true,
+          alreadySubmitted: true,
+          attendeeIds: updatedAttendeeIds,
+          guestUserId,
+          attendees: updatedAttendees,
+          message: 'Your RSVP has been updated with additional attendees.'
+        };
+      }
 
     const additionalAttendees = additionalAttendeesRaw
       .map((a: any) => ({
         name: String(a?.name || '').trim(),
         relationship: String(a?.relationship || 'guest').trim() || 'guest',
+        ageGroup: String(a?.ageGroup || 'adult').trim() || 'adult',
       }))
       .filter((a: any) => a.name.length > 0)
       .slice(0, 10);
 
     const primaryName = `${firstName} ${lastName}`.trim();
     const guestUserId = `guest_${deterministicGuestId}`;
-    const attendeesList = [
-      { name: primaryName, relationship: 'self', attendeeType: 'primary' },
-      ...additionalAttendees.map((a: any) => ({ ...a, attendeeType: 'family_member' })),
-    ];
+      const attendeesList = [
+        { name: primaryName, relationship: 'self', attendeeType: 'primary', ageGroup: 'adult' },
+        ...additionalAttendees.map((a: any) => ({ ...a, attendeeType: 'family_member' })),
+      ];
 
     const now = FieldValue.serverTimestamp();
     const batch = db.batch();
@@ -3236,7 +3322,7 @@ export const submitTrulyPublicGuestRsvp = onCallWithCors({ region: 'us-east1' },
         attendeeType: a.attendeeType,
         relationship: a.relationship,
         name: a.name,
-        ageGroup: 'adult',
+        ageGroup: a.ageGroup || 'adult',
         rsvpStatus: 'going',
         paymentStatus: eventData?.pricing?.requiresPayment ? 'unpaid' : 'not_required',
         isGuest: true,
@@ -3247,20 +3333,25 @@ export const submitTrulyPublicGuestRsvp = onCallWithCors({ region: 'us-east1' },
       });
     }
 
-    const payload = {
-      eventId,
-      eventTitle: String(eventData.title || 'Event'),
-      source: 'truly_public_guest',
-      status: 'submitted',
+      const attendeesWithIds = attendeesList.map((a, i) => ({
+        ...a,
+        attendeeId: attendeeIds[i]
+      }));
+
+      const payload = {
+        eventId,
+        eventTitle: String(eventData.title || 'Event'),
+        source: 'truly_public_guest',
+        status: 'submitted',
       primaryFirstName: firstName,
       primaryLastName: lastName,
       primaryName,
       primaryEmail: email,
       primaryPhoneE164: phoneE164,
-      attendees: attendeesList,
-      attendeeIds,
-      guestUserId,
-      totalAttendees: attendeesList.length,
+        attendees: attendeesWithIds,
+        attendeeIds,
+        guestUserId,
+        totalAttendees: attendeesList.length,
       paymentRequired: !!eventData?.pricing?.requiresPayment,
       paymentStatus: 'pending',
       createdAt: now,
@@ -3273,13 +3364,13 @@ export const submitTrulyPublicGuestRsvp = onCallWithCors({ region: 'us-east1' },
     batch.set(eventScopedRef, payload);
     await batch.commit();
 
-    return {
-      success: true,
-      rsvpId: writeRef.id,
-      attendeeIds,
-      guestUserId,
-      message: 'Guest RSVP submitted successfully'
-    };
+        return {
+          success: true,
+          rsvpId: writeRef.id,
+          attendeeIds,
+          guestUserId,
+          message: 'Guest RSVP submitted successfully'
+        };
   } catch (error: any) {
     console.error('❌ submitTrulyPublicGuestRsvp failed:', error);
     return {
@@ -3302,98 +3393,98 @@ export const sendNotificationSMS = onCall(
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'User must be authenticated to send SMS');
     }
-    
+
     // 2. App Check verification is handled automatically by Firebase when enforceAppCheck: true
     // If App Check token is invalid or missing, the function won't be called
     // request.app contains App Check verification result if needed for logging
 
     const { phoneNumber, message, userId, type } = request.data;
-    
-    // 3. Validate input
-  if (!phoneNumber || typeof phoneNumber !== 'string') {
-    throw new HttpsError('invalid-argument', 'phoneNumber is required and must be a string');
-  }
-  
-  if (!message || typeof message !== 'string') {
-    throw new HttpsError('invalid-argument', 'message is required and must be a string');
-  }
-  
-  // Validate phone number format (E.164)
-  const phoneRegex = /^\+[1-9]\d{1,14}$/;
-  if (!phoneRegex.test(phoneNumber)) {
-    throw new HttpsError('invalid-argument', 'phoneNumber must be in E.164 format (e.g., +1234567890)');
-  }
-  
-  // Validate message length (Twilio limit is 1600 characters)
-  if (message.length > 1600) {
-    throw new HttpsError('invalid-argument', 'message must be 1600 characters or less');
-  }
-  
-  if (message.length === 0) {
-    throw new HttpsError('invalid-argument', 'message cannot be empty');
-  }
-  
-    // 4. Check user role - only admins can send SMS
-  const userDoc = await db.collection('users').doc(request.auth.uid).get();
-  if (!userDoc.exists) {
-    throw new HttpsError('permission-denied', 'User not found');
-  }
-  
-  const userData = userDoc.data();
-  if (userData?.role !== 'admin') {
-    throw new HttpsError('permission-denied', 'Only admins can send SMS notifications');
-  }
 
-  // 5. Rate limiting: Max 10 SMS per admin per hour to prevent abuse
-  const now = Date.now();
-  const oneHourAgo = now - (60 * 60 * 1000);
-  const rateLimitRef = db.collection('sms_rate_limits').doc(request.auth.uid);
-  const rateLimitDoc = await rateLimitRef.get();
-  
-  if (rateLimitDoc.exists) {
-    const rateLimitData = rateLimitDoc.data();
-    const recentCalls = (rateLimitData?.calls || []).filter((timestamp: number) => timestamp > oneHourAgo);
-    
-    if (recentCalls.length >= 10) {
-      throw new HttpsError('resource-exhausted', 'Rate limit exceeded: Maximum 10 SMS per hour. Please try again later.');
+    // 3. Validate input
+    if (!phoneNumber || typeof phoneNumber !== 'string') {
+      throw new HttpsError('invalid-argument', 'phoneNumber is required and must be a string');
     }
-    
-    // Update rate limit tracking
-    recentCalls.push(now);
-    await rateLimitRef.set({
-      calls: recentCalls,
-      lastCallAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-  } else {
-    // First call - initialize rate limit tracking
-    await rateLimitRef.set({
-      calls: [now],
-      lastCallAt: FieldValue.serverTimestamp(),
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
-    });
-  }
-  
+
+    if (!message || typeof message !== 'string') {
+      throw new HttpsError('invalid-argument', 'message is required and must be a string');
+    }
+
+    // Validate phone number format (E.164)
+    const phoneRegex = /^\+[1-9]\d{1,14}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+      throw new HttpsError('invalid-argument', 'phoneNumber must be in E.164 format (e.g., +1234567890)');
+    }
+
+    // Validate message length (Twilio limit is 1600 characters)
+    if (message.length > 1600) {
+      throw new HttpsError('invalid-argument', 'message must be 1600 characters or less');
+    }
+
+    if (message.length === 0) {
+      throw new HttpsError('invalid-argument', 'message cannot be empty');
+    }
+
+    // 4. Check user role - only admins can send SMS
+    const userDoc = await db.collection('users').doc(request.auth.uid).get();
+    if (!userDoc.exists) {
+      throw new HttpsError('permission-denied', 'User not found');
+    }
+
+    const userData = userDoc.data();
+    if (userData?.role !== 'admin') {
+      throw new HttpsError('permission-denied', 'Only admins can send SMS notifications');
+    }
+
+    // 5. Rate limiting: Max 10 SMS per admin per hour to prevent abuse
+    const now = Date.now();
+    const oneHourAgo = now - (60 * 60 * 1000);
+    const rateLimitRef = db.collection('sms_rate_limits').doc(request.auth.uid);
+    const rateLimitDoc = await rateLimitRef.get();
+
+    if (rateLimitDoc.exists) {
+      const rateLimitData = rateLimitDoc.data();
+      const recentCalls = (rateLimitData?.calls || []).filter((timestamp: number) => timestamp > oneHourAgo);
+
+      if (recentCalls.length >= 10) {
+        throw new HttpsError('resource-exhausted', 'Rate limit exceeded: Maximum 10 SMS per hour. Please try again later.');
+      }
+
+      // Update rate limit tracking
+      recentCalls.push(now);
+      await rateLimitRef.set({
+        calls: recentCalls,
+        lastCallAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    } else {
+      // First call - initialize rate limit tracking
+      await rateLimitRef.set({
+        calls: [now],
+        lastCallAt: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    }
+
     // 5. If userId provided, verify it exists and check SMS preference
-  if (userId) {
-    const targetUserDoc = await db.collection('users').doc(userId).get();
-    if (targetUserDoc.exists) {
-      const targetUserData = targetUserDoc.data();
-      const smsEnabled = targetUserData?.notificationPreferences?.smsEnabled !== false; // Default to true
-      
-      if (!smsEnabled) {
-        console.log(`⚠️ SMS disabled for user ${userId}, skipping send`);
-        return {
-          success: false,
-          error: 'SMS notifications are disabled for this user',
-          phoneNumber,
-          userId
-        };
+    if (userId) {
+      const targetUserDoc = await db.collection('users').doc(userId).get();
+      if (targetUserDoc.exists) {
+        const targetUserData = targetUserDoc.data();
+        const smsEnabled = targetUserData?.notificationPreferences?.smsEnabled !== false; // Default to true
+
+        if (!smsEnabled) {
+          console.log(`⚠️ SMS disabled for user ${userId}, skipping send`);
+          return {
+            success: false,
+            error: 'SMS notifications are disabled for this user',
+            phoneNumber,
+            userId
+          };
+        }
       }
     }
-  }
-  
+
     console.log('📱 sendNotificationSMS called by admin:', {
       adminId: request.auth.uid,
       phoneNumber: phoneNumber.substring(0, 4) + '***', // Partial logging for privacy
@@ -3402,10 +3493,10 @@ export const sendNotificationSMS = onCall(
       type,
       appVerified: !!request.app
     });
-    
+
     try {
       const result = await sendSMSViaTwilio(phoneNumber, message);
-      
+
       if (result.success) {
         return {
           success: true,
@@ -3435,55 +3526,55 @@ export const markAllNotificationsAsRead = onCallWithCors({ region: 'us-east1' },
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'User must be authenticated');
   }
-  
+
   const userId = request.auth.uid;
-  
+
   try {
     // Query all unread notifications for the user
     const unreadQuery = db.collection('notifications')
       .where('userId', '==', userId)
       .where('read', '==', false);
-    
+
     const unreadSnapshot = await unreadQuery.get();
-    
+
     if (unreadSnapshot.empty) {
       return { success: true, count: 0, message: 'No unread notifications' };
     }
-    
+
     // Process in batches of 500 (Firestore batch limit)
     const BATCH_SIZE = 500;
     const batches: any[] = [];
     let batch = db.batch();
     let operationCount = 0;
     let totalProcessed = 0;
-    
+
     unreadSnapshot.docs.forEach((doc) => {
       batch.update(doc.ref, {
         read: true,
         readAt: FieldValue.serverTimestamp()
       });
       operationCount++;
-      
+
       if (operationCount === BATCH_SIZE) {
         batches.push(batch);
         batch = db.batch();
         operationCount = 0;
       }
     });
-    
+
     // Add final batch if there are remaining operations
     if (operationCount > 0) {
       batches.push(batch);
     }
-    
+
     // Commit all batches
     for (const batchToCommit of batches) {
       await batchToCommit.commit();
       totalProcessed += Math.min(BATCH_SIZE, unreadSnapshot.size - totalProcessed);
     }
-    
+
     console.log(`✅ Marked ${totalProcessed} notifications as read for user ${userId}`);
-    
+
     return {
       success: true,
       count: totalProcessed,
@@ -3497,9 +3588,9 @@ export const markAllNotificationsAsRead = onCallWithCors({ region: 'us-east1' },
 
 export const checkSMSDeliveryStatus = onCall(async (request) => {
   const { phoneNumber, verificationId } = request.data;
-  
+
   console.log('🔍 checkSMSDeliveryStatus called with:', { phoneNumber, verificationId });
-  
+
   try {
     // Check if phone number is valid format
     const phoneRegex = /^\+[1-9]\d{1,14}$/;
@@ -3511,10 +3602,10 @@ export const checkSMSDeliveryStatus = onCall(async (request) => {
         verificationId
       };
     }
-    
+
     // Check Firebase project configuration
     const projectId = process.env.GCLOUD_PROJECT || 'momfitnessmojo';
-    
+
     // Log detailed information for debugging
     const debugInfo = {
       phoneNumber,
@@ -3524,9 +3615,9 @@ export const checkSMSDeliveryStatus = onCall(async (request) => {
       environment: process.env.NODE_ENV || 'production',
       region: process.env.FUNCTION_REGION || 'us-east1'
     };
-    
+
     console.log('🔍 SMS Delivery Debug Info:', debugInfo);
-    
+
     return {
       success: true,
       message: 'SMS delivery status checked',
@@ -3540,7 +3631,7 @@ export const checkSMSDeliveryStatus = onCall(async (request) => {
         'Wait 1-2 minutes for SMS delivery'
       ]
     };
-    
+
   } catch (error) {
     console.error('❌ Error checking SMS delivery status:', error);
     return {
@@ -3556,7 +3647,7 @@ export const checkSMSDeliveryStatus = onCall(async (request) => {
 export const generateTestimonialSuggestions = onCallWithCors({}, async (request) => {
   try {
     const { prompt, userContext, highlight } = request.data;
-    
+
     if (!prompt || typeof prompt !== 'string') {
       return {
         success: false,
@@ -3569,7 +3660,7 @@ export const generateTestimonialSuggestions = onCallWithCors({}, async (request)
       try {
         const db = getFirestore();
         const promptsDoc = await db.collection('aiPrompts').doc('testimonialGeneration').get();
-        
+
         if (promptsDoc.exists) {
           const data = promptsDoc.data();
           return {
@@ -3581,7 +3672,7 @@ export const generateTestimonialSuggestions = onCallWithCors({}, async (request)
             updatedAt: data?.updatedAt?.toDate() || null,
           };
         }
-        
+
         // Fallback to default if not configured
         return {
           communityContext: 'Moms Fitness Mojo is a fitness and wellness community for moms in Short Hills, Millburn, and surrounding New Jersey areas. We offer workouts (yoga, pilates, HIIT, strength training), hikes, tennis, dance sessions, fitness challenges, social events (brunches, dinners, cocktail nights), and festival celebrations. The community values friendship, accountability, wellness, and helping moms rediscover themselves beyond their roles as mothers.',
@@ -3613,7 +3704,7 @@ export const generateTestimonialSuggestions = onCallWithCors({}, async (request)
     // Build context-aware prompt using admin-configured settings
     const buildPrompt = async () => {
       const aiPrompts = await getAIPrompts();
-      
+
       let userPrompt = `You are helping a member of Moms Fitness Mojo write a testimonial. 
 
 COMMUNITY CONTEXT:
@@ -3637,7 +3728,7 @@ ${aiPrompts.tone ? `\nTONE: ${aiPrompts.tone}` : ''}`;
 
       userPrompt += `\n\nUSER'S INPUT/EXPERIENCE: "${prompt}"`;
       userPrompt += `\n\nGenerate 2-3 testimonials based on the user's input above. Format each on a new line starting with "1.", "2.", "3.". Each should be between 600-1500 characters so the story feels complete while staying focused. Make them feel authentic and specific to their experience.`;
-      
+
       return userPrompt;
     };
 
@@ -3664,7 +3755,7 @@ ${aiPrompts.tone ? `\nTONE: ${aiPrompts.tone}` : ''}`;
         console.log('🤖 [Gemini] Attempting to generate suggestions...');
         const { GoogleGenerativeAI } = await import('@google/generative-ai');
         const genAI = new GoogleGenerativeAI(geminiApiKey);
-        
+
         // Try different model names - gemini-2.5-flash is the current recommended model (per Firebase AI Logic docs)
         const modelsToTry = [
           'gemini-2.5-flash', // Current recommended model from Firebase AI Logic
@@ -3678,10 +3769,10 @@ ${aiPrompts.tone ? `\nTONE: ${aiPrompts.tone}` : ''}`;
 
         for (const modelName of modelsToTry) {
           try {
-              console.log(`🤖 [Gemini] Trying model: ${modelName}`);
-              const model = genAI.getGenerativeModel({ model: modelName });
-              const systemPrompt = await buildPrompt();
-              const result = await model.generateContent(systemPrompt);
+            console.log(`🤖 [Gemini] Trying model: ${modelName}`);
+            const model = genAI.getGenerativeModel({ model: modelName });
+            const systemPrompt = await buildPrompt();
+            const result = await model.generateContent(systemPrompt);
             const response = await result.response;
             text = response.text();
             console.log(`✅ [Gemini] Success with model: ${modelName}`);
@@ -3710,7 +3801,7 @@ ${aiPrompts.tone ? `\nTONE: ${aiPrompts.tone}` : ''}`;
     }
 
     // Fallback to OpenAI
-const openaiApiKey = process.env.OPENAI_API_KEY;
+    const openaiApiKey = process.env.OPENAI_API_KEY;
 
     if (!openaiApiKey) {
       console.error('❌ Neither GEMINI_API_KEY nor OPENAI_API_KEY configured');
@@ -3724,19 +3815,19 @@ const openaiApiKey = process.env.OPENAI_API_KEY;
     const { default: OpenAI } = await import('openai');
     const openai = new OpenAI({ apiKey: openaiApiKey });
 
-          const userPrompt = await buildPrompt();
-          const completion = await openai.chat.completions.create({
-            model: 'gpt-3.5-turbo',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are helping a member of Moms Fitness Mojo write a testimonial. Be authentic, concise, and heartfelt.'
-              },
-              {
-                role: 'user',
-                content: userPrompt
-              }
-            ],
+    const userPrompt = await buildPrompt();
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are helping a member of Moms Fitness Mojo write a testimonial. Be authentic, concise, and heartfelt.'
+        },
+        {
+          role: 'user',
+          content: userPrompt
+        }
+      ],
       temperature: 0.7,
       max_tokens: 600
     });
@@ -4021,10 +4112,10 @@ export const classifyTestimonialTone = onCallWithCors({
 
 const escapeSvgText = (text: string): string =>
   text.replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 
 const sanitizeFilename = (name: string): string => {
   const normalized = name
@@ -4336,7 +4427,7 @@ type PlanIntake = {
   level: 'beginner' | 'intermediate' | 'advanced';
   equipment: string[];
   postpartum?: boolean;
-  environment?: 'home'|'gym'|'outdoors';
+  environment?: 'home' | 'gym' | 'outdoors';
   restrictions?: string[];
 };
 
@@ -4359,10 +4450,10 @@ const BLOCK_LIBRARY = {
   cooldown: { name: 'Cool Down', items: ['Box Breathing 2 min', 'Calf/Hamstring Stretch 30s'] },
 };
 
-const buildSession = (type: 'strength'|'hiit'|'mobility'|'walk', minutes: number, ctx?: { environment?: string; equipment?: string[]; restrictions?: string[]; postpartum?: boolean }) => {
+const buildSession = (type: 'strength' | 'hiit' | 'mobility' | 'walk', minutes: number, ctx?: { environment?: string; equipment?: string[]; restrictions?: string[]; postpartum?: boolean }) => {
   const base = [BLOCK_LIBRARY.warmup];
-  const env = (ctx?.environment||'home').toLowerCase();
-  const restrict = (ctx?.restrictions||[]).map(x=>String(x||'').toLowerCase());
+  const env = (ctx?.environment || 'home').toLowerCase();
+  const restrict = (ctx?.restrictions || []).map(x => String(x || '').toLowerCase());
   const lowImpact = !!ctx?.postpartum || restrict.includes('knee') || restrict.includes('low back') || restrict.includes('back');
   if (type === 'strength') base.push(BLOCK_LIBRARY.strengthA, BLOCK_LIBRARY.core);
   if (type === 'hiit') base.push(lowImpact ? (BLOCK_LIBRARY as any).hiitLow || BLOCK_LIBRARY.core : BLOCK_LIBRARY.hiit);
@@ -4379,7 +4470,7 @@ const buildSession = (type: 'strength'|'hiit'|'mobility'|'walk', minutes: number
   return {
     type,
     minutes,
-    title: type === 'walk' ? 'Brisk Walk' : type.charAt(0).toUpperCase()+type.slice(1),
+    title: type === 'walk' ? 'Brisk Walk' : type.charAt(0).toUpperCase() + type.slice(1),
     blocks: base,
   };
 };
@@ -4396,18 +4487,18 @@ export const generateWorkoutPlan = onCallWithCors({ region: 'us-east1' }, async 
   const minutes = intake.minutesPerSession;
 
   const sessions: any[] = [];
-  for (let w=1; w<=weeks; w++) {
-    for (let d=1; d<=sessionsPerWeek; d++) {
+  for (let w = 1; w <= weeks; w++) {
+    for (let d = 1; d <= sessionsPerWeek; d++) {
       // Simple rotation: Strength / HIIT / Mobility / Walk
-      const idx = (d-1) % 4;
-      const map: Array<'strength'|'hiit'|'mobility'|'walk'> = ['strength', 'hiit', 'mobility', 'walk'];
-      const t = intake.postpartum ? (idx===1 ? 'mobility' : (idx===0 ? 'strength' : 'walk')) : map[idx];
+      const idx = (d - 1) % 4;
+      const map: Array<'strength' | 'hiit' | 'mobility' | 'walk'> = ['strength', 'hiit', 'mobility', 'walk'];
+      const t = intake.postpartum ? (idx === 1 ? 'mobility' : (idx === 0 ? 'strength' : 'walk')) : map[idx];
       sessions.push(buildSession(t as any, minutes, { environment: intake.environment, equipment: intake.equipment, restrictions: intake.restrictions, postpartum: intake.postpartum }));
     }
   }
 
   const planDoc = {
-    title: `${intake.level.replace(/\b\w/g, c=>c.toUpperCase())} ${intake.goal.replace('_',' ')} Plan`,
+    title: `${intake.level.replace(/\b\w/g, c => c.toUpperCase())} ${intake.goal.replace('_', ' ')} Plan`,
     goal: intake.goal,
     level: intake.level,
     daysPerWeek: intake.daysPerWeek,
@@ -4434,7 +4525,7 @@ export const getDailyWorkoutSuggestion = onCallWithCors({ region: 'us-east1' }, 
   // Very simple readiness logic
   const energy = (data.sleep + (6 - data.stress)) / 2; // higher is better
   const sore = data.soreness ?? 0;
-  let type: 'strength'|'hiit'|'mobility'|'walk' = 'strength';
+  let type: 'strength' | 'hiit' | 'mobility' | 'walk' = 'strength';
 
   if (energy <= 2 || sore >= 3) type = 'mobility';
   else if (energy < 3) type = 'walk';
@@ -4443,7 +4534,7 @@ export const getDailyWorkoutSuggestion = onCallWithCors({ region: 'us-east1' }, 
 
   const minutes = Math.min(Math.max(data.timeAvailable, 5), 45);
   const session = buildSession(type, minutes);
-  return { suggestion: { ...session, note: type==='mobility' && energy<=2 ? 'Keep it gentle today' : undefined } };
+  return { suggestion: { ...session, note: type === 'mobility' && energy <= 2 ? 'Keep it gentle today' : undefined } };
 });
 
 // ───────────────── CHALLENGES MVP ─────────────────
@@ -4468,11 +4559,11 @@ export const createChallenge = onCallWithCors({ region: 'us-east1' }, async (req
     instructions?: string;
     visibility?: string;
   };
-  
+
   // Validate required fields - check for undefined/null, not truthy (0 is valid for target)
-  if (!data?.title || data.target === undefined || data.target === null || 
-      data.startAt === undefined || data.startAt === null || 
-      data.endAt === undefined || data.endAt === null) {
+  if (!data?.title || data.target === undefined || data.target === null ||
+    data.startAt === undefined || data.startAt === null ||
+    data.endAt === undefined || data.endAt === null) {
     console.error('❌ createChallenge: Missing required fields', {
       hasTitle: !!data?.title,
       target: data?.target,
@@ -4541,7 +4632,7 @@ export const createChallenge = onCallWithCors({ region: 'us-east1' }, async (req
     // Legacy support - keep goal for backward compatibility
     goal: data.goal || (type === 'workout_sessions' ? 'sessions' : type === 'workout_minutes' ? 'minutes' : null),
   };
-  
+
   const ref = await db.collection('challenges').add(challenge);
   return { id: ref.id };
 });
@@ -4609,11 +4700,11 @@ export const joinChallenge = onCallWithCors({ region: 'us-east1' }, async (reque
 
 async function applyChallengeProgressInternal(params: { userId: string; challengeId: string; count?: number; value?: number; sessions?: number; minutes?: number }) {
   const { userId, challengeId } = params;
-  
+
   // Support both new format (count/value) and legacy format (sessions/minutes)
   let count = Math.max(0, Number(params.count || params.sessions || 0));
   let value = Math.max(0, Number(params.value || params.minutes || 0));
-  
+
   if (!count && !value) {
     return;
   }
@@ -4622,16 +4713,16 @@ async function applyChallengeProgressInternal(params: { userId: string; challeng
   const challengeRef = db.collection('challenges').doc(challengeId);
   const challengeSnap = await challengeRef.get();
   const challengeData = challengeSnap.exists ? challengeSnap.data() : {};
-  
+
   const challengeType = challengeData?.type || challengeData?.goal || 'workout_sessions';
-  const isValueBased = challengeType === 'workout_minutes' || 
-                       challengeType === 'meditation' || 
-                       challengeType === 'sleep_hours' || 
-                       challengeType === 'reading' || 
-                       challengeType === 'screen_time' || 
-                       challengeType === 'outdoor_time' ||
-                       challengeType === 'water_intake' ||
-                       challengeType === 'minutes';
+  const isValueBased = challengeType === 'workout_minutes' ||
+    challengeType === 'meditation' ||
+    challengeType === 'sleep_hours' ||
+    challengeType === 'reading' ||
+    challengeType === 'screen_time' ||
+    challengeType === 'outdoor_time' ||
+    challengeType === 'water_intake' ||
+    challengeType === 'minutes';
 
   const partRef = challengeRef.collection('participants').doc(userId);
   const membershipRef = db.collection('users').doc(userId).collection('challengeMemberships').doc(challengeId);
@@ -4640,11 +4731,11 @@ async function applyChallengeProgressInternal(params: { userId: string; challeng
     const snap = await tx.get(partRef);
     if (!snap.exists) throw new HttpsError('failed-precondition', 'Not a participant');
     const data = snap.data() || {};
-    
+
     const next: any = {
       updatedAt: new Date(),
     };
-    
+
     if (isValueBased) {
       // Value-based progress (minutes, hours, glasses, etc.)
       const increment = value || count; // Use value if provided, otherwise count
@@ -4661,7 +4752,7 @@ async function applyChallengeProgressInternal(params: { userId: string; challeng
         next.progressValue = (data.progressValue || 0) + value; // Track value for count-based too
       }
     }
-    
+
     tx.update(partRef, next);
 
     const membershipSnap = await tx.get(membershipRef);
@@ -4670,7 +4761,7 @@ async function applyChallengeProgressInternal(params: { userId: string; challeng
       const membershipUpdate: any = {
         updatedAt: new Date(),
       };
-      
+
       if (isValueBased) {
         const increment = value || count;
         membershipUpdate.progressValue = (membershipData.progressValue || membershipData.minutesSum || 0) + increment;
@@ -4685,7 +4776,7 @@ async function applyChallengeProgressInternal(params: { userId: string; challeng
           membershipUpdate.progressValue = (membershipData.progressValue || 0) + value;
         }
       }
-      
+
       tx.update(membershipRef, membershipUpdate);
     } else {
       const initialData: any = {
@@ -4707,11 +4798,11 @@ export const incrementChallengeProgress = onCallWithCors({ region: 'us-east1' },
   if (!userDoc.exists || (userDoc.data()?.status && userDoc.data()?.status !== 'approved')) {
     throw new HttpsError('failed-precondition', 'Account pending approval. Please wait until your account is approved.');
   }
-  const { challengeId, count, value, sessions, minutes } = request.data as { 
-    challengeId: string; 
-    count?: number; 
-    value?: number; 
-    sessions?: number; 
+  const { challengeId, count, value, sessions, minutes } = request.data as {
+    challengeId: string;
+    count?: number;
+    value?: number;
+    sessions?: number;
     minutes?: number;
   };
   if (!challengeId) throw new HttpsError('invalid-argument', 'challengeId required');
@@ -4905,22 +4996,22 @@ export const generateChallengeShareCard = onCallWithCors({
 
   // Support both new flexible structure and legacy structure
   const challengeType = challenge.type || challenge.goal || 'workout_sessions';
-  const isValueBased = challengeType === 'workout_minutes' || 
-                      challengeType === 'meditation' || 
-                      challengeType === 'sleep_hours' || 
-                      challengeType === 'reading' || 
-                      challengeType === 'screen_time' || 
-                      challengeType === 'outdoor_time' ||
-                      challengeType === 'water_intake' ||
-                      challengeType === 'minutes';
-  
+  const isValueBased = challengeType === 'workout_minutes' ||
+    challengeType === 'meditation' ||
+    challengeType === 'sleep_hours' ||
+    challengeType === 'reading' ||
+    challengeType === 'screen_time' ||
+    challengeType === 'outdoor_time' ||
+    challengeType === 'water_intake' ||
+    challengeType === 'minutes';
+
   const unit = challenge.unit || (challenge.goal === 'minutes' ? 'minutes' : 'sessions');
   const target = Math.max(1, Number(challenge.target) || 1);
-  
+
   const progressValue = isValueBased
     ? Number(participant.progressValue || participant.minutesSum || membership.progressValue || membership.minutesSum || 0)
     : Number(participant.progressCount || membership.progressCount || 0);
-  
+
   const percentComplete = Math.min(100, Math.max(0, Math.round((progressValue / target) * 100)));
   const remaining = Math.max(0, target - progressValue);
 
@@ -5092,15 +5183,15 @@ export const applyAdaptiveProgression = onCallWithCors({ region: 'us-east1' }, a
   const last = await db.collection('users').doc(uid).collection('sessions').orderBy('completedAt', 'desc').limit(4).get();
   const items = last.docs.map(d => d.data());
   const rpes = items.map(s => Number(s.rpe)).filter(v => !isNaN(v)) as number[];
-  const avgRpe = rpes.length ? (rpes.reduce((a,b)=>a+b,0)/rpes.length) : 7;
+  const avgRpe = rpes.length ? (rpes.reduce((a, b) => a + b, 0) / rpes.length) : 7;
 
   let minutesDelta = 0;
-  let suggestion: 'increase'|'hold'|'decrease'|'swap_mobility' = 'hold';
+  let suggestion: 'increase' | 'hold' | 'decrease' | 'swap_mobility' = 'hold';
   if (avgRpe <= 6) { minutesDelta = 5; suggestion = 'increase'; }
   if (avgRpe >= 8) { minutesDelta = -5; suggestion = 'decrease'; }
 
   const adjustment = {
-    avgRpe: Math.round(avgRpe*10)/10,
+    avgRpe: Math.round(avgRpe * 10) / 10,
     minutesDelta,
     suggestion,
     evaluatedAt: new Date(),
@@ -5128,7 +5219,7 @@ export const applyAdaptiveProgression = onCallWithCors({ region: 'us-east1' }, a
   return { adjustment };
 });
 
-const buildFallbackCoachNote = (suggestion: 'increase'|'hold'|'decrease'|'swap_mobility', minutesDelta: number): string => {
+const buildFallbackCoachNote = (suggestion: 'increase' | 'hold' | 'decrease' | 'swap_mobility', minutesDelta: number): string => {
   switch (suggestion) {
     case 'increase':
       return `Great work staying consistent! Let's gently add ${minutesDelta} more minutes next session—keep breathing and stay mindful of form.`;
@@ -5142,7 +5233,7 @@ const buildFallbackCoachNote = (suggestion: 'increase'|'hold'|'decrease'|'swap_m
 };
 
 async function generateAdaptiveCoachNote(
-  adjustment: { avgRpe: number; minutesDelta: number; suggestion: 'increase'|'hold'|'decrease'|'swap_mobility' },
+  adjustment: { avgRpe: number; minutesDelta: number; suggestion: 'increase' | 'hold' | 'decrease' | 'swap_mobility' },
   recentSessions: any[]
 ): Promise<string | null> {
   const sessionSummary = recentSessions
@@ -5263,120 +5354,120 @@ export const onAccountApprovalCreated = onDocumentCreated(
     region: 'us-east1'
   },
   async (event) => {
-  try {
-    console.log('🔔 onAccountApprovalCreated: Function triggered', {
-      approvalId: event.params.approvalId,
-      hasData: !!event.data?.data()
-    });
-
-    const approvalData = event.data?.data();
-    if (!approvalData) {
-      console.warn('⚠️ onAccountApprovalCreated: No approval data found');
-      return;
-    }
-
-    const userId = approvalData.userId;
-    const userName = `${approvalData.firstName} ${approvalData.lastName}`;
-    
-    console.log('🔔 onAccountApprovalCreated: Processing approval request', {
-      userId,
-      userName,
-      approvalId: event.params.approvalId
-    });
-    
-    // Get all admins
-    const adminsSnapshot = await db.collection('users')
-      .where('role', '==', 'admin')
-      .get();
-
-    console.log('🔔 onAccountApprovalCreated: Found admins', {
-      adminCount: adminsSnapshot.size,
-      adminIds: adminsSnapshot.docs.map(doc => doc.id)
-    });
-
-    if (adminsSnapshot.empty) {
-      console.warn('⚠️ onAccountApprovalCreated: No admins found to notify');
-      return;
-    }
-
-    // Create in-app notifications for all admins
-    const notifications = adminsSnapshot.docs.map(adminDoc => {
-      return {
-        userId: adminDoc.id,
-        type: 'account_approval_request',
-        title: 'New Account Approval Request',
-        message: `${userName} has submitted an account approval request.`,
-        createdAt: FieldValue.serverTimestamp(),
-        read: false,
-        metadata: {
-          approvalId: event.params.approvalId,
-          userId: userId,
-          userName: userName
-        }
-      };
-    });
-
-    // Batch write in-app notifications
-    const batch = db.batch();
-    notifications.forEach(notif => {
-      const notifRef = db.collection('notifications').doc();
-      batch.set(notifRef, notif);
-      console.log('🔔 onAccountApprovalCreated: Queued notification for admin', {
-        adminId: notif.userId,
-        notificationId: notifRef.id
+    try {
+      console.log('🔔 onAccountApprovalCreated: Function triggered', {
+        approvalId: event.params.approvalId,
+        hasData: !!event.data?.data()
       });
-    });
-    await batch.commit();
-    console.log('✅ onAccountApprovalCreated: In-app notifications created successfully', {
-      notificationCount: notifications.length
-    });
 
-    // Send push notifications with SMS fallback for each admin
-    const notificationPromises = adminsSnapshot.docs.map(async (adminDoc) => {
-      const adminData = adminDoc.data();
-      const adminId = adminDoc.id;
+      const approvalData = event.data?.data();
+      if (!approvalData) {
+        console.warn('⚠️ onAccountApprovalCreated: No approval data found');
+        return;
+      }
 
-      await sendAdminNotificationWithFallback(
-        adminId,
-        adminData,
-        'New Account Approval Request',
-        `${userName} has submitted an account approval request.`,
-        `MOMS FITNESS MOJO: New account approval request from ${userName}. Check admin console.`,
-        {
+      const userId = approvalData.userId;
+      const userName = `${approvalData.firstName} ${approvalData.lastName}`;
+
+      console.log('🔔 onAccountApprovalCreated: Processing approval request', {
+        userId,
+        userName,
+        approvalId: event.params.approvalId
+      });
+
+      // Get all admins
+      const adminsSnapshot = await db.collection('users')
+        .where('role', '==', 'admin')
+        .get();
+
+      console.log('🔔 onAccountApprovalCreated: Found admins', {
+        adminCount: adminsSnapshot.size,
+        adminIds: adminsSnapshot.docs.map(doc => doc.id)
+      });
+
+      if (adminsSnapshot.empty) {
+        console.warn('⚠️ onAccountApprovalCreated: No admins found to notify');
+        return;
+      }
+
+      // Create in-app notifications for all admins
+      const notifications = adminsSnapshot.docs.map(adminDoc => {
+        return {
+          userId: adminDoc.id,
           type: 'account_approval_request',
-          approvalId: event.params.approvalId,
-          userId: userId,
-        }
-      );
-    });
-
-    const results = await Promise.allSettled(notificationPromises);
-    
-    const successCount = results.filter(r => r.status === 'fulfilled').length;
-    const failureCount = results.filter(r => r.status === 'rejected').length;
-    
-    console.log(`✅ onAccountApprovalCreated: Notified ${adminsSnapshot.size} admins`, {
-      successCount,
-      failureCount,
-      totalAdmins: adminsSnapshot.size
-    });
-    
-    if (failureCount > 0) {
-      console.error('❌ onAccountApprovalCreated: Some notifications failed', {
-        failures: results
-          .map((r, i) => r.status === 'rejected' ? { adminIndex: i, error: r.reason } : null)
-          .filter(Boolean)
+          title: 'New Account Approval Request',
+          message: `${userName} has submitted an account approval request.`,
+          createdAt: FieldValue.serverTimestamp(),
+          read: false,
+          metadata: {
+            approvalId: event.params.approvalId,
+            userId: userId,
+            userName: userName
+          }
+        };
       });
+
+      // Batch write in-app notifications
+      const batch = db.batch();
+      notifications.forEach(notif => {
+        const notifRef = db.collection('notifications').doc();
+        batch.set(notifRef, notif);
+        console.log('🔔 onAccountApprovalCreated: Queued notification for admin', {
+          adminId: notif.userId,
+          notificationId: notifRef.id
+        });
+      });
+      await batch.commit();
+      console.log('✅ onAccountApprovalCreated: In-app notifications created successfully', {
+        notificationCount: notifications.length
+      });
+
+      // Send push notifications with SMS fallback for each admin
+      const notificationPromises = adminsSnapshot.docs.map(async (adminDoc) => {
+        const adminData = adminDoc.data();
+        const adminId = adminDoc.id;
+
+        await sendAdminNotificationWithFallback(
+          adminId,
+          adminData,
+          'New Account Approval Request',
+          `${userName} has submitted an account approval request.`,
+          `MOMS FITNESS MOJO: New account approval request from ${userName}. Check admin console.`,
+          {
+            type: 'account_approval_request',
+            approvalId: event.params.approvalId,
+            userId: userId,
+          }
+        );
+      });
+
+      const results = await Promise.allSettled(notificationPromises);
+
+      const successCount = results.filter(r => r.status === 'fulfilled').length;
+      const failureCount = results.filter(r => r.status === 'rejected').length;
+
+      console.log(`✅ onAccountApprovalCreated: Notified ${adminsSnapshot.size} admins`, {
+        successCount,
+        failureCount,
+        totalAdmins: adminsSnapshot.size
+      });
+
+      if (failureCount > 0) {
+        console.error('❌ onAccountApprovalCreated: Some notifications failed', {
+          failures: results
+            .map((r, i) => r.status === 'rejected' ? { adminIndex: i, error: r.reason } : null)
+            .filter(Boolean)
+        });
+      }
+    } catch (error) {
+      console.error('❌ onAccountApprovalCreated: Error in function', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        approvalId: event.params.approvalId
+      });
+      throw error; // Re-throw to ensure Firebase logs the error
     }
-  } catch (error) {
-    console.error('❌ onAccountApprovalCreated: Error in function', {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-      approvalId: event.params.approvalId
-    });
-    throw error; // Re-throw to ensure Firebase logs the error
-  }
-});
+  });
 
 // NOTE: Media pending approval notifications are now handled by onMediaCreatedModeration
 // in contentModerationTriggers.ts. The notification logic is integrated into the moderation
@@ -5390,166 +5481,166 @@ export const onAccountApprovalUpdated = onDocumentWritten(
     region: 'us-east1'
   },
   async (event) => {
-  try {
-    const beforeData = event.data?.before?.exists ? event.data?.before.data() : null;
-    const afterData = event.data?.after?.exists ? event.data?.after.data() : null;
+    try {
+      const beforeData = event.data?.before?.exists ? event.data?.before.data() : null;
+      const afterData = event.data?.after?.exists ? event.data?.after.data() : null;
 
-    if (!beforeData || !afterData) return;
+      if (!beforeData || !afterData) return;
 
-    const beforeStatus = beforeData.status;
-    const afterStatus = afterData.status;
-    const userId = afterData.userId;
+      const beforeStatus = beforeData.status;
+      const afterStatus = afterData.status;
+      const userId = afterData.userId;
 
-    // Only process if status changed
-    if (beforeStatus === afterStatus) return;
+      // Only process if status changed
+      if (beforeStatus === afterStatus) return;
 
-    // Status changed to approved
-    if (afterStatus === 'approved' && beforeStatus !== 'approved') {
-      const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
-      
-      // Create in-app notification for user - capture DocumentReference to avoid race condition
-      const notificationRef = db.collection('notifications').doc();
-      await notificationRef.set({
-        userId: userId,
-        type: 'account_approved',
-        title: '🎉 Account Approved!',
-        message: 'Your account has been approved! Welcome to Moms Fitness Mojo!',
-        createdAt: FieldValue.serverTimestamp(),
-        read: false,
-        metadata: {
-          approvalId: event.params.approvalId
-        }
-      });
-      
-      const notificationId = notificationRef.id; // Use the ID directly, no query needed
-
-      // Queue SMS with 5-minute delay (cost-saving: check if notification.read before sending)
-      try {
-        const userDoc = await db.collection('users').doc(userId).get();
-        const userData = userDoc.data();
+      // Status changed to approved
+      if (afterStatus === 'approved' && beforeStatus !== 'approved') {
         const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
-        const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
 
-        const project = process.env.GCLOUD_PROJECT || '';
-        const isDev = project === 'momsfitnessmojo-dev' || project.endsWith('-dev');
+        // Create in-app notification for user - capture DocumentReference to avoid race condition
+        const notificationRef = db.collection('notifications').doc();
+        await notificationRef.set({
+          userId: userId,
+          type: 'account_approved',
+          title: '🎉 Account Approved!',
+          message: 'Your account has been approved! Welcome to Moms Fitness Mojo!',
+          createdAt: FieldValue.serverTimestamp(),
+          read: false,
+          metadata: {
+            approvalId: event.params.approvalId
+          }
+        });
 
-        if (isDev) {
-          // Dev behavior: send immediately so testing doesn't depend on scheduler timing.
-          await sendAccountApprovalSMSNow(
+        const notificationId = notificationRef.id; // Use the ID directly, no query needed
+
+        // Queue SMS with 5-minute delay (cost-saving: check if notification.read before sending)
+        try {
+          const userDoc = await db.collection('users').doc(userId).get();
+          const userData = userDoc.data();
+          const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
+          const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
+
+          const project = process.env.GCLOUD_PROJECT || '';
+          const isDev = project === 'momsfitnessmojo-dev' || project.endsWith('-dev');
+
+          if (isDev) {
+            // Dev behavior: send immediately so testing doesn't depend on scheduler timing.
+            await sendAccountApprovalSMSNow(
+              userId,
+              userName,
+              userData?.phoneNumber || '',
+              smsEnabled
+            );
+          } else {
+            // Prod behavior: queue (cost-saving) and allow read-suppression.
+            await queueAccountApprovalSMS(
+              userId,
+              userName,
+              userData?.phoneNumber || '',
+              notificationId,
+              smsEnabled
+            );
+          }
+        } catch (smsError) {
+          console.error('❌ Failed to queue SMS for user:', smsError);
+        }
+
+        // Send push notification if user has it enabled
+        try {
+          const userDoc = await db.collection('users').doc(userId).get();
+          const userData = userDoc.data();
+          const fcmToken = userData?.fcmToken;
+          const pushEnabled = userData?.notificationPreferences?.pushEnabled !== false;
+
+          if (pushEnabled && fcmToken) {
+            const { getMessaging } = await import('firebase-admin/messaging');
+            const messaging = getMessaging();
+            await messaging.send({
+              token: fcmToken,
+              notification: {
+                title: '🎉 Account Approved!',
+                body: 'Your account has been approved! Welcome to Moms Fitness Mojo!',
+              },
+              data: {
+                type: 'account_approved',
+                approvalId: event.params.approvalId,
+              },
+            });
+            console.log(`✅ Push notification sent to user ${userId}`);
+          }
+        } catch (pushError: any) {
+          console.warn(`⚠️ Push notification failed for user ${userId}:`, pushError?.message || pushError);
+          // Push failure is not critical - SMS and in-app notifications are enough
+        }
+      }
+
+      // Status changed to rejected
+      if (afterStatus === 'rejected' && beforeStatus !== 'rejected') {
+        const rejectionReason = afterData.rejectionReason || 'No reason provided.';
+        const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
+
+        // Create in-app notification for user
+        await db.collection('notifications').add({
+          userId: userId,
+          type: 'account_rejected',
+          title: 'Account Request Not Approved',
+          message: `Your account request was not approved. Reason: ${rejectionReason}`,
+          createdAt: FieldValue.serverTimestamp(),
+          read: false,
+          metadata: {
+            approvalId: event.params.approvalId,
+            rejectionReason: rejectionReason
+          }
+        });
+
+        // Send SMS immediately for rejections (critical, user needs to know)
+        try {
+          const userDoc = await db.collection('users').doc(userId).get();
+          const userData = userDoc.data();
+          const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
+
+          await sendAccountRejectionSMS(
             userId,
-            userName,
             userData?.phoneNumber || '',
+            rejectionReason,
             smsEnabled
           );
-        } else {
-          // Prod behavior: queue (cost-saving) and allow read-suppression.
-          await queueAccountApprovalSMS(
-            userId,
-            userName,
-            userData?.phoneNumber || '',
-            notificationId,
-            smsEnabled
-          );
+        } catch (smsError) {
+          console.error('❌ Failed to send SMS for user:', smsError);
         }
-      } catch (smsError) {
-        console.error('❌ Failed to queue SMS for user:', smsError);
-      }
 
-      // Send push notification if user has it enabled
-      try {
-        const userDoc = await db.collection('users').doc(userId).get();
-        const userData = userDoc.data();
-        const fcmToken = userData?.fcmToken;
-        const pushEnabled = userData?.notificationPreferences?.pushEnabled !== false;
-        
-        if (pushEnabled && fcmToken) {
-          const { getMessaging } = await import('firebase-admin/messaging');
-          const messaging = getMessaging();
-          await messaging.send({
-            token: fcmToken,
-            notification: {
-              title: '🎉 Account Approved!',
-              body: 'Your account has been approved! Welcome to Moms Fitness Mojo!',
-            },
-            data: {
-              type: 'account_approved',
-              approvalId: event.params.approvalId,
-            },
-          });
-          console.log(`✅ Push notification sent to user ${userId}`);
+        // Send push notification if user has it enabled
+        try {
+          const userDoc = await db.collection('users').doc(userId).get();
+          const userData = userDoc.data();
+          const fcmToken = userData?.fcmToken;
+          const pushEnabled = userData?.notificationPreferences?.pushEnabled !== false;
+          if (pushEnabled && fcmToken) {
+            const { getMessaging } = await import('firebase-admin/messaging');
+            const messaging = getMessaging();
+            await messaging.send({
+              token: fcmToken,
+              notification: {
+                title: 'Account Request Not Approved',
+                body: `Your account request was not approved. Reason: ${rejectionReason}`,
+              },
+              data: {
+                type: 'account_rejected',
+                approvalId: event.params.approvalId,
+              },
+            });
+            console.log(`✅ Push notification sent to user ${userId}`);
+          }
+        } catch (pushError: any) {
+          console.warn(`⚠️ Push notification failed for user ${userId}:`, pushError?.message || pushError);
+          // Push failure is not critical - SMS and in-app notifications are enough
         }
-      } catch (pushError: any) {
-        console.warn(`⚠️ Push notification failed for user ${userId}:`, pushError?.message || pushError);
-        // Push failure is not critical - SMS and in-app notifications are enough
       }
+    } catch (error) {
+      console.error('Error in onAccountApprovalUpdated:', error);
     }
-
-    // Status changed to rejected
-    if (afterStatus === 'rejected' && beforeStatus !== 'rejected') {
-      const rejectionReason = afterData.rejectionReason || 'No reason provided.';
-      const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
-
-      // Create in-app notification for user
-      await db.collection('notifications').add({
-        userId: userId,
-        type: 'account_rejected',
-        title: 'Account Request Not Approved',
-        message: `Your account request was not approved. Reason: ${rejectionReason}`,
-        createdAt: FieldValue.serverTimestamp(),
-        read: false,
-        metadata: {
-          approvalId: event.params.approvalId,
-          rejectionReason: rejectionReason
-        }
-      });
-
-      // Send SMS immediately for rejections (critical, user needs to know)
-      try {
-        const userDoc = await db.collection('users').doc(userId).get();
-        const userData = userDoc.data();
-        const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
-        
-        await sendAccountRejectionSMS(
-          userId,
-          userData?.phoneNumber || '',
-          rejectionReason,
-          smsEnabled
-        );
-      } catch (smsError) {
-        console.error('❌ Failed to send SMS for user:', smsError);
-      }
-
-      // Send push notification if user has it enabled
-      try {
-        const userDoc = await db.collection('users').doc(userId).get();
-        const userData = userDoc.data();
-        const fcmToken = userData?.fcmToken;
-        const pushEnabled = userData?.notificationPreferences?.pushEnabled !== false;
-        if (pushEnabled && fcmToken) {
-          const { getMessaging } = await import('firebase-admin/messaging');
-          const messaging = getMessaging();
-          await messaging.send({
-            token: fcmToken,
-            notification: {
-              title: 'Account Request Not Approved',
-              body: `Your account request was not approved. Reason: ${rejectionReason}`,
-            },
-            data: {
-              type: 'account_rejected',
-              approvalId: event.params.approvalId,
-            },
-          });
-          console.log(`✅ Push notification sent to user ${userId}`);
-        }
-      } catch (pushError: any) {
-        console.warn(`⚠️ Push notification failed for user ${userId}:`, pushError?.message || pushError);
-        // Push failure is not critical - SMS and in-app notifications are enough
-      }
-    }
-  } catch (error) {
-    console.error('Error in onAccountApprovalUpdated:', error);
-  }
-});
+  });
 
 // NOTE: Server-side moderation triggers are now handled by contentModerationTriggers.ts
 // The old onPostCreated and onMediaCreated triggers have been removed to prevent duplicate processing.
@@ -5794,9 +5885,9 @@ async function analyzeMediaContent(
   try {
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(apiKey);
-    
+
     // Use Gemini 1.5 Pro or Flash for vision capabilities
-    const model = genAI.getGenerativeModel({ 
+    const model = genAI.getGenerativeModel({
       model: 'gemini-1.5-flash' // Supports image analysis
     });
 
@@ -5804,7 +5895,7 @@ async function analyzeMediaContent(
     const { getStorage } = await import('firebase-admin/storage');
     const storage = getStorage();
     const bucket = storage.bucket();
-    
+
     // Extract file path from URL
     let filePath = '';
     try {
@@ -5900,7 +5991,7 @@ Return ONLY valid JSON:
 
     const response = result.response.text().trim();
     const jsonMatch = response.match(/\{[\s\S]*\}/);
-    
+
     if (!jsonMatch) {
       throw new Error('No JSON found in image analysis response');
     }
@@ -5915,7 +6006,7 @@ Return ONLY valid JSON:
       explanation?: string;
     };
 
-    const hasViolation = 
+    const hasViolation =
       parsed.sexualContent === true ||
       parsed.violence === true ||
       parsed.hateSpeech === true ||
@@ -5924,7 +6015,7 @@ Return ONLY valid JSON:
 
     const confidence = Math.max(0, Math.min(1, parsed.confidence || 0.5));
     const detectedIssues: string[] = [];
-    
+
     if (parsed.sexualContent) detectedIssues.push('Sexual or explicit content detected in image');
     if (parsed.violence) detectedIssues.push('Violence or graphic content detected in image');
     if (parsed.hateSpeech) detectedIssues.push('Hate speech symbols/imagery detected in image');
@@ -5957,142 +6048,142 @@ export const onApprovalMessageCreated = onDocumentCreated(
     region: 'us-east1'
   },
   async (event) => {
-  try {
-    const messageData = event.data?.data();
-    if (!messageData) return;
+    try {
+      const messageData = event.data?.data();
+      if (!messageData) return;
 
-    const approvalId = messageData.approvalId;
-    const senderRole = messageData.senderRole;
-    const senderUserId = messageData.userId;
+      const approvalId = messageData.approvalId;
+      const senderRole = messageData.senderRole;
+      const senderUserId = messageData.userId;
 
-    // Get approval data
-    const approvalDoc = await db.collection('accountApprovals').doc(approvalId).get();
-    if (!approvalDoc.exists) return;
+      // Get approval data
+      const approvalDoc = await db.collection('accountApprovals').doc(approvalId).get();
+      if (!approvalDoc.exists) return;
 
-    const approvalData = approvalDoc.data()!;
-    const targetUserId = senderRole === 'admin' 
-      ? approvalData.userId  // Admin sent message, notify user
-      : null; // User sent message, notify admins
+      const approvalData = approvalDoc.data()!;
+      const targetUserId = senderRole === 'admin'
+        ? approvalData.userId  // Admin sent message, notify user
+        : null; // User sent message, notify admins
 
-    if (senderRole === 'admin') {
-      // Admin asked question - notify user
-      // Use doc() to capture notification ID directly (avoid race condition)
-      const notificationRef = db.collection('notifications').doc();
-      await notificationRef.set({
-        userId: approvalData.userId,
-        type: 'approval_question',
-        title: 'Admin Question',
-        message: 'An admin has a question about your account request. Please check your pending approval page.',
-        createdAt: FieldValue.serverTimestamp(),
-        read: false,
-        metadata: {
-          approvalId: approvalId,
-          messageId: event.params.messageId
-        }
-      });
-      const notificationId = notificationRef.id; // Capture ID directly
-
-      // Reset user unread to ensure they see a badge
-      await db.collection('accountApprovals').doc(approvalId).update({
-        'unreadCount.user': FieldValue.increment(1),
-        awaitingResponseFrom: 'user',
-        lastMessageAt: FieldValue.serverTimestamp(),
-      });
-
-      // Admin asked question: SMS user (dev = immediate, prod = queued for scheduler suppression/retries)
-      try {
-        const userDoc = await db.collection('users').doc(approvalData.userId).get();
-        const userData = userDoc.data();
-        const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
-
-        const project = process.env.GCLOUD_PROJECT || '';
-        const isDev = project === 'momsfitnessmojo-dev' || project.endsWith('-dev');
-
-        if (isDev) {
-          await sendAdminQuestionSMSNow(
-            approvalData.userId,
-            userData?.phoneNumber || '',
-            smsEnabled
-          );
-        } else {
-          await queueAdminQuestionSMS(
-            approvalData.userId,
-            userData?.phoneNumber || '',
-            notificationId,
-            smsEnabled
-          );
-        }
-      } catch (smsError) {
-        console.error('❌ Failed to send/queue admin question SMS:', smsError);
-      }
-    } else {
-      // User responded - notify all admins with push + SMS fallback
-      const adminsSnapshot = await db.collection('users')
-        .where('role', '==', 'admin')
-        .get();
-
-      if (!adminsSnapshot.empty) {
-        // Create in-app notifications for all admins
-        const senderName = messageData.senderName || 
-                          `${approvalData.firstName || ''} ${approvalData.lastName || ''}`.trim() || 
-                          'User';
-        
-        const notifications = adminsSnapshot.docs.map(adminDoc => ({
-          userId: adminDoc.id,
-          type: 'approval_response',
-          title: 'User Response',
-          message: `${senderName} has responded to your question about their account request.`,
+      if (senderRole === 'admin') {
+        // Admin asked question - notify user
+        // Use doc() to capture notification ID directly (avoid race condition)
+        const notificationRef = db.collection('notifications').doc();
+        await notificationRef.set({
+          userId: approvalData.userId,
+          type: 'approval_question',
+          title: 'Admin Question',
+          message: 'An admin has a question about your account request. Please check your pending approval page.',
           createdAt: FieldValue.serverTimestamp(),
           read: false,
           metadata: {
             approvalId: approvalId,
-            messageId: event.params.messageId,
-            userId: approvalData.userId
+            messageId: event.params.messageId
           }
-        }));
-
-        const batch = db.batch();
-        notifications.forEach(notif => {
-          const notifRef = db.collection('notifications').doc();
-          batch.set(notifRef, notif);
         });
-        await batch.commit();
-        
-        // Send push notifications with SMS fallback for each admin
-        const notificationPromises = adminsSnapshot.docs.map(async (adminDoc) => {
-          const adminData = adminDoc.data();
-          const adminId = adminDoc.id;
-          
-          await sendAdminNotificationWithFallback(
-            adminId,
-            adminData,
-            'User Response',
-            `${senderName} has responded to your question about their account request.`,
-            `MOMS FITNESS MOJO: ${senderName} has responded to your question. Check admin console.`,
-            {
-              type: 'approval_response',
+        const notificationId = notificationRef.id; // Capture ID directly
+
+        // Reset user unread to ensure they see a badge
+        await db.collection('accountApprovals').doc(approvalId).update({
+          'unreadCount.user': FieldValue.increment(1),
+          awaitingResponseFrom: 'user',
+          lastMessageAt: FieldValue.serverTimestamp(),
+        });
+
+        // Admin asked question: SMS user (dev = immediate, prod = queued for scheduler suppression/retries)
+        try {
+          const userDoc = await db.collection('users').doc(approvalData.userId).get();
+          const userData = userDoc.data();
+          const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
+
+          const project = process.env.GCLOUD_PROJECT || '';
+          const isDev = project === 'momsfitnessmojo-dev' || project.endsWith('-dev');
+
+          if (isDev) {
+            await sendAdminQuestionSMSNow(
+              approvalData.userId,
+              userData?.phoneNumber || '',
+              smsEnabled
+            );
+          } else {
+            await queueAdminQuestionSMS(
+              approvalData.userId,
+              userData?.phoneNumber || '',
+              notificationId,
+              smsEnabled
+            );
+          }
+        } catch (smsError) {
+          console.error('❌ Failed to send/queue admin question SMS:', smsError);
+        }
+      } else {
+        // User responded - notify all admins with push + SMS fallback
+        const adminsSnapshot = await db.collection('users')
+          .where('role', '==', 'admin')
+          .get();
+
+        if (!adminsSnapshot.empty) {
+          // Create in-app notifications for all admins
+          const senderName = messageData.senderName ||
+            `${approvalData.firstName || ''} ${approvalData.lastName || ''}`.trim() ||
+            'User';
+
+          const notifications = adminsSnapshot.docs.map(adminDoc => ({
+            userId: adminDoc.id,
+            type: 'approval_response',
+            title: 'User Response',
+            message: `${senderName} has responded to your question about their account request.`,
+            createdAt: FieldValue.serverTimestamp(),
+            read: false,
+            metadata: {
               approvalId: approvalId,
               messageId: event.params.messageId,
-              userId: approvalData.userId,
+              userId: approvalData.userId
             }
-          );
-        });
-        
-        await Promise.allSettled(notificationPromises);
-        console.log(`✅ Notified ${adminsSnapshot.size} admins of user response (push + SMS fallback)`);
-      }
+          }));
 
-      // Reset admin unread to ensure admin badge clears for this message
-      await db.collection('accountApprovals').doc(approvalId).update({
-        'unreadCount.admin': FieldValue.increment(1),
-        awaitingResponseFrom: 'admin',
-        lastMessageAt: FieldValue.serverTimestamp(),
-      });
+          const batch = db.batch();
+          notifications.forEach(notif => {
+            const notifRef = db.collection('notifications').doc();
+            batch.set(notifRef, notif);
+          });
+          await batch.commit();
+
+          // Send push notifications with SMS fallback for each admin
+          const notificationPromises = adminsSnapshot.docs.map(async (adminDoc) => {
+            const adminData = adminDoc.data();
+            const adminId = adminDoc.id;
+
+            await sendAdminNotificationWithFallback(
+              adminId,
+              adminData,
+              'User Response',
+              `${senderName} has responded to your question about their account request.`,
+              `MOMS FITNESS MOJO: ${senderName} has responded to your question. Check admin console.`,
+              {
+                type: 'approval_response',
+                approvalId: approvalId,
+                messageId: event.params.messageId,
+                userId: approvalData.userId,
+              }
+            );
+          });
+
+          await Promise.allSettled(notificationPromises);
+          console.log(`✅ Notified ${adminsSnapshot.size} admins of user response (push + SMS fallback)`);
+        }
+
+        // Reset admin unread to ensure admin badge clears for this message
+        await db.collection('accountApprovals').doc(approvalId).update({
+          'unreadCount.admin': FieldValue.increment(1),
+          awaitingResponseFrom: 'admin',
+          lastMessageAt: FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (error) {
+      console.error('Error in onApprovalMessageCreated:', error);
     }
-  } catch (error) {
-    console.error('Error in onApprovalMessageCreated:', error);
-  }
-});
+  });
 
 // ───────────────── SCHEDULED FUNCTION: Check and Dispatch Delayed SMS ─────────────────
 
@@ -6108,54 +6199,54 @@ export const checkAndDispatchPendingSms = onSchedule({
 }, async (event) => {
   try {
     console.log('⏰ Checking for pending SMS in dispatch queue...');
-    
+
     const now = new Date();
     const nowTimestamp = Timestamp.fromDate(now);
-    
+
     // Query for pending SMS that are ready to dispatch
     // Also check for "processing" status that's been stuck > 10 minutes (recovery)
     const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
     const tenMinutesAgoTimestamp = Timestamp.fromDate(tenMinutesAgo);
-    
+
     const pendingSmsSnapshot = await db.collection('sms_dispatch_queue')
       .where('status', '==', 'pending')
       .where('dispatchAt', '<=', nowTimestamp)
       .get();
-    
+
     // Also recover stuck "processing" items (in case a worker crashed)
     const stuckProcessingSnapshot = await db.collection('sms_dispatch_queue')
       .where('status', '==', 'processing')
       .where('processingStartedAt', '<=', tenMinutesAgoTimestamp)
       .get();
-    
+
     // Combine both snapshots
     const allSmsDocs = [...pendingSmsSnapshot.docs, ...stuckProcessingSnapshot.docs];
-    
+
     if (allSmsDocs.length === 0) {
       console.log('ℹ️ No pending SMS ready to dispatch');
       return;
     }
-    
+
     console.log(`📱 Found ${pendingSmsSnapshot.size} pending and ${stuckProcessingSnapshot.size} stuck processing SMS ready to dispatch`);
-    
+
     if (pendingSmsSnapshot.empty) {
       console.log('ℹ️ No pending SMS ready to dispatch');
       return;
     }
-    
+
     let sentCount = 0;
     let skippedCount = 0;
-    
+
     for (const smsDoc of allSmsDocs) {
       const smsData = smsDoc.data();
       const notificationId = smsData.notificationId;
       const currentStatus = smsData.status;
-      
+
       try {
         const processingRef = smsDoc.ref;
         const processingDoc = await processingRef.get();
         const docStatus = processingDoc.data()?.status;
-        
+
         // Handle stuck "processing" items - reset to pending and process in same iteration
         let shouldProcess = false;
         if (currentStatus === 'processing' && docStatus === 'processing') {
@@ -6187,29 +6278,29 @@ export const checkAndDispatchPendingSms = onSchedule({
           console.log(`⏭️ SMS ${smsDoc.id} not in processable status (current: ${currentStatus}, doc: ${docStatus}), skipping`);
           continue;
         }
-        
+
         // Only proceed if we should process this item
         if (!shouldProcess) {
           continue;
         }
-        
+
         // Atomically mark as processing (use transaction to prevent race conditions)
         await processingRef.update({
           status: 'processing',
           processingStartedAt: FieldValue.serverTimestamp(),
           processingWorkerId: event.scheduleTime || 'unknown' // Use schedule time as worker ID
         });
-        
+
         // Verify the update succeeded and status is actually processing
         const verifyDoc = await processingRef.get();
         if (verifyDoc.data()?.status !== 'processing') {
           console.log(`⏭️ SMS ${smsDoc.id} status changed during processing claim, skipping`);
           continue;
         }
-        
+
         // Check if notification was read
         let shouldSkip = false;
-        
+
         if (notificationId) {
           const notificationDoc = await db.collection('notifications').doc(notificationId).get();
           if (notificationDoc.exists) {
@@ -6227,11 +6318,11 @@ export const checkAndDispatchPendingSms = onSchedule({
             }
           }
         }
-        
+
         if (!shouldSkip) {
           // Send SMS
           const result = await sendSMSViaTwilio(smsData.phoneNumber, smsData.message);
-          
+
           if (result.success) {
             await processingRef.update({
               status: 'dispatched_sms',
@@ -6263,7 +6354,7 @@ export const checkAndDispatchPendingSms = onSchedule({
         }
       }
     }
-    
+
     console.log(`✅ SMS dispatch check complete: ${sentCount} sent, ${skippedCount} skipped (read), ${pendingSmsSnapshot.size - sentCount - skippedCount} failed`);
   } catch (error) {
     console.error('❌ Error in checkAndDispatchPendingSms:', error);
@@ -6274,7 +6365,7 @@ export const checkAndDispatchPendingSms = onSchedule({
 export const grandfatherExistingUsers = onCallWithCors({ region: 'us-east1' }, async (request) => {
   try {
     console.log('grandfatherExistingUsers: Starting...');
-    
+
     // Ensure admin only
     if (!request.auth || !request.auth.uid) {
       console.log('grandfatherExistingUsers: No auth');
@@ -6304,10 +6395,10 @@ export const grandfatherExistingUsers = onCallWithCors({ region: 'us-east1' }, a
       if (lastDoc) {
         query = query.startAfter(lastDoc);
       }
-      
+
       const usersSnapshot = await query.get();
       console.log(`grandfatherExistingUsers: Fetched ${usersSnapshot.docs.length} users in this batch`);
-      
+
       if (usersSnapshot.empty) {
         hasMore = false;
         break;
@@ -6315,7 +6406,7 @@ export const grandfatherExistingUsers = onCallWithCors({ region: 'us-east1' }, a
 
       for (const userDoc of usersSnapshot.docs) {
         const userData = userDoc.data();
-        
+
         // Only update if status is missing or null
         if (!userData.status || userData.status === null || userData.status === undefined) {
           batch.update(userDoc.ref, {
@@ -6360,12 +6451,12 @@ export const grandfatherExistingUsers = onCallWithCors({ region: 'us-east1' }, a
     console.error('Error stack:', error.stack);
     console.error('Error code:', error.code);
     console.error('Error details:', error.details);
-    
+
     // Return more specific error if possible
     if (error instanceof HttpsError) {
       throw error;
     }
-    
+
     throw new HttpsError('internal', error.message || 'Failed to grandfather users');
   }
 });
@@ -6384,4 +6475,14 @@ export {
 
 // Stripe payment integration
 export { createPaymentIntent, stripeWebhook } from './stripe';
+
+
+// ───────────────── GUEST PAYMENT SYSTEM ─────────────────
+// Guest payment with OTP verification for non-authenticated users
+export { createGuestPaymentIntent } from './callable/createGuestPaymentIntent';
+export { markZellePaymentComplete } from './callable/markZellePaymentComplete';
+export { deleteGuestAttendee } from './callable/deleteGuestAttendee';
+export { sendGuestOTP } from './callable/sendGuestOTP';
+export { verifyGuestOTP } from './callable/verifyGuestOTP';
+export { cleanupExpiredSessions } from './scheduled/cleanupExpiredSessions';
 

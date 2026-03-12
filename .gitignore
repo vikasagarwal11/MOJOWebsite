@@ -75,3 +75,5 @@ scripts/log-reader-key.json
 !/*/*/*/README.md
 !/*/*/*/*/README.md
 !/*/*/*/*/*/README.md
+
+extensions/send-email-params.env

@@ -119,22 +119,9 @@ export const ZelleQRModal: React.FC<ZelleQRModalProps> = ({ isOpen, onClose, amo
                 <div className="w-64 h-64 bg-white rounded-lg flex items-center justify-center border border-gray-300">
                   {/* TODO: Replace with actual Zelle QR code image */}
                   <img
-                    src="/images/zelle-qr-code.png"
+                    src="/assets/payment_qr/qr.png"
                     alt="Zelle QR Code"
                     className="w-full h-full object-contain"
-                    onError={(e) => {
-                      // Fallback if image doesn't exist yet
-                      e.currentTarget.style.display = 'none';
-                      e.currentTarget.parentElement!.innerHTML = `
-                        <div class="text-center p-4">
-                          <svg class="w-24 h-24 text-gray-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                          </svg>
-                          <p class="text-sm text-gray-500">QR Code Placeholder</p>
-                          <p class="text-xs text-gray-400 mt-1">Add zelle-qr-code.png to /public/images/</p>
-                        </div>
-                      `;
-                    }}
                   />
                 </div>
               </div>

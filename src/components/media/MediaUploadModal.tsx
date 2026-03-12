@@ -13,6 +13,7 @@ import EventTypeahead from './EventTypeahead';
 
 const schema = z.object({
   title: z.string().min(1, 'Title is required'),
+  mediaDate: z.string().min(1, 'Photo date is required'),
   description: z.string().optional(),
 });
 
@@ -84,6 +85,7 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
           title: data.title.trim(),
           titleLower: data.title.trim().toLowerCase(),
           description: data.description?.trim() || undefined,
+          mediaDate: new Date(`${data.mediaDate}T00:00:00`),
           type: kind,
           eventId: selectedEvent.id ?? null,
           eventTitle: selectedEvent.title ?? null,
@@ -226,6 +228,16 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
                 placeholder="Enter media title"/>
             </div>
             {errors.title && <p className="mt-1 text-sm text-red-600">{String(errors.title.message)}</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Photo Date</label>
+            <input
+              {...register('mediaDate')}
+              type="date"
+              className={`w-full px-4 py-3 rounded-lg border ${errors.mediaDate ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129]`}
+            />
+            {errors.mediaDate && <p className="mt-1 text-sm text-red-600">{String(errors.mediaDate.message)}</p>}
           </div>
 
           <div>

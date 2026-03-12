@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Confirmation</title>
+</head>
+
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f4f4f4;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f4f4f4; padding: 20px;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0"
+                    style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background-color: #16a34a; padding: 30px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px;">Payment Confirmed!</h1>
+                        </td>
+                    </tr>
+
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px 30px;">
+                            <p style="font-size: 16px; color: #333333; margin: 0 0 20px 0;">
+                                Hi {{customerName}},
+                            </p>
+
+                            <p style="font-size: 16px; color: #333333; margin: 0 0 20px 0;">
+                                Thank you for your payment! Your transaction has been successfully processed.
+                            </p>
+
+                            <!-- Payment Details -->
+                            <table width="100%" cellpadding="0" cellspacing="0"
+                                style="background-color: #f9fafb; border-radius: 6px; padding: 20px; margin: 20px 0;">
+                                <tr>
+                                    <td>
+                                        <h2 style="font-size: 18px; color: #16a34a; margin: 0 0 15px 0;">Payment Details
+                                        </h2>
+
+                                        <table width="100%" cellpadding="5" cellspacing="0">
+                                            <tr>
+                                                <td style="font-size: 14px; color: #666666;">Event:</td>
+                                                <td
+                                                    style="font-size: 14px; color: #333333; font-weight: bold; text-align: right;">
+                                                    {{eventTitle}}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-size: 14px; color: #666666;">Amount Paid:</td>
+                                                <td
+                                                    style="font-size: 14px; color: #333333; font-weight: bold; text-align: right;">
+                                                    {{amount}}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-size: 14px; color: #666666;">Payment Method:</td>
+                                                <td
+                                                    style="font-size: 14px; color: #333333; font-weight: bold; text-align: right;">
+                                                    Credit/Debit Card</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-size: 14px; color: #666666;">Transaction ID:</td>
+                                                <td
+                                                    style="font-size: 14px; color: #333333; font-weight: bold; text-align: right;">
+                                                    {{transactionId}}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="font-size: 14px; color: #666666;">Date:</td>
+                                                <td
+                                                    style="font-size: 14px; color: #333333; font-weight: bold; text-align: right;">
+                                                    {{paymentDate}}</td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="font-size: 14px; color: #666666; margin: 20px 0;">
+                                Your Stripe invoice is attached to this email for your records.
+                            </p>
+
+                            <p style="font-size: 14px; color: #666666; margin: 20px 0;">
+                                If you have any questions about this payment, please don't hesitate to contact us.
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td
+                            style="background-color: #f9fafb; padding: 20px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+                            <p style="font-size: 12px; color: #999999; margin: 0;">
+                                This is an automated email. Please do not reply to this message.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+
+</html>

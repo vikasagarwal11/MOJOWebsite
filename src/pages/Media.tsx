@@ -121,7 +121,7 @@ const Media: React.FC = () => {
   const mediaFilesArray = Array.isArray(mediaFiles) ? mediaFiles : [];
 
   const filteredMedia = useMemo(() => {
-    return mediaFilesArray.filter((m: any) => {
+    const out = mediaFilesArray.filter((m: any) => {
       // Hotfix: skip share-card documents until payload includes required gallery fields
       if (m?.shareCard) {
         return false;
@@ -143,6 +143,7 @@ const Media: React.FC = () => {
       
       return typeOk && eventOk && searchOk;
     });
+    return out.slice().sort((a: any, b: any) => +new Date(b.mediaDate || b.createdAt) - +new Date(a.mediaDate || a.createdAt));
   }, [mediaFilesArray, filterType, selectedEvent, debouncedSearchQuery]);
 
   // Slice media array to show only up to displayedCount items

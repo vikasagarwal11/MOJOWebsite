@@ -1,13 +1,13 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-    AlertTriangle,
-    Calendar,
-    ChevronDown,
-    Clock,
-    MapPin,
-    QrCode,
-    UserPlus,
-    Users
+  AlertTriangle,
+  Calendar,
+  ChevronDown,
+  Clock,
+  MapPin,
+  QrCode,
+  UserPlus,
+  Users
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -16,11 +16,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useAttendees } from '../hooks/useAttendees';
 import { EventDoc } from '../hooks/useEvents';
 import { useUserBlocking } from '../hooks/useUserBlocking';
-import { AgeGroup, AttendeeStatus, Attendee, CreateAttendeeData, Relationship } from '../types/attendee';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { AgeGroup, Attendee, AttendeeStatus, CreateAttendeeData, Relationship } from '../types/attendee';
 import { normalizeUSPhoneToE164OrNull } from '../utils/phone';
 
-import { doc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getDocFromServer, getDocsFromServer, onSnapshot, query, where } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import toast from 'react-hot-toast';
 import { db } from '../config/firebase';
 // Import hooks
@@ -35,6 +35,7 @@ import { PaymentSection } from '../components/events/PaymentSection';
 import { QRCodeTab } from '../components/events/QRCodeTab';
 import { AttendeeInputRowMemo } from '../components/events/RSVPModalNew/components/AttendeeInputRow';
 import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
+import { OTPVerificationModal } from '../components/modals/OTPVerificationModal';
 import { createEventCanonicalUrl } from '../utils/seo';
 
 const RSVPPage: React.FC = () => {
@@ -46,22 +47,22 @@ const RSVPPage: React.FC = () => {
   const [event, setEvent] = useState<EventDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // ============================================================================
   // CRITICAL: All hooks must be called BEFORE any early returns
   // React Rules of Hooks require hooks to be called in the same order every render
   // ============================================================================
-  
+
   // Initialize all state hooks (must be unconditional)
   const [isAddSectionCollapsed, setIsAddSectionCollapsed] = useState(false);
   const [isEventDetailsCollapsed, setIsEventDetailsCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<'attendees' | 'qr' | 'whosGoing'>('attendees');
   const [isAdding, setIsAdding] = useState(false);
-  
+
   // Use real-time event data for capacity state - initialize with safe fallback
   const [realTimeAttendingCount, setRealTimeAttendingCount] = useState<number>(0);
-  
-  
+
+
   // Load event from URL using onSnapshot for real-time updates
   useEffect(() => {
     if (!eventId) {
@@ -71,7 +72,7 @@ const RSVPPage: React.FC = () => {
     }
 
     const eventRef = doc(db, 'events', eventId);
-    
+
     // Real-time listener for live updates (same pattern as EventDetailsPage)
     const unsubscribe = onSnapshot(
       eventRef,
@@ -115,7 +116,7 @@ const RSVPPage: React.FC = () => {
       if (doc.exists()) {
         const data = doc.data();
         const newCount = data.attendingCount || 0;
-        
+
         // Only update if count actually changed
         setRealTimeAttendingCount(prevCount => {
           if (prevCount !== newCount) {
@@ -123,7 +124,7 @@ const RSVPPage: React.FC = () => {
           }
           return prevCount;
         });
-        
+
         // Only update event if attendingCount changed (not the entire event to prevent loops)
         setEvent(prevEvent => {
           if (prevEvent && prevEvent.attendingCount !== newCount) {
@@ -143,7 +144,7 @@ const RSVPPage: React.FC = () => {
   const isEventCreator = currentUser?.id === event?.createdBy;
   const isAdmin = currentUser?.role === 'admin' || isEventCreator;
   const isGuestTrulyPublic = !currentUser && event?.visibility === 'truly_public';
-  
+
   // Check if members are allowed to add attendees
   // Note: allowMembersToAddAttendees may exist on event but not in EventDoc type
   const allowMembersToAddAttendees = (event as any)?.allowMembersToAddAttendees;
@@ -156,17 +157,24 @@ const RSVPPage: React.FC = () => {
       : Math.random().toString(36).slice(2);
 
   // Guest RSVP modal state
-  type GuestRow = { id: string; name: string; relationship: Relationship };
+  type GuestRow = { id: string; name: string; relationship: Relationship; ageGroup: AgeGroup };
   const [guestFirstName, setGuestFirstName] = useState('');
   const [guestLastName, setGuestLastName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
-  const [guestRows, setGuestRows] = useState<GuestRow[]>(() => [{ id: makeId(), name: '', relationship: 'guest' }]);
+  const [guestRows, setGuestRows] = useState<GuestRow[]>(() => [{ id: makeId(), name: '', relationship: 'guest', ageGroup: 'adult' }]);
   const [guestSubmitting, setGuestSubmitting] = useState(false);
   const [guestSubmitted, setGuestSubmitted] = useState(false);
   const [guestMemberExists, setGuestMemberExists] = useState(false);
   const [guestAttendees, setGuestAttendees] = useState<Attendee[]>([]);
-  
+  // OTP Verification state for guest payments
+  const [showOTPModal, setShowOTPModal] = useState(false);
+  const [guestSessionToken, setGuestSessionToken] = useState<string | null>(null);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [showAdditionalMembersForm, setShowAdditionalMembersForm] = useState(false);
+
+  // No local caching for guest RSVP data. Firestore is the source of truth.
+
   // Debug log to verify event settings
   useEffect(() => {
     if (event?.id) {
@@ -180,13 +188,13 @@ const RSVPPage: React.FC = () => {
       });
     }
   }, [event?.id, isAdmin, allowMembersToAddAttendees, canAddAttendees, event?.maxAttendees, event?.attendingCount]);
-  
+
   // Use our new date hook - safe fallback for null event
   const emptyEvent = useMemo(() => ({} as EventDoc), []);
-  const { 
+  const {
     isEventPast
   } = useEventDates(event || emptyEvent);
-  
+
   // Event-dependent hooks - safe fallbacks for null event
   const { attendees, counts, bulkAddAttendees, refreshAttendees, updateAttendee, error: attendeesError } = useAttendees(
     event?.id || '',
@@ -196,7 +204,7 @@ const RSVPPage: React.FC = () => {
 
   // Real-time waitlist positions - ONLY when waitlist is enabled
   const { positions: waitlistPositions, myPosition: waitlistPosition, waitlistCount } = useWaitlistPositions(
-    event?.waitlistEnabled ? (event?.id || '') : '', 
+    event?.waitlistEnabled ? (event?.id || '') : '',
     event?.waitlistEnabled ? currentUser?.id : undefined
   );
 
@@ -244,9 +252,9 @@ const RSVPPage: React.FC = () => {
 
   // Use capacity state hook - safe fallbacks for null event
   const capacityState = useCapacityState(
-    mockCountsWithRealTime, 
-    event?.maxAttendees || 0, 
-    event?.waitlistEnabled || false, 
+    mockCountsWithRealTime,
+    event?.maxAttendees || 0,
+    event?.waitlistEnabled || false,
     event?.waitlistLimit || undefined
   );
 
@@ -289,8 +297,8 @@ const RSVPPage: React.FC = () => {
 
 
   // Memoize the ready to add count to prevent unnecessary re-renders
-  const readyToAddCount = useMemo(() => 
-    bulkFormData.familyMembers.filter((m) => m.name.trim()).length, 
+  const readyToAddCount = useMemo(() =>
+    bulkFormData.familyMembers.filter((m) => m.name.trim()).length,
     [bulkFormData.familyMembers]
   );
 
@@ -324,7 +332,7 @@ const RSVPPage: React.FC = () => {
   // ============================================================================
   // NOW safe to do early returns - all hooks have been called
   // ============================================================================
-  
+
   // Return early if loading
   if (loading) {
     return (
@@ -382,7 +390,7 @@ const RSVPPage: React.FC = () => {
     waitlistEnabled: event.waitlistEnabled,
     waitlistLimit: event.waitlistLimit
   });
-  
+
   // Debug admin status
   console.log('🔍 Admin Status Debug:', {
     currentUserId: currentUser?.id,
@@ -407,17 +415,17 @@ const RSVPPage: React.FC = () => {
     // If this is a primary member changing to "not-going", cascade to family members
     if (attendeeToUpdate.attendeeType === 'primary' && newStatus === 'not-going') {
       const familyMembers = attendees.filter(
-        a => a.userId === attendeeToUpdate.userId && 
-             a.attendeeType === 'family_member' && 
-             a.rsvpStatus === 'going'
+        a => a.userId === attendeeToUpdate.userId &&
+          a.attendeeType === 'family_member' &&
+          a.rsvpStatus === 'going'
       );
 
       if (familyMembers.length > 0) {
         toast.loading(`Updating ${familyMembers.length} family member(s)...`);
-        
+
         // Update all family members to not-going
         await Promise.all(
-          familyMembers.map(member => 
+          familyMembers.map(member =>
             updateAttendee(member.attendeeId, { rsvpStatus: 'not-going' })
           )
         );
@@ -430,26 +438,183 @@ const RSVPPage: React.FC = () => {
     await refreshAttendees();
   };
 
-  const handleSubmitGuestRsvp = async () => {
-    if (!event?.id) return;
+  // Handler for verifying phone BEFORE RSVP submission
+  const handleVerifyPhone = () => {
     const firstName = guestFirstName.trim();
     const lastName = guestLastName.trim();
     const email = guestEmail.trim().toLowerCase();
     const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
-    const additionalAttendees = guestRows
-      .map((r) => ({ name: r.name.trim(), relationship: (r.relationship || 'guest') as Relationship }))
-      .filter((r) => r.name.length > 0);
 
+    // Validate contact info before showing OTP modal
     if (!firstName || !lastName) { toast.error('First and last name are required'); return; }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error('Please enter a valid email address'); return; }
     if (!phoneE164) { toast.error('Please enter a valid US phone number'); return; }
+
+    // Clear any previous guest state before starting a new verification flow
+    setGuestAttendees([]);
+    setGuestSubmitted(false);
+    setGuestMemberExists(false);
+    setGuestSessionToken(null);
+    setIsPhoneVerified(false);
+    setShowAdditionalMembersForm(false);
+
+    // Open OTP modal for verification
+    setShowOTPModal(true);
+  };
+
+  // Handler for OTP verification success
+  const handleOTPVerified = async (sessionToken: string) => {
+    console.log('[FRONTEND] OTP Verified! Session token received');
+    console.log('[FRONTEND] Session token (first 10 chars):', sessionToken?.substring(0, 10) + '...');
+    console.log('[FRONTEND] Session token length:', sessionToken?.length);
+    setGuestSessionToken(sessionToken);
+    setIsPhoneVerified(true);
+    setShowAdditionalMembersForm(true);
+    toast.success('Phone verified! You can now add additional members and submit your RSVP.');
+
+    if (!event?.id) return;
+    const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+    if (!phoneE164) return;
+    const phoneDigits = phoneE164.replace(/[^\d]/g, '');
+    const guestUserId = `guest_${event.id}_${phoneDigits}`;
+
+    try {
+      console.log('[GUEST] Fetching existing guest attendees after OTP verify');
+      const existing = await fetchGuestAttendeesFromFirestore(event.id, guestUserId, phoneE164);
+      if (existing.length > 0) {
+        setGuestAttendees(existing);
+        setGuestSubmitted(true);
+        console.log('[GUEST] Existing attendees loaded:', existing.map(a => ({ id: a.attendeeId, paymentStatus: a.paymentStatus })));
+      }
+    } catch (error) {
+      console.error('[GUEST] Failed to fetch attendees after OTP verify:', error);
+    }
+  };
+
+  const fetchGuestAttendeesFromFirestore = async (
+    targetEventId: string,
+    targetGuestUserId: string | undefined,
+    targetGuestPhone: string | undefined
+  ): Promise<Attendee[]> => {
+    if (!targetEventId) return [];
+
+    const attendeesRef = collection(db, 'events', targetEventId, 'attendees');
+    let snapshot = targetGuestUserId
+      ? await getDocsFromServer(query(attendeesRef, where('userId', '==', targetGuestUserId), where('rsvpStatus', '==', 'going')))
+      : null;
+
+    if (!snapshot || snapshot.empty) {
+      if (targetGuestPhone) {
+        snapshot = await getDocsFromServer(query(attendeesRef, where('guestPhone', '==', targetGuestPhone), where('rsvpStatus', '==', 'going')));
+      }
+    }
+
+    if (!snapshot || snapshot.empty) return [];
+
+    return snapshot.docs.map((attendeeSnap) => {
+      const data = attendeeSnap.data();
+      return {
+        attendeeId: attendeeSnap.id,
+        eventId: targetEventId,
+        userId: data.userId,
+        attendeeType: data.attendeeType,
+        relationship: data.relationship,
+        name: data.name,
+        ageGroup: data.ageGroup,
+        rsvpStatus: data.rsvpStatus,
+        paymentStatus: data.paymentStatus || 'unpaid',
+        createdAt: data.createdAt?.toDate?.() || new Date(),
+        updatedAt: data.updatedAt?.toDate?.() || new Date(),
+      } as Attendee;
+    });
+  };
+
+  // Function to refresh guest attendees from Firestore
+  const refreshGuestAttendees = async (): Promise<Attendee[]> => {
+    if (!event?.id || guestAttendees.length === 0) return;
+
+    try {
+      console.log('🔄 [GUEST] Refreshing guest attendees from Firestore');
+      const attendeeIds = guestAttendees.map(a => a.attendeeId);
+
+      // Fetch updated attendee data from Firestore
+      const updatedAttendees: Attendee[] = [];
+      for (const attendeeId of attendeeIds) {
+        const attendeeRef = doc(db, 'events', event.id, 'attendees', attendeeId);
+        const attendeeSnap = await getDocFromServer(attendeeRef);
+
+        if (attendeeSnap.exists()) {
+          const data = attendeeSnap.data();
+          updatedAttendees.push({
+            attendeeId: attendeeSnap.id,
+            eventId: event.id,
+            userId: data.userId,
+            attendeeType: data.attendeeType,
+            relationship: data.relationship,
+            name: data.name,
+            ageGroup: data.ageGroup,
+            rsvpStatus: data.rsvpStatus,
+            paymentStatus: data.paymentStatus,
+            createdAt: data.createdAt?.toDate?.() || new Date(),
+            updatedAt: data.updatedAt?.toDate?.() || new Date(),
+          });
+        }
+      }
+
+      let finalAttendees = updatedAttendees;
+
+      if (updatedAttendees.length !== attendeeIds.length) {
+        console.warn('⚠️ [GUEST] Some attendee IDs missing. Falling back to query by userId/guestPhone.');
+        const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+        const fallback = await fetchGuestAttendeesFromFirestore(
+          event.id,
+          guestAttendees[0]?.userId,
+          phoneE164 || undefined
+        );
+        if (fallback.length > 0) {
+          finalAttendees = fallback;
+        }
+      }
+
+      console.log('✅ [GUEST] Refreshed attendees:', finalAttendees.map(a => ({ id: a.attendeeId, paymentStatus: a.paymentStatus })));
+      setGuestAttendees(finalAttendees);
+
+      // No local caching
+      return finalAttendees;
+    } catch (error) {
+      console.error('❌ [GUEST] Error refreshing guest attendees:', error);
+      return guestAttendees;
+    }
+  };
+
+  const handleSubmitGuestRsvp = async () => {
+    if (!event?.id) return;
+    if (!isPhoneVerified) {
+      toast.error('Please verify your phone number first');
+      return;
+    }
+
+    const firstName = guestFirstName.trim();
+    const lastName = guestLastName.trim();
+    const email = guestEmail.trim().toLowerCase();
+    const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+
+    // Additional validation (should never happen since phone was verified)
+    if (!phoneE164) {
+      toast.error('Invalid phone number');
+      return;
+    }
+
+      const additionalAttendees = guestRows
+        .map((r) => ({ name: r.name.trim(), relationship: (r.relationship || 'guest') as Relationship, ageGroup: (r.ageGroup || 'adult') as AgeGroup }))
+        .filter((r) => r.name.length > 0);
 
     try {
       setGuestSubmitting(true);
       setGuestMemberExists(false);
       const fn = httpsCallable<
-        { eventId: string; guest: { firstName: string; lastName: string; email: string; phoneNumber: string }; additionalAttendees: Array<{ name: string; relationship: string }> },
-        { success: boolean; memberExists?: boolean; message?: string; error?: string; attendeeIds?: string[]; guestUserId?: string }
+        { eventId: string; guest: { firstName: string; lastName: string; email: string; phoneNumber: string }; additionalAttendees: Array<{ name: string; relationship: string; ageGroup: string }> },
+        { success: boolean; memberExists?: boolean; message?: string; error?: string; attendeeIds?: string[]; guestUserId?: string; attendees?: Array<{ name: string; relationship: string; attendeeType: 'primary' | 'family_member'; ageGroup: string }> }
       >(getFunctions(undefined, 'us-east1'), 'submitTrulyPublicGuestRsvp');
 
       const result = await fn({ eventId: event.id, guest: { firstName, lastName, email, phoneNumber: phoneE164 }, additionalAttendees });
@@ -464,35 +629,48 @@ const RSVPPage: React.FC = () => {
         return;
       }
 
-      // Build local attendee objects for PaymentSection using real IDs from backend
-      const returnedIds = result.data.attendeeIds || [];
+      // Always re-fetch from Firestore to get real paymentStatus (avoid re-marking paid as unpaid)
       const guestUserId = result.data.guestUserId || `guest-${email}`;
-      const allMembers = [{ name: `${firstName} ${lastName}`, relationship: 'self', attendeeType: 'primary' as const }, ...additionalAttendees.map(a => ({ name: a.name, relationship: a.relationship, attendeeType: 'family_member' as const }))];
-      const built: Attendee[] = allMembers.map((m, i) => ({
-        attendeeId: returnedIds[i] || `guest-${Date.now()}-${i}`,
-        eventId: event.id,
-        userId: guestUserId,
-        attendeeType: m.attendeeType,
-        relationship: m.relationship as Relationship,
-        name: m.name,
-        ageGroup: 'adult',
-        rsvpStatus: 'going',
-        paymentStatus: 'unpaid',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }));
-      setGuestAttendees(built);
+
+      let finalAttendees = await fetchGuestAttendeesFromFirestore(
+        event.id,
+        guestUserId,
+        phoneE164
+      );
+
+      // If Firestore fetch returns nothing (edge case), fall back to backend response
+      if (finalAttendees.length === 0) {
+        const returnedIds = result.data.attendeeIds || [];
+        const serverAttendees = result.data.attendees && result.data.attendees.length > 0
+          ? result.data.attendees
+          : [{ name: `${firstName} ${lastName}`, relationship: 'self', attendeeType: 'primary' as const, ageGroup: 'adult' as AgeGroup }, ...additionalAttendees.map(a => ({ name: a.name, relationship: a.relationship, attendeeType: 'family_member' as const, ageGroup: a.ageGroup }))];
+        const built: Attendee[] = serverAttendees.map((m, i) => ({
+          attendeeId: returnedIds[i] || '',
+          eventId: event.id,
+          userId: guestUserId,
+          attendeeType: m.attendeeType,
+          relationship: m.relationship as Relationship,
+          name: m.name,
+          ageGroup: m.ageGroup,
+          rsvpStatus: 'going',
+          paymentStatus: 'unpaid',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }));
+        finalAttendees = built.filter(a => a.attendeeId);
+      }
+
+      setGuestAttendees(finalAttendees);
       setGuestSubmitted(true);
-      setGuestSubmitted(true);
+
+      console.log('✅ [FRONTEND] RSVP Submitted! Session token still available:', guestSessionToken ? 'YES' : 'NO');
+      if (guestSessionToken) {
+        console.log('✅ [FRONTEND] Session token (first 10 chars):', guestSessionToken.substring(0, 10) + '...');
+      }
       toast.success(result.data?.message || 'RSVP submitted successfully!');
     } catch (err: any) {
       console.error('Failed to submit guest RSVP:', err);
-      const msg = err?.message || 'Unable to submit RSVP';
-      if (msg.includes('CORS') || msg.includes('internal')) {
-        toast.error('Server configuration error. Please contact support.');
-      } else {
-        toast.error(msg);
-      }
+      toast.error(err?.message || 'Unable to submit RSVP');
     } finally {
       setGuestSubmitting(false);
     }
@@ -521,7 +699,7 @@ const RSVPPage: React.FC = () => {
       }
       // Update form data to set waitlisted status
       setBulkFormData(prev => ({
-        familyMembers: prev.familyMembers.map(m => 
+        familyMembers: prev.familyMembers.map(m =>
           m.name.trim() ? { ...m, rsvpStatus: 'waitlisted' as AttendeeStatus } : m
         )
       }));
@@ -529,12 +707,12 @@ const RSVPPage: React.FC = () => {
 
     try {
       setIsAdding(true);
-      
+
       // Check if primary member is already an attendee
       const existingPrimaryAttendee = attendees.find(
         attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'primary'
       );
-      
+
       const attendeesData: CreateAttendeeData[] = validMembers.map((member) => ({
         eventId: event.id,
         userId: currentUser.id,
@@ -544,7 +722,7 @@ const RSVPPage: React.FC = () => {
         ageGroup: member.ageGroup || 'adult',
         rsvpStatus: member.rsvpStatus || 'going',
       }));
-      
+
       // Add primary member if not already exists, or update existing one to going
       if (!existingPrimaryAttendee) {
         attendeesData.unshift({
@@ -561,7 +739,7 @@ const RSVPPage: React.FC = () => {
         await updateAttendee(existingPrimaryAttendee.attendeeId, { rsvpStatus: 'going' });
         toast.success('You have been automatically set to "going" since family members are attending.');
       }
-      
+
       await bulkAddAttendees(attendeesData);
       setBulkFormData({
         familyMembers: [{ id: makeId(), name: '', ageGroup: 'adult', relationship: 'guest', rsvpStatus: 'going' }],
@@ -587,7 +765,7 @@ const RSVPPage: React.FC = () => {
           <link rel="canonical" href={canonicalUrl} />
         </Helmet>
       )}
-      
+
       {/* Mobile-First Design - Clean, No Nested Containers */}
       <div className="min-h-screen bg-gray-50">
         {/* Sticky Top Bar - Removed back arrow and RSVP text */}
@@ -608,24 +786,22 @@ const RSVPPage: React.FC = () => {
           {capacityUI && (
             <div className="mb-4">
               <div
-                className={`rounded-xl border px-4 py-3 ${
-                  capacityUI.tone === 'error'
-                    ? 'bg-red-50 border-red-200 text-red-900'
-                    : capacityUI.tone === 'warning'
+                className={`rounded-xl border px-4 py-3 ${capacityUI.tone === 'error'
+                  ? 'bg-red-50 border-red-200 text-red-900'
+                  : capacityUI.tone === 'warning'
                     ? 'bg-amber-50 border-amber-200 text-amber-900'
                     : 'bg-blue-50 border-blue-200 text-blue-900'
-                }`}
+                  }`}
               >
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 flex-shrink-0">
                     <AlertTriangle
-                      className={`w-5 h-5 ${
-                        capacityUI.tone === 'error'
-                          ? 'text-red-600'
-                          : capacityUI.tone === 'warning'
+                      className={`w-5 h-5 ${capacityUI.tone === 'error'
+                        ? 'text-red-600'
+                        : capacityUI.tone === 'warning'
                           ? 'text-amber-600'
                           : 'text-blue-600'
-                      }`}
+                        }`}
                     />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -659,15 +835,15 @@ const RSVPPage: React.FC = () => {
                     <h4 className="font-semibold text-gray-900 text-xs sm:text-sm">Event Details</h4>
                     {event.startAt && (
                       <span className="text-xs text-[#F25129] font-medium">
-                        {new Date(event.startAt.seconds * 1000).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric' 
+                        {new Date(event.startAt.seconds * 1000).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric'
                         })}
                         {event.startAt && (
-                          ` at ${new Date(event.startAt.seconds * 1000).toLocaleTimeString('en-US', { 
-                            hour: 'numeric', 
-                            minute: '2-digit', 
-                            hour12: true 
+                          ` at ${new Date(event.startAt.seconds * 1000).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
                           })}`
                         )}
                       </span>
@@ -697,11 +873,11 @@ const RSVPPage: React.FC = () => {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-semibold text-gray-900 break-words">
-                              {new Date(event.startAt.seconds * 1000).toLocaleDateString('en-US', { 
-                                weekday: 'long', 
-                                month: 'long', 
-                                day: 'numeric', 
-                                year: 'numeric' 
+                              {new Date(event.startAt.seconds * 1000).toLocaleDateString('en-US', {
+                                weekday: 'long',
+                                month: 'long',
+                                day: 'numeric',
+                                year: 'numeric'
                               })}
                             </div>
                             <div className="text-xs text-gray-600 mt-0.5">
@@ -719,15 +895,15 @@ const RSVPPage: React.FC = () => {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-semibold text-gray-900 break-words">
-                              {new Date(event.startAt.seconds * 1000).toLocaleTimeString('en-US', { 
-                                hour: 'numeric', 
-                                minute: '2-digit', 
-                                hour12: true 
+                              {new Date(event.startAt.seconds * 1000).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true
                               })}
-                              {event.endAt && ` - ${new Date(event.endAt.seconds * 1000).toLocaleTimeString('en-US', { 
-                                hour: 'numeric', 
-                                minute: '2-digit', 
-                                hour12: true 
+                              {event.endAt && ` - ${new Date(event.endAt.seconds * 1000).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true
                               })}`}
                             </div>
                             {event.startAt && event.endAt && (
@@ -748,22 +924,22 @@ const RSVPPage: React.FC = () => {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-semibold text-gray-900 break-words">
-                              {event.location || (event.venueName && event.venueAddress 
+                              {event.location || (event.venueName && event.venueAddress
                                 ? `${event.venueName}, ${event.venueAddress}`
                                 : event.venueName || event.venueAddress || '')}
                             </div>
                             <a
                               href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                                event.location || (event.venueName && event.venueAddress 
+                                event.location || (event.venueName && event.venueAddress
                                   ? `${event.venueName}, ${event.venueAddress}`
                                   : event.venueName || event.venueAddress || '')
                               )}`}
                               target="_blank"
                               rel="noreferrer"
                               className="text-xs text-[#F25129] hover:text-[#E0451F] hover:underline mt-0.5 inline-flex items-center gap-1 touch-manipulation"
-                              style={{WebkitTapHighlightColor: 'transparent'}}
+                              style={{ WebkitTapHighlightColor: 'transparent' }}
                             >
-                              Get Directions 
+                              Get Directions
                               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                               </svg>
@@ -793,11 +969,10 @@ const RSVPPage: React.FC = () => {
             <div className="max-w-2xl mx-auto px-4 flex">
               <button
                 onClick={() => setActiveTab('attendees')}
-                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${
-                  activeTab === 'attendees'
-                    ? 'text-[#F25129] border-b-2 border-[#F25129] bg-orange-50/30'
-                    : 'text-gray-600 border-b-2 border-transparent active:bg-gray-50'
-                }`}
+                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${activeTab === 'attendees'
+                  ? 'text-[#F25129] border-b-2 border-[#F25129] bg-orange-50/30'
+                  : 'text-gray-600 border-b-2 border-transparent active:bg-gray-50'
+                  }`}
               >
                 <Users className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span className="hidden xs:inline sm:inline">Your RSVP</span>
@@ -806,13 +981,12 @@ const RSVPPage: React.FC = () => {
               <button
                 onClick={() => setActiveTab('qr')}
                 disabled={!event.attendanceEnabled}
-                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${
-                  activeTab === 'qr'
-                    ? 'text-[#F25129] border-b-2 border-[#F25129] bg-orange-50/30'
-                    : !event.attendanceEnabled
-                      ? 'text-gray-300 cursor-not-allowed border-b-2 border-transparent'
-                      : 'text-gray-600 border-b-2 border-transparent active:bg-gray-50'
-                }`}
+                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${activeTab === 'qr'
+                  ? 'text-[#F25129] border-b-2 border-[#F25129] bg-orange-50/30'
+                  : !event.attendanceEnabled
+                    ? 'text-gray-300 cursor-not-allowed border-b-2 border-transparent'
+                    : 'text-gray-600 border-b-2 border-transparent active:bg-gray-50'
+                  }`}
                 title={!event.attendanceEnabled ? 'QR Code not activated' : ''}
               >
                 <QrCode className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -821,11 +995,10 @@ const RSVPPage: React.FC = () => {
               </button>
               <button
                 onClick={() => setActiveTab('whosGoing')}
-                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${
-                  activeTab === 'whosGoing'
-                    ? 'text-[#F25129] border-b-2 border-[#F25129] bg-orange-50/30'
-                    : 'text-gray-600 border-b-2 border-transparent active:bg-gray-50'
-                }`}
+                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${activeTab === 'whosGoing'
+                  ? 'text-[#F25129] border-b-2 border-[#F25129] bg-orange-50/30'
+                  : 'text-gray-600 border-b-2 border-transparent active:bg-gray-50'
+                  }`}
               >
                 <Users className="w-4 h-4 sm:w-5 sm:h-5" />
                 <span>Event Guests List</span>
@@ -836,75 +1009,102 @@ const RSVPPage: React.FC = () => {
           {/* Content Wrapper */}
           <div className="bg-white">
             <div className="max-w-2xl mx-auto px-4">
-            {activeTab === 'qr' && event.attendanceEnabled ? (
-              <div className="px-4 py-6">
-                <QRCodeTab 
-                  event={event} 
-                  onEventUpdate={() => {
-                    refreshAttendees();
-                  }}
-                />
-              </div>
-            ) : activeTab === 'qr' && !event.attendanceEnabled ? (
-              <div className="px-4 py-12 text-center">
-                <QrCode className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-900 mb-2">QR Code Not Activated</h3>
-                <p className="text-sm text-gray-600">
-                  QR code functionality is not enabled for this event.
-                </p>
-              </div>
-            ) : activeTab === 'whosGoing' ? (
-              <div className="px-4 py-6">
-                <WhosGoingTab 
-                  event={event}
-                  attendees={attendees}
-                  isAdmin={isAdmin}
-                  waitlistPositions={waitlistPositions}
-                />
-              </div>
-            ) : isBlockedFromRSVP ? (
-              <div className="px-4 py-12 text-center">
-                <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-900 mb-2">RSVP Access Restricted</h3>
-                <p className="text-sm text-gray-600">You are currently blocked from RSVPing to events. Please contact an administrator.</p>
-              </div>
-            ) : attendeesError ? (
-              <div className="px-4 py-12 text-center">
-                <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Error loading attendees</h3>
-                <p className="text-sm text-gray-600 mb-4">{attendeesError}</p>
-                <button
-                  onClick={() => refreshAttendees()}
-                  className="px-6 py-3 bg-[#F25129] text-white rounded-lg font-semibold active:scale-95 transition-transform"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : isEventPast ? (
-              <div className="px-4 py-12 text-center">
-                <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Event Has Passed</h3>
-                <p className="text-sm text-gray-600">This event has already occurred. RSVPs are no longer accepted.</p>
-              </div>
-            ) : (
-              <div className="px-4 py-4">
-                {/* Payment Section */}
-                <PaymentSection 
-                  event={event}
-                  attendees={isGuestTrulyPublic ? guestAttendees : attendees.filter(attendee => attendee.userId === currentUser?.id)}
-                  onPaymentComplete={() => { if (!isGuestTrulyPublic) refreshAttendees(); }}
-                  onPaymentError={(error) => { console.error('Payment error:', error); }}
-                  isGuest={isGuestTrulyPublic}
-                  guestUserId={isGuestTrulyPublic ? guestAttendees[0]?.userId : undefined}
-                />
+              {activeTab === 'qr' && event.attendanceEnabled ? (
+                <div className="px-4 py-6">
+                  <QRCodeTab
+                    event={event}
+                    onEventUpdate={() => {
+                      refreshAttendees();
+                    }}
+                  />
+                </div>
+              ) : activeTab === 'qr' && !event.attendanceEnabled ? (
+                <div className="px-4 py-12 text-center">
+                  <QrCode className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">QR Code Not Activated</h3>
+                  <p className="text-sm text-gray-600">
+                    QR code functionality is not enabled for this event.
+                  </p>
+                </div>
+              ) : activeTab === 'whosGoing' ? (
+                <div className="px-4 py-6">
+                  <WhosGoingTab
+                    event={event}
+                    attendees={attendees}
+                    isAdmin={isAdmin}
+                    waitlistPositions={waitlistPositions}
+                  />
+                </div>
+              ) : isBlockedFromRSVP ? (
+                <div className="px-4 py-12 text-center">
+                  <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">RSVP Access Restricted</h3>
+                  <p className="text-sm text-gray-600">You are currently blocked from RSVPing to events. Please contact an administrator.</p>
+                </div>
+              ) : attendeesError ? (
+                <div className="px-4 py-12 text-center">
+                  <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Error loading attendees</h3>
+                  <p className="text-sm text-gray-600 mb-4">{attendeesError}</p>
+                  <button
+                    onClick={() => refreshAttendees()}
+                    className="px-6 py-3 bg-[#F25129] text-white rounded-lg font-semibold active:scale-95 transition-transform"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : isEventPast ? (
+                <div className="px-4 py-12 text-center">
+                  <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Event Has Passed</h3>
+                  <p className="text-sm text-gray-600">This event has already occurred. RSVPs are no longer accepted.</p>
+                </div>
+              ) : (
+                <div className="px-4 py-4">
+                  {/* Payment Section */}
+                    <PaymentSection
+                      event={event}
+                      attendees={isGuestTrulyPublic ? guestAttendees : attendees.filter(attendee => attendee.userId === currentUser?.id)}
+                      onPaymentComplete={async () => {
+                        if (isGuestTrulyPublic) {
+                          const updated = await refreshGuestAttendees();
+                          if (updated && updated.length > 0) {
+                            setGuestSubmitted(true);
+                          }
+                        } else {
+                          refreshAttendees();
+                        }
+                      }}
+                      onPaymentError={(error) => { console.error('Payment error:', error); }}
+                      isGuest={isGuestTrulyPublic}
+                      guestUserId={isGuestTrulyPublic ? guestAttendees[0]?.userId : undefined}
+                      sessionToken={isGuestTrulyPublic ? (guestSessionToken || undefined) : undefined}
+                      onDeleteGuestAttendee={isGuestTrulyPublic ? async (attendeeId) => {
+                        try {
+                          if (!guestSessionToken) {
+                            toast.error('Session expired. Please verify your phone again.');
+                            return;
+                          }
+                          const fn = httpsCallable<
+                            { sessionToken: string; eventId: string; attendeeId: string },
+                            { success: boolean }
+                          >(getFunctions(undefined, 'us-east1'), 'deleteGuestAttendee');
+                          await fn({ sessionToken: guestSessionToken, eventId: event.id, attendeeId });
+                          await refreshGuestAttendees();
+                        } catch (error) {
+                          console.error('❌ Failed to delete guest attendee:', error);
+                          toast.error('Failed to remove attendee. Please try again.');
+                        }
+                      } : undefined}
+                    />
 
-                {isGuestTrulyPublic && guestSubmitted && (
-                  <div className="mb-3 sm:mb-4 bg-emerald-50 border border-emerald-200 rounded-lg p-3 sm:p-4">
-                    <p className="text-sm text-emerald-700 font-medium">✓ RSVP submitted! Complete payment below if required.</p>
-                  </div>
-                )}
+                  {isGuestTrulyPublic && guestSubmitted && (
+                    <div className="mb-3 sm:mb-4 bg-emerald-50 border border-emerald-200 rounded-lg p-3 sm:p-4">
+                      <p className="text-sm text-emerald-700 font-medium">✓ RSVP submitted! Complete payment below if required.</p>
+                    </div>
+                  )}
 
-                <div className="mb-3 sm:mb-4 bg-gray-50 rounded-lg p-2.5 sm:p-3 border border-gray-200">
+                  <div className="mb-3 sm:mb-4 bg-gray-50 rounded-lg p-2.5 sm:p-3 border border-gray-200">
                     <h3 className="text-xs sm:text-sm font-semibold text-gray-900 mb-1.5 sm:mb-2">Manage Attendees</h3>
                     <div className="flex flex-wrap gap-2 sm:gap-3 text-xs text-gray-600">
                       <span className="flex items-center gap-1 sm:gap-1.5">
@@ -930,9 +1130,8 @@ const RSVPPage: React.FC = () => {
                       aria-controls="add-attendees-panel"
                       onClick={() => canAddAttendees && setIsAddSectionCollapsed((v) => !v)}
                       disabled={!canAddAttendees}
-                      className={`w-full p-3 sm:p-4 flex items-center justify-between touch-manipulation ${
-                        canAddAttendees ? 'active:bg-orange-100 cursor-pointer' : 'opacity-50 cursor-not-allowed'
-                      }`}
+                      className={`w-full p-3 sm:p-4 flex items-center justify-between touch-manipulation ${canAddAttendees ? 'active:bg-orange-100 cursor-pointer' : 'opacity-50 cursor-not-allowed'
+                        }`}
                       aria-label={`${isAddSectionCollapsed ? 'Expand' : 'Collapse'} Add Attendees section`}
                       title={!canAddAttendees ? 'Only organizers can add non-members for this event. Contact the organizer for details.' : undefined}
                     >
@@ -957,7 +1156,7 @@ const RSVPPage: React.FC = () => {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        
+
                         {canAddAttendees && (
                           <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.3 }}>
                             <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
@@ -986,7 +1185,7 @@ const RSVPPage: React.FC = () => {
                               <span className="font-medium">{capacityState.warningMessage}</span>
                             </div>
                             <p className="mt-1 text-xs opacity-90">
-                              {waitlistPosition 
+                              {waitlistPosition
                                 ? `You are waitlisted (#${waitlistPosition}). ${capacityState.slotsRemainingText}`
                                 : capacityState.slotsRemainingText
                               }
@@ -1017,86 +1216,183 @@ const RSVPPage: React.FC = () => {
                                 </div>
                               ) : (
                                 <>
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1">First Name *</label>
-                                      <input value={guestFirstName} onChange={(e) => setGuestFirstName(e.target.value)} placeholder="First name" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                  {/* Step 1: Contact Information */}
+                                  <div className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">First Name *</label>
+                                        <input
+                                          value={guestFirstName}
+                                          onChange={(e) => setGuestFirstName(e.target.value)}
+                                          placeholder="First name"
+                                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                          disabled={isPhoneVerified}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Last Name *</label>
+                                        <input
+                                          value={guestLastName}
+                                          onChange={(e) => setGuestLastName(e.target.value)}
+                                          placeholder="Last name"
+                                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                          disabled={isPhoneVerified}
+                                        />
+                                      </div>
                                     </div>
                                     <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1">Last Name *</label>
-                                      <input value={guestLastName} onChange={(e) => setGuestLastName(e.target.value)} placeholder="Last name" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">Email *</label>
+                                      <input
+                                        type="email"
+                                        value={guestEmail}
+                                        onChange={(e) => setGuestEmail(e.target.value)}
+                                        placeholder="Email address"
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                        disabled={isPhoneVerified}
+                                      />
                                     </div>
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Email *</label>
-                                    <input type="email" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} placeholder="Email address" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-700 mb-1">Phone *</label>
-                                    <input type="tel" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} placeholder="Phone number" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-                                  </div>
-                                  <div className="rounded-lg border border-gray-200 p-3">
-                                    <div className="mb-2 flex items-center justify-between">
-                                      <h4 className="text-sm font-semibold text-gray-900">Additional Members <span className="text-xs font-normal text-gray-500">(Optional)</span></h4>
-                                      <button type="button" onClick={() => setGuestRows((prev) => [...prev, { id: makeId(), name: '', relationship: 'guest' }])} className="text-xs font-semibold text-[#F25129] hover:text-[#E0451F]">+ Add Row</button>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">Phone *</label>
+                                      <input
+                                        type="tel"
+                                        value={guestPhone}
+                                        onChange={(e) => setGuestPhone(e.target.value)}
+                                        placeholder="Phone number"
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                        disabled={isPhoneVerified}
+                                      />
                                     </div>
-                                    <div className="space-y-2">
-                                      {guestRows.map((row) => (
-                                        <div key={row.id} className="flex gap-2">
-                                          <input value={row.name} onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, name: e.target.value } : r))} placeholder="Member name" className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-                                          <select value={row.relationship} onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, relationship: e.target.value as Relationship } : r))} className="rounded-lg border border-gray-300 px-2 py-2 text-sm">
-                                            <option value="guest">Guest</option>
-                                            <option value="spouse">Spouse</option>
-                                            <option value="child">Child</option>
-                                          </select>
-                                          <button type="button" onClick={() => setGuestRows((prev) => prev.length > 1 ? prev.filter((r) => r.id !== row.id) : prev)} className="px-2 py-2 text-xs text-gray-500 hover:text-red-500 border border-gray-200 rounded-lg">✕</button>
+
+                                    {/* Verify Phone Button - Only show if not verified */}
+                                    {!isPhoneVerified && (
+                                      <button
+                                        type="button"
+                                        onClick={handleVerifyPhone}
+                                        className="w-full py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg active:scale-95 transition-transform touch-manipulation"
+                                      >
+                                        Verify Phone Number
+                                      </button>
+                                    )}
+
+                                    {/* Verification Success Message */}
+                                    {isPhoneVerified && (
+                                      <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+                                        <div className="flex items-center gap-2">
+                                          <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                          </svg>
+                                          <span className="text-sm text-green-700 font-medium">✓ Phone verified successfully!</span>
                                         </div>
-                                      ))}
-                                    </div>
+                                      </div>
+                                    )}
                                   </div>
-                                  <button type="button" onClick={handleSubmitGuestRsvp} disabled={guestSubmitting} className="w-full py-2.5 text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation">
-                                    {guestSubmitting ? 'Submitting...' : 'Submit RSVP'}
-                                  </button>
+
+                                  {/* Step 2: Additional Members - Only show after phone verification */}
+                                  {isPhoneVerified && showAdditionalMembersForm && (
+                                    <div className="rounded-lg border border-gray-200 p-3 space-y-3">
+                                      <div className="mb-2 flex items-center justify-between">
+                                        <h4 className="text-sm font-semibold text-gray-900">Additional Members <span className="text-xs font-normal text-gray-500">(Optional)</span></h4>
+                                        <button
+                                          type="button"
+                                          onClick={() => setGuestRows((prev) => [...prev, { id: makeId(), name: '', relationship: 'guest', ageGroup: 'adult' }])}
+                                          className="text-xs font-semibold text-[#F25129] hover:text-[#E0451F]"
+                                        >
+                                          + Add Row
+                                        </button>
+                                      </div>
+                                      <div className="space-y-2">
+                                        {guestRows.map((row) => (
+                                          <div key={row.id} className="flex gap-2">
+                                            <input
+                                              value={row.name}
+                                              onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, name: e.target.value } : r))}
+                                              placeholder="Member name"
+                                              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                            />
+                                            <select
+                                              value={row.ageGroup}
+                                              onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, ageGroup: e.target.value as AgeGroup } : r))}
+                                              className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+                                            >
+                                              <option value="0-2">Infant (0-2)</option>
+                                              <option value="3-5">Toddler (3-5)</option>
+                                              <option value="6-10">Child (6-10)</option>
+                                              <option value="11+">Teen (11+)</option>
+                                              <option value="adult">Adult</option>
+                                            </select>
+                                            <select
+                                              value={row.relationship}
+                                              onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, relationship: e.target.value as Relationship } : r))}
+                                              className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+                                            >
+                                              <option value="guest">Guest</option>
+                                              <option value="spouse">Spouse</option>
+                                              <option value="child">Child</option>
+                                            </select>
+                                            <button
+                                              type="button"
+                                              onClick={() => setGuestRows((prev) => prev.length > 1 ? prev.filter((r) => r.id !== row.id) : prev)}
+                                              className="px-2 py-2 text-xs text-gray-500 hover:text-red-500 border border-gray-200 rounded-lg"
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Step 3: Submit RSVP - Only enabled after phone verification */}
+                                  {isPhoneVerified && (
+                                    <button
+                                      type="button"
+                                      onClick={handleSubmitGuestRsvp}
+                                      disabled={guestSubmitting}
+                                      className="w-full py-2.5 text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation"
+                                    >
+                                      {guestSubmitting ? 'Submitting...' : 'Submit RSVP'}
+                                    </button>
+                                  )}
                                 </>
                               )}
                             </div>
                           ) : (
-                          <div className="p-4 pt-2 space-y-3">
-                            {/* Mobile-Friendly Attendee Input - No table layout */}
-                            {bulkFormData.familyMembers.map((member) => (
-                              <div 
-                                key={member.id}
-                                className="bg-white rounded-lg p-3 border border-gray-200"
-                              >
-                                <AttendeeInputRowMemo
-                                  member={member}
-                                  onUpdate={updateBulkFormField}
-                                  onRemove={removeBulkFormRow}
-                                  onAdd={addBulkFormRow}
-                                />
-                              </div>
-                            ))}
+                            <div className="p-4 pt-2 space-y-3">
+                              {/* Mobile-Friendly Attendee Input - No table layout */}
+                              {bulkFormData.familyMembers.map((member) => (
+                                <div
+                                  key={member.id}
+                                  className="bg-white rounded-lg p-3 border border-gray-200"
+                                >
+                                  <AttendeeInputRowMemo
+                                    member={member}
+                                    onUpdate={updateBulkFormField}
+                                    onRemove={removeBulkFormRow}
+                                    onAdd={addBulkFormRow}
+                                  />
+                                </div>
+                              ))}
 
-                            <div className="pt-2.5 sm:pt-3 border-t border-orange-200">
-                              <button
-                                onClick={handleBulkAddFamilyMembers}
-                                disabled={
-                                  isAdding || 
-                                  bulkFormData.familyMembers.every((m) => !m.name.trim()) ||
-                                  (!capacityState.canAddMore && !capacityState.canWaitlist)
-                                }
-                                className="w-full px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation"
-                              >
-                                {isAdding
-                                  ? 'Adding...'
-                                  : !capacityState.canAddMore && !capacityState.canWaitlist
-                                    ? 'Event Full'
-                                    : !capacityState.canAddMore && capacityState.canWaitlist
-                                      ? `Join Waitlist (${readyToAddCount})`
-                                      : `Add ${readyToAddCount} Attendee(s)`}
-                              </button>
+                              <div className="pt-2.5 sm:pt-3 border-t border-orange-200">
+                                <button
+                                  onClick={handleBulkAddFamilyMembers}
+                                  disabled={
+                                    isAdding ||
+                                    bulkFormData.familyMembers.every((m) => !m.name.trim()) ||
+                                    (!capacityState.canAddMore && !capacityState.canWaitlist)
+                                  }
+                                  className="w-full px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation"
+                                >
+                                  {isAdding
+                                    ? 'Adding...'
+                                    : !capacityState.canAddMore && !capacityState.canWaitlist
+                                      ? 'Event Full'
+                                      : !capacityState.canAddMore && capacityState.canWaitlist
+                                        ? `Join Waitlist (${readyToAddCount})`
+                                        : `Add ${readyToAddCount} Attendee(s)`}
+                                </button>
+                              </div>
                             </div>
-                          </div>
                           )}
                         </motion.div>
                       )}
@@ -1111,7 +1407,7 @@ const RSVPPage: React.FC = () => {
                       waitlistPositions={waitlistPositions}
                       capacityState={capacityState}
                       onAttendeeUpdate={async () => {
-                        try { await refreshAttendees(); } catch {}
+                        try { await refreshAttendees(); } catch { }
                       }}
                       onCascadingStatusUpdate={handleCascadingStatusUpdate}
                       onRequestNonRefundableModal={(attendeeId, status) => {
@@ -1130,12 +1426,12 @@ const RSVPPage: React.FC = () => {
                     />
                   )}
                 </div>
-            )}
+              )}
             </div>
           </div>
 
         </div>
-      </div>      
+      </div>
       {/* Non-Refundable Confirmation Modal */}
       {showNonRefundableModal && (
         <motion.div
@@ -1201,7 +1497,22 @@ const RSVPPage: React.FC = () => {
             </div>
           </motion.div>
         </motion.div>
-      )}    </>
+      )}
+
+      {/* OTP Verification Modal for Guest Payments */}
+      {showOTPModal && isGuestTrulyPublic && (
+        <OTPVerificationModal
+          isOpen={showOTPModal}
+          onClose={() => setShowOTPModal(false)}
+          onVerified={handleOTPVerified}
+          phone={guestPhone}
+          email={guestEmail}
+          firstName={guestFirstName}
+          lastName={guestLastName}
+          eventId={event?.id || ''}
+        />
+      )}
+    </>
   );
 };
 

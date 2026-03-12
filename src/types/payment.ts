@@ -34,6 +34,20 @@ export interface EventPricing {
   };
   eventSupportAmount?: number; // Additional event support fee in cents (NET amount, optional)
   eventSupportChargeAmount?: number; // CHARGE amount for event support (what user pays, includes Stripe fees)
+
+  // NEW: Guest payment configuration
+  /** Enable/disable guest payment flow (payment without account) */
+  allowGuestPayments?: boolean;
+
+  /** Available payment methods for guest users */
+  guestPaymentMethods?: ('stripe' | 'zelle')[];
+
+  /** Zelle configuration (if enabled for guests) */
+  zelleConfig?: {
+    recipientEmail: string;
+    recipientPhone: string;
+    enabled: boolean;
+  };
 }
 
 // Payment transaction record

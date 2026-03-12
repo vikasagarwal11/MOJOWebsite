@@ -25,9 +25,9 @@ export function useMediaFilters(mediaFiles: any[]) {
     });
 
     switch (sort) {
-      case 'date_asc': out = out.slice().sort((a,b)=>+new Date(a.createdAt)-+new Date(b.createdAt)); break;
+      case 'date_asc': out = out.slice().sort((a,b)=>+new Date(a.mediaDate || a.createdAt)-+new Date(b.mediaDate || b.createdAt)); break;
       case 'likes_desc': out = out.slice().sort((a,b)=>(b.likesCount||0)-(a.likesCount||0)); break;
-      default: out = out.slice().sort((a,b)=>+new Date(b.createdAt)-+new Date(a.createdAt));
+      default: out = out.slice().sort((a,b)=>+new Date(b.mediaDate || b.createdAt)-+new Date(a.mediaDate || a.createdAt));
     }
     return out;
   }, [mediaFiles, type, eventId, uploader, search, sort]);

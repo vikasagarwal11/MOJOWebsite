@@ -64,6 +64,7 @@ export interface MediaFile {
   uploadedBy: string;
   uploaderName: string;
   createdAt: Date;
+  mediaDate?: Date;
   likes: string[];
   comments: Comment[];
 }

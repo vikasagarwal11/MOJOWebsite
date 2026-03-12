@@ -80,8 +80,6 @@ export default function MediaLightbox({
     });
   }, [item?.id, item?.type, isVideo, isMobile, autoAdvanceVideos, rotatedImageUrl]);
 
-  if (!item) return null;
-
   // Preload next/prev
   useEffect(() => {
     const preloadImage = (url: string) => {
@@ -412,6 +410,8 @@ export default function MediaLightbox({
     }
   };
   */
+
+  if (!item) return null;
 
   return (
     <div

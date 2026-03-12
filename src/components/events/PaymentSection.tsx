@@ -1,8 +1,8 @@
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDocFromServer, updateDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { CheckCircle, ChevronDown, CreditCard, DollarSign, Loader2, Users, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, ChevronDown, CreditCard, DollarSign, Loader2, Users, XCircle } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -29,10 +29,10 @@ const pollPaymentStatus = async (
   console.log('🔍 [POLL] Event ID:', eventId);
   console.log('🔍 [POLL] Attendee IDs:', attendeeIds);
   console.log('🔍 [POLL] Will poll', maxAttempts, 'times with', delayMs, 'ms delay');
-  
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     console.log(`📊 [POLL] Attempt ${attempt}/${maxAttempts}`);
-    
+
     try {
       // Check all attendees
       const statusChecks = await Promise.all(
@@ -40,31 +40,31 @@ const pollPaymentStatus = async (
           const attendeeRef = doc(db, 'events', eventId, 'attendees', attendeeId);
           console.log(`  🔍 [POLL] Checking attendee path: events/${eventId}/attendees/${attendeeId}`);
           const attendeeDoc = await getDoc(attendeeRef);
-          
+
           if (!attendeeDoc.exists()) {
             console.warn(`  ⚠️ [POLL] Attendee ${attendeeId} does NOT exist in Firestore!`);
             return { attendeeId, status: 'NOT_FOUND', isPaid: false };
           }
-          
+
           const data = attendeeDoc.data();
           const paymentStatus = data?.paymentStatus;
           console.log(`  📋 [POLL] Attendee ${attendeeId} status:`, paymentStatus);
           console.log(`  📋 [POLL] Full attendee data:`, JSON.stringify(data, null, 2));
-          
+
           return { attendeeId, status: paymentStatus, isPaid: paymentStatus === 'paid' };
         })
       );
-      
+
       console.log('📊 [POLL] Status check results:', statusChecks);
-      
+
       if (statusChecks.every(check => check.isPaid)) {
         console.log('✅ [POLL] SUCCESS! All attendees marked as paid in Firestore!');
         return true;
       }
-      
+
       const unpaidCount = statusChecks.filter(check => !check.isPaid).length;
       console.log(`⏳ [POLL] Still waiting: ${unpaidCount} attendees not paid yet`);
-      
+
       // Wait before next poll
       if (attempt < maxAttempts) {
         console.log(`⏳ [POLL] Waiting ${delayMs}ms before next attempt...`);
@@ -75,7 +75,7 @@ const pollPaymentStatus = async (
       console.error('❌ [POLL] Error details:', error);
     }
   }
-  
+
   console.warn('⚠️ [POLL] TIMEOUT! Payment status polling timed out after', maxAttempts, 'attempts');
   console.warn('⚠️ [POLL] Webhook may still be processing or there may be an issue');
   return false;
@@ -88,6 +88,8 @@ interface PaymentSectionProps {
   onPaymentError?: (error: string) => void;
   isGuest?: boolean;
   guestUserId?: string;
+  sessionToken?: string; // OTP session token for guest payments
+  onDeleteGuestAttendee?: (attendeeId: string) => Promise<void>;
 }
 
 interface PaymentIntentResponse {
@@ -133,9 +135,9 @@ const PaymentForm: React.FC<{
 
     try {
       console.log('💳 Confirming payment with Stripe...');
-      
+
       setProcessingMessage('Verifying payment details...');
-      
+
       // Confirm the payment with Stripe
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
@@ -147,7 +149,7 @@ const PaymentForm: React.FC<{
 
       if (error) {
         console.error('❌ Payment error:', error);
-        
+
         // Provide user-friendly error messages
         let errorMessage = 'Payment failed. Please try again.';
         if (error.type === 'card_error') {
@@ -157,7 +159,7 @@ const PaymentForm: React.FC<{
         } else if (error.message) {
           errorMessage = error.message;
         }
-        
+
         onError(errorMessage);
       } else if (paymentIntent && paymentIntent.status === 'succeeded') {
         console.log('✅ Payment succeeded:', paymentIntent.id);
@@ -285,6 +287,8 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
   onPaymentError,
   isGuest = false,
   guestUserId,
+  sessionToken,
+  onDeleteGuestAttendee,
 }) => {
   const { currentUser } = useAuth();
   const [isExpanded, setIsExpanded] = useState(true); // Default to expanded
@@ -292,26 +296,53 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [isCreatingIntent, setIsCreatingIntent] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentWarning, setPaymentWarning] = useState<string | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [lastPaymentAttempt, setLastPaymentAttempt] = useState<number>(0);
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
   const [showErrorAnimation, setShowErrorAnimation] = useState(false);
   const [animationAmount, setAnimationAmount] = useState<number>(0);
-  
+  const [guestServerAmount, setGuestServerAmount] = useState<number | null>(null);
+  const [guestServerCurrency, setGuestServerCurrency] = useState<string | null>(null);
+  const [locallyPaidAttendeeIds, setLocallyPaidAttendeeIds] = useState<Set<string>>(new Set());
+  const [deletingAttendeeIds, setDeletingAttendeeIds] = useState<Set<string>>(new Set());
+  const [isZelleLocked, setIsZelleLocked] = useState(false);
+
   // Zelle payment state
   const [showZelleModal, setShowZelleModal] = useState(false);
   const isZellePayment = event.pricing?.paymentMethod === 'zelle';
+
+  // Keep local paid overrides trimmed to current attendees
+  useEffect(() => {
+    setLocallyPaidAttendeeIds(prev => {
+      if (prev.size === 0) return prev;
+      const currentIds = new Set(attendees.map(a => a.attendeeId));
+      const next = new Set<string>();
+      prev.forEach(id => {
+        if (currentIds.has(id)) next.add(id);
+      });
+      return next;
+    });
+  }, [attendees]);
+
+  const isLocallyPaid = (attendeeId: string) => locallyPaidAttendeeIds.has(attendeeId);
+  const isPaidServerSide = (attendee: Attendee) =>
+    attendee.paymentStatus === 'paid' || Boolean(attendee.paymentTransactionId);
 
   // Calculate payment summary directly in useMemo to prevent flash
   // Only calculate for UNPAID attendees to avoid charging for already-paid ones
   const paymentSummary = useMemo(() => {
     if (!event.pricing) return null;
-    
+
     // Filter to only unpaid going attendees BEFORE calculating
     const unpaidGoingAttendees = attendees.filter(
-      a => a.rsvpStatus === 'going' && a.paymentStatus !== 'paid'
+      a =>
+        a.rsvpStatus === 'going' &&
+        !isPaidServerSide(a) &&
+        !isLocallyPaid(a.attendeeId) &&
+        a.paymentStatus !== 'waiting_for_approval'
     );
-    
+
     if (unpaidGoingAttendees.length === 0) {
       return {
         totalAmount: 0,
@@ -321,48 +352,70 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
         canRefund: false
       };
     }
-    
+
     return PaymentService.calculatePaymentSummary(unpaidGoingAttendees, event.pricing);
   }, [attendees, event.pricing]);
 
   // Update payment success state when attendees change
   useEffect(() => {
     const goingAttendees = attendees.filter(a => a.rsvpStatus === 'going');
-    const allPaid = goingAttendees.length > 0 && goingAttendees.every(a => a.paymentStatus === 'paid');
-    
+    const allPaid = goingAttendees.length > 0 && goingAttendees.every(a => isPaidServerSide(a));
+
     if (allPaid) {
       setPaymentSuccess(true);
       setPaymentError(null);
       setShowPaymentForm(false);
       setClientSecret(null);
+      setGuestServerAmount(null);
+      setGuestServerCurrency(null);
     } else {
       setPaymentSuccess(false);
     }
   }, [attendees]);
 
-  const goingAttendees = useMemo(() => 
+  const goingAttendees = useMemo(() =>
     attendees.filter(attendee => attendee.rsvpStatus === 'going'),
     [attendees]
   );
 
-  const unpaidAttendees = useMemo(() => 
-    goingAttendees.filter(attendee => 
-      attendee.paymentStatus !== 'paid' && 
+  const unpaidAttendees = useMemo(() =>
+    goingAttendees.filter(attendee =>
+      !isPaidServerSide(attendee) &&
+      !isLocallyPaid(attendee.attendeeId) &&
       attendee.paymentStatus !== 'waiting_for_approval'
     ),
-    [goingAttendees]
+    [goingAttendees, locallyPaidAttendeeIds]
   );
 
-  const paidAttendees = useMemo(() => 
-    goingAttendees.filter(attendee => attendee.paymentStatus === 'paid'),
-    [goingAttendees]
+  const paidAttendees = useMemo(() =>
+    goingAttendees.filter(attendee =>
+      isPaidServerSide(attendee) || isLocallyPaid(attendee.attendeeId)
+    ),
+    [goingAttendees, locallyPaidAttendeeIds]
   );
+
+  // Ensure success state is cleared if any unpaid attendees appear
+  useEffect(() => {
+    if (unpaidAttendees.length > 0) {
+      setPaymentSuccess(false);
+      setShowSuccessAnimation(false);
+    }
+  }, [unpaidAttendees.length]);
 
   // Attendees waiting for admin approval (Zelle payments)
   const waitingAttendees = useMemo(() =>
-    goingAttendees.filter(attendee => attendee.paymentStatus === 'waiting_for_approval'),
-    [goingAttendees]
+    goingAttendees.filter(attendee =>
+      attendee.paymentStatus === 'waiting_for_approval' && !isLocallyPaid(attendee.attendeeId)
+    ),
+    [goingAttendees, locallyPaidAttendeeIds]
   );
+
+  // If new unpaid attendees appear (new RSVP), re-enable Zelle button
+  useEffect(() => {
+    if (unpaidAttendees.length > 0) {
+      setIsZelleLocked(false);
+    }
+  }, [unpaidAttendees.length]);
 
   // Calculate summary for paid attendees to show their amounts
   const paidSummary = useMemo(() => {
@@ -384,13 +437,13 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
 
   const hasUnpaidAmount = useMemo(() => {
     if (!paymentSummary) return false;
-    
+
     // Calculate amount for unpaid attendees only (event support already in breakdown)
     const unpaidAmount = unpaidAttendees.reduce((sum, attendee) => {
       const breakdownItem = paymentSummary.breakdown.find(b => b.attendeeId === attendee.attendeeId);
       return sum + (breakdownItem?.subtotal || 0);
     }, 0);
-    
+
     return unpaidAmount > 0;
   }, [paymentSummary, unpaidAttendees]);
 
@@ -399,44 +452,119 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
    * Shows QR modal and sets payment status to waiting_for_approval
    */
   const handleZellePayment = async () => {
-    console.log('💵 [ZELLE] Starting Zelle payment flow');
-    
+    if (isZelleLocked) return;
+    setIsZelleLocked(true);
+    console.log('?? [ZELLE] Starting Zelle payment flow');
+
     // Show Zelle QR modal
     setShowZelleModal(true);
-    
-    // Update all unpaid attendees to waiting_for_approval status
+
     try {
-      console.log('💵 [ZELLE] Updating payment status to waiting_for_approval for', unpaidAttendees.length, 'attendees');
-      
-      for (const attendee of unpaidAttendees) {
-        const attendeeRef = doc(db, 'events', event.id, 'attendees', attendee.attendeeId);
-        await updateDoc(attendeeRef, {
-          paymentStatus: 'waiting_for_approval',
-          updatedAt: new Date()
+      if (isGuest) {
+        // Guest Zelle flow must be handled via callable (Firestore rules block client writes)
+        if (!sessionToken) {
+          setPaymentError('Session expired. Please verify your phone number again.');
+          onPaymentError?.('Session expired. Please verify your phone number again.');
+          setIsZelleLocked(false);
+          return;
+        }
+
+        const functions = getFunctions(undefined, 'us-east1');
+        const createGuestPaymentIntentFn = httpsCallable<
+          { sessionToken: string; eventId: string; paymentMethod: 'stripe' | 'zelle'; attendeeIds: string[] },
+          PaymentIntentResponse
+        >(functions, 'createGuestPaymentIntent');
+
+        await createGuestPaymentIntentFn({
+          sessionToken,
+          eventId: event.id,
+          paymentMethod: 'zelle',
+          attendeeIds: unpaidAttendees.map(a => a.attendeeId)
         });
-      }
-      
-      console.log('✅ [ZELLE] Successfully updated attendee payment statuses');
-      
-      // Trigger refresh to update UI
-      if (onPaymentComplete) {
-        await onPaymentComplete();
+
+        if (onPaymentComplete) {
+          await onPaymentComplete();
+        }
+      } else {
+        // Authenticated users: update client-side (allowed by rules)
+        console.log('?? [ZELLE] Updating payment status to waiting_for_approval for', unpaidAttendees.length, 'attendees');
+
+        for (const attendee of unpaidAttendees) {
+          const attendeeRef = doc(db, 'events', event.id, 'attendees', attendee.attendeeId);
+          await updateDoc(attendeeRef, {
+            paymentStatus: 'waiting_for_approval',
+            updatedAt: new Date()
+          });
+        }
+
+        console.log('? [ZELLE] Successfully updated attendee payment statuses');
+
+        if (onPaymentComplete) {
+          await onPaymentComplete();
+        }
       }
     } catch (error) {
-      console.error('❌ [ZELLE] Error updating payment status:', error);
+      console.error('? [ZELLE] Error updating payment status:', error);
       setPaymentError('Failed to initiate Zelle payment. Please try again.');
+      setIsZelleLocked(false);
     }
   };
 
   const handlePayNow = async () => {
+    console.log('💳 [FRONTEND] Pay Now clicked');
+    console.log('💳 [FRONTEND] Session token:', sessionToken ? 'EXISTS' : 'NULL/UNDEFINED');
+    if (sessionToken) {
+      console.log('💳 [FRONTEND] Session token (first 10 chars):', sessionToken.substring(0, 10) + '...');
+      console.log('💳 [FRONTEND] Session token length:', sessionToken.length);
+    }
+    console.log('💳 [FRONTEND] Is guest:', isGuest);
+    console.log('💳 [FRONTEND] Unpaid attendees:', unpaidAttendees.length);
+
+    // For guest users (not authenticated), we need to collect contact info and verify OTP first
+    // For now, show an error message directing them to sign in
+    // TODO: Implement inline OTP verification modal
     if (!currentUser && !isGuest) {
-      setPaymentError('You must be logged in to make a payment');
+      setPaymentError('Please sign in to make a payment, or contact the event organizer for guest payment options.');
       return;
     }
 
     if (unpaidAttendees.length === 0) {
       setPaymentError('All attendees have already been paid for');
       return;
+    }
+
+    // Guest preflight: refresh attendee payment status from Firestore to avoid stale local data
+    if (isGuest && event?.id) {
+      try {
+        const latestSnapshots = await Promise.all(
+          unpaidAttendees.map(attendee =>
+            getDocFromServer(doc(db, 'events', event.id, 'attendees', attendee.attendeeId))
+          )
+        );
+
+        const latestUnpaid = latestSnapshots
+          .filter(snap => snap.exists())
+          .map(snap => ({ id: snap.id, data: snap.data() as any }))
+          .filter(item => item.data?.rsvpStatus === 'going' && item.data?.paymentStatus !== 'paid');
+
+        if (latestUnpaid.length === 0) {
+          setPaymentWarning('All attendees are already paid. Refreshing...');
+          if (onPaymentComplete) {
+            await onPaymentComplete();
+          }
+          return;
+        }
+
+        if (latestUnpaid.length !== unpaidAttendees.length) {
+          setPaymentWarning('Some attendees are already paid. Please pay only the remaining attendees.');
+          if (onPaymentComplete) {
+            await onPaymentComplete();
+          }
+          return;
+        }
+      } catch (error) {
+        console.error('❌ [GUEST] Error refreshing attendee status before payment:', error);
+      }
     }
 
     // Check if this is a Zelle payment
@@ -455,33 +583,73 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
 
     setIsCreatingIntent(true);
     setPaymentError(null);
+    setPaymentWarning(null);
     setPaymentSuccess(false); // Reset success state
 
     try {
       const functions = getFunctions(undefined, 'us-east1');
-      const createPaymentIntentFn = httpsCallable<
-        { eventId: string; userId: string; attendeeIds: string[] },
-        PaymentIntentResponse
-      >(functions, 'createPaymentIntent');
 
-      console.log('🔄 Creating payment intent for', unpaidAttendees.length, 'attendee(s)');
-      
-      const result = await createPaymentIntentFn({
-        eventId: event.id,
-        userId: isGuest ? (guestUserId || attendees[0]?.userId || 'guest') : currentUser!.id,
-        attendeeIds: unpaidAttendees.map(a => a.attendeeId),
-      });
+      // Use different function for guest vs authenticated users
+      if (isGuest) {
+        // Validate session token for guest payments
+        if (!sessionToken) {
+          setPaymentError('Session expired. Please verify your phone number again.');
+          onPaymentError?.('Session expired. Please verify your phone number again.');
+          return;
+        }
 
-      console.log('✅ Payment intent created successfully');
-      setClientSecret(result.data.clientSecret);
-      setShowPaymentForm(true);
-      setIsExpanded(true);
+        const createGuestPaymentIntentFn = httpsCallable<
+          { sessionToken: string; eventId: string; paymentMethod: 'stripe' | 'zelle'; attendeeIds: string[] },
+          PaymentIntentResponse
+        >(functions, 'createGuestPaymentIntent');
+
+        console.log('🔄 Creating guest payment intent for', unpaidAttendees.length, 'attendee(s)');
+
+        // Determine payment method from event pricing
+        const paymentMethod = event.pricing?.paymentMethod === 'zelle' ? 'zelle' : 'stripe';
+
+        const result = await createGuestPaymentIntentFn({
+          sessionToken,
+          eventId: event.id,
+          paymentMethod,
+          attendeeIds: unpaidAttendees.map(a => a.attendeeId),
+        });
+
+        console.log('✅ Guest payment intent created successfully');
+        if (typeof result.data.amount === 'number') {
+          setGuestServerAmount(result.data.amount);
+        }
+        if (typeof result.data.currency === 'string') {
+          setGuestServerCurrency(result.data.currency);
+        }
+        setClientSecret(result.data.clientSecret);
+        setShowPaymentForm(true);
+        setIsExpanded(true);
+      } else {
+        const createPaymentIntentFn = httpsCallable<
+          { eventId: string; userId: string; attendeeIds: string[] },
+          PaymentIntentResponse
+        >(functions, 'createPaymentIntent');
+
+        console.log('🔄 Creating payment intent for', unpaidAttendees.length, 'attendee(s)');
+
+        const result = await createPaymentIntentFn({
+          eventId: event.id,
+          userId: currentUser!.id,
+          attendeeIds: unpaidAttendees.map(a => a.attendeeId),
+        });
+
+        console.log('✅ Payment intent created successfully');
+        setClientSecret(result.data.clientSecret);
+        setShowPaymentForm(true);
+        setIsExpanded(true);
+      }
     } catch (error: any) {
       console.error('❌ Error creating payment intent:', error);
-      
+
       // Extract user-friendly error message
       let errorMessage = 'Unable to process payment. Please try again.';
-      
+
       if (error.code === 'failed-precondition' && error.message.includes('already been paid')) {
         errorMessage = 'All selected attendees have already been paid for. Please refresh the page.';
       } else if (error.message && typeof error.message === 'string') {
@@ -490,7 +658,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
       } else if (error.details?.message) {
         errorMessage = error.details.message;
       }
-      
+
       console.error('📝 User-facing error:', errorMessage);
       setPaymentError(errorMessage);
       onPaymentError?.(errorMessage);
@@ -504,42 +672,50 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
     console.log('✅ [SUCCESS] Payment successful - updating UI state');
     console.log('✅ [SUCCESS] Event ID:', event.id);
     console.log('✅ [SUCCESS] Unpaid attendees:', unpaidAttendees.map(a => ({ id: a.attendeeId, name: a.name })));
-    
+
     // Calculate the total amount paid for animation (event support already in breakdown)
-    const totalPaid = unpaidAttendees.reduce((sum, attendee) => {
-      const breakdownItem = paymentSummary?.breakdown.find(b => b.attendeeId === attendee.attendeeId);
-      return sum + (breakdownItem?.subtotal || 0);
-    }, 0);
-    
+    const totalPaid = isGuest && guestServerAmount !== null
+      ? guestServerAmount
+      : unpaidAttendees.reduce((sum, attendee) => {
+        const breakdownItem = paymentSummary?.breakdown.find(b => b.attendeeId === attendee.attendeeId);
+        return sum + (breakdownItem?.subtotal || 0);
+      }, 0);
+
     console.log('✅ [SUCCESS] Total amount paid:', totalPaid);
-    
+
     setAnimationAmount(totalPaid);
-    setPaymentError(null); // Clear any previous errors
-    
+      setPaymentError(null); // Clear any previous errors
+      setPaymentWarning(null);
+
     // Poll Firestore to wait for webhook to update payment status
     console.log('⏳ [SUCCESS] Waiting for webhook to process payment status...');
     const attendeeIds = unpaidAttendees.map(a => a.attendeeId);
     console.log('⏳ [SUCCESS] Will poll for these attendee IDs:', attendeeIds);
-    
+
     const statusUpdated = await pollPaymentStatus(event.id, attendeeIds, 15, 500); // 15 attempts x 500ms = 7.5s max
-    
+
     if (statusUpdated) {
       console.log('✅ [SUCCESS] Payment status confirmed in database - proceeding with animation');
     } else {
       console.warn('⚠️ [SUCCESS] Proceeding without confirmation - status may update shortly');
     }
-    
+
     // Show success animation
     console.log('🎉 [SUCCESS] Showing success animation');
     setShowSuccessAnimation(true);
     setPaymentSuccess(true);
     setShowPaymentForm(false);
     setClientSecret(null);
-    
+    setLocallyPaidAttendeeIds(prev => {
+      const next = new Set(prev);
+      unpaidAttendees.forEach(att => next.add(att.attendeeId));
+      return next;
+    });
+
     // Trigger refresh to update UI
     console.log('🔄 [SUCCESS] Calling onPaymentComplete callback to refresh attendees');
     console.log('🔄 [SUCCESS] onPaymentComplete exists?', !!onPaymentComplete);
-    
+
     if (onPaymentComplete) {
       try {
         await onPaymentComplete();
@@ -550,19 +726,21 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
     } else {
       console.warn('⚠️ [SUCCESS] No onPaymentComplete callback provided!');
     }
-    
+
     console.log('✅ ========== PAYMENT SUCCESS HANDLER COMPLETED ==========');
   };
 
   const handlePaymentError = (error: string) => {
     console.error('❌ Payment error:', error);
-    
+
     // Calculate the attempted amount for animation (event support already in breakdown)
-    const attemptedAmount = unpaidAttendees.reduce((sum, attendee) => {
-      const breakdownItem = paymentSummary?.breakdown.find(b => b.attendeeId === attendee.attendeeId);
-      return sum + (breakdownItem?.subtotal || 0);
-    }, 0);
-    
+    const attemptedAmount = isGuest && guestServerAmount !== null
+      ? guestServerAmount
+      : unpaidAttendees.reduce((sum, attendee) => {
+        const breakdownItem = paymentSummary?.breakdown.find(b => b.attendeeId === attendee.attendeeId);
+        return sum + (breakdownItem?.subtotal || 0);
+      }, 0);
+
     setAnimationAmount(attemptedAmount);
     setShowErrorAnimation(true);
     setPaymentError(error);
@@ -574,8 +752,12 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
     console.log('🚫 Payment cancelled by user');
     setShowPaymentForm(false);
     setClientSecret(null);
-    setPaymentError(null);
+      setPaymentError(null);
+      setPaymentWarning(null);
     setPaymentSuccess(false);
+    setGuestServerAmount(null);
+    setGuestServerCurrency(null);
+    setLocallyPaidAttendeeIds(new Set());
   };
 
   if (!event.pricing || !hasPaymentRequired) {
@@ -612,274 +794,147 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
       )}
 
       <div className="bg-white border border-gray-200 rounded-lg mb-3 sm:mb-4 overflow-hidden">
-      {/* Clickable Header */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 border-b border-gray-200 transition-colors ${
-          paymentSuccess
+        {/* Clickable Header */}
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 border-b border-gray-200 transition-colors ${paymentSuccess
             ? 'bg-gradient-to-r from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100'
             : hasUnpaidAmount
-            ? 'bg-gradient-to-r from-amber-50 to-yellow-50 hover:from-amber-100 hover:to-yellow-100'
-            : 'bg-gradient-to-r from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100'
-        }`}
-      >
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className={`p-1.5 sm:p-2 bg-white rounded-lg shadow-sm ${
-            paymentSuccess ? 'ring-2 ring-green-500' : ''
-          }`}>
-            {paymentSuccess ? (
-              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
-            ) : hasUnpaidAmount ? (
-              <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
-            ) : (
-              <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
-            )}
-          </div>
-          <div className="flex-1 text-left">
-            <h3 className="font-semibold text-gray-900 text-xs sm:text-sm">
-              {paymentSuccess && paidAttendees.length > 0 ? 'Payment Complete' : hasUnpaidAmount ? 'Payment Required' : 'Event Payment'}
-            </h3>
-            <p className="text-xs text-gray-600">
-              {unpaidAttendees.length > 0 && paidAttendees.length > 0 ? (
-                `${unpaidAttendees.length} unpaid • ${paidAttendees.length} paid`
-              ) : unpaidAttendees.length > 0 ? (
-                `${unpaidAttendees.length} attendee${unpaidAttendees.length !== 1 ? 's' : ''} to pay`
-              ) : paidAttendees.length > 0 ? (
-                `All ${paidAttendees.length} attendee${paidAttendees.length !== 1 ? 's' : ''} paid`
-              ) : paymentSummary ? (
-                `Total: $${(paymentSummary.totalAmount / 100).toFixed(2)}`
+              ? 'bg-gradient-to-r from-amber-50 to-yellow-50 hover:from-amber-100 hover:to-yellow-100'
+              : 'bg-gradient-to-r from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100'
+            }`}
+        >
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className={`p-1.5 sm:p-2 bg-white rounded-lg shadow-sm ${paymentSuccess ? 'ring-2 ring-green-500' : ''
+              }`}>
+              {paymentSuccess ? (
+                <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
+              ) : hasUnpaidAmount ? (
+                <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
               ) : (
-                'Calculating...'
+                <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
               )}
-            </p>
+            </div>
+            <div className="flex-1 text-left">
+              <h3 className="font-semibold text-gray-900 text-xs sm:text-sm">
+                {paymentSuccess && paidAttendees.length > 0 ? 'Payment Complete' : hasUnpaidAmount ? 'Payment Required' : 'Event Payment'}
+              </h3>
+              <p className="text-xs text-gray-600">
+                {unpaidAttendees.length > 0 && paidAttendees.length > 0 ? (
+                  `${unpaidAttendees.length} unpaid • ${paidAttendees.length} paid`
+                ) : unpaidAttendees.length > 0 ? (
+                  `${unpaidAttendees.length} attendee${unpaidAttendees.length !== 1 ? 's' : ''} to pay`
+                ) : paidAttendees.length > 0 ? (
+                  `All ${paidAttendees.length} attendee${paidAttendees.length !== 1 ? 's' : ''} paid`
+                ) : paymentSummary ? (
+                  `Total: $${(paymentSummary.totalAmount / 100).toFixed(2)}`
+                ) : (
+                  'Calculating...'
+                )}
+              </p>
+            </div>
+            <ChevronDown
+              className={`w-4 h-4 sm:w-5 sm:h-5 text-gray-600 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+            />
           </div>
-          <ChevronDown 
-            className={`w-4 h-4 sm:w-5 sm:h-5 text-gray-600 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
-          />
-        </div>
-      </button>
+        </button>
 
-      {/* Collapsible Payment Content */}
-      {isExpanded && (
-        <div className="p-3 sm:p-4">
-          {/* Payment Status Banner */}
-          {paymentSuccess && paidAttendees.length > 0 && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
-              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-green-900">Payment Successful!</p>
-                <p className="text-xs text-green-700">
-                  Paid for {paidAttendees.length} attendee{paidAttendees.length !== 1 ? 's' : ''}.
-                </p>
+        {/* Collapsible Payment Content */}
+        {isExpanded && (
+          <div className="p-3 sm:p-4">
+            {/* Payment Status Banner */}
+            {paymentSuccess && paidAttendees.length > 0 && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
+                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-green-900">Payment Successful!</p>
+                  <p className="text-xs text-green-700">
+                    Paid for {paidAttendees.length} attendee{paidAttendees.length !== 1 ? 's' : ''}.
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Error Message */}
-          {paymentError && !showPaymentForm && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
-              <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-red-900">Payment Error</p>
-                <p className="text-xs text-red-700">{paymentError}</p>
+            {/* Error Message */}
+            {paymentWarning && !showPaymentForm && (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-amber-900">Payment Warning</p>
+                  <p className="text-xs text-amber-800">{paymentWarning}</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+            {paymentError && !showPaymentForm && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
+                <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-red-900">Payment Error</p>
+                  <p className="text-xs text-red-700">{paymentError}</p>
+                </div>
+              </div>
+            )}
 
-          {/* Payment Form */}
-          {showPaymentForm && clientSecret && paymentSummary && (
-            <div className="mb-4">
-              <Elements stripe={stripePromise} options={{ clientSecret }}>
-                <PaymentForm
-                  amount={paymentSummary.totalAmount}
-                  currency={paymentSummary.currency}
-                  unpaidAttendees={unpaidAttendees}
-                  onSuccess={handlePaymentSuccess}
-                  onError={handlePaymentError}
-                  onCancel={handleCancelPayment}
-                />
-              </Elements>
-            </div>
-          )}
+            {/* Payment Form */}
+            {showPaymentForm && clientSecret && paymentSummary && (
+              <div className="mb-4">
+                <Elements stripe={stripePromise} options={{ clientSecret }}>
+                  <PaymentForm
+                    amount={isGuest && guestServerAmount !== null ? guestServerAmount : paymentSummary.totalAmount}
+                    currency={isGuest && guestServerCurrency ? guestServerCurrency : paymentSummary.currency}
+                    unpaidAttendees={unpaidAttendees}
+                    onSuccess={handlePaymentSuccess}
+                    onError={handlePaymentError}
+                    onCancel={handleCancelPayment}
+                  />
+                </Elements>
+              </div>
+            )}
 
-          {/* Attendee Breakdown */}
-          {!showPaymentForm && (
-            <>
-              <div className="space-y-2">
-                {/* Paid Attendees Section */}
-                {paidAttendees.length > 0 && paidSummary?.breakdown && (
-                  <>
-                    <div className="text-xs font-semibold text-green-700 mb-1">✅ Paid Attendees</div>
-                    {paidSummary.breakdown.map((breakdownItem) => {
-                      const attendee = attendees.find(a => a.attendeeId === breakdownItem.attendeeId);
-                      const hasEventSupport = !!(breakdownItem.eventSupport && breakdownItem.eventSupport > 0);
-
-                      return (
-                        <div 
-                          key={breakdownItem.attendeeId} 
-                          className="rounded-lg bg-green-50 border border-green-200"
-                        >
-                          {/* Attendee Header */}
-                          <div className="flex items-center justify-between py-2 px-2.5 sm:px-3">
-                            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                              <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
-                                  {breakdownItem.attendeeName}
-                                </p>
-                                <p className="text-xs text-gray-500 capitalize">
-                                  {breakdownItem.ageGroup === 'adult' ? 'Adult' : 
-                                   breakdownItem.ageGroup === '11+' ? '11+ Years' :
-                                   breakdownItem.ageGroup === '0-2' ? '0-2 Years' :
-                                   breakdownItem.ageGroup === '3-5' ? '3-5 Years' :
-                                   breakdownItem.ageGroup === '6-10' ? '6-10 Years' :
-                                   breakdownItem.ageGroup}
-                                  <span className="ml-2 text-green-600 font-semibold">• PAID</span>
-                                </p>
-                              </div>
-                            </div>
-                            <span className="text-xs sm:text-sm font-semibold flex-shrink-0 text-green-700">
-                              ${(breakdownItem.subtotal / 100).toFixed(2)}
-                            </span>
-                          </div>
-                          
-                          {/* Detailed Breakdown - Show ticket and event support separately */}
-                          {((breakdownItem.ticketPrice > 0) || (breakdownItem.eventSupport > 0)) && (
-                            <div className="px-2.5 sm:px-3 pb-2 pt-0 space-y-1 border-t border-green-300/50 mt-1">
-                              {breakdownItem.ticketPrice > 0 && (
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="text-gray-600 ml-6 sm:ml-7">Ticket Price</span>
-                                  <span className="text-gray-700 font-medium">
-                                    ${(breakdownItem.ticketPrice / 100).toFixed(2)}
-                                  </span>
-                                </div>
-                              )}
-                              {breakdownItem.eventSupport > 0 && (
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="text-gray-600 ml-6 sm:ml-7">Event Support</span>
-                                  <span className="text-gray-700 font-medium">
-                                    ${(breakdownItem.eventSupport / 100).toFixed(2)}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </>
-                )}
-
-                {/* Waiting for Approval Attendees Section (Zelle payments) */}
-                {waitingAttendees.length > 0 && waitingSummary?.breakdown && (
-                  <>
-                    <div className="text-xs font-semibold text-amber-700 mb-1 mt-3">⏳ Waiting for Approval</div>
-                    {waitingSummary.breakdown.map((breakdownItem) => {
-                      const attendee = attendees.find(a => a.attendeeId === breakdownItem.attendeeId);
-                      const hasEventSupport = !!(breakdownItem.eventSupport && breakdownItem.eventSupport > 0);
-
-                      return (
-                        <div 
-                          key={breakdownItem.attendeeId} 
-                          className="rounded-lg bg-amber-50 border border-amber-200"
-                        >
-                          {/* Attendee Header */}
-                          <div className="flex items-center justify-between py-2 px-2.5 sm:px-3">
-                            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                              <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
-                                  {breakdownItem.attendeeName}
-                                </p>
-                                <p className="text-xs text-gray-500 capitalize">
-                                  {breakdownItem.ageGroup === 'adult' ? 'Adult' : 
-                                   breakdownItem.ageGroup === '11+' ? '11+ Years' :
-                                   breakdownItem.ageGroup === '0-2' ? '0-2 Years' :
-                                   breakdownItem.ageGroup === '3-5' ? '3-5 Years' :
-                                   breakdownItem.ageGroup === '6-10' ? '6-10 Years' :
-                                   breakdownItem.ageGroup}
-                                  <span className="ml-2 text-amber-600 font-semibold">• PENDING APPROVAL</span>
-                                </p>
-                              </div>
-                            </div>
-                            <span className="text-xs sm:text-sm font-semibold flex-shrink-0 text-amber-700">
-                              ${(breakdownItem.subtotal / 100).toFixed(2)}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
-                      <p className="text-xs text-blue-900">
-                        📧 Payment submitted via Zelle. Waiting for admin to verify payment screenshot sent to{' '}
-                        <span className="font-semibold">momsfitnessmojo@gmail.com</span>
-                      </p>
-                    </div>
-                  </>
-                )}
-
-                {/* Unpaid Attendees Section */}
-                {paymentSummary?.breakdown.length ? (
-                  <>
-                    {unpaidAttendees.length > 0 && (
-                      <div className="text-xs font-semibold text-amber-700 mb-1 mt-3">💳 Unpaid Attendees</div>
-                    )}
-                    {/* Remove duplicates and filter out paid attendees */}
-                    {paymentSummary.breakdown
-                      .filter((item, index, self) => 
-                        index === self.findIndex((t) => t.attendeeId === item.attendeeId)
-                      )
-                      .filter((breakdownItem) => {
+            {/* Attendee Breakdown */}
+            {!showPaymentForm && (
+              <>
+                <div className="space-y-2">
+                  {/* Paid Attendees Section */}
+                  {paidAttendees.length > 0 && paidSummary?.breakdown && (
+                    <>
+                      <div className="text-xs font-semibold text-green-700 mb-1">✅ Paid Attendees</div>
+                      {paidSummary.breakdown.map((breakdownItem) => {
                         const attendee = attendees.find(a => a.attendeeId === breakdownItem.attendeeId);
-                        return attendee?.paymentStatus !== 'paid';
-                      })
-                      .map((breakdownItem) => {
-                        const attendee = attendees.find(a => a.attendeeId === breakdownItem.attendeeId);
-                        const isPaid = attendee?.paymentStatus === 'paid';
                         const hasEventSupport = !!(breakdownItem.eventSupport && breakdownItem.eventSupport > 0);
 
                         return (
-                          <div 
-                            key={breakdownItem.attendeeId} 
-                            className={`rounded-lg ${
-                              isPaid ? 'bg-green-50 border border-green-200' : 'bg-gray-50'
-                            }`}
+                          <div
+                            key={breakdownItem.attendeeId}
+                            className="rounded-lg bg-green-50 border border-green-200"
                           >
                             {/* Attendee Header */}
                             <div className="flex items-center justify-between py-2 px-2.5 sm:px-3">
                               <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                                {isPaid ? (
-                                  <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
-                                ) : (
-                                  <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600 flex-shrink-0" />
-                                )}
+                                <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
                                 <div className="flex-1 min-w-0">
                                   <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
                                     {breakdownItem.attendeeName}
                                   </p>
                                   <p className="text-xs text-gray-500 capitalize">
-                                    {breakdownItem.ageGroup === 'adult' ? 'Adult' : 
-                                     breakdownItem.ageGroup === '11+' ? '11+ Years' :
-                                     breakdownItem.ageGroup === '0-2' ? '0-2 Years' :
-                                     breakdownItem.ageGroup === '3-5' ? '3-5 Years' :
-                                     breakdownItem.ageGroup === '6-10' ? '6-10 Years' :
-                                     breakdownItem.ageGroup}
-                                    {isPaid && <span className="ml-2 text-green-600 font-semibold">• PAID</span>}
+                                    {breakdownItem.ageGroup === 'adult' ? 'Adult' :
+                                      breakdownItem.ageGroup === '11+' ? '11+ Years' :
+                                        breakdownItem.ageGroup === '0-2' ? '0-2 Years' :
+                                          breakdownItem.ageGroup === '3-5' ? '3-5 Years' :
+                                            breakdownItem.ageGroup === '6-10' ? '6-10 Years' :
+                                              breakdownItem.ageGroup}
+                                    <span className="ml-2 text-green-600 font-semibold">• PAID</span>
                                   </p>
                                 </div>
                               </div>
-                              <span className={`text-xs sm:text-sm font-semibold flex-shrink-0 ${
-                                isPaid ? 'text-green-700' : 'text-gray-900'
-                              }`}>
+                              <span className="text-xs sm:text-sm font-semibold flex-shrink-0 text-green-700">
                                 ${(breakdownItem.subtotal / 100).toFixed(2)}
                               </span>
                             </div>
-                            
+
                             {/* Detailed Breakdown - Show ticket and event support separately */}
                             {((breakdownItem.ticketPrice > 0) || (breakdownItem.eventSupport > 0)) && (
-                              <div className="px-2.5 sm:px-3 pb-2 pt-0 space-y-1 border-t border-gray-200/50 mt-1">
+                              <div className="px-2.5 sm:px-3 pb-2 pt-0 space-y-1 border-t border-green-300/50 mt-1">
                                 {breakdownItem.ticketPrice > 0 && (
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="text-gray-600 ml-6 sm:ml-7">Ticket Price</span>
@@ -901,121 +956,286 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                           </div>
                         );
                       })}
-                  </>
-                ) : (
-                  <>
-                    {goingAttendees.length === 0 && (
-                      <div className="text-center py-6 sm:py-8 text-gray-500">
-                        <Users className="w-8 h-8 sm:w-10 sm:h-10 mx-auto mb-2 text-gray-300" />
-                        <p className="text-xs sm:text-sm">Add attendees to see pricing</p>
+                    </>
+                  )}
+
+                  {/* Waiting for Approval Attendees Section (Zelle payments) */}
+                  {waitingAttendees.length > 0 && waitingSummary?.breakdown && (
+                    <>
+                      <div className="text-xs font-semibold text-amber-700 mb-1 mt-3">⏳ Waiting for Approval</div>
+                      {waitingSummary.breakdown.map((breakdownItem) => {
+                        const attendee = attendees.find(a => a.attendeeId === breakdownItem.attendeeId);
+                        const hasEventSupport = !!(breakdownItem.eventSupport && breakdownItem.eventSupport > 0);
+
+                        return (
+                          <div
+                            key={breakdownItem.attendeeId}
+                            className="rounded-lg bg-amber-50 border border-amber-200"
+                          >
+                            {/* Attendee Header */}
+                            <div className="flex items-center justify-between py-2 px-2.5 sm:px-3">
+                              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                                <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                                    {breakdownItem.attendeeName}
+                                  </p>
+                                  <p className="text-xs text-gray-500 capitalize">
+                                    {breakdownItem.ageGroup === 'adult' ? 'Adult' :
+                                      breakdownItem.ageGroup === '11+' ? '11+ Years' :
+                                        breakdownItem.ageGroup === '0-2' ? '0-2 Years' :
+                                          breakdownItem.ageGroup === '3-5' ? '3-5 Years' :
+                                            breakdownItem.ageGroup === '6-10' ? '6-10 Years' :
+                                              breakdownItem.ageGroup}
+                                    <span className="ml-2 text-amber-600 font-semibold">• PENDING APPROVAL</span>
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="text-xs sm:text-sm font-semibold flex-shrink-0 text-amber-700">
+                                ${(breakdownItem.subtotal / 100).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-xs text-blue-900">
+                          📧 Payment submitted via Zelle. Waiting for admin to verify payment screenshot sent to{' '}
+                          <span className="font-semibold">momsfitnessmojo@gmail.com</span>
+                        </p>
                       </div>
-                    )}
-                  </>
-                )}
-              </div>
+                    </>
+                  )}
 
-              {/* Total Section */}
-              {paymentSummary && goingAttendees.length > 0 && (
-                <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-200 space-y-2">
-                  {/* Event Support is now included in each attendee's breakdown subtotal */}
-                  
-                  {/* Total Amount */}
-                  <div className={`flex items-center justify-between p-2.5 sm:p-3 rounded-lg border ${
-                    paymentSuccess 
-                      ? 'bg-green-50 border-green-200' 
-                      : isZellePayment
-                      ? 'bg-purple-50 border-purple-200'
-                      : 'bg-amber-50 border-amber-200'
-                  }`}>
-                    <div>
-                      <span className="text-sm sm:text-base font-bold text-gray-900">
-                        {hasUnpaidAmount ? 'Amount Due' : 'Total Amount'}
-                      </span>
-                      {isZellePayment && hasUnpaidAmount && (
-                        <p className="text-xs text-purple-700 font-semibold">
-                          💵 Zelle - No fees!
-                        </p>
+                  {/* Unpaid Attendees Section */}
+                  {paymentSummary?.breakdown.length ? (
+                    <>
+                      {unpaidAttendees.length > 0 && (
+                        <div className="text-xs font-semibold text-amber-700 mb-1 mt-3">💳 Unpaid Attendees</div>
                       )}
-                      {hasUnpaidAmount && paidAttendees.length > 0 && (
-                        <p className="text-xs text-gray-600">
-                          {paidAttendees.length} attendee{paidAttendees.length !== 1 ? 's' : ''} already paid
-                        </p>
-                      )}
-                    </div>
-                    <span className={`text-lg sm:text-xl font-bold ${
-                      paymentSuccess ? 'text-green-600' : isZellePayment ? 'text-purple-600' : 'text-amber-600'
-                    }`}>
-                      ${hasUnpaidAmount ? (
-                        (unpaidAttendees.reduce((sum, attendee) => {
-                          const breakdownItem = paymentSummary.breakdown.find(b => b.attendeeId === attendee.attendeeId);
-                          return sum + (breakdownItem?.subtotal || 0);
-                        }, 0) / 100).toFixed(2)
-                      ) : (
-                        (paymentSummary.totalAmount / 100).toFixed(2)
-                      )}
-                    </span>
-                  </div>
+                      {/* Remove duplicates and filter out paid attendees */}
+                      {paymentSummary.breakdown
+                        .filter((item, index, self) =>
+                          index === self.findIndex((t) => t.attendeeId === item.attendeeId)
+                        )
+                        .filter((breakdownItem) => {
+                          const attendee = attendees.find(a => a.attendeeId === breakdownItem.attendeeId);
+                          if (!attendee) return false;
+                          if (isPaidServerSide(attendee)) return false;
+                          if (attendee.paymentStatus === 'waiting_for_approval') return false;
+                          return true;
+                        })
+                        .map((breakdownItem) => {
+                          const attendee = attendees.find(a => a.attendeeId === breakdownItem.attendeeId);
+                          const isPaid = attendee?.paymentStatus === 'paid';
+                          const hasEventSupport = !!(breakdownItem.eventSupport && breakdownItem.eventSupport > 0);
+                          const canDeleteGuest = isGuest && !isPaid && !!onDeleteGuestAttendee;
+                          const isDeleting = deletingAttendeeIds.has(breakdownItem.attendeeId);
 
-                  {/* Pay Now Button */}
-                  {hasUnpaidAmount && !showPaymentForm && (
-                    <button
-                      onClick={handlePayNow}
-                      disabled={isCreatingIntent || unpaidAttendees.length === 0}
-                      className={`w-full mt-3 px-4 py-3 ${
-                        isZellePayment 
-                          ? 'bg-purple-600 hover:bg-purple-700' 
-                          : 'bg-green-600 hover:bg-green-700'
-                      } text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
-                    >
-                      {isCreatingIntent ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                          Preparing Payment...
-                        </>
-                      ) : (
-                        <>
-                          {isZellePayment ? (
-                            <>
-                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                              </svg>
-                              Pay via Zelle ${(unpaidAttendees.reduce((sum, attendee) => {
-                                const breakdownItem = paymentSummary.breakdown.find(b => b.attendeeId === attendee.attendeeId);
-                                return sum + (breakdownItem?.subtotal || 0);
-                              }, 0) / 100).toFixed(2)}
-                            </>
-                          ) : (
-                            <>
-                              <CreditCard className="w-5 h-5" />
-                              Pay ${(unpaidAttendees.reduce((sum, attendee) => {
-                                const breakdownItem = paymentSummary.breakdown.find(b => b.attendeeId === attendee.attendeeId);
-                                return sum + (breakdownItem?.subtotal || 0);
-                              }, 0) / 100).toFixed(2)}
-                            </>
-                          )}
-                        </>
+                          return (
+                            <div
+                              key={breakdownItem.attendeeId}
+                              className={`rounded-lg ${isPaid ? 'bg-green-50 border border-green-200' : 'bg-gray-50'
+                                }`}
+                            >
+                              {/* Attendee Header */}
+                              <div className="flex items-center justify-between py-2 px-2.5 sm:px-3">
+                                <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                                  {isPaid ? (
+                                    <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                  ) : (
+                                    <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-600 flex-shrink-0" />
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                                      {breakdownItem.attendeeName}
+                                    </p>
+                                    <p className="text-xs text-gray-500 capitalize">
+                                      {breakdownItem.ageGroup === 'adult' ? 'Adult' :
+                                        breakdownItem.ageGroup === '11+' ? '11+ Years' :
+                                          breakdownItem.ageGroup === '0-2' ? '0-2 Years' :
+                                            breakdownItem.ageGroup === '3-5' ? '3-5 Years' :
+                                              breakdownItem.ageGroup === '6-10' ? '6-10 Years' :
+                                                breakdownItem.ageGroup}
+                                      {isPaid && <span className="ml-2 text-green-600 font-semibold">• PAID</span>}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <span className={`text-xs sm:text-sm font-semibold ${isPaid ? 'text-green-700' : 'text-gray-900'
+                                    }`}>
+                                    ${(breakdownItem.subtotal / 100).toFixed(2)}
+                                  </span>
+                                  {canDeleteGuest && (
+                                    <button
+                                      type="button"
+                                      aria-label={`Remove ${breakdownItem.attendeeName}`}
+                                      className="w-6 h-6 inline-flex items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-60"
+                                      disabled={isDeleting}
+                                      onClick={async () => {
+                                        try {
+                                          setDeletingAttendeeIds(prev => new Set(prev).add(breakdownItem.attendeeId));
+                                          await onDeleteGuestAttendee!(breakdownItem.attendeeId);
+                                        } catch (error) {
+                                          console.error('❌ Error deleting attendee:', error);
+                                          setPaymentError('Failed to remove attendee. Please try again.');
+                                        } finally {
+                                          setDeletingAttendeeIds(prev => {
+                                            const next = new Set(prev);
+                                            next.delete(breakdownItem.attendeeId);
+                                            return next;
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      {isDeleting ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <XCircle className="w-4 h-4" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Detailed Breakdown - Show ticket and event support separately */}
+                              {((breakdownItem.ticketPrice > 0) || (breakdownItem.eventSupport > 0)) && (
+                                <div className="px-2.5 sm:px-3 pb-2 pt-0 space-y-1 border-t border-gray-200/50 mt-1">
+                                  {breakdownItem.ticketPrice > 0 && (
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="text-gray-600 ml-6 sm:ml-7">Ticket Price</span>
+                                      <span className="text-gray-700 font-medium">
+                                        ${(breakdownItem.ticketPrice / 100).toFixed(2)}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {breakdownItem.eventSupport > 0 && (
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="text-gray-600 ml-6 sm:ml-7">Event Support</span>
+                                      <span className="text-gray-700 font-medium">
+                                        ${(breakdownItem.eventSupport / 100).toFixed(2)}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </>
+                  ) : (
+                    <>
+                      {goingAttendees.length === 0 && (
+                        <div className="text-center py-6 sm:py-8 text-gray-500">
+                          <Users className="w-8 h-8 sm:w-10 sm:h-10 mx-auto mb-2 text-gray-300" />
+                          <p className="text-xs sm:text-sm">Add attendees to see pricing</p>
+                        </div>
                       )}
-                    </button>
+                    </>
                   )}
                 </div>
-              )}
-            </>
-          )}
-        </div>
+
+                {/* Total Section */}
+                {paymentSummary && goingAttendees.length > 0 && (
+                  <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-200 space-y-2">
+                    {/* Event Support is now included in each attendee's breakdown subtotal */}
+
+                    {/* Total Amount */}
+                    <div className={`flex items-center justify-between p-2.5 sm:p-3 rounded-lg border ${paymentSuccess
+                      ? 'bg-green-50 border-green-200'
+                      : isZellePayment
+                        ? 'bg-purple-50 border-purple-200'
+                        : 'bg-amber-50 border-amber-200'
+                      }`}>
+                      <div>
+                        <span className="text-sm sm:text-base font-bold text-gray-900">
+                          {hasUnpaidAmount ? 'Amount Due' : 'Total Amount'}
+                        </span>
+                        {isZellePayment && hasUnpaidAmount && (
+                          <p className="text-xs text-purple-700 font-semibold">
+                            💵 Zelle - No fees!
+                          </p>
+                        )}
+                        {hasUnpaidAmount && paidAttendees.length > 0 && (
+                          <p className="text-xs text-gray-600">
+                            {paidAttendees.length} attendee{paidAttendees.length !== 1 ? 's' : ''} already paid
+                          </p>
+                        )}
+                      </div>
+                      <span className={`text-lg sm:text-xl font-bold ${paymentSuccess ? 'text-green-600' : isZellePayment ? 'text-purple-600' : 'text-amber-600'
+                        }`}>
+                        ${hasUnpaidAmount ? (
+                          (unpaidAttendees.reduce((sum, attendee) => {
+                            const breakdownItem = paymentSummary.breakdown.find(b => b.attendeeId === attendee.attendeeId);
+                            return sum + (breakdownItem?.subtotal || 0);
+                          }, 0) / 100).toFixed(2)
+                        ) : (
+                          (paymentSummary.totalAmount / 100).toFixed(2)
+                        )}
+                      </span>
+                    </div>
+
+                    {/* Pay Now Button */}
+                    {hasUnpaidAmount && !showPaymentForm && (
+                      <button
+                        onClick={handlePayNow}
+                        disabled={isCreatingIntent || unpaidAttendees.length === 0 || (isZellePayment && isZelleLocked)}
+                        className={`w-full mt-3 px-4 py-3 ${isZellePayment
+                          ? 'bg-purple-600 hover:bg-purple-700'
+                          : 'bg-green-600 hover:bg-green-700'
+                          } text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2`}
+                      >
+                        {isCreatingIntent ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Preparing Payment...
+                          </>
+                        ) : (
+                          <>
+                            {isZellePayment ? (
+                              <>
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                                </svg>
+                                Pay via Zelle ${(unpaidAttendees.reduce((sum, attendee) => {
+                                  const breakdownItem = paymentSummary.breakdown.find(b => b.attendeeId === attendee.attendeeId);
+                                  return sum + (breakdownItem?.subtotal || 0);
+                                }, 0) / 100).toFixed(2)}
+                              </>
+                            ) : (
+                              <>
+                                <CreditCard className="w-5 h-5" />
+                                Pay ${(unpaidAttendees.reduce((sum, attendee) => {
+                                  const breakdownItem = paymentSummary.breakdown.find(b => b.attendeeId === attendee.attendeeId);
+                                  return sum + (breakdownItem?.subtotal || 0);
+                                }, 0) / 100).toFixed(2)}
+                              </>
+                            )}
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Zelle QR Modal */}
+      {isZellePayment && (
+        <ZelleQRModal
+          isOpen={showZelleModal}
+          onClose={() => setShowZelleModal(false)}
+          amount={unpaidAttendees.reduce((sum, attendee) => {
+            const breakdownItem = paymentSummary?.breakdown.find(b => b.attendeeId === attendee.attendeeId);
+            return sum + (breakdownItem?.subtotal || 0);
+          }, 0)}
+        />
       )}
-    </div>
-    
-    {/* Zelle QR Modal */}
-    {isZellePayment && (
-      <ZelleQRModal
-        isOpen={showZelleModal}
-        onClose={() => setShowZelleModal(false)}
-        amount={unpaidAttendees.reduce((sum, attendee) => {
-          const breakdownItem = paymentSummary?.breakdown.find(b => b.attendeeId === attendee.attendeeId);
-          return sum + (breakdownItem?.subtotal || 0);
-        }, 0)}
-      />
-    )}
     </>
   );
 };

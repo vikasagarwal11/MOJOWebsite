@@ -542,17 +542,18 @@ export default function MediaCard({
   
   // Safe date parsing with fallback - use safeToDate utility
   const createdAt = useMemo(() => {
-    if (!localMedia.createdAt) return new Date();
+    const sourceDate = (localMedia as any).mediaDate ?? localMedia.createdAt;
+    if (!sourceDate) return new Date();
     
     try {
       // Use the safeToDate utility for consistent date handling
-      const date = safeToDate(localMedia.createdAt);
+      const date = safeToDate(sourceDate);
       return date || new Date();
     } catch (error) {
       console.warn('Date parsing error:', error);
       return new Date();
     }
-  }, [localMedia.createdAt]);
+  }, [localMedia.createdAt, (localMedia as any).mediaDate]);
   
   // One status object, one chip - prevents conflicting chips
   const status = useMemo(() => {

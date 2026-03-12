@@ -101,7 +101,7 @@ function normalizeDoc(docData: any) {
     const reconstructed = reconstructNestedObjects(sanitized);
     
     const out = { id: reconstructed.id, ...reconstructed };
-    const tsFields = ['createdAt', 'updatedAt', 'date', 'validUntil', 'startAt', 'endAt', 'joinedAt'];
+    const tsFields = ['createdAt', 'updatedAt', 'date', 'validUntil', 'startAt', 'endAt', 'joinedAt', 'mediaDate'];
     for (const f of tsFields) {
       const v = (out as any)[f];
       (out as any)[f] = v?.toDate?.() ? v.toDate() : v instanceof Date ? v : v;

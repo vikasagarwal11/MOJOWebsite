@@ -30,12 +30,12 @@ const STRIPE_FEE_MULTIPLIER = 1 - STRIPE_FEE_PERCENTAGE; // 0.971
  * @param netTotalCents - The net amount the admin wants to receive (in cents)
  * @returns The amount to charge the user (in cents)
  */
-function calculateChargeAmount(netTotalCents: number): number {
+export function calculateChargeAmount(netTotalCents: number): number {
   if (netTotalCents <= 0) return 0;
-  
+
   // Formula: chargeAmount = (netTotal + 0.30) / 0.971
   const chargeAmount = (netTotalCents + STRIPE_FEE_FIXED_CENTS) / STRIPE_FEE_MULTIPLIER;
-  
+
   // Round to nearest cent
   return Math.round(chargeAmount);
 }
@@ -45,23 +45,23 @@ let stripe: Stripe | null = null;
 function getStripe(): Stripe {
   if (!stripe) {
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-    
+
     console.log('🔑 Stripe Key Check:', {
       hasEnvVar: !!stripeSecretKey,
       keyPrefix: stripeSecretKey ? stripeSecretKey.substring(0, 7) + '...' : 'MISSING'
     });
-    
+
     if (!stripeSecretKey) {
       console.error('❌ STRIPE_SECRET_KEY not found in environment variables');
       console.error('Available env vars:', Object.keys(process.env).filter(k => !k.includes('SECRET')));
       throw new Error('STRIPE_SECRET_KEY is required. Add it to functions/.env file');
     }
-    
+
     stripe = new Stripe(stripeSecretKey, {
       apiVersion: '2025-12-15.clover',
       typescript: true,
     });
-    
+
     console.log('✅ Stripe initialized successfully');
   }
   return stripe;
@@ -97,7 +97,7 @@ interface CreatePaymentIntentResponse {
  * 3. Calculates the price only for unpaid attendees
  * 4. Returns the incremental amount to charge
  */
-async function calculateIncrementalAmount(
+export async function calculateIncrementalAmount(
   eventId: string,
   userId: string,
   attendeeIds: string[]
@@ -141,7 +141,7 @@ async function calculateIncrementalAmount(
 
   // Get all attendees for this user and event from the subcollection
   console.log('🔍 Querying attendees with:', { eventId, userId, rsvpStatus: 'going' });
-  
+
   const attendeesSnapshot = await db
     .collection('events')
     .doc(eventId)
@@ -151,14 +151,14 @@ async function calculateIncrementalAmount(
     .get();
 
   console.log('📋 Raw query returned:', attendeesSnapshot.docs.length, 'documents');
-  
+
   // Also check if ANY attendees exist for this event with requested IDs
   const requestedAttendeesSnapshot = await db
     .collection('events')
     .doc(eventId)
     .collection('attendees')
     .get();
-  
+
   console.log('📋 Total attendees for event:', requestedAttendeesSnapshot.docs.length);
   requestedAttendeesSnapshot.docs.forEach(doc => {
     const data = doc.data();
@@ -240,10 +240,10 @@ async function calculateIncrementalAmount(
   }
 
   console.log(`📊 Net total (admin receives): $${(netTotal / 100).toFixed(2)}`);
-  
+
   // Check if this is a Zelle payment (no Stripe fees)
   const isZellePayment = pricing.paymentMethod === 'zelle';
-  
+
   let totalAmount: number;
   if (isZellePayment) {
     // For Zelle payments, charge the exact NET amount (no Stripe fees)
@@ -270,7 +270,7 @@ async function calculateIncrementalAmount(
  * The frontend PaymentService applies Stripe fees proportionally
  * and sends the CHARGE amount to this function.
  */
-function calculateAttendeePrice(
+export function calculateAttendeePrice(
   ageGroup: string,
   pricing: any
 ): number {
@@ -311,7 +311,7 @@ export const createPaymentIntent = onCall(
     console.log('🎫 createPaymentIntent called');
     console.log('🔧 Auth:', request.auth ? 'authenticated' : 'NOT authenticated');
     console.log('🔧 Data:', JSON.stringify(request.data));
-    
+
     try {
       // Verify authentication
       if (!request.auth) {
@@ -377,7 +377,7 @@ export const createPaymentIntent = onCall(
           }
         );
       }
-      
+
       // Stripe minimum is 50 cents for USD
       const minimumAmount = currency.toLowerCase() === 'usd' ? 50 : 100;
       if (totalAmount < minimumAmount) {
@@ -481,7 +481,7 @@ export const createPaymentIntent = onCall(
         code: error?.code,
         stripeType: error?.type,
       });
-      
+
       // Re-throw HttpsError as-is
       if (error instanceof HttpsError) {
         throw error;
@@ -490,7 +490,7 @@ export const createPaymentIntent = onCall(
       // Stripe-specific errors with user-friendly messages
       if (error.type && error.type.startsWith('Stripe')) {
         let userMessage = 'Payment processing error. Please try again.';
-        
+
         // Provide specific guidance for common errors
         if (error.code === 'idempotency_key_in_use') {
           userMessage = 'A payment request is already being processed. Please wait a moment and refresh the page.';
@@ -499,7 +499,7 @@ export const createPaymentIntent = onCall(
         } else if (error.message) {
           userMessage = error.message;
         }
-        
+
         throw new HttpsError(
           'internal',
           userMessage,
@@ -511,9 +511,9 @@ export const createPaymentIntent = onCall(
       throw new HttpsError(
         'internal',
         'Unable to process payment. Please try again or contact support if the issue persists.',
-        { 
+        {
           errorType: error?.constructor?.name,
-          originalMessage: error?.message 
+          originalMessage: error?.message
         }
       );
     }
@@ -532,62 +532,62 @@ export const createPaymentIntent = onCall(
 export const stripeWebhook = onRequest(
   { region: 'us-east1' },
   async (req, res) => {
-  const sig = req.headers['stripe-signature'];
+    const sig = req.headers['stripe-signature'];
 
-  if (!sig) {
-    console.error('❌ No stripe-signature header found');
-    res.status(400).send('Missing stripe-signature header');
-    return;
-  }
-
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    console.error('❌ STRIPE_WEBHOOK_SECRET not configured');
-    res.status(500).send('Webhook secret not configured');
-    return;
-  }
-
-  let event: Stripe.Event;
-
-  try {
-    // Verify webhook signature
-    event = getStripe().webhooks.constructEvent(
-      req.rawBody,
-      sig,
-      webhookSecret
-    );
-    console.log('✅ Webhook signature verified:', event.type);
-  } catch (err: any) {
-    console.error('❌ Webhook signature verification failed:', err.message);
-    res.status(400).send(`Webhook Error: ${err.message}`);
-    return;
-  }
-
-  try {
-    // Handle different event types
-    switch (event.type) {
-      case 'payment_intent.succeeded':
-        await handlePaymentSuccess(event.data.object as Stripe.PaymentIntent);
-        break;
-
-      case 'payment_intent.payment_failed':
-        await handlePaymentFailure(event.data.object as Stripe.PaymentIntent);
-        break;
-
-      case 'payment_intent.canceled':
-        await handlePaymentCanceled(event.data.object as Stripe.PaymentIntent);
-        break;
-
-      default:
-        console.log(`ℹ️ Unhandled event type: ${event.type}`);
+    if (!sig) {
+      console.error('❌ No stripe-signature header found');
+      res.status(400).send('Missing stripe-signature header');
+      return;
     }
 
-    res.json({ received: true });
-  } catch (error: any) {
-    console.error('❌ Error processing webhook:', error);
-    res.status(500).send(`Webhook processing error: ${error.message}`);
-  }
-});
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error('❌ STRIPE_WEBHOOK_SECRET not configured');
+      res.status(500).send('Webhook secret not configured');
+      return;
+    }
+
+    let event: Stripe.Event;
+
+    try {
+      // Verify webhook signature
+      event = getStripe().webhooks.constructEvent(
+        req.rawBody,
+        sig,
+        webhookSecret
+      );
+      console.log('✅ Webhook signature verified:', event.type);
+    } catch (err: any) {
+      console.error('❌ Webhook signature verification failed:', err.message);
+      res.status(400).send(`Webhook Error: ${err.message}`);
+      return;
+    }
+
+    try {
+      // Handle different event types
+      switch (event.type) {
+        case 'payment_intent.succeeded':
+          await handlePaymentSuccess(event.data.object as Stripe.PaymentIntent);
+          break;
+
+        case 'payment_intent.payment_failed':
+          await handlePaymentFailure(event.data.object as Stripe.PaymentIntent);
+          break;
+
+        case 'payment_intent.canceled':
+          await handlePaymentCanceled(event.data.object as Stripe.PaymentIntent);
+          break;
+
+        default:
+          console.log(`ℹ️ Unhandled event type: ${event.type}`);
+      }
+
+      res.json({ received: true });
+    } catch (error: any) {
+      console.error('❌ Error processing webhook:', error);
+      res.status(500).send(`Webhook processing error: ${error.message}`);
+    }
+  });
 
 /**
  * Handle successful payment
@@ -604,17 +604,30 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
   // Get transaction to check if already processed (idempotency)
   const transactionRef = db.collection('payment_transactions').doc(transactionId);
   const transactionDoc = await transactionRef.get();
-  
+
   if (!transactionDoc.exists) {
     console.error('❌ Transaction not found:', transactionId);
     return;
   }
-  
+
   const transactionData = transactionDoc.data();
-  
+  const transactionWithId = {
+    ...(transactionData || {}),
+    id: transactionId
+  } as any;
+
   // Idempotency check - if already paid, skip processing
   if (transactionData?.status === 'paid') {
     console.log('⚠️ Transaction', transactionId, 'already marked as paid. Skipping duplicate processing.');
+    return;
+  }
+
+  // Check if this is a guest payment
+  const isGuestPayment = transactionData?.isGuestPayment === true;
+
+  if (isGuestPayment) {
+    console.log('👤 Processing guest payment');
+    await handleGuestPaymentSuccess(paymentIntent, transactionWithId, transactionRef);
     return;
   }
 
@@ -634,7 +647,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
     const eventId = transactionData.eventId;
     const userId = transactionData.userId;
     console.log(`💳 Processing payment for ${transactionData.metadata.paidAttendees.length} attendee(s) in event ${eventId}`);
-    
+
     // Update each attendee's payment status in the CORRECT subcollection
     for (const attendee of transactionData.metadata.paidAttendees) {
       const attendeeRef = db.collection('events').doc(eventId).collection('attendees').doc(attendee.attendeeId);
@@ -652,6 +665,103 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
 
   await batch.commit();
   console.log('✅ Payment success processing completed for transaction:', transactionId);
+
+  // Send confirmation email (non-guest)
+  try {
+    const { EmailNotificationService } = await import('./services/emailNotificationService');
+    const emailService = new EmailNotificationService(db);
+    await emailService.sendStripeConfirmation(
+      transactionWithId,
+      undefined
+    );
+    console.log('✅ Confirmation email sent to user');
+  } catch (error) {
+    console.error('⚠️ Error sending confirmation email:', error);
+    // Do not fail the webhook
+  }
+}
+
+/**
+ * Handle successful guest payment
+ * Separate handler for guest payments with OTP verification
+ */
+async function handleGuestPaymentSuccess(
+  paymentIntent: Stripe.PaymentIntent,
+  transactionData: any,
+  transactionRef: admin.firestore.DocumentReference
+) {
+  console.log('👤 Processing guest payment success');
+
+  try {
+    // Update transaction status
+    await transactionRef.update({
+      status: 'paid',
+      stripePaymentIntentId: paymentIntent.id,
+      stripeChargeId: paymentIntent.latest_charge,
+      paidAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Update guest attendees payment status
+    if (transactionData?.metadata?.paidAttendees && transactionData?.eventId) {
+      const eventId = transactionData.eventId;
+      const batch = db.batch();
+
+      for (const attendee of transactionData.metadata.paidAttendees) {
+        const attendeeRef = db.collection('events').doc(eventId).collection('attendees').doc(attendee.attendeeId);
+        batch.update(attendeeRef, {
+          paymentStatus: 'paid',
+          paymentTransactionId: transactionRef.id,
+          price: attendee.amount,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log(`✅ [GUEST] Marking attendee ${attendee.name} (${attendee.attendeeId}) as paid`);
+      }
+
+      await batch.commit();
+      console.log('✅ [GUEST] Attendee payment statuses updated');
+    } else {
+      console.warn('⚠️ [GUEST] Missing eventId or paidAttendees in transaction metadata');
+    }
+
+    // Invalidate guest session
+    if (transactionData.guestSessionToken) {
+      try {
+        const { GuestSessionService } = await import('./services/guestSessionService');
+        const sessionService = new GuestSessionService(db);
+        await sessionService.invalidateSession(
+          transactionData.guestSessionToken,
+          'payment_complete'
+        );
+        console.log('✅ Guest session invalidated');
+      } catch (error) {
+        console.error('⚠️ Error invalidating guest session:', error);
+        // Don't fail the whole operation
+      }
+    }
+
+    // Send confirmation email
+    try {
+      const { EmailNotificationService } = await import('./services/emailNotificationService');
+      const emailService = new EmailNotificationService(db);
+
+      // Note: Receipt URL would need to be fetched separately from Stripe API
+      // For now, we'll send the email without the receipt URL
+      await emailService.sendStripeConfirmation(
+        transactionData,
+        undefined
+      );
+      console.log('✅ Confirmation email sent to guest');
+    } catch (error) {
+      console.error('⚠️ Error sending confirmation email:', error);
+      // Don't fail the whole operation
+    }
+
+    console.log('✅ Guest payment success processing completed');
+  } catch (error) {
+    console.error('❌ Error processing guest payment success:', error);
+    throw error;
+  }
 }
 
 /**

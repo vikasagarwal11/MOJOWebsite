@@ -67,7 +67,7 @@ const MediaGallery: React.FC = () => {
     const now = Date.now();
 
     const fresh = mediaFiles.filter((m: any) => {
-      const t = (m.updatedAt?.toDate?.() ?? m.createdAt?.toDate?.() ?? m.updatedAt ?? m.createdAt ?? new Date());
+      const t = (m.mediaDate?.toDate?.() ?? m.mediaDate ?? m.updatedAt?.toDate?.() ?? m.createdAt?.toDate?.() ?? m.updatedAt ?? m.createdAt ?? new Date());
       const age = Math.abs(now - +new Date(t));
       return age <= TWO_HOURS; // consider only fresh items
     });
