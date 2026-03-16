@@ -1,3 +1,25 @@
+import {
+  ConfirmationResult,
+  User as FirebaseUser,
+  onAuthStateChanged,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  signOut,
+} from 'firebase/auth';
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  setDoc,
+  Unsubscribe,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import React, {
   createContext,
   useContext,
@@ -6,34 +28,10 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import {
-  User as FirebaseUser,
-  onAuthStateChanged,
-  signOut,
-  RecaptchaVerifier,
-  signInWithPhoneNumber,
-  ConfirmationResult,
-} from 'firebase/auth';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-  onSnapshot,
-  Unsubscribe,
-  collection,
-  query,
-  where,
-  getDocs,
-} from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import app from '../config/firebase';
-import { auth, db, USING_EMULATORS } from '../config/firebase';
-import { User } from '../types';
 import toast from 'react-hot-toast';
-import { getRecaptchaConfig } from '../utils/recaptcha';
+import app, { auth, db, USING_EMULATORS, withFirestoreErrorHandling } from '../config/firebase';
 import { AccountApprovalService } from '../services/accountApprovalService';
+import { User } from '../types';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -83,6 +81,7 @@ export const useAuth = () => {
    ============================================================================ */
 const RECAPTCHA_ID = 'recaptcha-container';
 let _recaptchaVerifierSingleton: RecaptchaVerifier | null = null;
+let _recaptchaRenderTarget: HTMLElement | null = null;
 
 function ensureRecaptchaHostEl(): HTMLElement {
   if (typeof document === 'undefined') {
@@ -90,23 +89,15 @@ function ensureRecaptchaHostEl(): HTMLElement {
   }
   let el = document.getElementById(RECAPTCHA_ID);
   if (!el) {
-    // Fallback: create one if shell hasn’t rendered it yet
+    // Fallback: create one if the shell hasn’t rendered it yet.
+    // IMPORTANT: Never replace/remove this node once reCAPTCHA has rendered into it.
     el = document.createElement('div');
     el.id = RECAPTCHA_ID;
     el.style.position = 'fixed';
-    el.style.bottom = '20px';
-    el.style.right = '20px';
-    el.style.zIndex = '9999';
-    el.style.width = '300px';
-    el.style.height = '80px';
-    el.style.backgroundColor = 'rgba(255, 0, 0, 0.1)'; // Red tint for debugging
-    el.style.border = '2px solid red'; // Red border for debugging
-    el.style.display = 'flex';
-    el.style.alignItems = 'center';
-    el.style.justifyContent = 'center';
-    el.style.color = 'red';
-    el.style.fontSize = '12px';
-    el.innerHTML = 'reCAPTCHA Container';
+    el.style.width = '1px';
+    el.style.height = '1px';
+    el.style.top = '-9999px';
+    el.style.left = '-9999px';
     document.body.appendChild(el);
     console.log('🔍 AuthContext: Created reCAPTCHA container:', el);
   } else {
@@ -115,39 +106,27 @@ function ensureRecaptchaHostEl(): HTMLElement {
   return el;
 }
 
-/** Replace the recaptcha container element with a fresh node (same id). */
-function swapRecaptchaContainer(): HTMLElement {
-  console.log('🔍 AuthContext: Swapping reCAPTCHA container...');
-  const oldEl = ensureRecaptchaHostEl();
-  console.log('🔍 AuthContext: Old container:', oldEl);
-  const fresh = oldEl.cloneNode(false) as HTMLElement;
-  fresh.id = RECAPTCHA_ID;
-  oldEl.parentNode?.replaceChild(fresh, oldEl);
-  console.log('🔍 AuthContext: New container ready:', fresh);
-  return fresh;
-}
-
 function createRecaptcha(): RecaptchaVerifier {
   console.log('🔍 AuthContext: Creating new reCAPTCHA verifier...');
-  
-  // Check if reCAPTCHA script is loaded
-  if (typeof (window as any).grecaptcha === 'undefined') {
-    console.error('🚨 AuthContext: reCAPTCHA script not loaded! grecaptcha is undefined');
-    throw new Error('reCAPTCHA script not loaded. Please check if the script is included in your HTML.');
-  }
-  
-  // Ensure we're using v2 and disable Enterprise
-  if ((window as any).grecaptcha.enterprise) {
-    console.log('🔍 AuthContext: Disabling reCAPTCHA Enterprise to prevent warnings');
-    (window as any).grecaptcha.enterprise = undefined;
-  }
-  
-  // Fully detach any previous grecaptcha widget by swapping the container node.
-  const container = swapRecaptchaContainer();
-  console.log('🔍 AuthContext: reCAPTCHA container ready:', container);
+  const container = ensureRecaptchaHostEl();
+
+  // IMPORTANT:
+  // reCAPTCHA (v2) throws "already been rendered" if you try to render twice into the same element.
+  // To avoid replacing the global container (which can crash reCAPTCHA internals), we create a
+  // fresh *child* element each time and render into that.
+  try {
+    _recaptchaRenderTarget?.remove();
+  } catch {}
+
+  const target = document.createElement('div');
+  target.id = `${RECAPTCHA_ID}-render-target`;
+  container.appendChild(target);
+  _recaptchaRenderTarget = target;
+
+  console.log('🔍 AuthContext: reCAPTCHA render target ready:', target);
 
   // ✅ Modular SDK: (auth, containerOrId, parameters)
-  const verifier = new RecaptchaVerifier(auth, RECAPTCHA_ID, {
+  const verifier = new RecaptchaVerifier(auth, target, {
     size: 'invisible',
     callback: () => console.log('🔍 AuthContext: reCAPTCHA solved'),
     'expired-callback': () => console.log('🔍 AuthContext: reCAPTCHA expired'),
@@ -182,16 +161,32 @@ function clearRecaptcha() {
     console.warn('🚨 AuthContext: reCAPTCHA clear error:', e);
   }
   _recaptchaVerifierSingleton = null;
-  
-  // Wait a bit before swapping container to let reCAPTCHA finish cleanup
-  setTimeout(() => {
-    try {
-      swapRecaptchaContainer();
-      console.log('🔍 AuthContext: reCAPTCHA container swapped');
-    } catch (e) {
-      console.warn('🚨 AuthContext: reCAPTCHA container swap error:', e);
+
+  // Remove the last render target (do not replace the global container node).
+  try {
+    _recaptchaRenderTarget?.remove();
+  } catch (e) {
+    console.warn('🚨 AuthContext: reCAPTCHA render target cleanup error:', e);
+  }
+  _recaptchaRenderTarget = null;
+}
+/* ============================================================================= */
+
+async function safeRenderRecaptcha(verifier: RecaptchaVerifier): Promise<void> {
+  try {
+    // Rendering ahead of signInWithPhoneNumber reduces flakiness on localhost and
+    // helps avoid stale/unrendered verifier states.
+    await verifier.render();
+    console.log('🔍 AuthContext: reCAPTCHA rendered');
+  } catch (e: any) {
+    // Ignore known benign cases; Firebase may auto-render internally.
+    const msg = String(e?.message || e || '');
+    if (msg.toLowerCase().includes('already been rendered')) {
+      console.log('🔍 AuthContext: reCAPTCHA already rendered');
+      return;
     }
-  }, 100);
+    console.warn('🚨 AuthContext: reCAPTCHA render error:', e);
+  }
 }
 /* ============================================================================= */
 
@@ -225,6 +220,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentUser(null);
         setLoading(false);
         setListenersReady(false); // Reset listeners ready state
+        // Clear Rollbar user context (will be handled by RollbarUserTracker component)
         return;
       }
 
@@ -277,6 +273,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             };
             console.log('🔍 AuthContext: Setting full user:', fullUser);
             setCurrentUser(fullUser);
+            // Rollbar user context will be set by RollbarUserTracker component
           }
           console.log('🔍 AuthContext: Setting loading to false');
           setLoading(false);
@@ -321,30 +318,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('🔍 AuthContext: USING_EMULATORS:', USING_EMULATORS);
     console.log('🔍 AuthContext: Current hostname:', window.location.hostname);
     console.log('🔍 AuthContext: Current origin:', window.location.origin);
-    
-    // Emulator path: no reCAPTCHA required, avoids hostname issues entirely
-    if (USING_EMULATORS) {
-      console.log('🔍 AuthContext: Using emulator mode - no reCAPTCHA needed');
-      const fakeVerifier: any = {
-        type: 'recaptcha',
-        verify: async () => 'test-verifier-token',
-      };
-      const result = await signInWithPhoneNumber(auth, phoneNumber, fakeVerifier);
-      toast.success('Verification code (emulator) generated');
-      return result;
-    }
 
-    // Real Firebase: use reCAPTCHA
-    console.log('🔍 AuthContext: Using real Firebase - setting up reCAPTCHA');
-    console.log('🔍 AuthContext: Checking if grecaptcha is available...');
-    if (typeof (window as any).grecaptcha === 'undefined') {
-      console.error('🚨 AuthContext: reCAPTCHA script not loaded in sendVerificationCode!');
-    } else {
-      console.log('🔍 AuthContext: grecaptcha is available');
+    // Localhost can get into a broken/stale reCAPTCHA state across attempts.
+    // Force a fresh verifier each send when not using the Auth emulator.
+    if (!USING_EMULATORS && window.location.hostname === 'localhost') {
+      clearRecaptcha();
     }
     
-    let verifier = getOrCreateRecaptcha();
-    console.log('🔍 AuthContext: reCAPTCHA verifier ready, calling signInWithPhoneNumber');
+    // Get reCAPTCHA verifier (works for both emulator and production)
+    const verifier = getOrCreateRecaptcha();
+    console.log('🔍 AuthContext: reCAPTCHA verifier ready');
+    await safeRenderRecaptcha(verifier);
     
     try {
       console.log('🔍 AuthContext: About to call signInWithPhoneNumber with:', {
@@ -355,113 +339,158 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       
       const result = await signInWithPhoneNumber(auth, phoneNumber, verifier);
-      console.log('🔍 AuthContext: signInWithPhoneNumber successful');
-      console.log('🔍 AuthContext: ConfirmationResult:', {
-        verificationId: result.verificationId,
-        hasConfirmationResult: !!result,
-        resultType: typeof result
-      });
-      
-      // Enhanced SMS delivery logging
-      if (result.verificationId) {
-        console.log('🔍 AuthContext: SMS should have been sent to:', phoneNumber);
-        console.log('🔍 AuthContext: Verification ID:', result.verificationId);
-        console.log('🔍 AuthContext: SMS delivery details:');
-        console.log('  - Phone Number:', phoneNumber);
-        console.log('  - Project ID:', auth.app?.options?.projectId);
-        console.log('  - Auth Domain:', auth.app?.options?.authDomain);
-        console.log('  - reCAPTCHA Site Key:', process.env.VITE_RECAPTCHA_SITE_KEY);
-        console.log('  - Current Domain:', window.location.hostname);
-        console.log('  - User Agent:', navigator.userAgent);
-        console.log('  - Timestamp:', new Date().toISOString());
-        
-        // Log to Firebase Analytics for tracking
-        if (typeof window !== 'undefined' && (window as any).gtag) {
-          (window as any).gtag('event', 'sms_verification_sent', {
-            phone_number: phoneNumber,
-            verification_id: result.verificationId,
-            timestamp: new Date().toISOString()
-          });
-        }
-        
-        console.log('🔍 AuthContext: If no SMS received, check:');
-        console.log('  1. Firebase Console → Authentication → Usage (SMS quota)');
-        console.log('  2. Firebase Console → Authentication → Settings (Phone provider enabled)');
-        console.log('  3. Firebase Console → Project Settings → Billing (SMS billing enabled)');
-        console.log('  4. Check phone carrier for SMS filtering');
-        console.log('  5. Try a different phone number for testing');
-      }
-      
-      toast.success('Verification code sent');
+      console.log('✅ AuthContext: Verification code sent successfully');
+
+      // Caller controls any user-facing messaging. Keep this layer console-only.
       return result;
-    } catch (err: any) {
-      console.error('🚨 AuthContext: Phone verification error:', {
-        error: err,
-        errorCode: err?.code,
-        errorMessage: err?.message,
-        errorStack: err?.stack
-      });
-      
-      const msg = String(err?.message || '').toLowerCase();
+    } catch (emulatorError: any) {
+      console.error('🚨 AuthContext: Phone auth error:', emulatorError);
 
-      if (err?.code === 'auth/operation-not-allowed') {
-        console.error('🚨 AuthContext: Phone sign-in not enabled in Firebase Console');
-        toast.error('Enable Phone sign-in in Firebase Console → Authentication → Sign-in method → Phone.');
-      }
-      if (err?.code === 'auth/quota-exceeded') {
-        console.error('🚨 AuthContext: SMS quota exceeded');
-        toast.error('SMS quota exceeded. Check Firebase Console for billing/quota issues.');
-      }
-      if (err?.code === 'auth/invalid-phone-number') {
-        console.error('🚨 AuthContext: Invalid phone number format');
-        toast.error('Invalid phone number format. Please check the number and try again.');
-      }
-      if (err?.code === 'auth/too-many-requests') {
-        console.error('🚨 AuthContext: Too many SMS requests');
-        toast.error('Too many SMS requests. Please wait before trying again.');
-      }
-      if (err?.code === 'auth/captcha-check-failed' || msg.includes('hostname match not found')) {
-        const host =
-          typeof window !== 'undefined' && (window.location?.host || window.location?.hostname)
-            ? window.location.host
-            : '(unknown host)';
-        console.error('🚨 AuthContext: Domain not authorized:', host);
-        toast.error(
-          `This domain is not authorized: ${host}. Add it in Firebase Console → Authentication → Settings → Authorized domains.`
-        );
-        throw err;
+      // If Firebase says the app credential is invalid, the most common cause is a bad/expired
+      // reCAPTCHA token or a broken widget state. Tear down so the next attempt is fresh.
+      const isInvalidCredential = emulatorError?.code === 'auth/invalid-app-credential';
+      if (isInvalidCredential) {
+        clearRecaptcha();
       }
 
-      // “already rendered” loop → reset & retry once
-      if (msg.includes('already been rendered') || msg.includes('already')) {
+      // Retry once on invalid credential with a freshly-rendered verifier.
+      // This addresses the common localhost case where the first token is stale/invalid.
+      if (isInvalidCredential) {
         try {
-          console.log('🔍 AuthContext: reCAPTCHA already rendered error detected, retrying...');
-          clearRecaptcha();
-          console.log('🔍 AuthContext: reCAPTCHA cleared, creating new verifier');
+          console.log('🔍 AuthContext: Retrying after invalid-app-credential with fresh reCAPTCHA...');
           const verifier2 = getOrCreateRecaptcha();
-          console.log('🔍 AuthContext: New reCAPTCHA verifier ready, retrying signInWithPhoneNumber');
+          await safeRenderRecaptcha(verifier2);
           const result = await signInWithPhoneNumber(auth, phoneNumber, verifier2);
-          console.log('🔍 AuthContext: Retry successful');
-          toast.success('Verification code sent');
           return result;
         } catch (retryErr: any) {
-          console.error('🚨 AuthContext: reCAPTCHA retry failed:', {
-            error: retryErr,
-            errorCode: retryErr?.code,
-            errorMessage: retryErr?.message
-          });
-          toast.error(retryErr?.message || 'Failed to send verification code');
+          console.error('🚨 AuthContext: Retry after invalid-app-credential failed:', retryErr);
+          // fall through to standard handling
+        }
+      }
+      
+      // Try to reset and retry once
+      if (emulatorError?.message?.includes('already been rendered') || emulatorError?.message?.includes('already')) {
+        try {
+          console.log('🔍 AuthContext: Retrying with fresh reCAPTCHA...');
+          clearRecaptcha();
+          const verifier2 = getOrCreateRecaptcha();
+          await safeRenderRecaptcha(verifier2);
+          const result = await signInWithPhoneNumber(auth, phoneNumber, verifier2);
+          return result;
+        } catch (retryErr: any) {
+          console.error('🚨 AuthContext: Retry failed:', retryErr);
           throw retryErr;
         }
       }
+      
+      // Provide a clearer hint for the common localhost + reCAPTCHA failure.
+      if (isInvalidCredential) {
+        console.warn('[PhoneAuth] INVALID_APP_CREDENTIAL', {
+          hostname: window.location.hostname,
+          origin: window.location.origin,
+          message: emulatorError?.message,
+        });
 
-      console.error('🚨 AuthContext: Final phone verification error:', {
-        error: err,
-        errorCode: err?.code,
-        errorMessage: err?.message
-      });
-      toast.error(err?.message || 'Failed to send verification code');
-      throw err;
+        console.warn('[PhoneAuth] Likely causes:', {
+          hint1: 'Firebase Console: Authentication -> Settings -> reCAPTCHA Enterprise (disable/misconfig can break web Phone Auth)',
+          hint2: 'Browser extensions/VPN/adblock can block reCAPTCHA endpoints',
+          hint3: 'If you just changed Firebase settings, try hard refresh / clear site data',
+          hint4: 'Consider using Auth emulator for local dev',
+        });
+      }
+
+      throw emulatorError;
+    }
+  };
+
+  const checkIfUserExists = async (phoneNumber: string): Promise<boolean | { exists: boolean; canReapply?: boolean; message?: string; reapplyDate?: string; daysRemaining?: number; userStatus?: string }> => {
+    console.log('🔍 AuthContext: checkIfUserExists called with:', phoneNumber);
+    
+    // In emulator mode, skip Cloud Function and check Firestore directly
+    if (USING_EMULATORS) {
+      console.log('🔍 AuthContext: Emulator mode - checking Firestore directly...');
+      try {
+        const usersQuery = query(
+          collection(db, 'users'),
+          where('phoneNumber', '==', phoneNumber)
+        );
+        const usersSnapshot = await getDocs(usersQuery);
+        
+        const exists = !usersSnapshot.empty;
+        console.log('🔍 AuthContext: Firestore result:', { phoneNumber, exists, count: usersSnapshot.size });
+        
+        return exists;
+      } catch (error) {
+        console.error('🚨 AuthContext: Firestore check failed:', error);
+        return false; // Allow registration on error in emulator
+      }
+    }
+    
+    try {
+      // First try Cloud Function (Production only)
+      const functions = getFunctions(app, (import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-east1');
+      const checkPhoneNumber = httpsCallable(functions, 'checkPhoneNumberExists');
+      
+      console.log('🔍 AuthContext: Calling Cloud Function to check phone number...');
+      const result = await checkPhoneNumber({ phoneNumber });
+      
+      const response = result.data as any;
+      const exists = response?.exists || false;
+      console.log('🔍 AuthContext: Cloud Function result:', { phoneNumber, exists, response });
+      
+      // If Cloud Function returns detailed info (for rejected users), return it
+      if (response && typeof response === 'object' && 'canReapply' in response) {
+        return response;
+      }
+      
+      // Otherwise, return boolean for backward compatibility
+      return exists;
+      
+    } catch (error) {
+      console.error('🚨 AuthContext: Error checking phone number:', error);
+      
+      // Final fallback: Check Firestore directly
+      try {
+        console.log('🔍 AuthContext: Trying Firestore fallback...');
+        const usersQuery = query(
+          collection(db, 'users'),
+          where('phoneNumber', '==', phoneNumber)
+        );
+        const usersSnapshot = await getDocs(usersQuery);
+        
+        const fallbackExists = !usersSnapshot.empty;
+        console.log('🔍 AuthContext: Firestore fallback result:', { phoneNumber, fallbackExists, count: usersSnapshot.size });
+        
+        return fallbackExists;
+      } catch (fallbackError) {
+        console.error('🚨 AuthContext: Firestore fallback also failed:', fallbackError);
+        // If all else fails, assume new user for registration
+        return false;
+      }
+    }
+  };
+
+  const checkSMSDeliveryStatus = async (phoneNumber: string, verificationId: string): Promise<any> => {
+    console.log('🔍 AuthContext: checkSMSDeliveryStatus called with:', { phoneNumber, verificationId });
+    
+    try {
+      // Explicitly use us-east1 to match function deployment region
+      const functions = getFunctions(app, (import.meta as any).env?.VITE_FIREBASE_FUNCTIONS_REGION || 'us-east1');
+      const checkSMSStatus = httpsCallable(functions, 'checkSMSDeliveryStatus');
+      
+      console.log('🔍 AuthContext: Calling Cloud Function to check SMS delivery status...');
+      const result = await checkSMSStatus({ phoneNumber, verificationId });
+      
+      console.log('🔍 AuthContext: SMS delivery status result:', result.data);
+      return result.data;
+    } catch (error) {
+      console.error('🚨 AuthContext: Error checking SMS delivery status:', error);
+      return {
+        success: false,
+        error: 'Failed to check SMS delivery status',
+        phoneNumber,
+        verificationId
+      };
     }
   };
 
@@ -619,6 +648,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log('🔍 AuthContext: Non-login successful verification for existing user. Proceeding.');
       }
       console.log('🔍 AuthContext: verifyCode completed successfully, onSnapshot will update UI');
+      // Clear reCAPTCHA after successful verification (Safari fix)
+      clearRecaptcha();
       // onSnapshot updates UI
     } catch (error: any) {
       console.error('🚨 AuthContext: Code verification error:', {
@@ -627,6 +658,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         errorMessage: error?.message,
         errorStack: error?.stack
       });
+      // Clear reCAPTCHA on error to allow retry (Safari fix)
+      clearRecaptcha();
       let msg = 'Invalid verification code';
       if (error?.code === 'auth/invalid-verification-code')
         msg = 'Invalid verification code. Please try again.';
@@ -677,9 +710,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     console.log('🔍 AuthContext: createPendingUser called with:', { userId: data.userId, email: data.email });
     
     try {
-      const userRef = doc(db, 'users', data.userId);
-      const userSnap = await getDoc(userRef);
       const displayName = `${data.firstName} ${data.lastName}`.trim();
+      
+      // Create user reference outside the error handling wrapper so it's accessible throughout
+      const userRef = doc(db, 'users', data.userId);
+      
+      // Use error handling wrapper for IndexedDB errors
+      const userSnap = await withFirestoreErrorHandling(async () => {
+        return await getDoc(userRef);
+      });
       
       // Check if user already exists (e.g., rejected user reapplying)
       if (userSnap.exists()) {

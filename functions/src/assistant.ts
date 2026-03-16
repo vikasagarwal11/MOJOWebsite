@@ -1,8 +1,8 @@
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory, SafetySetting } from '@google/generative-ai';
 import { SpeechClient } from '@google-cloud/speech';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
+import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory, SafetySetting } from '@google/generative-ai';
+import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { v4 as uuidv4 } from 'uuid';
 import { embedText } from './utils/embeddings';
 
@@ -362,6 +362,94 @@ async function getAssistantConfig(): Promise<{
   }
 }
 
+/**
+ * Normalize text for search/ranking
+ */
+function norm(s?: string) {
+  return (s || '')
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[^a-z0-9\s'-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Smart relevance scoring for testimonials
+ */
+function scoreTestimonial(t: any, qRaw: string) {
+  const q = norm(qRaw);
+  if (!q) return 0;
+
+  const hayQuote = norm(t.quote || '');
+  const hayName = norm(t.displayName || '');
+  const hayHighlight = norm(t.highlight || '');
+  const tags = Array.isArray(t.tags) ? t.tags : [];
+  const toneKeywords = Array.isArray(t.toneKeywords) ? t.toneKeywords : [];
+  const toneLabel = norm(t.toneLabel || '');
+
+  let score = 0;
+
+  // Hard matches
+  if (hayQuote.includes(q)) score += 50;
+  if (hayHighlight.includes(q)) score += 35;
+  if (hayName.includes(q)) score += 25;
+
+  // Token-level boosting
+  const qTokens = q.split(' ').filter((w) => w.length >= 3);
+  for (const tok of qTokens) {
+    if (hayQuote.includes(tok)) score += 8;
+    if (hayHighlight.includes(tok)) score += 6;
+    if (hayName.includes(tok)) score += 4;
+    if (toneLabel && toneLabel.includes(tok)) score += 5;
+
+    if (tags.some((x: string) => norm(x) === tok || norm(x).includes(tok))) score += 7;
+    if (toneKeywords.some((x: string) => norm(x) === tok || norm(x).includes(tok))) score += 7;
+  }
+
+  // Tie-breakers
+  if (t.featured) score += 4;
+  if (typeof t.rating === 'number') score += Math.max(0, Math.min(5, t.rating)) * 0.5;
+
+  // Recency boost: newer testimonials get higher scores (exponential decay)
+  const getDate = (ts: any): Date | null => {
+    if (ts instanceof Date) return ts;
+    if (ts && typeof ts.toDate === 'function') return ts.toDate();
+    if (ts && typeof ts.toMillis === 'function') return new Date(ts.toMillis());
+    return null;
+  };
+  const date = getDate(t.publishedAt || t.createdAt);
+  if (date) {
+    const daysOld = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
+    // Exponential decay: ~3 when fresh, ~0 after ~4 months
+    score += 3 * Math.exp(-daysOld / 120);
+  }
+
+  return score;
+}
+
+/**
+ * Build testimonials context for AI chatbot
+ */
+function buildTestimonialsContext(question: string, testimonials: any[], max = 6) {
+  const ranked = testimonials
+    .map((t) => ({ t, s: scoreTestimonial(t, question) }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, max)
+    .map((x) => x.t);
+
+  if (ranked.length === 0) return '';
+
+  const lines = ranked.map((t, i) => {
+    const who = t.displayName || 'MFM Member';
+    const mood = t.toneLabel ? ` (mood: ${t.toneLabel})` : '';
+    return `${i + 1}. "${t.quote}" — ${who}${mood}`;
+  });
+
+  return `Moms Fitness Mojo testimonials (most relevant):\n${lines.join('\n')}\n`;
+}
+
 async function answerQuestion(question: string, context: string, profileSummary: string, allowGeneralKnowledge = false, conversationHistory?: string) {
   const hasContext = context && context.trim().length > 0;
   
@@ -482,17 +570,7 @@ async function answerQuestion(question: string, context: string, profileSummary:
   }
 
   // Fallback to OpenAI
-  let openaiApiKey = process.env.OPENAI_API_KEY;
-  if (!openaiApiKey) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const functions = require('firebase-functions');
-      const config = functions.config();
-      openaiApiKey = config?.openai?.api_key;
-    } catch (error) {
-      // functions.config() not available in v2, ignore
-    }
-  }
+  const openaiApiKey = process.env.OPENAI_API_KEY;
 
   if (!openaiApiKey) {
     throw new Error('Neither GEMINI_API_KEY nor OPENAI_API_KEY is configured. Please add at least one API key.');
@@ -935,16 +1013,11 @@ async function handleTestimonialQuestion(
   uid: string | null
 ): Promise<AssistantResponse> {
   try {
-    // Query testimonials by createdAt desc, limit to 3
+    // Query published testimonials by createdAt desc, limit to 3
     let query = db.collection('testimonials')
+      .where('status', '==', 'published')
       .orderBy('createdAt', 'desc')
       .limit(3);
-
-    // Filter by visibility (testimonials may have isPublic or visibility field)
-    // Adjust based on your schema
-    if (allowedVisibility.length === 1 && allowedVisibility[0] === 'public') {
-      query = query.where('isPublic', '==', true) as FirebaseFirestore.Query;
-    }
 
     // Optional: Topic filter
     const topicMatch = question.match(/\b(about|related to)\s+(\w+)/i);
@@ -993,15 +1066,32 @@ async function handleTestimonialQuestion(
       };
     }
 
-    const testimonials = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    let answer = 'Here are recent testimonials:\n\n';
+    // Map to correct schema: displayName, quote, highlight
+    const testimonials = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        displayName: data.displayName || 'MFM Member',
+        quote: data.quote || '',
+        highlight: data.highlight || '',
+        rating: typeof data.rating === 'number' ? data.rating : 0,
+        featured: Boolean(data.featured),
+        createdAt: data.createdAt?.toDate?.() || new Date(),
+        publishedAt: data.publishedAt?.toDate?.() || data.createdAt?.toDate?.() || new Date(),
+      };
+    });
+
+    let answer = 'Here are recent testimonials from Moms Fitness Mojo:\n\n';
     
     testimonials.forEach((testimonial: any) => {
-      const created = testimonial.createdAt?.toDate?.() || new Date();
-      const createdStr = created.toLocaleString('en-US', { dateStyle: 'medium' });
-      const author = testimonial.authorName || testimonial.name || 'Member';
-      const content = testimonial.content || testimonial.text || testimonial.message || '';
-      answer += `• **${author}** (${createdStr}): ${content.substring(0, 150)}${content.length > 150 ? '...' : ''}\n`;
+      const created = testimonial.publishedAt || testimonial.createdAt;
+      const createdStr = created instanceof Date 
+        ? created.toLocaleString('en-US', { dateStyle: 'medium' })
+        : new Date().toLocaleString('en-US', { dateStyle: 'medium' });
+      const author = testimonial.displayName;
+      const content = testimonial.quote || '';
+      const highlight = testimonial.highlight ? `\n  "${testimonial.highlight}"` : '';
+      answer += `• **${author}** (${createdStr}): ${content.substring(0, 150)}${content.length > 150 ? '...' : ''}${highlight}\n`;
     });
 
     const sessionRef = db.collection('chat_sessions').doc(sessionId);
@@ -1033,11 +1123,11 @@ async function handleTestimonialQuestion(
       sessionId,
       citations: testimonials.map((testimonial: any) => ({
         id: testimonial.id || 'app_data_testimonial',
-        title: `Testimonial from ${testimonial.authorName || testimonial.name || 'Member'}`,
-        url: `/testimonials/${testimonial.id}`, // Add URL if testimonials have detail pages
+        title: `Testimonial from ${testimonial.displayName || 'MFM Member'}`,
+        url: `/testimonials`, // Link to testimonials page
         sourceType: 'app_data',
         distance: undefined,
-        snippet: (testimonial.content || testimonial.text || testimonial.message || '').substring(0, 220),
+        snippet: (testimonial.quote || '').substring(0, 220),
       })),
       rawSources: testimonials,
     };
@@ -1154,7 +1244,7 @@ async function handleMessageQuestion(
 }
 
 export const chatAsk = onCall(
-  { region: 'us-central1', timeoutSeconds: 60, memory: '1GiB' },
+  { region: 'us-east1', timeoutSeconds: 60, memory: '1GiB' },
   async request => {
     console.log('=== chatAsk v2.5: KB Confidence Fix (Simplified Logic) ===');
     try {
@@ -1341,6 +1431,53 @@ export const chatAsk = onCall(
 
         const context = buildContextFromDocs(dedupedDocs, 2500);
 
+        // Add testimonials context if question might benefit from it
+        let testimonialsContext = '';
+        try {
+          const testimonialsSnapshot = await db
+            .collection('testimonials')
+            .where('status', '==', 'published')
+            .limit(50)
+            .get();
+          
+          if (!testimonialsSnapshot.empty) {
+            const testimonials = testimonialsSnapshot.docs.map((docSnap) => {
+              const data = docSnap.data();
+              // Handle Admin SDK Timestamp conversion
+              const getDate = (ts: any): Date => {
+                if (ts instanceof Date) return ts;
+                if (ts && typeof ts.toDate === 'function') return ts.toDate();
+                if (ts && typeof ts.toMillis === 'function') return new Date(ts.toMillis());
+                return new Date();
+              };
+              return {
+                id: docSnap.id,
+                quote: data.quote || '',
+                displayName: data.displayName || 'MFM Member',
+                highlight: data.highlight || '',
+                rating: typeof data.rating === 'number' ? data.rating : 0,
+                featured: Boolean(data.featured),
+                toneLabel: data.toneLabel || '',
+                toneKeywords: Array.isArray(data.toneKeywords) ? data.toneKeywords : [],
+                tags: Array.isArray(data.tags) ? data.tags : [],
+                createdAt: getDate(data.createdAt),
+                publishedAt: getDate(data.publishedAt || data.createdAt),
+              };
+            });
+
+            // Use smart ranking to find relevant testimonials
+            testimonialsContext = buildTestimonialsContext(question, testimonials, 6);
+          }
+        } catch (testimonialError: any) {
+          console.warn('[assistant.chatAsk] Failed to fetch testimonials context:', testimonialError?.message);
+          // Continue without testimonials context
+        }
+
+        // Combine KB context with testimonials context
+        const combinedContext = testimonialsContext
+          ? `${context}\n\n${testimonialsContext}`
+          : context;
+
         const profileSummary = userProfile
           ? [
               userProfile.environment ? `Prefers ${userProfile.environment} workouts.` : '',
@@ -1352,7 +1489,7 @@ export const chatAsk = onCall(
           : '';
 
         // Phase 6: Get KB answer and detect NO_KB_ANSWER sentinel
-        const rawAnswer = await answerQuestion(question, context, profileSummary, false, conversationHistory);
+        const rawAnswer = await answerQuestion(question, combinedContext, profileSummary, false, conversationHistory);
         const trimmed = (rawAnswer || '').trim();
         const lowerTrimmed = trimmed.toLowerCase();
 
@@ -1564,7 +1701,7 @@ export const chatAsk = onCall(
 );
 
 export const transcribeAudio = onCall(
-  { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' },
+  { region: 'us-east1', timeoutSeconds: 60, memory: '512MiB' },
   async request => {
     const audioContent = (request.data?.audioContent || '').toString();
     if (!audioContent) {
@@ -1605,7 +1742,7 @@ export const transcribeAudio = onCall(
 );
 
 export const synthesizeSpeech = onCall(
-  { region: 'us-central1', timeoutSeconds: 60, memory: '512MiB' },
+  { region: 'us-east1', timeoutSeconds: 60, memory: '512MiB' },
   async request => {
     let text = (request.data?.text || '').toString().trim();
     if (!text) {

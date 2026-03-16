@@ -1,42 +1,42 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import ReactDOM from 'react-dom';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
-  AlertTriangle,
-  Calendar,
-  UserPlus,
-  Users,
-  ChevronDown,
-  Heart,
-  QrCode,
+    AlertTriangle,
+    Calendar,
+    ChevronDown,
+    Heart,
+    QrCode,
+    UserPlus,
+    Users,
 } from 'lucide-react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { EventDoc } from '../../hooks/useEvents';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useUserBlocking } from '../../hooks/useUserBlocking';
 import { useAttendees } from '../../hooks/useAttendees';
+import { EventDoc } from '../../hooks/useEvents';
 import { useFamilyMembers } from '../../hooks/useFamilyMembers';
-import { AttendeeList } from './AttendeeList';
-import { LoadingButton } from '../ui/LoadingSpinner';
-import { CreateAttendeeData, AttendeeStatus, AgeGroup, Relationship } from '../../types/attendee';
+import { useUserBlocking } from '../../hooks/useUserBlocking';
+import { AgeGroup, AttendeeStatus, CreateAttendeeData, Relationship } from '../../types/attendee';
 import { FamilyMember } from '../../types/family';
+import { LoadingButton } from '../ui/LoadingSpinner';
+import { AttendeeList } from './AttendeeList';
 
 import toast from 'react-hot-toast';
 // Import our new hooks
-import { useEventDates } from './RSVPModalNew/hooks/useEventDates';
-import { useCapacityState } from './RSVPModalNew/hooks/useCapacityState';
-import { useModalA11y } from './RSVPModalNew/hooks/useModalA11y';
-import { getCapacityBadgeClasses } from './RSVPModalNew/rsvpUi';
-import { useWaitlistPositions } from '../../hooks/useWaitlistPositions';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../config/firebase';
+import { useWaitlistPositions } from '../../hooks/useWaitlistPositions';
+import { useCapacityState } from './RSVPModalNew/hooks/useCapacityState';
+import { useEventDates } from './RSVPModalNew/hooks/useEventDates';
+import { useModalA11y } from './RSVPModalNew/hooks/useModalA11y';
+import { getCapacityBadgeClasses } from './RSVPModalNew/rsvpUi';
 // Import new components
-import { Header } from './RSVPModalNew/components/Header';
-import { EventDetails } from './RSVPModalNew/components/EventDetails';
-import { AttendeeInputRowMemo } from './RSVPModalNew/components/AttendeeInputRow';
-import { QRCodeTab } from './QRCodeTab';
-import { PaymentSection } from './PaymentSection';
-import { WhosGoingTab } from './RSVPModalNew/components/WhosGoingTab';
 import { AutoPromotionManager } from '../admin/AutoPromotionManager';
+import { PaymentSection } from './PaymentSection';
+import { QRCodeTab } from './QRCodeTab';
+import { AttendeeInputRowMemo } from './RSVPModalNew/components/AttendeeInputRow';
+import { EventDetails } from './RSVPModalNew/components/EventDetails';
+import { Header } from './RSVPModalNew/components/Header';
+import { WhosGoingTab } from './RSVPModalNew/components/WhosGoingTab';
 
 interface RSVPModalProps {
   event: EventDoc;
@@ -83,13 +83,18 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   const isEventCreator = currentUser?.id === event.createdBy;
   const isAdmin = currentUser?.role === 'admin' || isEventCreator;
   
+  // Check if members are allowed to add attendees
+  const canAddAttendees = isAdmin || (event.allowMembersToAddAttendees === true);
+  
   // Debug admin status
   console.log('🔍 Admin Status Debug:', {
     currentUserId: currentUser?.id,
     userRole: currentUser?.role,
     eventCreatedBy: event.createdBy,
     isEventCreator,
-    isAdmin
+    isAdmin,
+    allowMembersToAddAttendees: event.allowMembersToAddAttendees,
+    canAddAttendees
   });
   
   const { attendees, counts, addAttendee, bulkAddAttendees, refreshAttendees, updateAttendee, error: attendeesError } = useAttendees(
@@ -270,6 +275,10 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   }, []);
 
   const handleBulkAddFamilyMembers = async () => {
+    if (!canAddAttendees) {
+      toast.error('This event is restricted to members. Please contact the host.');
+      return;
+    }
     if (!currentUser || bulkFormData.familyMembers.length === 0) return;
     const validMembers = bulkFormData.familyMembers.filter((m) => m.name.trim());
     if (validMembers.length === 0) return;
@@ -345,6 +354,10 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   };
 
   const handleAddFamilyMember = async (familyMember: FamilyMember) => {
+    if (!canAddAttendees) {
+      toast.error('This event is restricted to members. Please contact the host.');
+      return;
+    }
     if (!currentUser) return;
     try {
       setLoading(true);
@@ -404,6 +417,10 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
   };
 
   const handleBulkAddFromProfile = async (members: FamilyMember[]) => {
+    if (!canAddAttendees) {
+      toast.error('This event is restricted to members. Please contact the host.');
+      return;
+    }
     if (!currentUser || members.length === 0) return;
     try {
       setLoading(true);
@@ -605,12 +622,17 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                     <PaymentSection 
                       event={event}
                       attendees={attendees.filter(attendee => attendee.userId === currentUser?.id)}
-                      onPaymentComplete={() => {
-                        refreshAttendees();
+                      onPaymentComplete={async () => {
+                        console.log('🔄 [RSVP] onPaymentComplete callback triggered');
+                        console.log('🔄 [RSVP] Refreshing attendees...');
+                        await refreshAttendees();
+                        console.log('🔄 [RSVP] Attendees refreshed successfully');
+                        console.log('🔄 [RSVP] Calling parent onAttendeeUpdate...');
                         onAttendeeUpdate?.();
+                        console.log('🔄 [RSVP] Parent onAttendeeUpdate called');
                       }}
                       onPaymentError={(error) => {
-                        console.error('Payment error:', error);
+                        console.error('❌ [RSVP] Payment error:', error);
                       }}
                     />
 
@@ -620,7 +642,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                         <div className="flex items-center gap-2 text-[12px] text-gray-600">
                           <span className="flex items-center gap-1">
                             <div className="w-2 h-2 bg-green-500 rounded-full" />
-                            <span>{counts.goingCount} Going</span>
+                            <span>{realTimeAttendingCount} Going</span>
                           </span>
                           <span className="flex items-center gap-1">
                             <div className="w-2 h-2 bg-red-500 rounded-full" />
@@ -631,34 +653,48 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                           </span>
                           <span className="flex items-center gap-1">
                             <div className="w-2 h-2 bg-purple-500 rounded-full" />
-                            <span>{counts.waitlistedCount} Waitlisted</span>
+                            <span>{waitlistCount} Waitlisted</span>
                           </span>
 
                         </div>
                       </div>
 
+                      {/* Add Attendees Section - Show based on event settings */}
                       <div className="bg-[#F25129]/10 border border-[#F25129]/20 rounded-lg mb-4">
                         <motion.button
                           id="add-attendees-trigger"
                           aria-expanded={!isAddSectionCollapsed}
                           aria-controls="add-attendees-panel"
-                          onClick={() => setIsAddSectionCollapsed((v) => !v)}
-                          className="w-full p-3 flex items-center justify-between hover:bg-[#F25129]/20 transition-colors"
+                          onClick={() => canAddAttendees && setIsAddSectionCollapsed((v) => !v)}
+                          disabled={!canAddAttendees}
+                          className={`w-full p-3 flex items-center justify-between transition-colors ${
+                            canAddAttendees ? 'hover:bg-[#F25129]/20 cursor-pointer' : 'opacity-50 cursor-not-allowed'
+                          }`}
                           aria-label={`${isAddSectionCollapsed ? 'Expand' : 'Collapse'} Add Attendees section`}
+                          title={!canAddAttendees ? 'Only organizers can add non-members for this event. Contact the organizer for details.' : undefined}
                         >
                           <div className="flex items-center gap-2">
                             <UserPlus className="w-4 h-4 text-[#F25129]" />
                             <h4 className="font-medium text-gray-900 text-[13px]">Add Attendees</h4>
-                            <span className="text-[12px] text-gray-500">
-                              ({readyToAddCount} ready to add)
-                            </span>
+                            {!canAddAttendees && (
+                              <span className="text-[11px] text-gray-600 bg-gray-200 px-2 py-0.5 rounded">
+                                Admin Only
+                              </span>
+                            )}
+                            {canAddAttendees && (
+                              <span className="text-[12px] text-gray-500">
+                                ({readyToAddCount} ready to add)
+                              </span>
+                            )}
                           </div>
-                          <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.2 }}>
-                            <ChevronDown className="w-5 h-5 text-gray-500" />
-                          </motion.div>
+                          {canAddAttendees && (
+                            <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.2 }}>
+                              <ChevronDown className="w-5 h-5 text-gray-500" />
+                            </motion.div>
+                          )}
                         </motion.button>
 
-                        {!isAddSectionCollapsed && (
+                        {!isAddSectionCollapsed && canAddAttendees && (
                           <div className="px-4 pt-2">
                             {capacityState.isNearlyFull && (
                               <div className={`mb-3 p-3 rounded-lg text-sm ${getCapacityBadgeClasses(capacityState.state)}`}>
@@ -679,7 +715,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                         )}
 
                         <AnimatePresence>
-                          {!isAddSectionCollapsed && (
+                          {!isAddSectionCollapsed && canAddAttendees && (
                             <motion.div
                               id="add-attendees-panel"
                               role="region"
@@ -908,6 +944,7 @@ export const RSVPModalNew: React.FC<RSVPModalProps> = ({ event, onClose, onAtten
                       <div className="bg-white border border-gray-200 rounded-lg p-4">
                         <AttendeeList
                           eventId={event.id}
+                          event={event}
                           isAdmin={isAdmin}
                           waitlistPositions={waitlistPositions}
                           capacityState={capacityState}

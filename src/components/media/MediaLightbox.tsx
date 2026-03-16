@@ -1,13 +1,12 @@
+import { /* Share2, */ /* Download, */ ChevronLeft, ChevronRight, Pause, Play, Volume2, VolumeX, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { X, Share2, /* Download, */ ChevronLeft, ChevronRight, Play, Pause, Volume2, VolumeX } from 'lucide-react';
-import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
-import { shareUrl } from '../../utils/share';
-import { useSwipeRaw } from '../../hooks/useSwipeRaw';
+import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
+// import { shareUrl } from '../../utils/share';
 import { getDownloadURL, ref } from 'firebase/storage';
 import { storage } from '../../config/firebase';
+import { useSwipeRaw } from '../../hooks/useSwipeRaw';
 import { attachHls, detachHls } from '../../utils/hls';
 import { useImageOrientation } from '../../utils/imageOrientation';
-import toast from 'react-hot-toast';
 // Download feature temporarily disabled - uncomment to re-enable
 // import { requestWatermarkedDownload } from '../../services/mediaDownloadService';
 
@@ -80,8 +79,6 @@ export default function MediaLightbox({
       hasRotatedImageUrl: !!rotatedImageUrl
     });
   }, [item?.id, item?.type, isVideo, isMobile, autoAdvanceVideos, rotatedImageUrl]);
-
-  if (!item) return null;
 
   // Preload next/prev
   useEffect(() => {
@@ -414,6 +411,8 @@ export default function MediaLightbox({
   };
   */
 
+  if (!item) return null;
+
   return (
     <div
       ref={rootRef}
@@ -427,22 +426,18 @@ export default function MediaLightbox({
           <button data-no-swipe onClick={onClose} className="p-2 rounded-full bg-white/10 hover:bg-white/20" aria-label="Close">
             <X className="w-5 h-5 text-white" />
           </button>
-          {!isMobile && (
+          {!isMobile && isVideo && (
             <div className="flex gap-2">
-              {isVideo && (
-                <button
-                  data-no-swipe
-                  onClick={() => setIsMuted(!isMuted)}
-                  className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1"
-                  title={isMuted ? 'Unmute audio' : 'Mute audio'}
-                >
-                  {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                  {isMuted ? 'Unmute' : 'Mute'}
-                </button>
-              )}
-              <button data-no-swipe onClick={() => shareUrl(item.url, item.title)} className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1">
-                <Share2 className="w-4 h-4" /> Share
+              <button
+                data-no-swipe
+                onClick={() => setIsMuted(!isMuted)}
+                className="px-3 py-2 rounded bg-white/10 hover:bg-white/20 text-white flex items-center gap-1"
+                title={isMuted ? 'Unmute audio' : 'Mute audio'}
+              >
+                {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                {isMuted ? 'Unmute' : 'Mute'}
               </button>
+              {/* Share feature disabled to prevent sharing media */}
               {/* Download feature temporarily disabled - uncomment to re-enable */}
               {/*
               <button
@@ -497,6 +492,7 @@ export default function MediaLightbox({
                 loop={false}
                 preload="metadata"
                 poster={posterUrl || undefined}
+                onContextMenu={(e) => e.preventDefault()}
                 className={`${isMobile ? 'lb-media fill' : 'max-h-[85vh] max-w-[85vw] object-contain'} rounded-2xl`}
                 style={{ touchAction: isMobile ? 'pan-y pinch-zoom' : 'auto' }}
                 onEnded={() => {
@@ -582,6 +578,7 @@ export default function MediaLightbox({
                     }
                     draggable={false}
                     data-no-swipe
+                    onContextMenu={(e) => e.preventDefault()}
                     onLoad={(e) => correctImageOrientation(e.currentTarget)}
                   />
                 </div>

@@ -1,24 +1,24 @@
+import { collection, collectionGroup, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { doc, getDoc, updateDoc, setDoc, deleteDoc, collection, query, where, orderBy, limit, onSnapshot, getDocs, serverTimestamp, writeBatch, collectionGroup } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage } from '../config/firebase';
 import toast from 'react-hot-toast';
-import { NJ_CITIES } from '../data/nj-cities';
-import { ProfilePersonalTab } from './ProfilePersonalTab';
-import { ProfileEventsTab } from './ProfileEventsTab';
-import { ProfileRSVPAdminTab } from './ProfileRSVPAdminTab';
-import { ProfileAdminTab } from './ProfileAdminTab';
-import { AdminKnowledgeBaseTab } from './AdminKnowledgeBaseTab';
-import { ProfileNotificationsTab } from './ProfileNotificationsTab';
-import { ProfileContentTab } from './ProfileContentTab';
 import CreateEventModal from '../components/events/CreateEventModal';
-import { useUserBlocking } from '../hooks/useUserBlocking';
-import { UserBlockModal } from '../components/user/UserBlockModal';
 import { FamilyMemberList } from '../components/family/FamilyMemberList';
-import { normalizeEvent } from '../utils/normalizeEvent';
+import { UserBlockModal } from '../components/user/UserBlockModal';
+import { db, storage } from '../config/firebase';
+import { useAuth } from '../contexts/AuthContext';
+import { NJ_CITIES } from '../data/nj-cities';
+import { useUserBlocking } from '../hooks/useUserBlocking';
 import { sanitizeFirebaseData } from '../utils/dataSanitizer';
 import { safeISODate } from '../utils/dateUtils';
+import { normalizeEvent } from '../utils/normalizeEvent';
+import { AdminKnowledgeBaseTab } from './AdminKnowledgeBaseTab';
+import { ProfileAdminTab } from './ProfileAdminTab';
+import { ProfileContentTab } from './ProfileContentTab';
+import { ProfileEventsTab } from './ProfileEventsTab';
+import { ProfileNotificationsTab } from './ProfileNotificationsTab';
+import { ProfilePersonalTab } from './ProfilePersonalTab';
+import { ProfileRSVPAdminTab } from './ProfileRSVPAdminTab';
 
 type Address = {
   street?: string;
@@ -323,25 +323,56 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
             for (let i = 0; i < events.length; i += batchSize) {
               batches.push(events.slice(i, i + batchSize));
             }
+            // Set up real-time listeners for all attendee collections
+            // This ensures admin console updates immediately when payments are processed
+            const rsvpListenerUnsubscribes: (() => void)[] = [];
             const rsvps: { [eventId: string]: any[] } = {};
-            for (const batch of batches) {
-              await Promise.all(
-                batch.map(async (event) => {
-                  // Use new attendee system instead of old rsvps collection
-                  const attendeeQuery = query(collection(db, 'events', event.id, 'attendees'), orderBy('createdAt', 'desc'));
-                  const attendeeSnap = await getDocs(attendeeQuery);
-                  // Keep all attendee records for complete admin visibility
-                  rsvps[event.id] = attendeeSnap.docs.map(d => ({ 
-                    id: d.id, 
-                    eventId: event.id, 
+            
+            // Initialize empty arrays for all events
+            events.forEach(event => {
+              rsvps[event.id] = [];
+            });
+            
+            // Set initial state
+            setRsvpsByEvent({ ...rsvps });
+            
+            // Set up individual listeners for each event's attendees
+            for (const event of events) {
+              const attendeeQuery = query(
+                collection(db, 'events', event.id, 'attendees'),
+                orderBy('createdAt', 'desc')
+              );
+              
+              const unsubscribe = onSnapshot(
+                attendeeQuery,
+                (attendeeSnap) => {
+                  // Update the specific event's attendees in state
+                  const eventAttendees = attendeeSnap.docs.map(d => ({
+                    id: d.id,
+                    eventId: event.id,
                     userId: d.data().userId,
                     status: d.data().rsvpStatus, // Map rsvpStatus to status for compatibility
-                    ...sanitizeFirebaseData(d.data()) 
+                    ...sanitizeFirebaseData(d.data())
                   }));
-                })
+                  
+                  console.log('🔄 Real-time attendee update for event:', event.id, '- Count:', eventAttendees.length);
+                  
+                  // Update state immutably to trigger re-render
+                  setRsvpsByEvent(prev => ({
+                    ...prev,
+                    [event.id]: eventAttendees
+                  }));
+                },
+                (error) => {
+                  console.error('❌ Error listening to attendees for event', event.id, ':', error);
+                }
               );
+              
+              rsvpListenerUnsubscribes.push(unsubscribe);
             }
-            setRsvpsByEvent(rsvps);
+            
+            // Store unsubscribe functions to clean up later
+            (unsubAdmin as any).rsvpListeners = rsvpListenerUnsubscribes;
             fetchUserNames([...events.map(e => ({ id: e.createdBy })), ...Object.values(rsvps).flat().map(rsvp => ({ id: rsvp.userId }))]);
           } catch (e) {
             console.error('🚨 Profile: Failed to load admin events:', {
@@ -367,7 +398,14 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
 
       return () => {
         unsubUser();
-        unsubAdmin?.();
+        if (unsubAdmin) {
+          unsubAdmin();
+          // Also unsubscribe from all attendee listeners
+          const rsvpListeners = (unsubAdmin as any).rsvpListeners;
+          if (rsvpListeners && Array.isArray(rsvpListeners)) {
+            rsvpListeners.forEach((unsub: () => void) => unsub());
+          }
+        }
       };
     }, 400); // 400ms delay (slightly more than RSVPed events)
 
@@ -754,6 +792,14 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         toast.error('No RSVPs to export');
         return;
       }
+
+      // Helper function to get price for an age group
+      const getPriceForAgeGroup = (ageGroup: string, pricing: any): number => {
+        if (!pricing || pricing.isFree || !pricing.requiresPayment) return 0;
+        const agePricing = pricing.ageGroupPricing?.find((p: any) => p.ageGroup === ageGroup);
+        return agePricing ? agePricing.price / 100 : (pricing.adultPrice || 0) / 100;
+      };
+
       const attendeeDetails = await Promise.all(
         rsvps.map(async (attendee) => {
           try {
@@ -761,6 +807,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
             if (userDoc.exists()) {
               const rawData = userDoc.data();
               const userData = sanitizeFirebaseData(rawData);
+              const isPaid = attendee.paymentStatus === 'paid';
+              const eventAmount = isPaid ? getPriceForAgeGroup(attendee.ageGroup || 'adult', event.pricing) : 0;
+              const eventSupportAmount = isPaid && event.pricing?.eventSupportAmount ? event.pricing.eventSupportAmount / 100 : 0;
               return {
                 // Attendee-specific data
                 attendeeId: attendee.attendeeId || attendee.id,
@@ -769,6 +818,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
                 ageGroup: attendee.ageGroup || '',
                 relationship: attendee.relationship || '',
                 rsvpStatus: attendee.status,
+                paymentStatus: attendee.paymentStatus || 'unpaid',
+                eventAmount: isPaid ? eventAmount.toFixed(2) : '',
+                eventSupportAmount: eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
                 // User data
                 userId: attendee.userId,
                 firstName: userData.firstName || '',
@@ -782,6 +834,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
                 updatedDate: attendee.updatedAt instanceof Date ? attendee.updatedAt.toLocaleDateString('en-US') : 'Unknown'
               };
             }
+            const isPaid = attendee.paymentStatus === 'paid';
+            const eventAmount = isPaid ? getPriceForAgeGroup(attendee.ageGroup || 'adult', event.pricing) : 0;
+            const eventSupportAmount = isPaid && event.pricing?.eventSupportAmount ? event.pricing.eventSupportAmount / 100 : 0;
             return {
               // Attendee-specific data
               attendeeId: attendee.id,
@@ -790,6 +845,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               ageGroup: attendee.ageGroup || '',
               relationship: attendee.relationship || '',
               rsvpStatus: attendee.status,
+              paymentStatus: attendee.paymentStatus || 'unpaid',
+              eventAmount: isPaid ? eventAmount.toFixed(2) : '',
+              eventSupportAmount: eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
               // User data
               userId: attendee.userId,
               firstName: 'Unknown',
@@ -803,6 +861,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               updatedDate: attendee.updatedAt instanceof Date ? attendee.updatedAt.toLocaleDateString('en-US') : 'Unknown'
             };
           } catch {
+            const isPaid = attendee.paymentStatus === 'paid';
+            const eventAmount = isPaid ? getPriceForAgeGroup(attendee.ageGroup || 'adult', event.pricing) : 0;
+            const eventSupportAmount = isPaid && event.pricing?.eventSupportAmount ? event.pricing.eventSupportAmount / 100 : 0;
             return {
               // Attendee-specific data
               attendeeId: attendee.id,
@@ -811,6 +872,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               ageGroup: attendee.ageGroup || '',
               relationship: attendee.relationship || '',
               rsvpStatus: attendee.status,
+              paymentStatus: attendee.paymentStatus || 'unpaid',
+              eventAmount: isPaid ? eventAmount.toFixed(2) : '',
+              eventSupportAmount: eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
               // User data
               userId: attendee.userId,
               firstName: 'Error',
@@ -833,6 +897,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         'Age Group',
         'Relationship',
         'RSVP Status',
+        'Payment Status',
+        'Event Amount',
+        'Event Support Amount',
         'User ID',
         'Primary User First Name',
         'Primary User Last Name',
@@ -843,6 +910,15 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         'RSVP Date',
         'Updated Date'
       ];
+      // Calculate total amounts (only for paid attendees)
+      const totalEventAmount = attendeeDetails.reduce((sum, attendee) => {
+        return sum + (attendee.eventAmount ? parseFloat(attendee.eventAmount) : 0);
+      }, 0);
+      const totalSupportAmount = attendeeDetails.reduce((sum, attendee) => {
+        return sum + (attendee.eventSupportAmount ? parseFloat(attendee.eventSupportAmount) : 0);
+      }, 0);
+      const grossTotal = totalEventAmount + totalSupportAmount;
+
       const csvRows = [
         headers.join(','),
         ...attendeeDetails.map(attendee => [
@@ -852,6 +928,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
           attendee.ageGroup,
           attendee.relationship,
           attendee.rsvpStatus,
+          attendee.paymentStatus,
+          attendee.eventAmount,
+          attendee.eventSupportAmount,
           attendee.userId,
           `"${attendee.firstName}"`,
           `"${attendee.lastName}"`,
@@ -861,7 +940,11 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
           `"${attendee.address}"`,
           attendee.rsvpDate,
           attendee.updatedDate
-        ].join(','))
+        ].join(',')),
+        // Add total row
+        ['', '', '', '', '', '', 'TOTAL', totalEventAmount.toFixed(2), totalSupportAmount > 0 ? totalSupportAmount.toFixed(2) : '', '', '', '', '', '', '', '', '', ''].join(','),
+        // Add gross total row
+        ['', '', '', '', '', '', 'GROSS TOTAL', '', '', grossTotal.toFixed(2), '', '', '', '', '', '', '', ''].join(',')
       ];
       const csv = csvRows.join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

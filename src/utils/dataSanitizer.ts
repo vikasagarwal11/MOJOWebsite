@@ -10,6 +10,11 @@ export function sanitizeFirebaseData(data: any): any {
     return data;
   }
 
+  // Preserve native Date objects
+  if (data instanceof Date) {
+    return data;
+  }
+
   // Handle functions - convert to null to prevent "n is not a function" errors
   if (typeof data === 'function') {
     console.warn('🔍 Function found in data, converting to null:', data.name || 'anonymous');
@@ -28,6 +33,11 @@ export function sanitizeFirebaseData(data: any): any {
       }
       
       if (obj === null || obj === undefined) {
+        return obj;
+      }
+
+      // Preserve native Date objects
+      if (obj instanceof Date) {
         return obj;
       }
       

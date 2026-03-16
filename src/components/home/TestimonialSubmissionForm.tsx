@@ -1,10 +1,10 @@
+import { Check, Loader2, Sparkles, X } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
-import { Sparkles, Loader2, X, Check } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
-import { submitTestimonial } from '../../services/testimonialsService';
 import { useTestimonials } from '../../hooks/useTestimonials';
 import { generateTestimonialSuggestions } from '../../services/testimonialAIService';
-import toast from 'react-hot-toast';
+import { submitTestimonial } from '../../services/testimonialsService';
 
 const MAX_QUOTE_LENGTH = 2000; // Matches Firestore guardrail; modal shows full story
 const MIN_QUOTE_LENGTH = 40;
@@ -137,14 +137,17 @@ export const TestimonialSubmissionForm: React.FC<TestimonialSubmissionFormProps>
         avatarUrl: currentUser.photoURL || undefined,
       });
 
-      toast.success('Thank you! Your testimonial is pending review.');
+      toast.success('Your story has been submitted for approval by admin.', {
+        duration: 6000, // Show for 6 seconds
+        icon: '✅',
+      });
       setQuote('');
       setHighlight('');
       setRating(5);
       onSubmitted?.();
     } catch (error: any) {
-      console.error('[TestimonialSubmissionForm] Failed to submit testimonial', error);
-      toast.error(error?.message ?? 'Unable to submit testimonial. Please try again later.');
+      console.error('[TestimonialSubmissionForm] Failed to Submit Story', error);
+      toast.error(error?.message ?? 'Unable to Submit Story. Please try again later.');
     } finally {
       setIsSubmitting(false);
     }
@@ -311,7 +314,7 @@ export const TestimonialSubmissionForm: React.FC<TestimonialSubmissionFormProps>
             disabled={isSubmitting || quote.trim().length < MIN_QUOTE_LENGTH}
             className="w-full sm:w-auto inline-flex items-center justify-center rounded-full bg-gradient-to-r from-[#F25129] to-[#FFC107] px-8 py-3 text-sm font-semibold text-white shadow-md transition hover:from-[#E0451F] hover:to-[#E55A2B] hover:shadow-lg disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400 disabled:hover:from-gray-300 disabled:hover:to-gray-400"
           >
-            {isSubmitting ? 'Submitting…' : 'Submit testimonial'}
+            {isSubmitting ? 'Submitting…' : 'Submit Story'}
           </button>
         </div>
       </form>

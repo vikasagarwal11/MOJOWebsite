@@ -1,9 +1,9 @@
+import { collection, FirestoreError, onSnapshot, orderBy, query, Query, Timestamp, where } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { collection, onSnapshot, orderBy, query, where, Timestamp, Query, FirestoreError } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { toMillis } from './useEventsUtils';
+import { useAuth } from '../contexts/AuthContext';
 import { normalizeEvent } from '../utils/normalizeEvent';
+import { toMillis } from './useEventsUtils';
 
 export type EventDoc = {
   id: string;
@@ -11,7 +11,7 @@ export type EventDoc = {
   startAt: any;
   endAt?: any;
   duration?: number;
-  visibility?: 'public' | 'members' | 'private';
+  visibility?: 'public' | 'truly_public' | 'members' | 'private';
   createdBy?: string;
   invitedUserIds?: string[];
   tags?: string[];
@@ -74,12 +74,14 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
       // Use separate queries instead of 'in' operator - Firestore security rules can't evaluate 'in' queries efficiently
       return [
         query(eventsRef, where('visibility', '==', 'public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+        query(eventsRef, where('visibility', '==', 'truly_public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
         query(eventsRef, where('visibility', '==', 'members'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc'))
       ];
     }
     return [
       // Use separate queries instead of 'in' operator for better security rule evaluation
       query(eventsRef, where('visibility', '==', 'public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
+      query(eventsRef, where('visibility', '==', 'truly_public'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
       query(eventsRef, where('visibility', '==', 'members'), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
       query(eventsRef, where('createdBy', '==', currentUser.id), where('startAt', '>=', nowTs), orderBy('startAt', 'asc')),
       // Check for both new and legacy field names
@@ -99,6 +101,15 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
     setLoading(true);
     setError(null);
 
+    // Debug logging for Safari issue
+    console.log('[useEvents] Setting up queries:', {
+      hasUser: !!currentUser,
+      userId: currentUser?.id,
+      userStatus: currentUser?.status,
+      isApproved: currentUser && (currentUser.status === 'approved' || !currentUser.status),
+      authLoading
+    });
+
     const upcomingMap = new Map<string, EventDoc>();
     const pastMap = new Map<string, EventDoc>();
     upcomingMapRef.current = upcomingMap;
@@ -106,6 +117,11 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
 
     const upcomingQs = buildUpcomingQueries();
     const pastQs = buildPastQueries();
+    
+    console.log('[useEvents] Query count:', {
+      upcoming: upcomingQs.length,
+      past: pastQs.length
+    });
 
     let loadedUpcoming = 0;
     let loadedPast = 0;
@@ -121,10 +137,12 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
     // upcoming listeners
     for (const qy of upcomingQs) {
       const unsub = onSnapshot(qy, (snap) => {
+        console.log('[useEvents] Upcoming snapshot received:', snap.docs.length, 'docs');
         snap.docs.forEach((d) => upcomingMap.set(d.id, normalizeEvent({ id: d.id, ...(d.data() as any) })));
         loadedUpcoming += 1;
         if (loadedUpcoming >= upcomingQs.length) {
           const arr = Array.from(upcomingMap.values()).sort((a,b)=> toMillis(a.startAt)-toMillis(b.startAt));
+          console.log('[useEvents] Setting upcoming events:', arr.length);
           setUpcomingEvents(arr);
           if (loadedPast >= pastQs.length) setLoading(false);
         }
@@ -135,10 +153,12 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
     // past listeners
     for (const qy of pastQs) {
       const unsub = onSnapshot(qy, (snap) => {
+        console.log('[useEvents] Past snapshot received:', snap.docs.length, 'docs');
         snap.docs.forEach((d) => pastMap.set(d.id, normalizeEvent({ id: d.id, ...(d.data() as any) })));
         loadedPast += 1;
         if (loadedPast >= pastQs.length) {
           const arr = Array.from(pastMap.values()).sort((a,b)=> toMillis(b.startAt)-toMillis(a.startAt));
+          console.log('[useEvents] Setting past events:', arr.length);
           setPastEvents(arr);
           if (loadedUpcoming >= upcomingQs.length) setLoading(false);
         }
@@ -159,10 +179,11 @@ export function useEvents(opts: UseEventsOptions = {}): UseEventsResult {
     }
 
     return () => {
+      console.log('[useEvents] Cleaning up listeners');
       unsubs.forEach((u) => u && u());
       if (teasersUnsub) teasersUnsub();
     };
-  }, [authLoading, currentUser?.id]); // re-run when auth resolves or user changes
+  }, [authLoading, currentUser?.id, currentUser?.status]); // re-run when auth resolves, user changes, or status changes
 
   return { upcomingEvents, pastEvents, upcomingTeasers, loading, error };
 }

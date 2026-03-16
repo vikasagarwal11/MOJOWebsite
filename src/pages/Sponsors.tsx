@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { ExternalLink, Gift, Calendar, Star } from 'lucide-react';
 import { format } from 'date-fns';
 import { orderBy } from 'firebase/firestore';
+import { Calendar, ExternalLink, Gift, Star } from 'lucide-react';
+import React from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { useFirestore } from '../hooks/useFirestore';
-import { Sponsor } from '../types';
 
 const Sponsors: React.FC = () => {
   const { currentUser } = useAuth();

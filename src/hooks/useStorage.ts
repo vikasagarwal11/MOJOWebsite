@@ -34,6 +34,27 @@ export const useStorage = () => {
         }
       };
       
+      // Determine cache control based on file type
+      // Images: long cache (30 days) - they're immutable once uploaded
+      // Other files: shorter cache (1 hour)
+      const isImage = file.type?.startsWith('image/');
+      const cacheControl = isImage 
+        ? 'public, max-age=2592000, immutable' // 30 days for images
+        : 'public, max-age=3600'; // 1 hour for other files
+      
+      const baseMetadata = {
+        contentType: file.type || undefined,
+        cacheControl, // Explicit cache control to help with Edge Tracking Prevention
+        customMetadata: {
+          userId: currentUser.id,
+          userEmail: currentUser.email || '',
+          originalFileName: file.name,
+          uploadSource: path.split('/')[0] || 'unknown',
+          uploadTimestamp: new Date().toISOString(),
+          ...(metadata || {})
+        }
+      };
+      
       // Use uploadBytesResumable for progress tracking
       const uploadTask = uploadBytesResumable(storageRef, file, baseMetadata);
       

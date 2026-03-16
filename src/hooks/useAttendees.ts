@@ -1,25 +1,24 @@
-import { useState, useEffect, useCallback } from 'react';
-import { 
-  Attendee, 
-  CreateAttendeeData, 
-  UpdateAttendeeData, 
-  AttendeeStatus,
-  AttendeeCounts 
-} from '../types/attendee';
-import {
-  listAttendees,
-  listAllAttendees,
-  upsertAttendee,
-  updateAttendee,
-  deleteAttendee,
-  bulkUpsertAttendees,
-  setAttendeeStatus,
-  calculateAttendeeCounts,
-  subscribeToAttendees,
-  subscribeToAllAttendees,
-  getUserAttendees
-} from '../services/attendeeService';
+import { useCallback, useEffect, useState } from 'react';
 import { CapacityError, PermissionError } from '../errors';
+import {
+    bulkUpsertAttendees,
+    calculateAttendeeCounts,
+    deleteAttendee,
+    listAllAttendees,
+    listAttendees,
+    setAttendeeStatus,
+    subscribeToAllAttendees,
+    subscribeToAttendees,
+    updateAttendee,
+    upsertAttendee
+} from '../services/attendeeService';
+import {
+    Attendee,
+    AttendeeCounts,
+    AttendeeStatus,
+    CreateAttendeeData,
+    UpdateAttendeeData
+} from '../types/attendee';
 
 interface UseAttendeesReturn {
   attendees: Attendee[];
@@ -36,11 +35,9 @@ interface UseAttendeesReturn {
 }
 
 export const useAttendees = (eventId: string, userId: string, isAdmin: boolean = false): UseAttendeesReturn => {
-  const [attendees, setAttendees] = useState<Attendee[]>([]);
-  const [counts, setCounts] = useState<AttendeeCounts>({
+  const emptyCounts: AttendeeCounts = {
     goingCount: 0,
     notGoingCount: 0,
-    pendingCount: 0,
     waitlistedCount: 0,
     totalGoingByAgeGroup: {
       '0-2': 0,
@@ -50,13 +47,21 @@ export const useAttendees = (eventId: string, userId: string, isAdmin: boolean =
       'adult': 0
     },
     totalGoing: 0
-  });
-  const [loading, setLoading] = useState(true);
+  };
+  const [attendees, setAttendees] = useState<Attendee[]>([]);
+  const [counts, setCounts] = useState<AttendeeCounts>(emptyCounts);
+  const [loading, setLoading] = useState(Boolean(eventId && userId));
   const [error, setError] = useState<string | null>(null);
 
   // Load attendees on mount
   useEffect(() => {
-    if (!eventId || !userId) return;
+    if (!eventId || !userId) {
+      setAttendees([]);
+      setCounts(emptyCounts);
+      setError(null);
+      setLoading(false);
+      return;
+    }
 
     const loadAttendees = async () => {
       try {
@@ -125,17 +130,35 @@ export const useAttendees = (eventId: string, userId: string, isAdmin: boolean =
 
   // Update attendee
   const updateAttendeeData = useCallback(async (attendeeId: string, updateData: UpdateAttendeeData): Promise<void> => {
+    // Store original data for potential rollback
+    let originalAttendee: Attendee | undefined;
+    
     try {
       setError(null);
+      
+      // Optimistic update - update local state immediately
+      setAttendees(prev => {
+        originalAttendee = prev.find(a => a.attendeeId === attendeeId);
+        return prev.map(attendee => 
+          attendee.attendeeId === attendeeId 
+            ? { ...attendee, ...updateData, updatedAt: new Date() }
+            : attendee
+        );
+      });
+      
+      // Then sync with Firestore
       await updateAttendee(eventId, attendeeId, updateData);
       
-      // Optimistic update
-      setAttendees(prev => prev.map(attendee => 
-        attendee.attendeeId === attendeeId 
-          ? { ...attendee, ...updateData, updatedAt: new Date() }
-          : attendee
-      ));
     } catch (err) {
+      // If Firestore update fails, revert to original data
+      if (originalAttendee) {
+        setAttendees(prev => prev.map(attendee => 
+          attendee.attendeeId === attendeeId 
+            ? originalAttendee!
+            : attendee
+        ));
+      }
+      
       // Preserve custom error types (CapacityError, PermissionError) instead of converting to generic Error
       console.log('DEBUG: useAttendees caught error:', {
         errorType: err?.constructor?.name,
@@ -192,15 +215,25 @@ export const useAttendees = (eventId: string, userId: string, isAdmin: boolean =
   const setAttendeeStatusData = useCallback(async (attendeeId: string, status: AttendeeStatus): Promise<void> => {
     try {
       setError(null);
-      await setAttendeeStatus(eventId, attendeeId, status);
       
-      // Optimistic update
+      // Optimistic update - update local state immediately for instant UI feedback
       setAttendees(prev => prev.map(attendee => 
         attendee.attendeeId === attendeeId 
           ? { ...attendee, rsvpStatus: status, updatedAt: new Date() }
           : attendee
       ));
+      
+      // Then sync with Firestore
+      await setAttendeeStatus(eventId, attendeeId, status);
+      
     } catch (err) {
+      // If Firestore update fails, revert the optimistic update
+      setAttendees(prev => prev.map(attendee => 
+        attendee.attendeeId === attendeeId 
+          ? { ...attendee, updatedAt: new Date() }
+          : attendee
+      ));
+      
       const errorMessage = err instanceof Error ? err.message : 'Failed to update attendee status';
       const lower = errorMessage.toLowerCase();
       const capacityConflict = lower.includes('over capacity') || lower.includes('cannot change status to "going"') || lower.includes('event is full');
@@ -243,6 +276,14 @@ export const useAttendees = (eventId: string, userId: string, isAdmin: boolean =
 
   // Refresh attendees
   const refreshAttendees = useCallback(async (): Promise<void> => {
+    if (!eventId || !userId) {
+      setAttendees([]);
+      setCounts(emptyCounts);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);

@@ -1,15 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Phone, Shield, User, Clock, X, Mail, MapPin, Search } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
-import type { ConfirmationResult } from 'firebase/auth';
-import { normalizeUSPhoneToE164OrNull } from '../../utils/phone';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { db } from '../../config/firebase';
+import { getAuth, type ConfirmationResult } from 'firebase/auth';
+import { collection, getDocs, limit, query, where } from 'firebase/firestore';
+import { Clock, Mail, MapPin, Phone, Search, Shield, User, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
+import { Link, useNavigate } from 'react-router-dom';
+import { z } from 'zod';
+import { db, withFirestoreErrorHandling } from '../../config/firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { normalizeUSPhoneToE164OrNull } from '../../utils/phone';
 
 const phoneSchema = z.object({
   phoneNumber: z.string().min(7, 'Enter a phone like 5551234567 or +12025550123'),
@@ -75,6 +75,8 @@ const HOW_DID_YOU_HEAR_OPTIONS = [
 ];
 
 const Register: React.FC = () => {
+  const SESSION_KEY = 'mojo-register-session';
+
   const [step, setStep] = useState<'phone' | 'code' | 'additional'>('phone');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -106,26 +108,99 @@ const Register: React.FC = () => {
     resolver: zodResolver(additionalInfoSchema) 
   });
 
+  type RegisterSession = {
+    step: 'phone' | 'code' | 'additional';
+    firstName: string;
+    lastName: string;
+    phoneNumber: string;
+    codeExpiryTime: number | null;
+  };
+
+  const saveSession = (session: RegisterSession | null) => {
+    if (!session) {
+      localStorage.removeItem(SESSION_KEY);
+      return;
+    }
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  };
+
+  // Restore session on mount
+  useEffect(() => {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+
+    try {
+      const session: RegisterSession = JSON.parse(raw);
+      const now = Date.now();
+      const remainingSeconds = session.codeExpiryTime
+        ? Math.max(0, Math.floor((session.codeExpiryTime - now) / 1000))
+        : 0;
+
+      setFirstName(session.firstName);
+      setLastName(session.lastName);
+      setPhoneNumber(session.phoneNumber);
+      setCodeExpiryTime(session.codeExpiryTime);
+      setTimeLeft(remainingSeconds);
+
+      const isExpired = session.codeExpiryTime ? now >= session.codeExpiryTime : true;
+      if (isExpired) {
+        saveSession(null);
+        setStep('phone');
+        return;
+      }
+
+      // If the user already verified and is still authenticated, allow resuming additional step
+      if (session.step === 'additional') {
+        const authUser = getAuth().currentUser;
+        if (authUser) {
+          setVerifiedFirebaseUser(authUser);
+          setStep('additional');
+        } else {
+          // User not authenticated - can't resume additional step
+          // Check if code is still valid, otherwise reset to phone
+          if (session.codeExpiryTime && now < session.codeExpiryTime) {
+            setStep('code');
+            saveSession({ ...session, step: 'code' });
+          } else {
+            // Code expired - must start over
+            saveSession(null);
+            setStep('phone');
+          }
+        }
+      } else {
+        setStep(session.step);
+      }
+    } catch (err) {
+      console.error('Failed to restore register session', err);
+      saveSession(null);
+    }
+  }, []);
+
   // Countdown timer effect
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    
-    if (codeExpiryTime && timeLeft > 0) {
-      interval = setInterval(() => {
+
+    if (codeExpiryTime) {
+      const updateTimeLeft = () => {
         const now = Date.now();
         const remaining = Math.max(0, Math.floor((codeExpiryTime - now) / 1000));
         setTimeLeft(remaining);
-        
+
         if (remaining === 0) {
           setError('Verification code has expired. Please request a new one.');
         }
+      };
+
+      updateTimeLeft();
+      interval = setInterval(() => {
+        updateTimeLeft();
       }, 1000);
     }
     
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [codeExpiryTime, timeLeft]);
+  }, [codeExpiryTime]);
 
   // Format time for display
   const formatTime = (seconds: number): string => {
@@ -143,16 +218,18 @@ const Register: React.FC = () => {
 
     setIsSearchingReferrer(true);
     try {
-      const usersRef = collection(db, 'users');
-      const q = query(
-        usersRef,
-        where('status', '==', 'approved'), // Only show approved users
-        where('displayName', '>=', referrerSearchQuery),
-        where('displayName', '<=', referrerSearchQuery + '\uf8ff'),
-        limit(10)
-      );
+      const snapshot = await withFirestoreErrorHandling(async () => {
+        const usersRef = collection(db, 'users');
+        const q = query(
+          usersRef,
+          where('status', '==', 'approved'), // Only show approved users
+          where('displayName', '>=', referrerSearchQuery),
+          where('displayName', '<=', referrerSearchQuery + '\uf8ff'),
+          limit(10)
+        );
+        return await getDocs(q);
+      });
       
-      const snapshot = await getDocs(q);
       const results = snapshot.docs.map(doc => ({
         id: doc.id,
         displayName: doc.data().displayName || 'Unknown User',
@@ -236,31 +313,42 @@ const Register: React.FC = () => {
       setTimeLeft(300);
       setError(null);
       setResendAttempts(0);
+      saveSession({
+        step: 'code',
+        firstName: data.firstName,
+        lastName: data.lastName,
+        phoneNumber: e164,
+        codeExpiryTime: expiryTime,
+      });
       
       setConfirmationResult(result);
       setStep('code');
     } catch (err: any) {
-      let message = 'Could not send code. Please try again.';
-      
-      switch (err?.code) {
-        case 'auth/invalid-phone-number':
-          message = 'Invalid phone number. Please check and try again.';
-          break;
-        case 'auth/captcha-check-failed':
-          message = "reCAPTCHA failed. Please try again.";
-          break;
-        case 'auth/operation-not-allowed':
-          message = 'Phone sign-in is disabled. Please contact support.';
-          break;
-        case 'auth/too-many-requests':
-          message = 'Too many attempts. Please wait a minute and try again.';
-          break;
-        case 'auth/network-request-failed':
-          message = 'Network error. Check your connection and try again.';
-          break;
-      }
+      console.error('🚨 RegisterNew: Phone verification error:', {
+        error: err,
+        errorCode: err?.code,
+        errorMessage: err?.message,
+        hostname: typeof window !== 'undefined' ? window.location.hostname : 'unknown',
+        origin: typeof window !== 'undefined' ? window.location.origin : 'unknown',
+      });
 
-      phoneForm.setError('phoneNumber', { message });
+      // Keep UI error minimal; put full diagnosis in console.
+      let userMessage = "We couldn't send a verification code right now. Please try again.";
+      if (err?.code === 'auth/invalid-phone-number') {
+        userMessage = 'Please enter a valid phone number and try again.';
+      } else if (err?.code === 'auth/too-many-requests') {
+        userMessage = 'Too many attempts. Please wait a moment and try again.';
+      } else if (err?.code === 'auth/network-request-failed') {
+        userMessage = 'Network issue. Please check your connection and try again.';
+      }
+      phoneForm.setError('phoneNumber', { message: userMessage });
+
+      // Console-only guidance for debugging (no UI spam)
+      if (err?.code === 'auth/invalid-app-credential') {
+        console.warn(
+          '[PhoneAuth][INVALID_APP_CREDENTIAL] On localhost this is usually an API key restriction / origin issue. Verify the exact API key in use, then ensure Google Cloud Console → APIs & Services → Credentials → API key allows your dev origin (e.g. http://localhost:5175/*). You can also use Firebase emulators (VITE_USE_EMULATORS=true) to bypass reCAPTCHA for local testing.'
+        );
+      }
     } finally {
       setIsLoading(false);
     }
@@ -274,6 +362,13 @@ const Register: React.FC = () => {
       // Verify code only - don't create user yet
       const fbUser = await verifyPhoneCode(confirmationResult, data.verificationCode);
       setVerifiedFirebaseUser(fbUser);
+      saveSession({
+        step: 'additional',
+        firstName,
+        lastName,
+        phoneNumber,
+        codeExpiryTime,
+      });
       setStep('additional');
     } catch (err: any) {
       let msg = 'Invalid code. Please try again.';
@@ -329,6 +424,7 @@ const Register: React.FC = () => {
 
       console.log('✅ RegisterNew: User creation successful, navigating to pending-approval');
       toast.success('Registration submitted! Your account is pending approval.');
+      saveSession(null);
       
       // Small delay to ensure state updates before navigation
       setTimeout(() => {
@@ -366,10 +462,31 @@ const Register: React.FC = () => {
       setCodeExpiryTime(expiryTime);
       setTimeLeft(300);
       setResendAttempts(prev => prev + 1);
+      saveSession({
+        step: 'code',
+        firstName,
+        lastName,
+        phoneNumber,
+        codeExpiryTime: expiryTime,
+      });
       
       setConfirmationResult(result);
     } catch (err: any) {
-      setError('Failed to resend code. Please try again.');
+      console.error('🚨 RegisterNew: Resend code failed:', {
+        error: err,
+        errorCode: err?.code,
+        errorMessage: err?.message,
+      });
+
+      let resendMessage = 'Failed to resend code. Please try again.';
+      if (err?.code === 'auth/too-many-requests') {
+        resendMessage = 'Too many attempts. Please wait a minute and try again.';
+      } else if (err?.code === 'auth/invalid-app-credential') {
+        resendMessage =
+          'Firebase rejected app verification on this host. See the guidance above about Authorized domains / API key referrer restrictions (or use emulators).';
+      }
+
+      setError(resendMessage);
     } finally {
       setIsResending(false);
     }
@@ -503,7 +620,17 @@ const Register: React.FC = () => {
                 <div className="flex space-x-3">
                   <button
                     type="button"
-                    onClick={() => setStep('phone')}
+          onClick={() => {
+            // Clear confirmation result to prevent stuck state in Safari
+            setConfirmationResult(null);
+            setIsLoading(false);
+            setError(null);
+            setTimeLeft(0);
+            setCodeExpiryTime(null);
+            codeForm.reset({ verificationCode: '' });
+            saveSession(null);
+            setStep('phone');
+          }}
                     className="flex-1 py-3 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
                   >
                     Back
@@ -518,12 +645,16 @@ const Register: React.FC = () => {
                 </div>
                 
                 <div className="flex justify-center">
-                  <button
-                    type="button"
-                    onClick={handleResendCode}
-                    disabled={isResending || resendAttempts >= maxResendAttempts || timeLeft > 0}
-                    className="text-sm text-[#F25129] hover:text-[#E0451F] font-medium disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
-                  >
+          <button
+            type="button"
+            onClick={handleResendCode}
+            disabled={
+              isResending ||
+              resendAttempts >= maxResendAttempts ||
+              (codeExpiryTime ? Date.now() < codeExpiryTime : timeLeft > 0)
+            }
+            className="text-sm text-[#F25129] hover:text-[#E0451F] font-medium disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+          >
                     {isResending ? 'Sending...' : 
                      resendAttempts >= maxResendAttempts ? `Max attempts (${maxResendAttempts})` :
                      timeLeft > 0 ? `Resend in ${formatTime(timeLeft)}` : 'Resend Code'}
@@ -695,7 +826,16 @@ const Register: React.FC = () => {
               <div className="flex space-x-3">
                 <button
                   type="button"
-                  onClick={() => setStep('code')}
+                  onClick={() => {
+                    setStep('code');
+                    saveSession({
+                      step: 'code',
+                      firstName,
+                      lastName,
+                      phoneNumber,
+                      codeExpiryTime,
+                    });
+                  }}
                   className="flex-1 py-3 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
                 >
                   Back

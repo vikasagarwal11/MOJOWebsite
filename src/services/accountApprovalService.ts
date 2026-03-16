@@ -1,17 +1,18 @@
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  serverTimestamp, 
-  getDoc,
-  updateDoc,
-  query,
-  where,
-  getDocs,
-  Timestamp
+import {
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    query,
+    serverTimestamp,
+    setDoc,
+    Timestamp,
+    updateDoc,
+    where
 } from 'firebase/firestore';
-import { db } from '../config/firebase';
-import type { AccountApproval, ApprovalMessage, UserStatus } from '../types';
+import { db, withFirestoreErrorHandling } from '../config/firebase';
+import type { AccountApproval, ApprovalMessage } from '../types';
+import { notificationService } from './notificationService';
 
 export class AccountApprovalService {
   /**
@@ -63,10 +64,38 @@ export class AccountApprovalService {
         approvalData.referralNotes = data.referralNotes;
       }
 
-      const approvalRef = doc(collection(db, 'accountApprovals'));
-      await setDoc(approvalRef, approvalData);
-
-      return approvalRef.id;
+      return await withFirestoreErrorHandling(async () => {
+        const approvalRef = doc(collection(db, 'accountApprovals'));
+        await setDoc(approvalRef, approvalData);
+        
+        // Send notification to all admins about new approval request
+        try {
+          const adminsQuery = query(
+            collection(db, 'users'),
+            where('role', '==', 'admin')
+          );
+          const adminsSnapshot = await getDocs(adminsQuery);
+          
+          const adminNotifications = adminsSnapshot.docs.map(adminDoc => {
+            return notificationService.createNotification({
+              userId: adminDoc.id,
+              type: 'approval_request',
+              title: 'New Account Approval Request',
+              message: `${data.firstName} ${data.lastName} has requested account approval.`,
+              relatedId: approvalRef.id,
+              relatedType: 'approval',
+            });
+          });
+          
+          await Promise.allSettled(adminNotifications);
+          console.log('✅ AccountApprovalService: Admin notifications sent successfully');
+        } catch (notifError) {
+          // Don't fail the approval creation if notifications fail
+          console.warn('⚠️ AccountApprovalService: Failed to send admin notifications (non-critical):', notifError);
+        }
+        
+        return approvalRef.id;
+      });
     } catch (error) {
       console.error('Error creating account approval request:', error);
       throw error;
@@ -78,26 +107,28 @@ export class AccountApprovalService {
    */
   static async getApprovalByUserId(userId: string): Promise<AccountApproval | null> {
     try {
-      const q = query(
-        collection(db, 'accountApprovals'),
-        where('userId', '==', userId)
-      );
-      const querySnapshot = await getDocs(q);
-      
-      if (querySnapshot.empty) {
-        return null;
-      }
+      return await withFirestoreErrorHandling(async () => {
+        const q = query(
+          collection(db, 'accountApprovals'),
+          where('userId', '==', userId)
+        );
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+          return null;
+        }
 
-      const doc = querySnapshot.docs[0];
-      const data = doc.data();
-      
-      return {
-        id: doc.id,
-        ...data,
-        submittedAt: (data.submittedAt as Timestamp)?.toDate() || new Date(),
-        reviewedAt: (data.reviewedAt as Timestamp)?.toDate(),
-        lastMessageAt: (data.lastMessageAt as Timestamp)?.toDate(),
-      } as AccountApproval;
+        const doc = querySnapshot.docs[0];
+        const data = doc.data();
+        
+        return {
+          id: doc.id,
+          ...data,
+          submittedAt: (data.submittedAt as Timestamp)?.toDate() || new Date(),
+          reviewedAt: (data.reviewedAt as Timestamp)?.toDate(),
+          lastMessageAt: (data.lastMessageAt as Timestamp)?.toDate(),
+        } as AccountApproval;
+      });
     } catch (error) {
       console.error('Error getting approval by user ID:', error);
       throw error;

@@ -7,6 +7,12 @@ import { loggingService } from '../services/loggingService';
 
 export function initializeGlobalErrorPrevention() {
   try {
+    // Prevent double-installation (App.tsx also installs a global handler).
+    if ((window as any).__mojoGlobalErrorHandlersInstalled) {
+      return;
+    }
+    (window as any).__mojoGlobalErrorHandlersInstalled = true;
+
     console.log('🛡️ Initializing global error prevention (safe mode)...');
 
     // Uncaught errors

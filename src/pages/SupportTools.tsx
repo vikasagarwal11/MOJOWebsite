@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Plus, Search, Lock } from 'lucide-react';
 import { orderBy, where } from 'firebase/firestore';
+import { Lock, Plus, Search } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { CategorySeo } from '../components/supportTools/CategorySeo';
+import CreateSupportToolModal from '../components/supportTools/CreateSupportToolModal';
+import SupportToolCard from '../components/supportTools/SupportToolCard';
 import { useAuth } from '../contexts/AuthContext';
 import { useFirestore } from '../hooks/useFirestore';
 import { SupportTool, SupportToolCategory } from '../types/supportTools';
-import SupportToolCard from '../components/supportTools/SupportToolCard';
-import CreateSupportToolModal from '../components/supportTools/CreateSupportToolModal';
-import { CategorySeo } from '../components/supportTools/CategorySeo';
 import { isUserApproved } from '../utils/userUtils';
-import toast from 'react-hot-toast';
 
 const SupportTools: React.FC = () => {
   const { categorySlug } = useParams<{ categorySlug?: string }>();

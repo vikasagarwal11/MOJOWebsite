@@ -1,28 +1,26 @@
 // src/components/posts/PostCard.tsx
-import React, { useEffect, useState } from 'react';
-import { Heart, MessageCircle, User, Trash2 } from 'lucide-react';
-import { safeFormat } from '../../utils/dateUtils';
-import { Post } from '../../types';
-import { useAuth } from '../../contexts/AuthContext';
-import { db } from '../../config/firebase';
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
-  limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
+  setDoc
 } from 'firebase/firestore';
-import toast from 'react-hot-toast';
-import CommentSection from '../common/CommentSection';
-import AdminPostDeletionModal from './AdminPostDeletionModal';
+import { Heart, Lock, MessageCircle, Trash2, User } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import toast from 'react-hot-toast';
+import { db } from '../../config/firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { Post } from '../../types';
+import { safeFormat } from '../../utils/dateUtils';
 import { isUserApproved } from '../../utils/userUtils';
-import { Lock } from 'lucide-react';
+import CommentSection from '../common/CommentSection';
+import { ReactionPicker } from '../common/ReactionPicker';
+import AdminPostDeletionModal from './AdminPostDeletionModal';
 
 interface PostCardProps {
   post: Post;
@@ -33,37 +31,152 @@ const PostCard: React.FC<PostCardProps> = ({ post, onPostDeleted }) => {
   const { currentUser } = useAuth();
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
+  const REACTIONS = useMemo(
+    () => [
+      { type: 'heart', emoji: '❤️', label: 'Heart' },
+      { type: 'like', emoji: '👍', label: 'Like' },
+      { type: 'celebrate', emoji: '🎉', label: 'Celebrate' },
+      { type: 'appreciate', emoji: '🙌', label: 'Support' },
+      { type: 'funny', emoji: '😂', label: 'Funny' },
+      { type: 'wow', emoji: '😮', label: 'Wow' },
+      { type: 'sad', emoji: '😢', label: 'Sad' },
+    ],
+    []
+  );
+  const DEFAULT_REACTION = 'heart';
+  const emojiToType = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const r of REACTIONS) m[r.emoji] = r.type;
+    return m;
+  }, [REACTIONS]);
+
   // Check if current user is admin
   const isAdmin = currentUser?.role === 'admin';
 
-  // counts fall back to arrays if you still have them on the doc
-  const [isLiked, setIsLiked] = useState(false);
-  const [likesCount, setLikesCount] = useState<number>(
-    (post as any).likesCount ?? (post as any).likes?.length ?? 0
-  );
   const [commentsCount, setCommentsCount] = useState<number>(
     (post as any).commentsCount ?? (post as any).comments?.length ?? 0
   );
 
-  // Comment functionality now handled by CommentSection component
+  // Post reactions
+  const [myReaction, setMyReaction] = useState<string | null>(null);
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const reactionTriggerRef = useRef<HTMLButtonElement>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressOpenedRef = useRef(false);
+  const hoverCloseTimerRef = useRef<number | null>(null);
 
-  // Keep my like state in sync
-  useEffect(() => {
-    if (!currentUser) { setIsLiked(false); return; }
-    const likeRef = doc(db, 'posts', post.id, 'likes', currentUser.id);
-    const unsub = onSnapshot(likeRef, (snap) => setIsLiked(snap.exists()));
-    return () => unsub();
-  }, [post.id, currentUser?.id]);
+  const reactionsCountFromPost = ((post as any).reactionsCount ?? {}) as Record<string, number>;
+  const totalReactionsFromPost =
+    (post as any).totalReactions ??
+    Object.values(reactionsCountFromPost).reduce((acc, n) => acc + (typeof n === 'number' ? n : 0), 0);
 
-  // Global likes count listener - always active for real-time updates
+  // Optimistic UI for counts so the user sees feedback instantly.
+  const [liveReactionsCount, setLiveReactionsCount] = useState<Record<string, number>>(reactionsCountFromPost);
+  const [liveTotalReactions, setLiveTotalReactions] = useState<number>(totalReactionsFromPost ?? 0);
+
+  // If the post document doesn't have aggregated counters (or they aren't updating),
+  // fall back to aggregating from the reactions subcollection in real time.
+  const [needsReactionsFallback, setNeedsReactionsFallback] = useState(false);
+
   useEffect(() => {
-    const q = query(collection(db, 'posts', post.id, 'likes'));
-    const unsub = onSnapshot(q, (snap) => {
-      // Update likes count in real-time
-      setLikesCount(snap.docs.length);
-    });
+    setLiveReactionsCount(reactionsCountFromPost);
+    setLiveTotalReactions(totalReactionsFromPost ?? 0);
+    // Only depend on the Firestore-provided objects/fields; they should change when backend updates.
+  }, [(post as any).reactionsCount, (post as any).totalReactions]);
+
+  // Keep reaction counts in sync for *all viewers*.
+  // This avoids relying solely on the posts list snapshot shape/timing.
+  useEffect(() => {
+    const postRef = doc(db, 'posts', post.id);
+    const unsub = onSnapshot(
+      postRef,
+      (snap) => {
+        const data = (snap.data() as any) || {};
+        const counts = (data.reactionsCount ?? null) as Record<string, number> | null;
+        const total = typeof data.totalReactions === 'number' ? (data.totalReactions as number) : null;
+
+        const hasServerCounts = !!counts && typeof counts === 'object' && Object.keys(counts).length > 0;
+        const hasServerTotal = typeof total === 'number' && !Number.isNaN(total);
+
+        if (hasServerCounts || hasServerTotal) {
+          const computedTotal =
+            total ??
+            Object.values(counts ?? {}).reduce((acc, n) => acc + (typeof n === 'number' ? n : 0), 0);
+          setLiveReactionsCount(counts ?? {});
+          setLiveTotalReactions(computedTotal);
+          setNeedsReactionsFallback(false);
+        } else {
+          setNeedsReactionsFallback(true);
+        }
+      },
+      () => {
+        // If we can't read the post doc for any reason, fall back to the subcollection.
+        setNeedsReactionsFallback(true);
+      }
+    );
     return () => unsub();
   }, [post.id]);
+
+  useEffect(() => {
+    if (!needsReactionsFallback) return;
+    const reactionsRef = collection(db, 'posts', post.id, 'reactions');
+    const unsub = onSnapshot(reactionsRef, (snap) => {
+      // Dedupe by userId so legacy docs (e.g. uid_emoji) can't create ghost counts.
+      // Latest timestamp (updatedAt/createdAt) wins per user.
+      const allowed = new Set(REACTIONS.map((r) => r.type));
+      const latestByUser = new Map<string, { reaction: string; ts: number }>();
+
+      for (const d of snap.docs) {
+        const data = d.data() as any;
+        const userId = typeof data?.userId === 'string' ? (data.userId as string) : null;
+        const reaction = typeof data?.reaction === 'string' ? (data.reaction as string) : null;
+        if (!userId || !reaction || !allowed.has(reaction)) continue;
+
+        const updatedAt = data?.updatedAt?.toMillis?.() ? data.updatedAt.toMillis() : null;
+        const createdAt = data?.createdAt?.toMillis?.() ? data.createdAt.toMillis() : null;
+        const ts = (updatedAt ?? createdAt ?? 0) as number;
+
+        const prev = latestByUser.get(userId);
+        if (!prev || ts >= prev.ts) {
+          latestByUser.set(userId, { reaction, ts });
+        }
+      }
+
+      const counts: Record<string, number> = {};
+      for (const v of latestByUser.values()) {
+        counts[v.reaction] = (counts[v.reaction] ?? 0) + 1;
+      }
+
+      const total = Object.values(counts).reduce((acc, n) => acc + (typeof n === 'number' ? n : 0), 0);
+      setLiveReactionsCount(counts);
+      setLiveTotalReactions(total);
+    });
+    return () => unsub();
+  }, [post.id, needsReactionsFallback, REACTIONS]);
+
+  const myEmoji = myReaction ? REACTIONS.find((r) => r.type === myReaction)?.emoji : null;
+
+  const reactionUserMap = useMemo(() => {
+    const out: Record<string, boolean> = {};
+    if (myEmoji) out[myEmoji] = true;
+    return out;
+  }, [myEmoji]);
+
+  // Comment functionality now handled by CommentSection component
+
+  // Keep my reaction state in sync
+  useEffect(() => {
+    if (!currentUser) {
+      setMyReaction(null);
+      return;
+    }
+    const reactionRef = doc(db, 'posts', post.id, 'reactions', currentUser.id);
+    const unsub = onSnapshot(reactionRef, (snap) => {
+      const data = snap.data() as any;
+      setMyReaction((data?.reaction as string | undefined) ?? null);
+    });
+    return () => unsub();
+  }, [post.id, currentUser?.id]);
 
   // Comment count listener - always active for real-time updates
   useEffect(() => {
@@ -78,22 +191,97 @@ const PostCard: React.FC<PostCardProps> = ({ post, onPostDeleted }) => {
     return () => unsub();
   }, [post.id]);
 
-  const handleLike = async () => {
+  const canReact = !!currentUser && isUserApproved(currentUser);
+
+  const closeReactionPicker = () => setShowReactionPicker(false);
+
+  const clearHoverCloseTimer = () => {
+    if (hoverCloseTimerRef.current) {
+      window.clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+  };
+
+  const scheduleHoverClose = () => {
+    clearHoverCloseTimer();
+    hoverCloseTimerRef.current = window.setTimeout(() => {
+      setShowReactionPicker(false);
+    }, 160);
+  };
+
+  // Close reaction picker on outside click
+  useEffect(() => {
+    if (!showReactionPicker) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      const trigger = reactionTriggerRef.current;
+      if (trigger && trigger.contains(t)) return;
+      if (t.closest('[data-reaction-picker="true"]')) return;
+      setShowReactionPicker(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showReactionPicker]);
+
+  const setReactionType = async (type: string) => {
     if (!currentUser) return;
     if (!isUserApproved(currentUser)) {
-      toast.error('Your account is pending approval. You can browse posts but cannot like yet.');
+      toast.error('Your account is pending approval. You cannot react yet.');
       return;
     }
+
+    // Optimistic update
+    const prev = myReaction;
+    const prevCountsSnapshot = liveReactionsCount;
+    const prevTotalSnapshot = liveTotalReactions;
+    const next = prev === type ? null : type;
+    setMyReaction(next);
+    setLiveReactionsCount((prevCounts) => {
+      const updated = { ...prevCounts };
+      if (prev) updated[prev] = Math.max(0, (updated[prev] ?? 0) - 1);
+      if (next) updated[next] = (updated[next] ?? 0) + 1;
+      return updated;
+    });
+    setLiveTotalReactions((prevTotal) => {
+      if (prev && !next) return Math.max(0, prevTotal - 1);
+      if (!prev && next) return prevTotal + 1;
+      return prevTotal;
+    });
+
     try {
-      const likeRef = doc(db, 'posts', post.id, 'likes', currentUser.id);
-      if (isLiked) {
-        await deleteDoc(likeRef);
-      } else {
-        await setDoc(likeRef, { userId: currentUser.id, createdAt: serverTimestamp() });
+      const reactionRef = doc(db, 'posts', post.id, 'reactions', currentUser.id);
+      if (prev && prev === type) {
+        await deleteDoc(reactionRef);
+        return;
       }
+      await setDoc(
+        reactionRef,
+        {
+          userId: currentUser.id,
+          reaction: type,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
     } catch (e: any) {
-      toast.error(e?.message || 'Failed to update like.');
+      // Revert optimistic UI on failure
+      setMyReaction(prev ?? null);
+      setLiveReactionsCount(prevCountsSnapshot);
+      setLiveTotalReactions(prevTotalSnapshot);
+      toast.error(e?.message || 'Failed to update reaction.');
     }
+  };
+
+  const handleToggleReact = async () => {
+    // Professional UX: click toggles reaction on/off.
+    // If already reacted with any type, clicking removes it.
+    if (myReaction) {
+      await setReactionType(myReaction);
+      return;
+    }
+    await setReactionType(DEFAULT_REACTION);
   };
 
   // Comment handling now done by CommentSection component
@@ -163,25 +351,100 @@ const PostCard: React.FC<PostCardProps> = ({ post, onPostDeleted }) => {
       <div className="px-6 py-4 border-t border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-6">
-            <button
-              onClick={handleLike}
-              disabled={!currentUser || !isUserApproved(currentUser)}
-              title={currentUser && !isUserApproved(currentUser) ? 'Account pending approval - cannot like yet' : undefined}
-              className={`flex items-center space-x-2 transition-colors ${
-                !currentUser || !isUserApproved(currentUser)
-                  ? 'text-gray-300 cursor-not-allowed opacity-50'
-                  : isLiked
-                  ? 'text-red-500'
-                  : 'text-gray-500 hover:text-red-500'
-              }`}
-            >
-              {currentUser && !isUserApproved(currentUser) ? (
-                <Lock className="w-5 h-5" />
-              ) : (
-                <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
+            <div className="relative" data-reaction-container>
+              <button
+                ref={reactionTriggerRef}
+                onClick={(e) => {
+                  e.preventDefault();
+                  // If long-press opened picker, do not apply default
+                  if (longPressOpenedRef.current) {
+                    longPressOpenedRef.current = false;
+                    return;
+                  }
+                  handleToggleReact();
+                }}
+                onMouseEnter={() => {
+                  if (!canReact) return;
+                  // hover reactions on desktop
+                  if (window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+                    clearHoverCloseTimer();
+                    setShowReactionPicker(true);
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+                    scheduleHoverClose();
+                  }
+                }}
+                onTouchStart={() => {
+                  if (!canReact) return;
+                  if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
+                  longPressOpenedRef.current = false;
+                  longPressTimerRef.current = window.setTimeout(() => {
+                    longPressOpenedRef.current = true;
+                    setShowReactionPicker(true);
+                  }, 420);
+                }}
+                onTouchEnd={() => {
+                  if (longPressTimerRef.current) {
+                    window.clearTimeout(longPressTimerRef.current);
+                    longPressTimerRef.current = null;
+                  }
+                }}
+                onTouchMove={() => {
+                  if (longPressTimerRef.current) {
+                    window.clearTimeout(longPressTimerRef.current);
+                    longPressTimerRef.current = null;
+                  }
+                }}
+                disabled={!currentUser || !isUserApproved(currentUser)}
+                title={currentUser && !isUserApproved(currentUser) ? 'Account pending approval - cannot react yet' : 'React'}
+                className={`flex items-center space-x-2 rounded-full px-2 py-1 transition-all duration-200 ${
+                  !currentUser || !isUserApproved(currentUser)
+                    ? 'text-gray-600 cursor-not-allowed'
+                    : myReaction
+                    ? 'text-[#F25129] bg-[#F25129]/5'
+                    : 'text-gray-600 hover:text-[#F25129] hover:bg-[#F25129]/5'
+                }`}
+              >
+                {currentUser && !isUserApproved(currentUser) ? (
+                  <Lock className="w-5 h-5" />
+                ) : myEmoji ? (
+                  <span className="text-lg leading-none">{myEmoji}</span>
+                ) : (
+                  <Heart className="w-5 h-5" />
+                )}
+                <span className="text-sm font-semibold tabular-nums">{liveTotalReactions || 0}</span>
+              </button>
+
+              <ReactionPicker
+                isOpen={showReactionPicker}
+                onClose={closeReactionPicker}
+                onReaction={(emoji) => {
+                  const type = emojiToType[emoji];
+                  if (!type) return;
+                  setReactionType(type);
+                }}
+                userReactions={reactionUserMap}
+                triggerRef={reactionTriggerRef}
+                disabled={!canReact}
+                onPointerEnter={clearHoverCloseTimer}
+                onPointerLeave={scheduleHoverClose}
+              />
+
+              {/* Optional breakdown (only show when there are reactions) */}
+              {liveTotalReactions > 0 && (
+                <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
+                  {REACTIONS.filter((r) => (liveReactionsCount[r.type] ?? 0) > 0)
+                    .map((r) => (
+                      <span key={r.type} className="inline-flex items-center gap-1">
+                        <span>{r.emoji}</span>
+                        <span className="tabular-nums">{liveReactionsCount[r.type] ?? 0}</span>
+                      </span>
+                    ))}
+                </div>
               )}
-              <span className="text-sm font-medium">{likesCount}</span>
-            </button>
+            </div>
 
             <div className="flex items-center space-x-2 text-gray-500">
               <MessageCircle className="w-5 h-5" />

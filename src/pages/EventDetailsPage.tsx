@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { motion } from 'framer-motion';
-import { Calendar, MapPin, Clock, Users, Tag, ArrowLeft } from 'lucide-react';
-import { safeFormat, safeToDate } from '../utils/dateUtils';
-import { EventDoc } from '../hooks/useEvents';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../config/firebase';
+import { ArrowLeft, Calendar, CalendarCheck, CheckCircle, Clock, DollarSign, ExternalLink, MapPin, Tag, Users, XCircle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { EventImage } from '../components/events/EventImage';
 import { EventSeo } from '../components/seo/EventSeo';
+import { auth, db } from '../config/firebase';
+import { EventDoc } from '../hooks/useEvents';
+import { safeFormat, safeToDate } from '../utils/dateUtils';
 import { createEventCanonicalUrl } from '../utils/seo';
 
 const EventDetailsPage: React.FC = () => {
@@ -16,6 +16,7 @@ const EventDetailsPage: React.FC = () => {
   const [event, setEvent] = useState<EventDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userAttendee, setUserAttendee] = useState<any>(null);
 
   useEffect(() => {
     if (!eventId) {
@@ -48,6 +49,44 @@ const EventDetailsPage: React.FC = () => {
 
     // Cleanup listener on unmount
     return () => unsubscribe();
+  }, [eventId]);
+
+  // Fetch user's attendee record for payment status
+  useEffect(() => {
+    if (!eventId) {
+      setUserAttendee(null);
+      return;
+    }
+
+    // Use auth state listener to ensure we have current user
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (!user) {
+        setUserAttendee(null);
+        return;
+      }
+
+      const attendeesRef = collection(db, 'events', eventId, 'attendees');
+      const q = query(attendeesRef, where('userId', '==', user.uid));
+
+      const unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const attendeeDoc = snapshot.docs[0];
+          const attendeeData = { id: attendeeDoc.id, ...attendeeDoc.data() };
+          console.log('User attendee data:', attendeeData);
+          setUserAttendee(attendeeData);
+        } else {
+          console.log('No attendee record found for user');
+          setUserAttendee(null);
+        }
+      }, (error) => {
+        console.error('Error fetching attendee:', error);
+        setUserAttendee(null);
+      });
+
+      return unsubscribeSnapshot;
+    });
+
+    return () => unsubscribeAuth();
   }, [eventId]);
 
   // Helper functions
@@ -126,6 +165,18 @@ const EventDetailsPage: React.FC = () => {
     );
   }
 
+  const handleBack = () => {
+    try {
+      if (window.history.length > 1) {
+        navigate(-1);
+      } else {
+        navigate('/events');
+      }
+    } catch (err) {
+      navigate('/events');
+    }
+  };
+
   if (error || !event) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
@@ -133,13 +184,13 @@ const EventDetailsPage: React.FC = () => {
           <div className="text-center">
             <h1 className="text-2xl font-bold text-gray-900 mb-4">Event Not Found</h1>
             <p className="text-gray-600 mb-6">{error}</p>
-            <Link
-              to="/events-readonly"
+            <button
+              onClick={handleBack}
               className="inline-flex items-center px-6 py-3 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors duration-200"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Events
-            </Link>
+            </button>
           </div>
         </div>
       </div>
@@ -159,147 +210,273 @@ const EventDetailsPage: React.FC = () => {
       />
       
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Back Button */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
-          className="mb-6"
-        >
-          <Link
-            to="/events-readonly"
-            className="inline-flex items-center text-gray-600 hover:text-[#F25129] transition-colors duration-200"
+        {/* Layout optimizations: Reduced padding from py-8 sm:py-12 to py-4 sm:py-6 for better space usage */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+          {/* Back Button - Spacing optimized: mb-6 changed to mb-4, page title "Event Details" removed */}
+          <div className="mb-4">
+            <button
+              onClick={() => navigate('/events')}
+              className="flex items-center gap-2 text-gray-600 hover:text-[#F25129] transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="text-sm font-medium">Back to Events</span>
+            </button>
+          </div>
+          
+          {/* Professional Two-Column Layout */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="bg-white rounded-3xl shadow-2xl overflow-hidden"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Events
-          </Link>
-        </motion.div>
-
-        {/* Event Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8"
-        >
-          {/* Event Image with Smart Cropping Prevention - Above the fold, so eager load */}
-          <EventImage 
-            src={event.imageUrl} 
-            alt={event.title} 
-            fit="contain" 
-            aspect="16/9"
-            title={event.title}
-            loading="eager"
-          >
-            {/* Status Badge Only */}
-            <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium ${eventStatus.bgColor} ${eventStatus.color}`}>
-              {eventStatus.status}
-            </span>
-          </EventImage>
-
-          {/* Event Content */}
-          <div className="p-8">
-            {/* Title */}
-            <h1 className="text-3xl font-bold text-gray-900 mb-4">{event.title}</h1>
-
-            {/* Description */}
-            {event.description && (
-              <p className="text-lg text-gray-700 leading-relaxed mb-8">{event.description}</p>
-            )}
-
-            {/* Event Details */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              {/* Date */}
-              <div className="flex items-center">
-                <Calendar className="w-5 h-5 mr-4 text-[#F25129] flex-shrink-0" />
-                <div>
-                  <div className="font-medium text-gray-900">{formatEventDate(event.startAt)}</div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
+              {/* Left Column - Image */}
+              <div className="relative bg-gradient-to-br from-gray-100 to-gray-200 h-64 sm:h-96 lg:min-h-[700px]">
+                <div className="absolute inset-0">
+                  <EventImage 
+                    src={event.imageUrl} 
+                    alt={event.title} 
+                    fit="cover" 
+                    aspect="16/9"
+                    title={event.title}
+                    loading="eager"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                {/* Gradient Overlay for better badge visibility */}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-transparent pointer-events-none"></div>
+                {/* Status Badge */}
+                <div className="absolute top-6 left-6 z-10">
+                  <span className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-bold shadow-lg backdrop-blur-sm ${eventStatus.bgColor} ${eventStatus.color} border-2 border-white/20`}>
+                    {eventStatus.status}
+                  </span>
                 </div>
               </div>
 
-              {/* Time */}
-              <div className="flex items-center">
-                <Clock className="w-5 h-5 mr-4 text-[#F25129] flex-shrink-0" />
-                <div>
-                  <div className="font-medium text-gray-900">
-                    {formatEventTime(event.startAt)}
-                    {event.endAt && ` - ${formatEventTime(event.endAt)}`}
-                    {duration && ` (${duration} hours)`}
+              {/* Right Column - Content */}
+              <div className="p-6 sm:p-8 lg:p-10">
+            {/* Title */}
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-6 leading-tight">{event.title}</h1>
+
+            {/* User RSVP Status Card - Show if user has RSVP'd
+                Change: Removed "Update RSVP" button - now only displays status (going/not going/waitlisted)
+            */}
+            {userAttendee && (
+              <div className={`mb-6 p-4 rounded-lg border-2 ${
+                userAttendee.rsvpStatus === 'going' 
+                  ? 'bg-green-50 border-green-200' 
+                  : userAttendee.rsvpStatus === 'waitlisted'
+                  ? 'bg-amber-50 border-amber-200'
+                  : 'bg-gray-50 border-gray-200'
+              }`}>
+                <div className="flex items-start gap-3">
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+                    userAttendee.rsvpStatus === 'going'
+                      ? 'bg-green-100'
+                      : userAttendee.rsvpStatus === 'waitlisted'
+                      ? 'bg-amber-100'
+                      : 'bg-gray-100'
+                  }`}>
+                    {userAttendee.rsvpStatus === 'going' ? (
+                      <CheckCircle className={`w-6 h-6 ${
+                        userAttendee.rsvpStatus === 'going' ? 'text-green-600' : 'text-gray-600'
+                      }`} />
+                    ) : (
+                      <XCircle className="w-6 h-6 text-gray-600" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className={`text-base font-bold ${
+                        userAttendee.rsvpStatus === 'going'
+                          ? 'text-green-800'
+                          : userAttendee.rsvpStatus === 'waitlisted'
+                          ? 'text-amber-800'
+                          : 'text-gray-800'
+                      }`}>
+                        {userAttendee.rsvpStatus === 'going' && 'You\'re Attending!'}
+                        {userAttendee.rsvpStatus === 'waitlisted' && 'You\'re Waitlisted'}
+                        {userAttendee.rsvpStatus === 'not-going' && 'Not Attending'}
+                      </h3>
+                    </div>
+                    
+                    {/* Payment Status for paid events */}
+                    {(event.pricing?.requiresPayment || (event.pricing?.eventSupportAmount && event.pricing.eventSupportAmount > 0)) && userAttendee.rsvpStatus === 'going' && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-gray-600" />
+                        <span className={`text-sm font-semibold ${
+                          userAttendee.paymentStatus === 'paid'
+                            ? 'text-green-700'
+                            : 'text-amber-700'
+                        }`}>
+                          {userAttendee.paymentStatus === 'paid' ? 'Payment Complete' : 'Payment Pending'}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
+            )}
 
-              {/* Location - Clickable for Directions */}
+            {/* Event Details - Color-coded icons matching RSVPPage */}
+            <div className="space-y-3 mb-6">
+              {/* Date - Blue icon background */}
+              {event.startAt && (
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0 shadow-sm">
+                    <Calendar className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 break-words">{formatEventDate(event.startAt)}</div>
+                    <div className="text-xs text-gray-600 mt-0.5">{safeFormat(safeToDate(event.startAt), 'EEEE')}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Time - Green icon background */}
+              {event.startAt && (
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-green-100 rounded-lg flex-shrink-0 shadow-sm">
+                    <Clock className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 break-words">
+                      {formatEventTime(event.startAt)}{event.endAt && ` - ${formatEventTime(event.endAt)}`}
+                    </div>
+                    {duration && (
+                      <div className="text-xs text-gray-600 mt-0.5">{duration} hour{duration !== 1 ? 's' : ''}</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Location - Red icon background */}
               {(event.venueName || event.venueAddress || event.location) && (
-                <div className="flex items-start">
-                  <MapPin className="w-5 h-5 mr-4 text-[#F25129] mt-1 flex-shrink-0" />
-                  <div>
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-red-100 rounded-lg flex-shrink-0 shadow-sm">
+                    <MapPin className="w-5 h-5 text-red-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 break-words">
+                      {event.location || getDisplayVenueInfo(event.venueName || '', event.venueAddress || '')}
+                    </div>
                     <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location || getDisplayVenueInfo(event.venueName || '', event.venueAddress || ''))}`}
+                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(getLocationForMaps())}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                      className="text-xs text-[#F25129] hover:text-[#E0451F] hover:underline mt-0.5 inline-flex items-center gap-1 touch-manipulation"
+                      style={{WebkitTapHighlightColor: 'transparent'}}
                     >
-                      {event.location || getDisplayVenueInfo(event.venueName || '', event.venueAddress || '')}
+                      Get Directions <ExternalLink className="w-3 h-3 flex-shrink-0" />
                     </a>
                   </div>
                 </div>
               )}
 
-              {/* Attendee Count */}
+              {/* Attendee Count - Purple icon background */}
               {event.maxAttendees && (
-                <div className="space-y-3">
-                  <div className="flex items-center">
-                    <Users className="w-5 h-5 mr-4 text-[#F25129] flex-shrink-0" />
-                    <div className="font-medium text-gray-900">
-                      {event.attendingCount || 0}/{event.maxAttendees} spots
-                    </div>
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-purple-100 rounded-lg flex-shrink-0 shadow-sm">
+                    <Users className="w-5 h-5 text-purple-600" />
                   </div>
-                  {/* Only show waitlist if waitlist is enabled */}
-                  {event.waitlistEnabled && (
-                    <div className="flex items-center">
-                      <Users className="w-5 h-5 mr-4 text-yellow-600 flex-shrink-0" />
-                      <div className="text-sm text-gray-600">
-                        {event.waitlistCount || 0} on waitlist
-                      </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900">
+                      {event.attendingCount || 0}/{event.maxAttendees} attending
                     </div>
-                  )}
-                </div>
-              )}
-
-              {/* Price Information */}
-              {event.pricing && (
-                <div className="flex items-center">
-                  <div className="w-5 h-5 mr-4 flex-shrink-0 flex items-center justify-center">
-                    <span className="text-lg font-bold text-green-600">$</span>
-                  </div>
-                  <div>
-                    <div className="text-xl font-bold text-green-600">
-                      {event.pricing.adultPrice ? `$${event.pricing.adultPrice}` : 'Free'}
-                    </div>
-                    {event.pricing.childPrice && (
-                      <div className="text-sm text-gray-600">
-                        Child: ${event.pricing.childPrice}
+                    {event.waitlistEnabled && (
+                      <div className="text-xs text-amber-600 font-medium mt-0.5">
+                        {event.waitlistCount || 0} waitlisted
                       </div>
                     )}
                   </div>
                 </div>
               )}
+
+              {/* Price Information - Orange icon background */}
+              {event.pricing && (
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-orange-100 rounded-lg flex-shrink-0 shadow-sm">
+                    <Tag className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-lg font-bold text-[#F25129]">
+                      {event.pricing.requiresPayment && event.pricing.adultPrice 
+                        ? `$${(event.pricing.adultPrice / 100).toFixed(2)}` 
+                        : event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0
+                        ? `$${(event.pricing.eventSupportAmount / 100).toFixed(2)}`
+                        : 'Free'}
+                    </div>
+                    {event.pricing.childPrice && (
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        Child: ${(event.pricing.childPrice / 100).toFixed(2)}
+                      </div>
+                    )}
+                    {event.pricing.requiresPayment && event.pricing.adultPrice && event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
+                      <div className="text-xs text-gray-600 mt-0.5 font-medium">
+                        Event Support: ${(event.pricing.eventSupportAmount / 100).toFixed(2)}
+                      </div>
+                    )}
+                    {!event.pricing.requiresPayment && event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0 && (
+                      <div className="text-xs text-gray-600 mt-0.5 font-medium">
+                        Event Support
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Refund Deadline - Only show if refunds allowed and deadline is set */}
+              {event.pricing && event.pricing.refundPolicy?.allowed && event.pricing.refundPolicy?.deadline && (
+                <div className="flex items-center">
+                  <div>
+                    <div className="text-sm font-medium text-gray-700">Refund Deadline</div>
+                    <div className="text-sm text-gray-600">
+                      {safeFormat(safeToDate(event.pricing.refundPolicy.deadline), 'MMM d, yyyy')}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Status - Only show for paid events and if user has RSVP'd */}
+              {event.pricing && (event.pricing.requiresPayment || (event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0)) && userAttendee && userAttendee.status === 'going' && (
+                <div className="flex items-center">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-medium text-gray-700">Payment Status</span>
+                    <span className={`px-3 py-1.5 rounded-full text-sm font-semibold inline-flex items-center gap-1.5 ${
+                      userAttendee.paymentStatus === 'paid'
+                        ? 'bg-green-100 text-green-700 border border-green-300'
+                        : 'bg-yellow-100 text-yellow-700 border border-yellow-300'
+                    }`}>
+                      {userAttendee.paymentStatus === 'paid' ? '✓ Payment Successful' : '⏳ Payment Pending'}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* Event Description - After details */}
+            {event.description && (
+              <div className="pt-4 border-t border-gray-200 mb-6">
+                <div className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-2">DESCRIPTION</div>
+                <p className="text-gray-700 leading-relaxed break-words whitespace-pre-wrap overflow-wrap-anywhere">
+                  {event.description}
+                </p>
+              </div>
+            )}
 
             {/* Tags */}
             {event.tags && event.tags.length > 0 && (
-              <div className="mb-8">
-                <div className="flex items-center mb-4">
-                  <Tag className="w-5 h-5 mr-2 text-[#F25129]" />
-                  <h3 className="text-lg font-semibold text-gray-900">Tags</h3>
+              <div className="pt-6 border-t border-gray-200">
+                <div className="flex items-center gap-2 mb-3">
+                  <Tag className="w-4 h-4 text-[#F25129]" />
+                  <h3 className="text-base font-semibold text-gray-900">Categories</h3>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {event.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-700"
+                      className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 border border-purple-200"
                     >
                       {tag}
                     </span>
@@ -308,24 +485,25 @@ const EventDetailsPage: React.FC = () => {
               </div>
             )}
 
+            {/* RSVP Button - Changes based on RSVP status */}
+            <div className="pt-6 mt-6 border-t border-gray-200">
+              <button
+                onClick={() => navigate(`/events/${eventId}/rsvp`)}
+                className={`group w-full flex items-center justify-center gap-2 px-6 py-3 font-semibold text-base rounded-lg shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-95 transition-all duration-200 ${
+                  userAttendee 
+                    ? 'bg-gradient-to-r from-green-500 to-green-600 text-white' 
+                    : 'bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white'
+                }`}
+              >
+                <CalendarCheck className="w-5 h-5 group-hover:rotate-12 transition-transform duration-300" />
+                <span>{userAttendee ? 'Edit RSVP' : 'RSVP Now'}</span>
+              </button>
+            </div>
           </div>
-        </motion.div>
-
-        {/* RSVP Notice */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-          className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center"
-        >
-          <h3 className="text-lg font-semibold text-blue-900 mb-2">RSVP Functionality</h3>
-          <p className="text-blue-800">
-            RSVP and ticketing features are temporarily disabled while we finalize production deployment. 
-            Full functionality will be restored soon.
-          </p>
-        </motion.div>
-      </div>
-      </div>
+        </div>
+      </motion.div>
+    </div>
+  </div>
     </>
   );
 };

@@ -69,6 +69,12 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
         ),
         query(
           eventsRef,
+          where('visibility', '==', 'truly_public'),
+          where('startAt', '>=', nowTs),
+          orderBy('startAt', 'asc')
+        ),
+        query(
+          eventsRef,
           where('visibility', '==', 'members'),
           where('startAt', '>=', nowTs),
           orderBy('startAt', 'asc')
@@ -82,6 +88,12 @@ export function useRealTimeEvents(options: UseRealTimeEventsOptions = {}): UseRe
       query(
         eventsRef,
         where('visibility', '==', 'public'),
+        where('startAt', '>=', nowTs),
+        orderBy('startAt', 'asc')
+      ),
+      query(
+        eventsRef,
+        where('visibility', '==', 'truly_public'),
         where('startAt', '>=', nowTs),
         orderBy('startAt', 'asc')
       ),

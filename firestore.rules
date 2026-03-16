@@ -130,7 +130,7 @@ service cloud.firestore {
         (!('titleLower' in newData) || isNonEmptyString(newData.titleLower)) &&
         (!('allDay' in newData) || newData.allDay is bool) &&
         (!('imageUrl' in newData) || (newData.imageUrl is string || newData.imageUrl == null)) &&
-        (!('visibility' in newData) || newData.visibility in ['public', 'members', 'private']) &&
+        (!('visibility' in newData) || newData.visibility in ['public', 'truly_public', 'members', 'private']) &&
         (!('status' in newData) || newData.status in ['scheduled', 'canceled', 'postponed', 'draft']) &&
         (!('isReadOnly' in newData) || newData.isReadOnly is bool);
     }
@@ -349,13 +349,16 @@ service cloud.firestore {
     match /events/{eventId} {
       allow read: if
         // Past events: always readable by everyone (for history)
-        resource.data.startAt < request.time ||
-        // Public events: readable by everyone (including events with missing fields)
-        (('visibility' in resource.data) && resource.data.visibility == 'public') ||
+        (resource.data.startAt != null && resource.data.startAt < request.time) ||
+        // Public events: readable by everyone (query-friendly evaluation)
+        // Check both new 'visibility' field and legacy 'public' field
+        (resource.data.visibility == 'public' || 
+         resource.data.visibility == 'truly_public' ||
+         (!('visibility' in resource.data) && resource.data.public == true) ||
+         // Allow if visibility field doesn't exist and public field is true (legacy events)
+         (!('visibility' in resource.data) && 'public' in resource.data && resource.data.public == true)) ||
         // Members-only events: visible to everyone (but only members can RSVP)
-        (('visibility' in resource.data) && resource.data.visibility == 'members') ||
-        // Legacy support: old 'public' field
-        (('public' in resource.data) && resource.data.public == true) ||
+        resource.data.visibility == 'members' ||
         // Authenticated users can see events they're allowed to access
         (isSignedIn() && (
           // Event creator can see their own events
@@ -369,8 +372,11 @@ service cloud.firestore {
         ));
       
       // Enhanced create/update/delete permissions
-      allow create: if isSignedIn() && 
-        (isAdmin() || (isMember() && isApprovedUser())) && 
+      allow create: if isSignedIn() &&
+        // Standard creators: admins or approved members
+        (isAdmin() || (isMember() && isApprovedUser()) ||
+         // Allow any signed-in user to create truly_public events
+         request.resource.data.visibility == 'truly_public') &&
         request.auth.uid == request.resource.data.createdBy &&
         validEventData(request.resource.data);
       
@@ -394,6 +400,7 @@ service cloud.firestore {
           (
             // Public events: approved members can RSVP
             get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+            get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'truly_public' ||
             // Members-only events: only approved members can RSVP (non-members can see but not RSVP)
             (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'members' && isMember() && isApprovedUser()) ||
             // Event creator can always RSVP
@@ -421,6 +428,7 @@ service cloud.firestore {
         allow read: if 
           // Public events: anyone can read (for RSVP counts)
           (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+           get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'truly_public' ||
            (!('visibility' in get(/databases/$(database)/documents/events/$(eventId)).data) && 
             get(/databases/$(database)/documents/events/$(eventId)).data.public == true)) ||
           // Authenticated users can read attendees for events they have access to
@@ -437,7 +445,8 @@ service cloud.firestore {
             (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'private' && 
              request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.invitedUserIds) ||
             // Fallback: Allow any authenticated user to read their own attendees for public events
-            (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' &&
+            ((get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+              get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'truly_public') &&
              resource.data.userId == request.auth.uid)
           ));
         
@@ -461,6 +470,7 @@ service cloud.firestore {
             (request.resource.data.userId == request.auth.uid &&
              (// Users can add attendees to public events (with fallback for legacy events)
               (get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'public' ||
+               get(/databases/$(database)/documents/events/$(eventId)).data.visibility == 'truly_public' ||
                (!('visibility' in get(/databases/$(database)/documents/events/$(eventId)).data) && 
                 get(/databases/$(database)/documents/events/$(eventId)).data.public == true)) ||
               // Members can add attendees to members-only events (only approved members can RSVP)
@@ -485,11 +495,16 @@ service cloud.firestore {
         
         // TEMPORARY RULE REMOVED - Security vulnerability fixed
         
-        // Users can update their own attendees, event creators can update all attendees
+        // Users can update their own attendees, event creators can update all attendees, admins can update any
+        // Admins can update without validation
+        allow update: if isSignedIn() && isAdmin();
+        
+        // Non-admin updates require validation
         allow update: if isSignedIn() && isApprovedUser() && (
+          // User owns this attendee
           request.resource.data.userId == request.auth.uid ||
-          get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
-          isAdmin()
+          // Event creator can update all attendees for their event
+          get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid
         ) && 
         // Validate only fields that are being updated (partial updates allowed)
         // request.resource.data contains merged document (existing + updated fields)
@@ -526,6 +541,57 @@ service cloud.firestore {
           get(/databases/$(database)/documents/events/$(eventId)).data.createdBy == request.auth.uid ||
           isAdmin()
         );
+      }
+
+      // Event comments
+      match /comments/{commentId} {
+        allow read: if
+          isAdmin() ||
+          (isSignedIn() && resource.data.authorId == request.auth.uid) ||
+          (!('moderationStatus' in resource.data) || resource.data.moderationStatus == 'approved');
+
+        allow create: if isSignedIn() &&
+          isApprovedUser() &&
+          request.auth.uid == request.resource.data.authorId &&
+          (isNonEmptyString(request.resource.data.text) || ('mediaUrls' in request.resource.data && request.resource.data.mediaUrls is list)) &&
+          (!('text' in request.resource.data) || request.resource.data.text.size() <= 1000) &&
+          request.resource.data.keys().hasOnly(['authorId','authorName','text','mediaUrls','createdAt','threadLevel','parentCommentId','replyCount','moderationStatus','requiresApproval','moderationReason','moderationDetectedIssues']) &&
+          (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus in ['pending', 'approved']) &&
+          !isUserBlockedFromRsvp(request.auth.uid);
+
+        allow update: if isSignedIn() &&
+          (request.auth.uid == resource.data.authorId || isAdmin()) &&
+          (request.resource.data.diff(resource.data).changedKeys().hasOnly(['text','updatedAt']) ||
+           (isAdmin() && request.resource.data.diff(resource.data).changedKeys().hasOnly(['moderationStatus','requiresApproval','moderationReason','moderationDetectedIssues','moderatedAt','moderatedBy'])));
+
+        allow delete: if isSignedIn() &&
+          (request.auth.uid == resource.data.authorId || isAdmin());
+
+        match /likes/{userId} {
+          allow read: if true;
+          allow create: if isSignedIn() &&
+            isApprovedUser() &&
+            request.auth.uid == userId &&
+            request.resource.data.keys().hasOnly(['userId','createdAt']) &&
+            request.resource.data.userId == userId;
+          allow update: if false;
+          allow delete: if isSignedIn() &&
+            (request.auth.uid == userId || isAdmin());
+        }
+
+        match /reactions/{userId_emoji} {
+          allow read: if true;
+          allow create: if isSignedIn() &&
+            isApprovedUser() &&
+            request.auth.uid == request.resource.data.userId &&
+            request.resource.data.keys().hasOnly(['userId','emoji','createdAt']) &&
+            request.resource.data.userId == request.auth.uid &&
+            request.resource.data.emoji in ['❤️','😂','😮','👍','👎','😢','😡'] &&
+            userId_emoji == request.resource.data.userId + '_' + request.resource.data.emoji;
+          allow update: if false;
+          allow delete: if isSignedIn() &&
+            (request.auth.uid == resource.data.userId || isAdmin());
+        }
       }
     }
 
@@ -598,6 +664,32 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if isSignedIn() && 
           (request.auth.uid == userId || isAdmin());
+      }
+
+      // Post reactions (one per user): posts/{postId}/reactions/{userId}
+      // Stores a single selected reaction type for each user.
+      match /reactions/{userId} {
+        allow read: if true;
+
+        allow create: if isSignedIn() &&
+          isApprovedUser() &&
+          request.auth.uid == userId &&
+          request.resource.data.userId == userId &&
+          request.resource.data.keys().hasOnly(['userId','reaction','createdAt','updatedAt']) &&
+          request.resource.data.createdAt is timestamp &&
+          (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp) &&
+          request.resource.data.reaction in ['heart','like','celebrate','appreciate','funny','wow','sad'];
+
+        allow update: if isSignedIn() &&
+          isApprovedUser() &&
+          request.auth.uid == userId &&
+          request.resource.data.userId == userId &&
+          request.resource.data.keys().hasOnly(['userId','reaction','createdAt','updatedAt']) &&
+          request.resource.data.createdAt is timestamp &&
+          (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp) &&
+          request.resource.data.reaction in ['heart','like','celebrate','appreciate','funny','wow','sad'];
+
+        allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       }
       
       match /comments/{commentId} {
@@ -674,6 +766,8 @@ service cloud.firestore {
           'toneLabel',
           'toneConfidence',
           'toneKeywords',
+          'tags',
+          'searchText',
           'moderationStatus',
           'requiresApproval',
           'moderationReason',
@@ -695,7 +789,9 @@ service cloud.firestore {
         && (!('highlight' in request.resource.data) || (request.resource.data.highlight is string && request.resource.data.highlight.size() <= 120))
         && (!('toneLabel' in request.resource.data) || (request.resource.data.toneLabel is string && request.resource.data.toneLabel.size() <= 40))
         && (!('toneConfidence' in request.resource.data) || (request.resource.data.toneConfidence is number && request.resource.data.toneConfidence >= 0 && request.resource.data.toneConfidence <= 1))
-        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 5))
+        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 8))
+        && (!('tags' in request.resource.data) || (request.resource.data.tags is list && request.resource.data.tags.size() <= 8))
+        && (!('searchText' in request.resource.data) || (request.resource.data.searchText is string && request.resource.data.searchText.size() <= 5000))
         && (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus is string)
         && (!('requiresApproval' in request.resource.data) || request.resource.data.requiresApproval is bool)
         && (!('moderationReason' in request.resource.data) || request.resource.data.moderationReason is string)
@@ -703,14 +799,12 @@ service cloud.firestore {
         && (!('moderationPipeline' in request.resource.data) || request.resource.data.moderationPipeline is string);
 
       allow update: if isSignedIn() && isAdmin()
-        && request.resource.data.keys().hasOnly([
-          'userId',
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName',
           'quote',
           'rating',
           'status',
           'featured',
-          'createdAt',
           'updatedAt',
           'highlight',
           'avatarUrl',
@@ -720,6 +814,8 @@ service cloud.firestore {
           'toneLabel',
           'toneConfidence',
           'toneKeywords',
+          'tags',
+          'searchText',
           'moderationStatus',
           'requiresApproval',
           'moderationReason',
@@ -734,18 +830,17 @@ service cloud.firestore {
         && request.resource.data.quote.size() <= 2000
         && isValidRating(request.resource.data.rating)
         && isAllowedTestimonialStatus(request.resource.data.status)
-        && request.resource.data.updatedAt is timestamp
         && (!('avatarUrl' in request.resource.data) || request.resource.data.avatarUrl == resource.data.avatarUrl || isUrlLike(request.resource.data.avatarUrl))
         && (!('highlight' in request.resource.data) || (request.resource.data.highlight is string && request.resource.data.highlight.size() <= 120))
         && (!('reviewedBy' in request.resource.data) || request.resource.data.reviewedBy == null || request.resource.data.reviewedBy is string)
-        && (!('reviewedAt' in request.resource.data) || request.resource.data.reviewedAt is timestamp)
-        && (!('publishedAt' in request.resource.data) || request.resource.data.publishedAt == null || request.resource.data.publishedAt is timestamp)
         && (!('toneLabel' in request.resource.data) || (request.resource.data.toneLabel is string && request.resource.data.toneLabel.size() <= 40))
         && (!('toneConfidence' in request.resource.data) || (request.resource.data.toneConfidence is number && request.resource.data.toneConfidence >= 0 && request.resource.data.toneConfidence <= 1))
-        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 5))
+        && (!('toneKeywords' in request.resource.data) || (request.resource.data.toneKeywords is list && request.resource.data.toneKeywords.size() <= 8))
+        && (!('tags' in request.resource.data) || (request.resource.data.tags is list && request.resource.data.tags.size() <= 8))
+        && (!('searchText' in request.resource.data) || (request.resource.data.searchText is string && request.resource.data.searchText.size() <= 5000))
         && (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus is string)
         && (!('requiresApproval' in request.resource.data) || request.resource.data.requiresApproval is bool)
-        && (!('moderationReason' in request.resource.data) || request.resource.data.moderationReason is string)
+        && (!('moderationReason' in request.resource.data) || request.resource.data.moderationReason is string || request.resource.data.moderationReason == null)
         && (!('moderationDetectedIssues' in request.resource.data) || request.resource.data.moderationDetectedIssues is list)
         && (!('moderationPipeline' in request.resource.data) || request.resource.data.moderationPipeline is string);
 
@@ -778,10 +873,18 @@ service cloud.firestore {
          request.resource.data.moderationStatus == 'pending') &&
         // Client cannot set serverModerated flag
         !('serverModerated' in request.resource.data);
-      allow update, delete: if isSignedIn() && 
-        (request.auth.uid == resource.data.uploadedBy || isAdmin()) ||
+      allow update: if isSignedIn() && 
+        // Allow owner to update their own media (except moderation fields)
+        (request.auth.uid == resource.data.uploadedBy && 
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['moderationStatus','requiresApproval','moderatedAt','moderatedBy','moderationReason'])) ||
+        // Allow admins to update moderation fields
+        (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['moderationStatus','requiresApproval','moderatedAt','moderatedBy','moderationReason','moderationDetectedIssues','moderationEvaluatedAt'])) ||
+        // Allow admins to update any field
+        isAdmin() ||
         // Allow view counter updates for all users (including guests)
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewsCount']));
+      allow delete: if isSignedIn() && 
+        (request.auth.uid == resource.data.uploadedBy || isAdmin());
       
       match /likes/{userId} {
         allow read: if true;
@@ -860,8 +963,14 @@ service cloud.firestore {
       allow read: if request.auth != null && 
         request.auth.uid == resource.data.userId;
       
-      // Allow admins to create notifications (for system notifications)
-      allow create: if isAdmin();
+      // Allow users to create notifications for themselves
+      // Allow admins to create notifications for anyone (for system notifications)
+      // Allow users to create notifications for admins (for story submissions, etc.)
+      allow create: if request.auth != null && (
+        request.resource.data.userId == request.auth.uid || 
+        isAdmin() ||
+        (isSignedIn() && get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.role == 'admin')
+      );
       
       // Allow users to update only their own notifications (mark as read)
       allow update: if request.auth != null && 
@@ -952,19 +1061,24 @@ service cloud.firestore {
       // Users can read their own payment transactions, admins can read all
       allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
       
-      // Users can create payment transactions for their own RSVPs
-      allow create: if isSignedIn() && isApprovedUser() &&
-        request.auth.uid == request.resource.data.userId &&
-        isNonEmptyString(request.resource.data.eventId) &&
-        isNonEmptyString(request.resource.data.attendeeId) &&
-        request.resource.data.amount is number &&
-        request.resource.data.amount >= 0 &&
-        isNonEmptyString(request.resource.data.currency) &&
-        isNonEmptyString(request.resource.data.status) &&
-        request.resource.data.status in ['pending', 'paid', 'failed', 'refunded'] &&
-        isNonEmptyString(request.resource.data.method) &&
-        request.resource.data.method in ['card', 'bank_transfer', 'cash', 'other'] &&
-        request.resource.data.refundStatus in ['none', 'partial', 'full', 'requested'];
+      // Users can create payment transactions for their own RSVPs, admins can create for anyone
+      allow create: if isSignedIn() && (
+        // Admins can create transactions for anyone
+        isAdmin() ||
+        // Regular users can create their own transactions with validation
+        (isApprovedUser() &&
+         request.auth.uid == request.resource.data.userId &&
+         isNonEmptyString(request.resource.data.eventId) &&
+         isNonEmptyString(request.resource.data.attendeeId) &&
+         request.resource.data.amount is number &&
+         request.resource.data.amount >= 0 &&
+         isNonEmptyString(request.resource.data.currency) &&
+         isNonEmptyString(request.resource.data.status) &&
+         request.resource.data.status in ['pending', 'paid', 'failed', 'refunded'] &&
+         isNonEmptyString(request.resource.data.method) &&
+         request.resource.data.method in ['card', 'bank_transfer', 'cash', 'paypal', 'venmo', 'zelle', 'other'] &&
+         request.resource.data.refundStatus in ['none', 'partial', 'full', 'requested'])
+      );
       
       // Users can update their own payment transactions, admins can update any
       allow update: if isSignedIn() && (
@@ -1027,6 +1141,21 @@ service cloud.firestore {
     // =========================
     match /adminLogs/{logId} {
       allow read, write: if isSignedIn() && isAdmin();
+    }
+    
+    // =========================
+    // Error Logs: errorLogs/{errorId}
+    // =========================
+    match /errorLogs/{errorId} {
+      // Allow writes from anyone (errors can happen to anyone, even unauthenticated users)
+      // This ensures we capture all errors for debugging
+      allow create: if true;
+      
+      // Only admins can read error logs
+      allow read: if isSignedIn() && isAdmin();
+      
+      // Only admins can update/delete error logs
+      allow update, delete: if isSignedIn() && isAdmin();
     }
     
     // =========================

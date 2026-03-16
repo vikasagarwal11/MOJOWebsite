@@ -1,18 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { X, Calendar, Clock, MapPin, Users, FileText, Tag, QrCode, DollarSign, Search, Loader2 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
-import { useStorage } from '../../hooks/useStorage';
-import { addDoc, collection, doc, updateDoc, serverTimestamp, query, where, limit, getDocs, Timestamp } from 'firebase/firestore';
-import { db } from '../../config/firebase';
-import toast from 'react-hot-toast';
 import { format } from 'date-fns';
-import { safeFormat, safeISODate } from '../../utils/dateUtils';
+import { addDoc, collection, doc, getDocs, limit, query, serverTimestamp, Timestamp, updateDoc, where } from 'firebase/firestore';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowLeft, Calendar, Clock, DollarSign, Eye, FileText, Loader2, MapPin, QrCode, Search, Tag, Users, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import toast from 'react-hot-toast';
+import { z } from 'zod';
+import { db } from '../../config/firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import type { EventDoc } from '../../hooks/useEvents';
+import { useStorage } from '../../hooks/useStorage';
 import { PaymentService } from '../../services/paymentService';
-import { EventPricing } from '../../types/payment';
+import { AgeGroup, EventPricing } from '../../types/payment';
+import { safeFormat, safeISODate } from '../../utils/dateUtils';
+import { calculateProportionalPricing, centsToDollars, distributeStripeFees, dollarsToCents } from '../../utils/stripePricing';
+import { EventImage } from './EventImage';
 
 // Firestore shouldn't see undefined fields
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
@@ -40,38 +43,53 @@ const eventSchema = z.object({
   location: z.string().optional(), // Optional for backward compatibility
   venueName: z.string().optional(),
   venueAddress: z.string().optional(),
-  maxAttendees: z.string().optional(),
+  maxAttendees: z.string().min(1, 'Max attendees is required').refine((val) => {
+    const num = parseInt(val);
+    return !isNaN(num) && num > 0;
+  }, 'Max attendees must be a positive number'),
   waitlistEnabled: z.boolean().optional(),
   waitlistLimit: z.string().optional(),
   waitlistCount: z.string().optional(),
   imageUrl: z.string().url('Must be a valid URL').optional().or(z.literal('')),
   attendanceEnabled: z.boolean().optional(),
+  allowMembersToAddAttendees: z.boolean().optional(),
   // Payment fields
   requiresPayment: z.boolean().optional(),
+  payThere: z.boolean().optional(),
+  paymentMethod: z.enum(['stripe', 'zelle']).optional(),
   adultPrice: z.string().optional(),
-  childPrice: z.string().optional(),
   teenPrice: z.string().optional(),
+  childPrice: z.string().optional(),
+  toddlerPrice: z.string().optional(),
   infantPrice: z.string().optional(),
   currency: z.string().optional(),
   refundAllowed: z.boolean().optional(),
   refundDeadline: z.string().optional(),
+  eventSupportAmountEnabled: z.boolean().optional(),
+  eventSupportAmount: z.string().optional(),
   isReadOnly: z.boolean().optional(),
 }).refine((data) => {
-  // Custom validation for timed events
-  if (!data.isAllDay) {
-    if (!data.endTime || !data.endDate) {
+  // Custom validation: if endTime is provided, endDate must also be provided
+  if (data.endTime && !data.endDate) {
+    return false;
+  }
+  
+  // If both endTime and endDate are provided, validate they're after start
+  if (data.endTime && data.endDate && data.time && data.date) {
+    // Safari-safe: Add seconds to ISO 8601 format
+    const startDateTime = new Date(`${data.date}T${data.time}:00`);
+    const endDateTime = new Date(`${data.endDate}T${data.endTime}:00`);
+    
+    if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
       return false;
     }
     
-    // Check if end time is after start time
-    const startDateTime = new Date(`${data.date}T${data.time}`);
-    const endDateTime = new Date(`${data.endDate}T${data.endTime}`);
-    
     return endDateTime > startDateTime;
   }
+  
   return true;
 }, {
-  message: "For timed events, end date and time are required and must be after start time",
+  message: "End date and time must be after start date and time",
   path: ["endTime"]
 });
 
@@ -87,8 +105,9 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const { currentUser } = useAuth();
   const { uploadFile, getStoragePath } = useStorage();
   const [isLoading, setIsLoading] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [eventVisibility, setEventVisibility] = useState<'public' | 'members' | 'private'>('public'); // Default to public
+  const [eventVisibility, setEventVisibility] = useState<'public' | 'truly_public' | 'members' | 'private'>('public'); // Default to public
   const [invitedUserIds, setInvitedUserIds] = useState<string[]>([]);
   const [invitedUserDetails, setInvitedUserDetails] = useState<{[key: string]: any}>({});
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -100,6 +119,9 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const [isManuallyOverridden, setIsManuallyOverridden] = useState(false); // Track if end date/time are manually overridden
   // Payment state
   const [requiresPayment, setRequiresPayment] = useState(false);
+  const [payThere, setPayThere] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'zelle'>('stripe');
+  const [eventSupportAmountEnabled, setEventSupportAmountEnabled] = useState(false);
   
   // Waitlist state
   const [waitlistEnabled, setWaitlistEnabled] = useState(false);
@@ -107,6 +129,9 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   
   // Read-only state
   const [isReadOnly, setIsReadOnly] = useState(false);
+  
+  // Allow members to add attendees state
+  const [allowMembersToAddAttendees, setAllowMembersToAddAttendees] = useState(false);
   
   // Address autocomplete state
   const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
@@ -125,6 +150,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
   const isEditing = !!eventToEdit;
 
   const handleClose = () => {
+    setPreviewMode(false);
     reset();
     setSelectedFile(null);
     setTags([]);
@@ -155,6 +181,21 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     onClose();
   };
 
+  const previewObjectUrl = useMemo(() => {
+    if (!selectedFile) return null;
+    try {
+      return URL.createObjectURL(selectedFile);
+    } catch {
+      return null;
+    }
+  }, [selectedFile]);
+
+  useEffect(() => {
+    return () => {
+      if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+    };
+  }, [previewObjectUrl]);
+
   const { register, handleSubmit, formState: { errors }, reset, watch, setValue, getValues } = useForm<EventFormData>({
   resolver: zodResolver(eventSchema),
   defaultValues: isEditing ? {
@@ -172,18 +213,30 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     waitlistCount: eventToEdit.waitlistCount?.toString() || '0',
     imageUrl: eventToEdit.imageUrl || '',
     attendanceEnabled: eventToEdit.attendanceEnabled || false,
+    allowMembersToAddAttendees: eventToEdit.allowMembersToAddAttendees || false,
     // Payment fields
     requiresPayment: eventToEdit.pricing?.requiresPayment || false,
-    adultPrice: eventToEdit.pricing?.adultPrice ? (eventToEdit.pricing.adultPrice / 100).toString() : '',
+    payThere: eventToEdit.pricing?.payThere || false,
+    paymentMethod: eventToEdit.pricing?.paymentMethod || 'stripe',
+    adultPrice: eventToEdit.pricing?.adultPrice ? centsToDollars(eventToEdit.pricing.adultPrice) : '',
     currency: eventToEdit.pricing?.currency || 'USD',
     refundAllowed: eventToEdit.pricing?.refundPolicy?.allowed === true,
+    eventSupportAmountEnabled: eventToEdit.pricing?.eventSupportAmount ? true : false,
+    eventSupportAmount: eventToEdit.pricing?.eventSupportAmount ? centsToDollars(eventToEdit.pricing.eventSupportAmount) : '',
   } : {
+    date: safeFormat(new Date(), 'yyyy-MM-dd'), // Default to today
+    time: safeFormat(new Date(), 'HH:mm'), // Default to current time
     isAllDay: false, // Default to false for new events
     duration: '1', // Default 1 hour duration
     attendanceEnabled: false, // Default to false for new events
+    allowMembersToAddAttendees: false, // Default to false for new events
     requiresPayment: false, // Default to free events
+    payThere: false, // Default to no pay there
+    paymentMethod: 'stripe', // Default to Stripe
     currency: 'USD', // Default currency
     refundAllowed: false, // Default no refunds
+    eventSupportAmountEnabled: false, // Default to no event support amount
+    eventSupportAmount: '', // Default empty
   },
 });
 
@@ -194,24 +247,461 @@ const watchedEndTime = watch('endTime');
 const watchedEndDate = watch('endDate');
 const watchedIsAllDay = watch('isAllDay');
 const watchedDuration = watch('duration');
+const watchedTitle = watch('title');
+const watchedDescription = watch('description');
+const watchedVenueName = watch('venueName');
+const watchedVenueAddress = watch('venueAddress');
+const watchedLocation = watch('location');
+const watchedImageUrl = watch('imageUrl');
+const watchedMaxAttendees = watch('maxAttendees');
+
+// Watch payment fields for live calculation
+const watchedAdultPrice = watch('adultPrice');
+const watchedTeenPrice = watch('teenPrice');
+const watchedChildPrice = watch('childPrice');
+const watchedToddlerPrice = watch('toddlerPrice');
+const watchedInfantPrice = watch('infantPrice');
+const watchedEventSupportAmount = watch('eventSupportAmount');
+const watchedCurrency = watch('currency');
+const watchedRefundAllowed = watch('refundAllowed');
+const watchedRefundDeadline = watch('refundDeadline');
+const watchedEventSupportAmountEnabled = watch('eventSupportAmountEnabled');
+const watchedRequiresPayment = watch('requiresPayment');
+const watchedPayThere = watch('payThere');
+const watchedPaymentMethod = watch('paymentMethod');
+
+  const parseLocalDateTime = (dateStr?: string | null, timeStr?: string | null): Date => {
+    const d = (dateStr || '').trim();
+    const t = (timeStr || '').trim();
+    if (!d) return new Date();
+    // Safari-safe: always include seconds
+    const iso = t ? `${d}T${t}:00` : `${d}T00:00:00`;
+    const parsed = new Date(iso);
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  };
+
+  const buildPricingConfig = (data: EventFormData): EventPricing | undefined => {
+    // Mirrors the onSubmit pricing logic so preview matches saved events.
+    let pricing: EventPricing | undefined;
+
+    if (data.requiresPayment) {
+      const adultPrice = data.adultPrice ? dollarsToCents(data.adultPrice) : 0;
+
+      const ageGroupPricing: Partial<Record<AgeGroup, number>> = {
+        adult: adultPrice,
+      };
+
+      if (data.infantPrice && data.infantPrice.trim()) {
+        ageGroupPricing['0-2'] = dollarsToCents(data.infantPrice);
+      }
+      if (data.toddlerPrice && data.toddlerPrice.trim()) {
+        ageGroupPricing['3-5'] = dollarsToCents(data.toddlerPrice);
+      }
+      if (data.childPrice && data.childPrice.trim()) {
+        ageGroupPricing['6-10'] = dollarsToCents(data.childPrice);
+      }
+      if (data.teenPrice && data.teenPrice.trim()) {
+        ageGroupPricing['11+'] = dollarsToCents(data.teenPrice);
+      }
+
+      pricing = PaymentService.createPaidEventPricing(adultPrice, ageGroupPricing, data.currency || 'USD');
+      pricing.paymentMethod = data.paymentMethod || 'stripe';
+
+      if (data.refundAllowed) {
+        pricing.refundPolicy = {
+          allowed: true,
+          deadline: data.refundDeadline ? Timestamp.fromDate(new Date(data.refundDeadline + 'T00:00:00')) : undefined,
+          feePercentage: 5,
+        };
+      } else {
+        pricing.refundPolicy = { allowed: false };
+      }
+    } else if (data.payThere) {
+      pricing = PaymentService.createDefaultPricing();
+      pricing.payThere = true;
+    } else {
+      pricing = PaymentService.createDefaultPricing();
+    }
+
+    if (data.eventSupportAmountEnabled && data.eventSupportAmount) {
+      const eventSupportAmount = dollarsToCents(data.eventSupportAmount);
+      if (eventSupportAmount > 0) {
+        if (!pricing) pricing = PaymentService.createDefaultPricing();
+        pricing.eventSupportAmount = eventSupportAmount;
+      }
+    }
+
+    return pricing;
+  };
+
+  const previewEvent = useMemo<EventDoc>(() => {
+    const startAt = parseLocalDateTime(watchedDate, watchedTime);
+
+    let endAt: Date | undefined;
+    if (!watchedIsAllDay) {
+      if (watchedEndDate && watchedEndTime) {
+        endAt = parseLocalDateTime(watchedEndDate, watchedEndTime);
+      } else if (watchedDuration) {
+        const hours = Number(watchedDuration);
+        if (!Number.isNaN(hours) && hours > 0) {
+          endAt = new Date(startAt.getTime() + hours * 60 * 60 * 1000);
+        }
+      }
+    }
+
+    const title = (watchedTitle || '').trim() || 'Untitled event';
+    const description = (watchedDescription || '').trim() || 'Add a description to see it here.';
+    const imageUrl =
+      imageRemoved ? undefined : (previewObjectUrl || (watchedImageUrl || '').trim() || undefined);
+
+    const maxAttendeesNum = Number(watchedMaxAttendees);
+    const maxAttendees = Number.isFinite(maxAttendeesNum) && maxAttendeesNum > 0 ? maxAttendeesNum : undefined;
+
+    const previewPricing = buildPricingConfig(getValues());
+
+    return {
+      id: 'preview',
+      title,
+      description,
+      startAt,
+      endAt,
+      allDay: !!watchedIsAllDay,
+      duration: watchedDuration ? Number(watchedDuration) : undefined,
+      location: watchedLocation?.trim() || undefined,
+      venueName: watchedVenueName?.trim() || undefined,
+      venueAddress: watchedVenueAddress?.trim() || undefined,
+      imageUrl,
+      maxAttendees,
+      tags: tags.length ? tags : undefined,
+      visibility: eventVisibility,
+      invitedUserIds: eventVisibility === 'private' ? invitedUserIds : undefined,
+      waitlistEnabled,
+      waitlistCount: waitlistCount ? Number(waitlistCount) : undefined,
+      pricing: previewPricing,
+      attendanceEnabled: !!getValues('attendanceEnabled'),
+      isReadOnly,
+      attendingCount: 0,
+    };
+  }, [
+    buildPricingConfig,
+    eventVisibility,
+    getValues,
+    imageRemoved,
+    invitedUserIds,
+    previewObjectUrl,
+    tags,
+    waitlistCount,
+    waitlistEnabled,
+    watchedAdultPrice,
+    watchedChildPrice,
+    watchedCurrency,
+    watchedDate,
+    watchedDescription,
+    watchedDuration,
+    watchedEndDate,
+    watchedEndTime,
+    watchedEventSupportAmountEnabled,
+    watchedImageUrl,
+    watchedIsAllDay,
+    watchedLocation,
+    watchedMaxAttendees,
+    watchedPayThere,
+    watchedPaymentMethod,
+    watchedRefundAllowed,
+    watchedRefundDeadline,
+    watchedRequiresPayment,
+    watchedTeenPrice,
+    watchedTime,
+    watchedTitle,
+    watchedToddlerPrice,
+    watchedInfantPrice,
+    watchedEventSupportAmount,
+    watchedVenueAddress,
+    watchedVenueName,
+    isReadOnly,
+  ]);
+
+  const EventPreviewCard: React.FC<{ event: EventDoc }> = ({ event }) => {
+    const start = tsToDate(event.startAt);
+    const end = event.endAt ? tsToDate(event.endAt) : null;
+
+    const formatEventDate = (date: any) => safeFormat(date, 'MMM dd, yyyy', 'Date TBD');
+    const formatEventTime = (date: any) => safeFormat(date, 'h:mm a', '');
+
+    const totalAttendeeCount = typeof event.attendingCount === 'number' ? event.attendingCount : 0;
+    const hasEnd = !event.allDay && !!end;
+
+    const startingPriceCents =
+      [
+        event.pricing?.adultPrice,
+        event.pricing?.teenPrice,
+        event.pricing?.childPrice,
+        event.pricing?.toddlerPrice,
+        event.pricing?.infantPrice,
+      ]
+        .filter((v): v is number => typeof v === 'number' && v > 0)
+        .sort((a, b) => a - b)[0] ?? null;
+
+    const supportNetCents =
+      typeof event.pricing?.eventSupportAmount === 'number' && event.pricing.eventSupportAmount > 0
+        ? event.pricing.eventSupportAmount
+        : 0;
+
+    return (
+      <div className="bg-white rounded-xl shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden border border-gray-200 flex flex-col scroll-mt-20 relative w-full max-w-lg mx-auto h-auto">
+        {/* Event Image */}
+        <div className="w-full h-48 sm:h-56 md:h-64 flex-shrink-0 relative bg-gray-100">
+          <div className="w-full h-full overflow-hidden rounded-t-xl">
+            <EventImage
+              src={event.imageUrl}
+              alt={event.title}
+              fit="contain"
+              aspect="16/9"
+              className="w-full h-full object-contain"
+              title={event.title}
+            />
+          </div>
+        </div>
+
+        {/* Event Content */}
+        <div className="p-6 flex flex-col flex-1">
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-3 line-clamp-1 truncate flex-shrink-0">
+            {event.title}
+          </h3>
+
+          <div className="mb-4 relative flex flex-col">
+            {event.description?.trim() ? (
+              <p className="text-gray-600 text-sm md:text-base leading-5 md:leading-6 line-clamp-2 overflow-hidden break-words">
+                {event.description}
+              </p>
+            ) : (
+              <p className="text-gray-400 italic text-sm h-full flex items-center">No description available</p>
+            )}
+          </div>
+
+          <div className="space-y-3 mb-4">
+            {/* Line 1: Date and Time */}
+            <div className="flex items-center gap-4 text-gray-700 text-sm sm:text-base flex-wrap">
+              <div className="flex items-center gap-2.5">
+                <Calendar className="w-5 h-5 text-[#F25129] flex-shrink-0" />
+                <span className="font-normal">{formatEventDate(start)}</span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-5 h-5 text-[#F25129] flex-shrink-0" />
+                <span className="font-normal">
+                  {event.allDay ? 'All day' : formatEventTime(start)}
+                  {hasEnd ? ` - ${formatEventTime(end)}` : ''}
+                </span>
+              </div>
+            </div>
+
+            {/* Line 2: Attendees and Price */}
+            <div className="flex items-center gap-4 text-gray-700 text-sm sm:text-base flex-wrap">
+              <div className="flex items-center gap-2.5">
+                <Users className="w-5 h-5 text-[#F25129] flex-shrink-0" />
+                <span className="font-normal">
+                  {totalAttendeeCount} attending
+                  {event.maxAttendees ? ` / ${event.maxAttendees} max` : ''}
+                </span>
+              </div>
+
+              {event.pricing?.payThere ? (
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-2.5">
+                    <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                    <span className="font-semibold text-blue-600">Pay There</span>
+                  </div>
+                </div>
+              ) : event.pricing && event.pricing.requiresPayment && startingPriceCents ? (
+                (() => {
+                  const isZellePayment = (event.pricing?.paymentMethod ?? 'zelle') === 'zelle';
+
+                  if (isZellePayment) {
+                    // For Zelle, show NET prices directly (no Stripe fees)
+                    const ticketNet = startingPriceCents;
+                    const supportNet = supportNetCents;
+
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2.5">
+                          <Tag className="w-5 h-5 text-purple-600 flex-shrink-0" />
+                          <span className="font-semibold text-purple-600">${(ticketNet / 100).toFixed(2)}</span>
+                        </div>
+                        {supportNet > 0 && (
+                          <div className="text-xs text-gray-600 ml-7">Event Support: ${(supportNet / 100).toFixed(2)}</div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // For Stripe, calculate proportional Stripe fees for ticket + support
+                  const components: Array<{ id: string; label: string; netAmount: number }> = [];
+                  components.push({
+                    id: 'ticket',
+                    label: 'Ticket',
+                    netAmount: startingPriceCents,
+                  });
+                  if (supportNetCents > 0) {
+                    components.push({
+                      id: 'support',
+                      label: 'Event Support',
+                      netAmount: supportNetCents,
+                    });
+                  }
+                  const charged = distributeStripeFees(components);
+                  const ticketCharge = charged.find((c) => c.id === 'ticket')?.chargeAmount || 0;
+                  const supportCharge = charged.find((c) => c.id === 'support')?.chargeAmount || 0;
+
+                  return (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2.5">
+                        <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                        <span className="font-semibold text-blue-600">${(ticketCharge / 100).toFixed(2)}</span>
+                      </div>
+                      {supportCharge > 0 && (
+                        <div className="text-xs text-gray-600 ml-7">Event Support: ${(supportCharge / 100).toFixed(2)}</div>
+                      )}
+                    </div>
+                  );
+                })()
+              ) : supportNetCents > 0 ? (
+                (() => {
+                  const isZellePayment = (event.pricing?.paymentMethod ?? 'zelle') === 'zelle';
+
+                  if (isZellePayment) {
+                    // Event with only event support (Zelle) - show NET price as main price
+                    const supportNet = supportNetCents;
+
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2.5">
+                          <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          <span className="font-semibold text-blue-600">${(supportNet / 100).toFixed(2)}</span>
+                        </div>
+                        <div className="text-xs text-gray-600 ml-7">Event Support</div>
+                      </div>
+                    );
+                  }
+
+                  // Event with only event support (Stripe) - show charge amount as main price
+                  const charged = distributeStripeFees([
+                    {
+                      id: 'support',
+                      label: 'Event Support',
+                      netAmount: supportNetCents,
+                    },
+                  ]);
+                  const supportCharge = charged[0]?.chargeAmount || 0;
+
+                  return (
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2.5">
+                        <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                        <span className="font-semibold text-blue-600">${(supportCharge / 100).toFixed(2)}</span>
+                      </div>
+                      <div className="text-xs text-gray-600 ml-7">Event Support</div>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="flex items-center gap-2.5">
+                  <Tag className="w-5 h-5 text-gray-500 flex-shrink-0" />
+                  <span className="font-semibold text-gray-500">Free</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Action Buttons (preview-only, disabled) */}
+          <div className="flex items-center justify-between mt-auto pt-2 pb-4 relative z-10" style={{ minHeight: '60px' }}>
+            <div className="flex gap-1 flex-1">
+              <button
+                type="button"
+                disabled
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg font-semibold transition-all duration-200 text-xs shadow-sm bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+              >
+                Going
+              </button>
+              <button
+                type="button"
+                disabled
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg font-semibold transition-all duration-200 text-xs shadow-sm bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed"
+              >
+                Can't Go
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+// Calculate prices based on payment method
+// For Zelle: Show NET prices directly (no Stripe fees)
+// For Stripe: Calculate with proportional Stripe fees
+const calculatePricingPreview = (ticketPrice: string, supportAmount: string) => {
+  if (!ticketPrice) return null;
+  
+  const ticketCents = dollarsToCents(ticketPrice);
+  const supportCents = dollarsToCents(supportAmount || '0');
+  
+  // For Zelle, show NET prices directly
+  if (paymentMethod === 'zelle') {
+    return {
+      ticketNet: ticketCents,
+      supportNet: supportCents,
+      ticketCharge: ticketCents,
+      supportCharge: supportCents,
+      totalCharge: ticketCents + supportCents,
+      ticketChargeDisplay: `$${(ticketCents / 100).toFixed(2)}`,
+      supportChargeDisplay: `$${(supportCents / 100).toFixed(2)}`,
+      totalChargeDisplay: `$${((ticketCents + supportCents) / 100).toFixed(2)}`,
+      ticketStripeFee: 0,
+      supportStripeFee: 0,
+      totalStripeFee: 0,
+      ticketStripeFeeDisplay: '$0.00',
+      supportStripeFeeDisplay: '$0.00',
+      totalStripeFeeDisplay: '$0.00'
+    };
+  }
+  
+  // For Stripe, calculate with proportional fees
+  return calculateProportionalPricing(ticketCents, supportCents);
+};
+
+const adultPricing = watchedAdultPrice 
+  ? calculatePricingPreview(watchedAdultPrice, watchedEventSupportAmount || '0')
+  : null;
+const teenPricing = watchedTeenPrice 
+  ? calculatePricingPreview(watchedTeenPrice, watchedEventSupportAmount || '0')
+  : null;
+const childPricing = watchedChildPrice 
+  ? calculatePricingPreview(watchedChildPrice, watchedEventSupportAmount || '0')
+  : null;
+const toddlerPricing = watchedToddlerPrice 
+  ? calculatePricingPreview(watchedToddlerPrice, watchedEventSupportAmount || '0')
+  : null;
+const infantPricing = watchedInfantPrice 
+  ? calculatePricingPreview(watchedInfantPrice, watchedEventSupportAmount || '0')
+  : null;
 
 // Smart defaults: Set end date to start date when start date changes
 useEffect(() => {
-  if (watchedDate && !watchedEndDate && !isEditing) {
+  if (watchedDate && !watchedEndDate && !isEditing && !isManuallyOverridden) {
     setValue('endDate', watchedDate);
   }
-}, [watchedDate, watchedEndDate, setValue, isEditing]);
+}, [watchedDate, watchedEndDate, setValue, isEditing, isManuallyOverridden]);
 
 // Smart defaults: Set end time to start time + 1 hour when start time changes
 useEffect(() => {
-  if (watchedTime && !watchedEndTime && !isEditing) {
+  if (watchedTime && !watchedEndTime && !isEditing && !isManuallyOverridden) {
     const [hours, minutes] = watchedTime.split(':').map(Number);
     const endTime = new Date();
     endTime.setHours(hours + 1, minutes, 0, 0);
     const endTimeString = endTime.toTimeString().slice(0, 5);
     setValue('endTime', endTimeString);
   }
-}, [watchedTime, watchedEndTime, setValue, isEditing]);
+}, [watchedTime, watchedEndTime, setValue, isEditing, isManuallyOverridden]);
 
 // Clear end date/time when switching to all-day
 useEffect(() => {
@@ -224,30 +714,27 @@ useEffect(() => {
 
 // Duration calculation: Auto-calculate end time when duration changes
 useEffect(() => {
-  if (watchedDuration && watchedDate && watchedTime && !watchedIsAllDay && !isEditing) {
+  if (watchedDuration && watchedDate && watchedTime && !watchedIsAllDay && !isEditing && !isManuallyOverridden) {
     const durationHours = parseFloat(watchedDuration);
     if (!isNaN(durationHours) && durationHours > 0) {
+      // Parse start date and time properly for Safari
       const [hours, minutes] = watchedTime.split(':').map(Number);
-      const startDateTime = new Date();
-      startDateTime.setHours(hours, minutes, 0, 0);
+      const startDateTime = new Date(watchedDate + 'T' + watchedTime + ':00');
       
-      // Add duration
+      // Add duration in milliseconds
       const endDateTime = new Date(startDateTime.getTime() + (durationHours * 60 * 60 * 1000));
       
       // Format end time
       const endTimeString = endDateTime.toTimeString().slice(0, 5);
       
-      // Check if we need to move to next day
-      const endDate = new Date(watchedDate);
-      if (endDateTime.getHours() < hours || (endDateTime.getHours() === hours && endDateTime.getMinutes() < minutes)) {
-        endDate.setDate(endDate.getDate() + 1);
-      }
+      // Format end date
+      const endDateString = safeFormat(endDateTime, 'yyyy-MM-dd');
       
       setValue('endTime', endTimeString);
-      setValue('endDate', safeISODate(endDate));
+      setValue('endDate', endDateString);
     }
   }
-}, [watchedDuration, watchedDate, watchedTime, watchedIsAllDay, setValue, isEditing]);
+}, [watchedDuration, watchedDate, watchedTime, watchedIsAllDay, setValue, isEditing, isManuallyOverridden]);
 
   // Load existing event data for editing
   useEffect(() => {
@@ -262,6 +749,8 @@ useEffect(() => {
       setValue('waitlistLimit', eventToEdit.waitlistLimit?.toString() || '');
       setValue('waitlistCount', eventToEdit.waitlistCount?.toString() || '0');
       setValue('attendanceEnabled', eventToEdit.attendanceEnabled || false);
+      setValue('allowMembersToAddAttendees', eventToEdit.allowMembersToAddAttendees || false);
+      setAllowMembersToAddAttendees(eventToEdit.allowMembersToAddAttendees || false);
       
       // Set read-only state
       setIsReadOnly(eventToEdit.isReadOnly || false);
@@ -303,22 +792,27 @@ useEffect(() => {
       // Set payment configuration
       if (eventToEdit.pricing) {
         setValue('requiresPayment', eventToEdit.pricing.requiresPayment || false);
-        setValue('adultPrice', eventToEdit.pricing.adultPrice ? (eventToEdit.pricing.adultPrice / 100).toString() : '');
+        setValue('payThere', eventToEdit.pricing.payThere || false);
         setValue('currency', eventToEdit.pricing.currency || 'USD');
         setValue('refundAllowed', eventToEdit.pricing.refundPolicy?.allowed === true);
         
-        // Set age group pricing
+        // Set age group pricing (use ageGroupPricing as source of truth, fallback to adultPrice for backward compatibility)
         if (eventToEdit.pricing.ageGroupPricing) {
           const pricing = eventToEdit.pricing.ageGroupPricing;
           const adultPricing = pricing.find((p: any) => p.ageGroup === 'adult');
-          const childPricing = pricing.find((p: any) => p.ageGroup === '3-5');
+          const toddlerPricing = pricing.find((p: any) => p.ageGroup === '3-5');
+          const childPricing = pricing.find((p: any) => p.ageGroup === '6-10');
           const teenPricing = pricing.find((p: any) => p.ageGroup === '11+');
           const infantPricing = pricing.find((p: any) => p.ageGroup === '0-2');
           
-          setValue('adultPrice', adultPricing ? (adultPricing.price / 100).toString() : '');
-          setValue('childPrice', childPricing ? (childPricing.price / 100).toString() : '');
-          setValue('teenPrice', teenPricing ? (teenPricing.price / 100).toString() : '');
-          setValue('infantPrice', infantPricing ? (infantPricing.price / 100).toString() : '');
+          setValue('adultPrice', adultPricing ? centsToDollars(adultPricing.price) : '');
+          setValue('toddlerPrice', toddlerPricing ? centsToDollars(toddlerPricing.price) : '');
+          setValue('childPrice', childPricing ? centsToDollars(childPricing.price) : '');
+          setValue('teenPrice', teenPricing ? centsToDollars(teenPricing.price) : '');
+          setValue('infantPrice', infantPricing ? centsToDollars(infantPricing.price) : '');
+        } else if (eventToEdit.pricing.adultPrice) {
+          // Fallback for old events without ageGroupPricing
+          setValue('adultPrice', centsToDollars(eventToEdit.pricing.adultPrice));
         }
         
         // Set refund deadline
@@ -331,13 +825,22 @@ useEffect(() => {
         
         // Update payment state
         setRequiresPayment(eventToEdit.pricing.requiresPayment || false);
+        setPayThere(eventToEdit.pricing.payThere || false);
+        
+        // Set event support amount
+        if (eventToEdit.pricing.eventSupportAmount) {
+          setValue('eventSupportAmountEnabled', true);
+          setValue('eventSupportAmount', centsToDollars(eventToEdit.pricing.eventSupportAmount));
+          setEventSupportAmountEnabled(true);
+        }
       }
       
       // Update waitlist state
       setWaitlistEnabled(eventToEdit.waitlistEnabled || false);
       setWaitlistCount(eventToEdit.waitlistCount?.toString() || '0');
     }
-  }, [eventToEdit, setValue]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventToEdit]); // setValue from react-hook-form is stable, no need to include in deps
 
   const addTag = (raw: string) => {
     const t = raw.trim().toLowerCase().replace(/\s+/g, '-');
@@ -656,7 +1159,7 @@ useEffect(() => {
     let endAt: Date | undefined;
     
     if (data.isAllDay) {
-      // All-day event: start at midnight of start date
+      // All-day event: start at midnight of start date (Safari-safe)
       startAt = new Date(`${data.date}T00:00:00`);
       
       // For all-day events, end date is required
@@ -670,13 +1173,13 @@ useEffect(() => {
         endAt.setDate(endAt.getDate() + 1);
       }
     } else {
-      // Timed event: use start time
-      startAt = new Date(`${data.date}T${data.time || '00:00'}`);
+      // Timed event: use start time (Safari-safe with ISO 8601 format)
+      startAt = new Date(`${data.date}T${data.time || '00:00'}:00`);
       
       // Handle end time with optional end date for multi-day events
       if (data.endTime) {
         const endDateStr = data.endDate || data.date; // default to same day if no end date
-        endAt = new Date(`${endDateStr}T${data.endTime}`);
+        endAt = new Date(`${endDateStr}T${data.endTime}:00`);
         
         // Validate end date/time
         if (Number.isNaN(endAt.getTime())) {
@@ -752,24 +1255,38 @@ useEffect(() => {
       // Create pricing configuration
       let pricing: EventPricing | undefined;
       if (data.requiresPayment) {
-        const adultPrice = data.adultPrice ? Math.round(parseFloat(data.adultPrice) * 100) : 0;
-        const childPrice = data.childPrice ? Math.round(parseFloat(data.childPrice) * 100) : 0;
-        const teenPrice = data.teenPrice ? Math.round(parseFloat(data.teenPrice) * 100) : 0;
-        const infantPrice = data.infantPrice ? Math.round(parseFloat(data.infantPrice) * 100) : 0;
+        const adultPrice = data.adultPrice ? dollarsToCents(data.adultPrice) : 0;
         
-        pricing = PaymentService.createPaidEventPricing(adultPrice, {
-          '0-2': infantPrice,
-          '3-5': childPrice,
-          '6-10': childPrice,
-          '11+': teenPrice,
+        // Build age group pricing object - only include values that were actually provided
+        // This allows default percentage calculations to work for empty fields
+        const ageGroupPricing: Partial<Record<AgeGroup, number>> = {
           'adult': adultPrice
-        }, data.currency || 'USD');
+        };
+        
+        // Only add child prices if they were explicitly entered (not empty)
+        if (data.infantPrice && data.infantPrice.trim()) {
+          ageGroupPricing['0-2'] = dollarsToCents(data.infantPrice);
+        }
+        if (data.toddlerPrice && data.toddlerPrice.trim()) {
+          ageGroupPricing['3-5'] = dollarsToCents(data.toddlerPrice);
+        }
+        if (data.childPrice && data.childPrice.trim()) {
+          ageGroupPricing['6-10'] = dollarsToCents(data.childPrice);
+        }
+        if (data.teenPrice && data.teenPrice.trim()) {
+          ageGroupPricing['11+'] = dollarsToCents(data.teenPrice);
+        }
+        
+        pricing = PaymentService.createPaidEventPricing(adultPrice, ageGroupPricing, data.currency || 'USD');
+        
+        // Add payment method (Stripe or Zelle)
+        pricing.paymentMethod = data.paymentMethod || 'stripe';
         
         // Add refund policy only if user explicitly allows refunds
         if (data.refundAllowed) {
           pricing.refundPolicy = {
             allowed: true,
-            deadline: data.refundDeadline ? Timestamp.fromDate(new Date(data.refundDeadline)) : undefined,
+            deadline: data.refundDeadline ? Timestamp.fromDate(new Date(data.refundDeadline + 'T00:00:00')) : undefined,
             feePercentage: 5 // Default 5% refund fee
           };
         } else {
@@ -778,8 +1295,25 @@ useEffect(() => {
             allowed: false
           };
         }
+        
+      } else if (data.payThere) {
+        // Pay There event: treated as free event (no payment processing in app)
+        // but marked as payThere so it displays differently
+        pricing = PaymentService.createDefaultPricing();
+        pricing.payThere = true;
       } else {
         pricing = PaymentService.createDefaultPricing();
+      }
+      
+      // Add event support amount if enabled (independent of payment requirement)
+      if (data.eventSupportAmountEnabled && data.eventSupportAmount) {
+        const eventSupportAmount = dollarsToCents(data.eventSupportAmount);
+        if (eventSupportAmount > 0) {
+          if (!pricing) {
+            pricing = PaymentService.createDefaultPricing();
+          }
+          pricing.eventSupportAmount = eventSupportAmount;
+        }
       }
 
       // Build event payload (no undefineds)
@@ -799,6 +1333,7 @@ useEffect(() => {
         waitlistLimit: data.waitlistLimit ? Number(data.waitlistLimit) : undefined,
         waitlistCount: data.waitlistCount ? Number(data.waitlistCount) : undefined,
         attendanceEnabled: data.attendanceEnabled || false,
+        allowMembersToAddAttendees: data.allowMembersToAddAttendees || false,
         tags: tags.length > 0 ? tags : undefined,
         createdBy: isEditing ? (eventToEdit?.createdBy || currentUser.id) : currentUser.id,
         visibility: eventVisibility,
@@ -839,17 +1374,71 @@ useEffect(() => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 12, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 12, scale: 0.98 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+        className={`relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5 ${
+          previewMode ? 'max-w-6xl' : 'max-w-2xl'
+        }`}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white">
-          <h2 className="text-2xl font-bold text-white">{isEditing ? 'Edit Event' : 'Create New Event'}</h2>
-          <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
-            <X className="w-6 h-6 text-white" />
-          </button>
+        <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] px-4 py-3 text-white sm:px-6 sm:py-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              {previewMode && (
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode(false)}
+                  className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white shadow-sm hover:bg-white/20"
+                  aria-label="Back to editor"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+              )}
+              <h2 className="truncate text-lg font-bold sm:text-2xl">
+                {isEditing ? 'Edit Event' : 'Create New Event'}
+              </h2>
+            </div>
+            <p className="mt-0.5 hidden truncate text-sm text-white/90 sm:block">
+              Preview your event before publishing.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPreviewMode((v) => !v)}
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/30 bg-white/10 shadow-sm transition hover:bg-white/20 ${
+                previewMode ? 'ring-2 ring-white/30' : ''
+              }`}
+              title={previewMode ? 'Hide preview' : 'Show preview'}
+              aria-pressed={previewMode}
+            >
+              <Eye className={`h-5 w-5 ${previewMode ? 'text-white' : 'text-white'}`} />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleClose}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white shadow-sm transition hover:bg-white/20"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
-        {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
+
+        {/* Body */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+          {/* Editor */}
+          <div className={`min-h-0 flex-1 overflow-y-auto ${previewMode ? 'hidden md:block' : 'block'}`}>
+            <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Event Title</label>
             <div className="relative">
@@ -1207,7 +1796,9 @@ useEffect(() => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Max Attendees */}
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Max Attendees (Optional)</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Max Attendees <span className="text-red-500">*</span>
+                </label>
                 <div className="relative">
                   <Users className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
@@ -1218,9 +1809,12 @@ useEffect(() => {
                     inputMode="numeric"
                     disabled={isLoading}
                     className="w-full pl-8 pr-3 py-2 text-sm rounded-md border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                    placeholder="No limit"
+                    placeholder="Enter max attendees"
                   />
                 </div>
+                {errors.maxAttendees && (
+                  <p className="mt-1 text-xs text-red-500">{errors.maxAttendees.message}</p>
+                )}
               </div>
               
               {/* Waitlist Enable */}
@@ -1427,6 +2021,33 @@ useEffect(() => {
               </div>
             </div>
           </div>
+            
+          {/* Allow Members to Add Attendees */}
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <Users className="w-5 h-5 text-purple-600 mt-0.5" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-purple-900">
+                    Allow Members to Add Attendees
+                  </label>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      {...register('allowMembersToAddAttendees')}
+                      type="checkbox"
+                      checked={allowMembersToAddAttendees}
+                      onChange={(e) => setAllowMembersToAddAttendees(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+                <p className="text-xs text-purple-700">
+                  When enabled, regular members can add additional attendees when they RSVP. When disabled, only admins and the event creator can add attendees.
+                </p>
+              </div>
+            </div>
+          </div>
           
           {/* Event Visibility Selection */}
           <div className="space-y-4 pt-4">
@@ -1443,13 +2064,29 @@ useEffect(() => {
                   name="visibility"
                   value="public"
                   checked={eventVisibility === 'public'}
-                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
+                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'truly_public' | 'members' | 'private')}
                   disabled={isLoading}
                   className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
                 />
                 <div>
                   <span className="text-sm font-medium text-gray-700">🌍 Public Event</span>
                   <p className="text-xs text-gray-500">Visible to everyone, anyone can RSVP</p>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3">
+                <input
+                  type="radio"
+                  name="visibility"
+                  value="truly_public"
+                  checked={eventVisibility === 'truly_public'}
+                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'truly_public' | 'members' | 'private')}
+                  disabled={isLoading || currentUser?.role !== 'admin'}
+                  className="h-4 w-4 text-[#F25129] focus:ring-[#F25129] disabled:opacity-50"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">🌐 Truly Public Event</span>
+                  <p className="text-xs text-gray-500">Visitors can RSVP as one-time guests without creating an account {currentUser?.role !== 'admin' && '(Admin only)'}</p>
                 </div>
               </label>
               
@@ -1459,7 +2096,7 @@ useEffect(() => {
                   name="visibility"
                   value="members"
                   checked={eventVisibility === 'members'}
-                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
+                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'truly_public' | 'members' | 'private')}
                   disabled={isLoading || currentUser?.role !== 'admin'}
                   className="h-4 w-4 text-[#F25129] focus:ring-[#F25129] disabled:opacity-50"
                 />
@@ -1475,7 +2112,7 @@ useEffect(() => {
                   name="visibility"
                   value="private"
                   checked={eventVisibility === 'private'}
-                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'members' | 'private')}
+                  onChange={(e) => setEventVisibility(e.target.value as 'public' | 'truly_public' | 'members' | 'private')}
                   disabled={isLoading || currentUser?.role !== 'admin'}
                   className="h-4 w-4 text-[#F25129] focus:ring-[#F25129] disabled:opacity-50"
                 />
@@ -1607,6 +2244,11 @@ useEffect(() => {
                   onChange={(e) => {
                     setRequiresPayment(e.target.checked);
                     setValue('requiresPayment', e.target.checked);
+                    // If unchecking requiresPayment, also uncheck payThere
+                    if (!e.target.checked) {
+                      setPayThere(false);
+                      setValue('payThere', false);
+                    }
                   }}
                   disabled={isLoading}
                   className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
@@ -1617,6 +2259,75 @@ useEffect(() => {
                 </div>
               </label>
 
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={payThere}
+                  onChange={(e) => {
+                    setPayThere(e.target.checked);
+                    setValue('payThere', e.target.checked);
+                  }}
+                  disabled={isLoading}
+                  className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Pay There Event</span>
+                  <p className="text-xs text-gray-500">Payment will be handled separately at the event or directly with the hosting organization</p>
+                </div>
+              </label>
+
+              {/* Payment Method Selection - Only show if requiresPayment is true and payThere is false */}
+              {requiresPayment && !payThere && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="bg-blue-50 p-4 rounded-lg border border-blue-200"
+                >
+                  <label className="block text-sm font-medium text-gray-900 mb-3">
+                    Select Payment Method
+                  </label>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        value="stripe"
+                        checked={paymentMethod === 'stripe'}
+                        onChange={(e) => {
+                          setPaymentMethod('stripe');
+                          setValue('paymentMethod', 'stripe');
+                        }}
+                        disabled={isLoading}
+                        className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
+                      />
+                      <div>
+                        <span className="text-sm font-semibold text-gray-900">Payment via Stripe</span>
+                        <p className="text-xs text-gray-600">Automated online payment processing with Stripe fees applied</p>
+                      </div>
+                    </label>
+                    
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="radio"
+                        value="zelle"
+                        checked={paymentMethod === 'zelle'}
+                        onChange={(e) => {
+                          setPaymentMethod('zelle');
+                          setValue('paymentMethod', 'zelle');
+                        }}
+                        disabled={isLoading}
+                        className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
+                      />
+                      <div>
+                        <span className="text-sm font-semibold text-gray-900">Payment via Zelle</span>
+                        <p className="text-xs text-gray-600">Manual payment via Zelle QR code - requires admin approval</p>
+                      </div>
+                    </label>
+                  </div>
+                </motion.div>
+              )}
+
               {requiresPayment && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
@@ -1625,18 +2336,49 @@ useEffect(() => {
                   transition={{ duration: 0.3 }}
                   className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200"
                 >
+                  {/* Payment Method Info Banner */}
+                  {!payThere && (
+                    <div className={`p-3 rounded-lg border ${
+                      paymentMethod === 'stripe' 
+                        ? 'bg-green-50 border-green-200' 
+                        : 'bg-purple-50 border-purple-200'
+                    }`}>
+                      <p className="text-xs font-medium">
+                        {paymentMethod === 'stripe' 
+                          ? '💳 Stripe Mode: User prices shown below include automated Stripe fee calculation'
+                          : '💵 Zelle Mode: User will pay exactly the amounts you enter (no Stripe fees)'}
+                      </p>
+                    </div>
+                  )}
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Adult Price ($)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Adult Price ($) - NET Amount
+                      </label>
                       <input
                         {...register('adultPrice')}
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         disabled={isLoading}
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="25.00"
                       />
+                      {adultPricing && adultPricing.ticketNet > 0 && (
+                        <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs space-y-1">
+                          <div className="font-semibold text-green-900">
+                            💳 Ticket charge: {adultPricing.ticketChargeDisplay}
+                          </div>
+                          {adultPricing.supportNet > 0 && (
+                            <div className="text-green-700">
+                              💳 Event Support charge: {adultPricing.supportChargeDisplay}
+                            </div>
+                          )}
+                          <div className="text-green-600 border-t border-green-300 pt-1 mt-1">
+                            📊 Total per person: {adultPricing.totalChargeDisplay} (Stripe fee: {adultPricing.totalStripeFeeDisplay})
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
@@ -1653,42 +2395,82 @@ useEffect(() => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Teens (11+) ($)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Teen (11+) ($)</label>
                       <input
                         {...register('teenPrice')}
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         disabled={isLoading}
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="20.00"
                       />
+                      {teenPricing && teenPricing.ticketNet > 0 && (
+                        <div className="mt-1 p-1.5 bg-blue-50 border border-blue-200 rounded text-xs">
+                          <div className="font-medium text-blue-900">
+                            User pays: {teenPricing.ticketChargeDisplay}
+                            {teenPricing.supportNet > 0 && ` + ${teenPricing.supportChargeDisplay} support = ${teenPricing.totalChargeDisplay}`}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Children (3-10) ($)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Children (6-10) ($)</label>
                       <input
                         {...register('childPrice')}
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         disabled={isLoading}
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="15.00"
                       />
+                      {childPricing && childPricing.ticketNet > 0 && (
+                        <div className="mt-1 p-1.5 bg-blue-50 border border-blue-200 rounded text-xs">
+                          <div className="font-medium text-blue-900">
+                            User pays: {childPricing.ticketChargeDisplay}
+                            {childPricing.supportNet > 0 && ` + ${childPricing.supportChargeDisplay} support = ${childPricing.totalChargeDisplay}`}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Infants (0-2) ($)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Toddler (3-5) ($)</label>
+                      <input
+                        {...register('toddlerPrice')}
+                        type="text"
+                        inputMode="decimal"
+                        disabled={isLoading}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                        placeholder="10.00"
+                      />
+                      {toddlerPricing && toddlerPricing.ticketNet > 0 && (
+                        <div className="mt-1 p-1.5 bg-blue-50 border border-blue-200 rounded text-xs">
+                          <div className="font-medium text-blue-900">
+                            User pays: {toddlerPricing.ticketChargeDisplay}
+                            {toddlerPricing.supportNet > 0 && ` + ${toddlerPricing.supportChargeDisplay} support = ${toddlerPricing.totalChargeDisplay}`}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Infant (0-2) ($)</label>
                       <input
                         {...register('infantPrice')}
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        type="text"
+                        inputMode="decimal"
                         disabled={isLoading}
                         className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
                         placeholder="0.00"
                       />
+                      {infantPricing && infantPricing.ticketNet > 0 && (
+                        <div className="mt-1 p-1.5 bg-blue-50 border border-blue-200 rounded text-xs">
+                          <div className="font-medium text-blue-900">
+                            User pays: {infantPricing.ticketChargeDisplay}
+                            {infantPricing.supportNet > 0 && ` + ${infantPricing.supportChargeDisplay} support = ${infantPricing.totalChargeDisplay}`}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1722,6 +2504,76 @@ useEffect(() => {
             </div>
           </div>
 
+          {/* Event Support Amount Section - OUTSIDE Payment Configuration */}
+          <div className="space-y-4 pt-6 border-t border-gray-200">
+            <div className="flex items-center gap-3">
+              <DollarSign className="w-5 h-5 text-purple-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Event Support Amount (Optional)</h3>
+            </div>
+            
+            <div className="space-y-3">
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={eventSupportAmountEnabled}
+                  onChange={(e) => {
+                    setEventSupportAmountEnabled(e.target.checked);
+                    setValue('eventSupportAmountEnabled', e.target.checked);
+                    if (!e.target.checked) {
+                      setValue('eventSupportAmount', '');
+                    }
+                  }}
+                  disabled={isLoading}
+                  className="h-4 w-4 text-[#F25129] focus:ring-[#F25129]"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Event Support Amt</span>
+                  <p className="text-xs text-gray-500">Add an additional fee for event support (independent of ticket pricing)</p>
+                </div>
+              </label>
+
+              {eventSupportAmountEnabled && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="bg-purple-50 p-4 rounded-lg border border-purple-200"
+                >
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Enter Amount ($) - NET Amount *
+                    </label>
+                    <input
+                      {...register('eventSupportAmount')}
+                      type="text"
+                      inputMode="decimal"
+                      min="0"
+                      required={eventSupportAmountEnabled}
+                      disabled={isLoading}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                      placeholder="5.00"
+                    />
+                    {adultPricing && adultPricing.supportNet > 0 && (
+                      <div className="mt-2 p-2 bg-purple-100 border border-purple-300 rounded text-xs space-y-1">
+                        <div className="font-semibold text-purple-900">
+                          💳 Support charge per person: {adultPricing.supportChargeDisplay}
+                        </div>
+                        <div className="text-purple-700">
+                          Combined with ticket, Stripe fee is distributed proportionally
+                        </div>
+                        <div className="text-purple-600 font-medium">
+                          Example: Adult ticket {adultPricing.ticketChargeDisplay} + Support {adultPricing.supportChargeDisplay} = {adultPricing.totalChargeDisplay} total
+                        </div>
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">This amount will be added to each attendee's total</p>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          </div>
+
           {/* Submit */}
           <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
             <button
@@ -1741,7 +2593,63 @@ useEffect(() => {
             </button>
           </div>
         </form>
-      </div>
+
+          </div>
+
+          {/* Mobile preview (inside modal) */}
+          <AnimatePresence mode="wait" initial={false}>
+            {previewMode && (
+              <motion.div
+                key="mobile-preview"
+                initial={{ opacity: 0, x: 12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 12 }}
+                transition={{ duration: 0.18 }}
+                className="md:hidden flex-1 overflow-y-auto bg-gradient-to-br from-[#fff7f3] via-[#fffbe6] to-[#ffe3c2] px-3 py-4"
+              >
+                <div className="w-full">
+                  <EventPreviewCard event={previewEvent} />
+                </div>
+
+                <div className="mt-4 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode(false)}
+                    className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50"
+                  >
+                    Back to editor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmit(onSubmit)}
+                    disabled={isLoading}
+                    className="flex-1 rounded-xl bg-gradient-to-r from-[#F25129] to-[#FFC107] px-4 py-3 text-sm font-semibold text-white shadow hover:from-[#E0451F] hover:to-[#E55A2A] disabled:opacity-50"
+                  >
+                    {isLoading ? (isEditing ? 'Updating…' : 'Creating…') : (isEditing ? 'Update' : 'Create')}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Desktop preview panel */}
+          <AnimatePresence>
+            {previewMode && (
+              <motion.aside
+                initial={{ opacity: 0, x: 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 24 }}
+                transition={{ duration: 0.22 }}
+                className="hidden md:flex w-[420px] flex-col border-l border-gray-200/70 bg-gradient-to-br from-[#fff7f3] via-[#fffbe6] to-[#ffe3c2]"
+              >
+                <div className="flex-1 overflow-y-auto p-5 sm:p-6 pb-16 min-h-[120px]">
+                  <EventPreviewCard event={previewEvent} />
+                </div>
+              </motion.aside>
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
     </div>
   );
 };

@@ -1,15 +1,15 @@
 import React, { useMemo } from 'react';
-import { Outlet, Navigate, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import Header from './Header';
-import Footer from './Footer';
 import AssistantWidget from '../assistant/AssistantWidget';
 import { StatusBanner } from '../common/StatusBanner';
+import Footer from './Footer';
+import Header from './Header';
 
 // Public routes that don't require authentication or approval (available to everyone, including logged-out users)
 // These routes are accessible WITHOUT login, so pending/rejected users can still see them
 // Note: /events, /posts, and /media pages handle their own filtering (public vs private content)
-const PUBLIC_ROUTES = ['/', '/events', '/events-readonly', '/posts', '/media', '/sponsors', '/founder', '/contact', '/about', '/press', '/community-guidelines', '/support-tools', /* '/challenges', '/workouts', */ '/pending-approval', '/account-rejected']; // Challenges and Workouts hidden for now
+const PUBLIC_ROUTES = ['/', '/events', '/events-v2', '/posts', '/media', '/sponsors', '/founder', '/contact', '/about', '/press', '/community-guidelines', '/support-tools', '/mfmstories', '/testimonials', /* '/challenges', '/workouts', */ '/pending-approval', '/account-rejected']; // Challenges and Workouts hidden for now
 
 // Protected routes that require approved status (create/edit actions within these pages are still protected)
 const PROTECTED_ROUTES = ['/profile', '/admin', '/family-management'];
@@ -73,7 +73,12 @@ const Layout: React.FC = () => {
       }
 
       // C. Block access to protected routes (Security requirement)
+      // EXCEPTION: Admins can always access /admin regardless of status
       if (isProtectedRoute) {
+        if (currentPath === '/admin' && currentUser.role === 'admin') {
+          // Allow admins to access /admin even if their status is pending/rejected
+          return null;
+        }
         // If they try to hit /profile, /admin, /workouts, redirect them to the appropriate status page
         return mandatoryStatusPage;
       }
@@ -94,10 +99,11 @@ const Layout: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-purple-50 via-white to-pink-50">
+    <div className="min-h-screen flex flex-col bg-white">
+      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#FFF5F2] via-[#FFF9F7] to-white pointer-events-none" />
       <Header />
       <StatusBanner currentUser={currentUser} />
-      <main className="flex-1 overflow-x-hidden">
+      <main className="flex-1 overflow-x-hidden relative">
         <Outlet />
       </main>
       <Footer />

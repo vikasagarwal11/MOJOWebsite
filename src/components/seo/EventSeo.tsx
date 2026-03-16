@@ -1,6 +1,7 @@
 import React from 'react';
 import { Helmet } from 'react-helmet-async';
 import type { EventDoc } from '../../hooks/useEvents';
+import { SEO_CONFIG } from '../../config/seo';
 
 type Props = {
   event: EventDoc;
@@ -80,8 +81,8 @@ export const EventSeo: React.FC<Props> = ({ event, canonicalUrl, defaultImage = 
     image: imageUrl ? [imageUrl] : undefined,
     organizer: {
       '@type': 'Organization',
-      name: 'Moms Fitness Mojo',
-      url: 'https://momfitnessmojo.web.app/',
+      name: SEO_CONFIG.siteName,
+      url: SEO_CONFIG.baseUrl,
     },
     isAccessibleForFree: event.pricing?.isFree ?? true,
     maximumAttendeeCapacity: event.maxAttendees || undefined,

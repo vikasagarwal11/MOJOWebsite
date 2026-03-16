@@ -1,23 +1,23 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, Calendar, TrendingUp } from 'lucide-react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Calendar, Filter, Search, TrendingUp } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 // COMMENTED OUT: Unused imports for layout testing
 // import { Share2, Plus, Tag } from 'lucide-react';
+import toast from 'react-hot-toast';
+import CreateEventModal from '../components/events/CreateEventModal';
 import EventCalendar from '../components/events/EventCalendar';
 import EventList from '../components/events/EventList';
-import CreateEventModal from '../components/events/CreateEventModal';
+import { EventsListSeo } from '../components/seo/EventsListSeo';
+import { useAuth } from '../contexts/AuthContext';
 import { useEvents } from '../hooks/useEvents';
 import { useRealTimeEvents } from '../hooks/useRealTimeEvents';
-import { useAuth } from '../contexts/AuthContext';
 import { EventDeletionService } from '../services/eventDeletionService';
-import toast from 'react-hot-toast';
-import { EventsListSeo } from '../components/seo/EventsListSeo';
 // import { useUserBlocking } from '../hooks/useUserBlocking'; // For future RSVP blocking feature
-import { EventDoc } from '../hooks/useEvents';
-import { RSVPModalNew as RSVPModal } from '../components/events/RSVPModalNew';
 import { EventTeaserModal } from '../components/events/EventTeaserModal';
 import { PastEventModal } from '../components/events/PastEventModal';
+import { RSVPModalNew as RSVPModal } from '../components/events/RSVPModalNew';
+import { EventDoc } from '../hooks/useEvents';
 // COMMENTED OUT: toast import for layout testing
 // import toast from 'react-hot-toast';
 import { useDebounce } from 'use-debounce';
@@ -58,6 +58,7 @@ const Events: React.FC = () => {
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
+  const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
   const [dateRangeFilter, setDateRangeFilter] = useState<{
     startDate: string;
     endDate: string;
@@ -101,10 +102,15 @@ const Events: React.FC = () => {
     }
 
     try {
+      // Start deletion immediately (no toast, just quiet background operation)
       const result = await EventDeletionService.deleteEvent(event.id, currentUser.id);
       
       if (result.success) {
-        toast.success(`Event "${event.title}" deleted successfully`);
+        // Optimistically remove event from UI with smooth transition
+        setDeletedEventIds(prev => new Set(prev).add(event.id));
+        
+        // Show brief success message
+        toast.success(`Event deleted`, { duration: 1500 });
         console.log('✅ Event deleted:', result.deletedCounts);
       } else {
         toast.error(`Failed to delete event: ${result.errors.join(', ')}`);
@@ -148,11 +154,16 @@ const Events: React.FC = () => {
 
   // Use real-time events if available, fallback to regular events
   const baseList = useMemo(() => {
+    let events: EventDoc[];
     if (realTimeEvents.length > 0 && activeTab === 'upcoming') {
-      return realTimeEvents;
+      events = realTimeEvents;
+    } else {
+      events = activeTab === 'upcoming' ? upcomingEvents : pastEvents;
     }
-    return activeTab === 'upcoming' ? upcomingEvents : pastEvents;
-  }, [realTimeEvents, upcomingEvents, pastEvents, activeTab]);
+    
+    // Filter out optimistically deleted events
+    return events.filter(event => !deletedEventIds.has(event.id));
+  }, [realTimeEvents, upcomingEvents, pastEvents, activeTab, deletedEventIds]);
 
   // Debug logging for event data
   useEffect(() => {
@@ -390,22 +401,24 @@ const Events: React.FC = () => {
       return;
     }
 
-    // For non-past events, handle based on user authentication
-    if (!currentUser) {
-      console.log('🔍 Opening EventTeaserModal for non-authenticated user from calendar');
-      setSelectedEvent(e);
-      setShowTeaserModal(true);
-    } else {
+    // Keep logged-in behavior unchanged; mirror the same RSVP flow for guests.
+    if (currentUser) {
       console.log('🔍 Opening RSVP for authenticated user from calendar');
-      // Flexible RSVP handling based on toggle
       if (RSVP_MODE === 'page') {
-        // Navigate to new RSVP page
         navigate(`/events/${e.id}/rsvp`);
       } else {
-        // Use original modal (revert option)
         setSelectedEvent(e);
         setShowRSVPModal(true);
       }
+      return;
+    }
+
+    console.log('🔍 Opening RSVP for non-authenticated user from calendar');
+    if (RSVP_MODE === 'page') {
+      navigate(`/events/${e.id}/rsvp`);
+    } else {
+      setSelectedEvent(e);
+      setShowRSVPModal(true);
     }
   };
 
@@ -430,17 +443,31 @@ const Events: React.FC = () => {
   //   }
   // };
 
-  // COMMENTED OUT: Clear all filters function for layout testing
-  // const clearAllFilters = () => {
-  //   setSearchInput('');
-  //   setTagSearch('');
-  //   setSelectedTag(null);
-  //   setLocationFilter('');
-  //   setDateRangeFilter({ startDate: '', endDate: '', enabled: false });
-  //   setCapacityFilter({ min: '', max: '', enabled: false });
-  //   setSortBy('date');
-  //   toast.success('All filters cleared!');
-  // };
+  // Clear all filters function
+  const clearAllFilters = () => {
+    setSearchInput('');
+    setTagSearch('');
+    setSelectedTag(null);
+    setLocationFilter('');
+    setDateRangeFilter({ startDate: '', endDate: '', enabled: false });
+    setCapacityFilter({ min: '', max: '', enabled: false });
+    setSortBy('date');
+    toast.success('All filters cleared!');
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters = useMemo(() => {
+    return !!(
+      searchInput ||
+      selectedTag ||
+      locationFilter ||
+      dateRangeFilter.startDate ||
+      dateRangeFilter.endDate ||
+      capacityFilter.min ||
+      capacityFilter.max ||
+      sortBy !== 'date'
+    );
+  }, [searchInput, selectedTag, locationFilter, dateRangeFilter.startDate, dateRangeFilter.endDate, capacityFilter.min, capacityFilter.max, sortBy]);
 
 
     return (
@@ -563,6 +590,25 @@ const Events: React.FC = () => {
         </button>
       </motion.div>
 
+      {/* Mobile Filter Button - Visible only on mobile */}
+      <div className="md:hidden mb-4">
+        <motion.button
+          onClick={() => setShowMobileFilters(true)}
+          className="w-full px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium flex items-center justify-center gap-2 min-h-[44px] hover:bg-gray-50 transition-colors"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          aria-label="Open filters"
+        >
+          <Filter className="w-4 h-4" />
+          <span>Filters</span>
+          {hasActiveFilters && (
+            <span className="ml-auto bg-[#F25129] text-white text-xs px-2 py-0.5 rounded-full">
+              Active
+            </span>
+          )}
+        </motion.button>
+      </div>
+
       {/* Desktop Search and Filter Controls */}
       <motion.div 
         className="hidden md:block sticky z-10 bg-white/95 backdrop-blur-sm
@@ -645,6 +691,21 @@ const Events: React.FC = () => {
             <option value="location">Location (A-Z)</option>
             <option value="popularity">Popularity</option>
           </select>
+
+          {/* Clear Filters Button - Always visible */}
+          <button
+            onClick={clearAllFilters}
+            disabled={!hasActiveFilters}
+            className={`px-3 py-1.5 rounded-lg border transition-all duration-200 flex items-center gap-2 text-sm flex-shrink-0 ${
+              hasActiveFilters
+                ? 'border-[#F25129] text-[#F25129] hover:bg-[#F25129]/10 hover:border-[#F25129] cursor-pointer'
+                : 'border-gray-200 text-gray-400 cursor-not-allowed opacity-50'
+            }`}
+            title={hasActiveFilters ? 'Clear all filters' : 'No active filters'}
+          >
+            <Filter className="w-4 h-4" />
+            Clear
+          </button>
         </div>
       </motion.div>
 
@@ -855,6 +916,25 @@ const Events: React.FC = () => {
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              {/* Clear Filters Button - Mobile */}
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <button
+                  onClick={() => {
+                    clearAllFilters();
+                    setShowMobileFilters(false);
+                  }}
+                  disabled={!hasActiveFilters}
+                  className={`w-full min-h-[44px] px-4 rounded-xl border-2 transition-all duration-200 flex items-center justify-center gap-2 font-semibold ${
+                    hasActiveFilters
+                      ? 'border-[#F25129] text-[#F25129] hover:bg-[#F25129] hover:text-white cursor-pointer'
+                      : 'border-gray-200 text-gray-400 cursor-not-allowed opacity-50'
+                  }`}
+                >
+                  <Filter className="w-4 h-4" />
+                  Clear All Filters
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -889,7 +969,7 @@ const Events: React.FC = () => {
               />
             ) : (
               <EventList 
-                events={filtered.filter(e => e.visibility === 'public')} 
+                events={filtered.filter(e => e.visibility === 'public' || e.visibility === 'truly_public')} 
                 loading={loading} 
                 emptyText="No public events yet."
               />

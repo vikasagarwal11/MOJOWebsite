@@ -24,6 +24,19 @@
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     
+    <!-- Preload critical logo for Safari compatibility (prevents black flash on first load) -->
+    <link rel="preload" as="image" href="/assets/logo/mfm-logo-updated-tagline-2.svg" type="image/svg+xml" fetchpriority="high">
+    
+    <!-- Safari & iOS Specific Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="format-detection" content="telephone=no" />
+    
+    <!-- Cache Control for Safari to prevent auto-login issues -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    
     <!-- SEO Meta Tags -->
     <title>Moms Fitness Mojo - Fitness Community for Moms</title>
     <meta name="description" content="Join Moms Fitness Mojo - a supportive community for moms to connect, share fitness journeys, and grow together. Find local fitness events, share media, and build lasting friendships." />
@@ -38,11 +51,11 @@
     <!-- Open Graph Tags - Social Media Sharing -->
     <meta property="og:title" content="Moms Fitness Mojo - Fitness Community for Moms" />
     <meta property="og:description" content="Join our supportive fitness community where moms connect, share fitness journeys, and grow together. Find local events, share media, and build lasting friendships." />
-    <meta property="og:image" content="https://momfitnessmojo.web.app/assets/logo/facebook-post.svg" />
-    <meta property="og:image:width" content="940" />
-    <meta property="og:image:height" content="788" />
+    <meta property="og:image" content="https://momsfitnessmojo.com/assets/logo/mfm-logo-updated-tagline-2.svg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta property="og:image:type" content="image/svg+xml" />
-    <meta property="og:url" content="https://momfitnessmojo.web.app" />
+    <meta property="og:url" content="https://momsfitnessmojo.com" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Moms Fitness Mojo" />
     <meta property="og:locale" content="en_US" />
@@ -51,16 +64,16 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Moms Fitness Mojo - Fitness Community for Moms" />
     <meta name="twitter:description" content="Join our supportive fitness community where moms connect, share fitness journeys, and grow together." />
-    <meta name="twitter:image" content="https://momfitnessmojo.web.app/assets/logo/square-logo.svg" />
+    <meta name="twitter:image" content="https://momsfitnessmojo.com/assets/logo/square-logo.svg" />
     <meta name="twitter:image:alt" content="Moms Fitness Mojo Logo" />
     <meta name="twitter:site" content="@momsfitnessmojo" />
     <meta name="twitter:creator" content="@momsfitnessmojo" />
     
     <!-- LinkedIn Sharing -->
-    <meta property="linkedin:image" content="https://momfitnessmojo.web.app/assets/logo/square-logo.svg" />
+    <meta property="linkedin:image" content="https://momsfitnessmojo.com/assets/logo/square-logo.svg" />
     
     <!-- Pinterest -->
-    <meta property="pinterest:image" content="https://momfitnessmojo.web.app/assets/logo/instagram-post.svg" />
+    <meta property="pinterest:image" content="https://momsfitnessmojo.com/assets/logo/instagram-post.svg" />
     
     <!-- Geo Tags for Local SEO -->
     <meta name="geo.region" content="US-NJ" />

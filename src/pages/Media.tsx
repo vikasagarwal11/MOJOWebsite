@@ -1,16 +1,18 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { Upload, Image, Video, Filter } from 'lucide-react';
+import { Filter, Image, Upload, Video } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // import { Video as VideoIcon } from 'lucide-react'; // PHASE 2: Re-enable live camera functionality
-import { orderBy, doc, deleteDoc, where } from 'firebase/firestore';
+import { deleteDoc, doc, limit, orderBy, where } from 'firebase/firestore';
+import MediaUploadModal from '../components/media/MediaUploadModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useFirestore } from '../hooks/useFirestore';
-import MediaUploadModal from '../components/media/MediaUploadModal';
 // import { LiveMediaUpload } from '../components/media/LiveMediaUpload'; // PHASE 2: Re-enable live camera functionality
+import toast from 'react-hot-toast';
 import MediaCard from '../components/media/MediaCard';
 import MediaLightbox from '../components/media/MediaLightbox';
-import { useLightbox } from '../hooks/useLightbox';
+import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { db } from '../config/firebase';
-import toast from 'react-hot-toast';
+import { useLightbox } from '../hooks/useLightbox';
+import { batchResolveThumbnailUrls, extractThumbnailPaths } from '../utils/batchThumbnailResolver';
 import { isUserApproved } from '../utils/userUtils';
 
 const Media: React.FC = () => {
@@ -44,6 +46,8 @@ const Media: React.FC = () => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [displayedCount, setDisplayedCount] = useState(12); // Initial load: 12 items (4 rows of 3 columns)
+  const ITEMS_PER_PAGE = 12; // Load 12 items at a time for better performance
 
   // Debounce search queries (300ms delay)
   useEffect(() => {
@@ -60,15 +64,30 @@ const Media: React.FC = () => {
     return () => clearTimeout(timer);
   }, [eventSearchQuery]);
 
-  // Media: keep server-side ordering by createdAt (single-field index, no composite needed)
-  const { data: mediaFiles } =
-    useRealtimeCollection('media', [orderBy('createdAt', 'desc')]);
+  // Media: Query with pagination support
+  // Note: Firestore has a maximum limit of 500 items per query.
+  // If your library grows beyond 500 items, older media won't be visible.
+  // Consider implementing cursor-based pagination or query pagination if needed.
+  // For now, we use the maximum allowed limit (500).
+  const mediaQueryConstraints = useMemo(
+    () => [orderBy('createdAt', 'desc'), limit(500)], // Firestore maximum limit
+    []
+  );
+
+  const { data: mediaFiles, loading: mediaLoading } =
+    useRealtimeCollection('media', mediaQueryConstraints);
 
   // Events: Query only public events for the filter dropdown to avoid permission issues
   // We explicitly filter by 'visibility' == 'public' to ensure the query works for all users
   // This is safe because public events are accessible to everyone (including non-approved users)
+  // Memoize event query constraints to prevent unnecessary re-subscriptions
+  const eventsQueryConstraints = useMemo(
+    () => [where('visibility', '==', 'public'), orderBy('startAt', 'desc')],
+    []
+  );
+
   const { data: events } =
-    useRealtimeCollection('events', [where('visibility', '==', 'public'), orderBy('startAt', 'desc')]);
+    useRealtimeCollection('events', eventsQueryConstraints);
 
   // Sort events client-side (DESC) by startAt (preferred), falling back to date.
   const eventsForFilter = useMemo(() => {
@@ -85,8 +104,9 @@ const Media: React.FC = () => {
   // Ensure selections stay in sync with live data and permissions
   useEffect(() => {
     if (!selectionMode) return;
+    const mediaFilesArray = Array.isArray(mediaFiles) ? mediaFiles : [];
     setSelectedIds((prev) =>
-      prev.filter((id) => mediaFiles.some((item: any) => item.id === id))
+      prev.filter((id) => mediaFilesArray.some((item: any) => item.id === id))
     );
   }, [selectionMode, mediaFiles]);
 
@@ -96,9 +116,12 @@ const Media: React.FC = () => {
     setSelectedIds([]);
   }, [isAdmin]);
 
-  // Apply UI filters to media
+  // Apply UI filters to media (client-side filtering on loaded items)
+  // Note: For better scalability, consider server-side filtering with Firestore where() clauses
+  const mediaFilesArray = Array.isArray(mediaFiles) ? mediaFiles : [];
+
   const filteredMedia = useMemo(() => {
-    return mediaFiles.filter((m: any) => {
+    const out = mediaFilesArray.filter((m: any) => {
       // Hotfix: skip share-card documents until payload includes required gallery fields
       if (m?.shareCard) {
         return false;
@@ -120,7 +143,118 @@ const Media: React.FC = () => {
       
       return typeOk && eventOk && searchOk;
     });
-  }, [mediaFiles, filterType, selectedEvent, debouncedSearchQuery]);
+    return out.slice().sort((a: any, b: any) => +new Date(b.mediaDate || b.createdAt) - +new Date(a.mediaDate || a.createdAt));
+  }, [mediaFilesArray, filterType, selectedEvent, debouncedSearchQuery]);
+
+  // Slice media array to show only up to displayedCount items
+  const displayedMedia = filteredMedia.slice(0, displayedCount);
+
+  // Reset displayedCount when filters change
+  useEffect(() => {
+    setDisplayedCount(12);
+  }, [filterType, selectedEvent, debouncedSearchQuery]);
+
+  // Infinite scroll handler
+  const handleLoadMore = useCallback(() => {
+    setDisplayedCount(prev => Math.min(prev + ITEMS_PER_PAGE, filteredMedia.length));
+  }, [filteredMedia.length]);
+
+  // OPTIMIZATION: Batch resolve thumbnail URLs for visible items upfront
+  // This reduces the waterfall effect of sequential getDownloadURL() calls
+  useEffect(() => {
+    if (mediaLoading || !Array.isArray(displayedMedia) || displayedMedia.length === 0) return;
+
+    // Resolve thumbnails for all items on current page (max 9 items)
+    const thumbnailPaths = extractThumbnailPaths(displayedMedia);
+
+    if (thumbnailPaths.length === 0) return;
+
+    // Batch resolve in background (don't block render)
+    const resolveUrls = async () => {
+      try {
+        await batchResolveThumbnailUrls(thumbnailPaths, 9); // Resolve all 9 concurrently
+      } catch (error) {
+        console.warn('⚠️ Batch thumbnail resolution failed:', error);
+      }
+    };
+
+    // Use requestIdleCallback to avoid blocking render
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(resolveUrls, { timeout: 1000 });
+    } else {
+      setTimeout(resolveUrls, 50);
+    }
+  }, [displayedMedia, mediaLoading, displayedCount]); // Re-run when displayedCount changes
+
+  // Image preloading: when new items arrive, prefetch their thumbnails (optimized)
+  // - Only preload resolved URLs (http)
+  // - Limit count to avoid saturating network
+  // - Use requestIdleCallback so it doesn't compete with initial render
+  // - NO <link rel="prefetch"> tags (causes "preloaded but not used" warnings)
+  const prevLoadedCountRef = useRef(0);
+
+  useEffect(() => {
+    if (mediaLoading) return;
+    if (!Array.isArray(mediaFiles) || mediaFiles.length === 0) {
+      prevLoadedCountRef.current = 0;
+      return;
+    }
+
+    const prevCount = prevLoadedCountRef.current;
+    const currentCount = mediaFiles.length;
+
+    // Only preload newly fetched items
+    if (currentCount <= prevCount) return;
+
+    const newlyFetched = mediaFiles.slice(prevCount, currentCount);
+
+    // Extract image thumbnails that are already URLs (not storage paths)
+    // Limit to 12 items to avoid network saturation
+    const imagesToPreload = newlyFetched
+      .filter((m: any) => m?.type === 'image')
+      .slice(0, 12) // Limit to 12 items max
+      .map((m: any) => {
+        // Only use resolved HTTP thumbnail URLs - NEVER fall back to originals
+        // Preloading originals would saturate network and make page feel slower
+        const url = m?.thumbnailUrl || 
+                   m?.thumbnails?.mediumUrl || 
+                   m?.thumbnails?.smallUrl || 
+                   m?.thumbnails?.largeUrl;
+        
+        // Only preload if it's a full URL (starts with http) - skip if not resolved yet
+        if (typeof url === 'string' && url.startsWith('http')) {
+          return url;
+        }
+        return null;
+      })
+      .filter(Boolean) as string[];
+
+    if (imagesToPreload.length === 0) {
+      prevLoadedCountRef.current = currentCount;
+      return;
+    }
+
+    // Deduplicate URLs and limit to 10 items to avoid network saturation
+    const uniqueUrls = Array.from(new Set(imagesToPreload)).slice(0, 10);
+
+    // Use requestIdleCallback to avoid competing with render-critical work
+    const preloadImages = () => {
+      uniqueUrls.forEach((url: string) => {
+        const img = new window.Image();
+        img.decoding = 'async';
+        img.src = url;
+      });
+    };
+
+    // Schedule preloading during idle time (or after 1.5s timeout)
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(preloadImages, { timeout: 1500 });
+    } else {
+      setTimeout(preloadImages, 0);
+    }
+
+    prevLoadedCountRef.current = currentCount;
+  }, [mediaFiles, mediaLoading]);
 
   // Filter events for autocomplete (using debounced query)
   const filteredEvents = useMemo(() => {
@@ -133,8 +267,8 @@ const Media: React.FC = () => {
     );
   }, [eventsForFilter, debouncedEventSearchQuery]);
 
-  // Lightbox functionality
-  const lightbox = useLightbox(filteredMedia, { loop: true });
+  // Lightbox functionality - use displayedMedia for pagination-aware navigation
+  const lightbox = useLightbox(displayedMedia, { loop: true });
 
   const toggleSelectionMode = useCallback(() => {
     setSelectionMode((prev) => {
@@ -395,6 +529,69 @@ const Media: React.FC = () => {
         </div>
       )}
 
+      {/* Loading State */}
+      {mediaLoading && displayedMedia.length === 0 && (
+        <div className="flex items-center justify-center py-12">
+          <LoadingSpinner size="lg" text="Loading media..." />
+        </div>
+      )}
+
+      {/* Media Grid - Optimized for Mobile */}
+      {!mediaLoading || displayedMedia.length > 0 ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6 mb-8">
+            {displayedMedia.map((media: any, index: number) => (
+              <MediaCard
+                key={media.id}
+                media={media}
+                onOpen={
+                  selectionMode ? undefined : () => lightbox.open(index)
+                }
+                selectionMode={isAdmin && selectionMode}
+                selected={selectedIds.includes(media.id)}
+                onToggleSelect={
+                  isAdmin && selectionMode ? handleToggleSelect : undefined
+                }
+              />
+            ))}
+          </div>
+
+          {/* Load More Button */}
+          {displayedCount < filteredMedia.length && (
+            <div className="col-span-full flex justify-center py-8">
+              <button
+                onClick={handleLoadMore}
+                className="px-6 py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white rounded-lg font-medium hover:shadow-lg transition-all duration-200"
+              >
+                Load More ({filteredMedia.length - displayedCount} remaining)
+              </button>
+            </div>
+          )}
+        </>
+      ) : null}
+      
+      {/* Empty State - Compact Card Style */}
+      {!mediaLoading && filteredMedia.length === 0 && (
+        <div className="col-span-full">
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 md:p-12 text-center">
+            <Upload className="w-8 h-8 md:w-12 md:h-12 text-gray-400 mx-auto mb-3" />
+            <h3 className="text-lg md:text-xl font-medium text-gray-500 mb-2">No media yet</h3>
+            <p className="text-gray-400 text-sm md:text-base mb-4">
+              Tap the upload button to share your fitness moments!
+            </p>
+            {/* Only show upload button for approved users */}
+            {currentUser && isUserApproved(currentUser) && (
+              <button
+                onClick={() => setIsUploadModalOpen(true)}
+                className="px-4 py-2 md:px-6 md:py-3 bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-semibold rounded-full hover:from-[#E0451F] hover:to-[#E55A2A] transition-all duration-300 transform hover:scale-105 text-sm md:text-base"
+              >
+                Upload Media
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Media Grid - Optimized for Mobile */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
         {filteredMedia.map((media: any, index: number) => (
@@ -455,9 +652,9 @@ const Media: React.FC = () => {
       {/* Media Lightbox */}
       {lightbox.index !== null && (
         <MediaLightbox
-          item={filteredMedia[lightbox.index]}
-          nextItem={filteredMedia[lightbox.index + 1]}  // For preloading optimization
-          prevItem={filteredMedia[lightbox.index - 1]}  // For preloading optimization
+          item={displayedMedia[lightbox.index]}
+          nextItem={displayedMedia[lightbox.index + 1]}  // For preloading optimization
+          prevItem={displayedMedia[lightbox.index - 1]}  // For preloading optimization
           onPrev={lightbox.prev}
           onNext={lightbox.next}
           onClose={lightbox.close}

@@ -1,17 +1,19 @@
 // src/components/posts/CreatePostModal.tsx
-import React, { useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { serverTimestamp } from 'firebase/firestore';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ArrowLeft, Check, Eye, FileText, Globe, Image, Lock, Sparkles, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import toast from 'react-hot-toast';
 import { z } from 'zod';
-import { X, FileText, Image, Lock, Globe, Sparkles, Loader2, Check } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFirestore } from '../../hooks/useFirestore';
 import { useStorage } from '../../hooks/useStorage';
-import { serverTimestamp } from 'firebase/firestore';
-import { stripUndefined } from '../../utils/firestore';
-import toast from 'react-hot-toast';
 import { generatePostSuggestionsV2 as generatePostSuggestions } from '../../services/postAIService';
+import { stripUndefined } from '../../utils/firestore';
 import { isUserApproved } from '../../utils/userUtils';
+import PostCard from './PostCard';
 
 const postSchema = z.object({
   title: z.string()
@@ -38,6 +40,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isPublic, setIsPublic] = useState(true); // default: public
+  const [previewMode, setPreviewMode] = useState(false);
   
   // AI suggestions state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -61,6 +64,51 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
 
   const title = watch('title') ?? '';
   const content = watch('content') ?? '';
+
+  const previewObjectUrl = useMemo(() => {
+    if (!selectedFile) return undefined;
+    return URL.createObjectURL(selectedFile);
+  }, [selectedFile]);
+
+  useEffect(() => {
+    return () => {
+      if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+    };
+  }, [previewObjectUrl]);
+
+  const previewPost = useMemo(
+    () => ({
+      id: 'preview',
+      title: title.trim() || 'Post Title',
+      content: content.trim() || 'Post content will appear here.',
+      imageUrl: previewObjectUrl || watch('imageUrl')?.trim() || undefined,
+      authorId: currentUser?.id || 'preview',
+      authorName: currentUser?.displayName || 'Member',
+      authorPhoto: currentUser?.photoURL || undefined,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      likes: [],
+      comments: [],
+      likesCount: 0,
+      commentsCount: 0,
+      isPublic,
+      moderationStatus: 'pending',
+      requiresApproval: true,
+      moderationReason: '',
+      moderationDetectedIssues: [],
+      moderationPipeline: '',
+    }),
+    [
+      title,
+      content,
+      previewObjectUrl,
+      watch,
+      currentUser?.id,
+      currentUser?.displayName,
+      currentUser?.photoURL,
+      isPublic,
+    ]
+  );
 
   const handleGenerateSuggestions = async () => {
     if (!currentUser) {
@@ -213,25 +261,88 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 12, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 12, scale: 0.98 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+        className={`relative w-full max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5 ${
+          previewMode ? 'max-w-6xl' : 'max-w-2xl'
+        }`}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">Create New Post</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-            <X className="w-6 h-6 text-gray-500" />
-          </button>
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200/70 bg-white/80 px-4 py-3 backdrop-blur sm:px-6 sm:py-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              {previewMode && (
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode(false)}
+                  className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm hover:bg-gray-50"
+                  aria-label="Back to editor"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+              )}
+              <h2 className="truncate text-lg font-semibold text-gray-900 sm:text-xl">
+                Create post
+              </h2>
+            </div>
+            <p className="mt-0.5 hidden truncate text-sm text-gray-500 sm:block">
+              Share an update with the community.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleGenerateSuggestions}
+              disabled={isGenerating}
+              className={`inline-flex h-10 items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-4 text-sm font-medium text-gray-800 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60`}
+              title="AI suggestions"
+            >
+              <Sparkles className="h-4 w-4 text-[#F25129]" />
+              <span className="hidden sm:inline">AI</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPreviewMode((v) => !v)}
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition hover:bg-gray-50 ${
+                previewMode ? 'ring-2 ring-[#F25129]/30' : ''
+              }`}
+              title={previewMode ? 'Hide preview' : 'Show preview'}
+              aria-pressed={previewMode}
+            >
+              <Eye className={`h-5 w-5 ${previewMode ? 'text-[#F25129]' : 'text-gray-600'}`} />
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:bg-gray-50"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
-          {/* Visibility */}
+        {/* Body */}
+        <div className="flex h-[calc(90vh-56px)] flex-col overflow-hidden md:flex-row">
+          {/* Editor */}
+          <div className={`flex-1 overflow-y-auto ${previewMode ? 'hidden md:block' : 'block'}`}>
+            <form onSubmit={handleSubmit(onSubmit)} className="px-4 py-5 space-y-6 sm:px-6 sm:py-6">
+              {/* Visibility */}
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setIsPublic(true)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition
-              ${isPublic ? 'bg-green-50 border-green-200 text-green-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition ${isPublic ? 'bg-green-50 border-green-200 text-green-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
               title="Visible to everyone"
             >
               <Globe className="w-4 h-4" />
@@ -240,8 +351,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
             <button
               type="button"
               onClick={() => setIsPublic(false)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition
-              ${!isPublic ? 'bg-yellow-50 border-yellow-200 text-yellow-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition ${!isPublic ? 'bg-yellow-50 border-yellow-200 text-yellow-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
               title="Visible to members only"
             >
               <Lock className="w-4 h-4" />
@@ -255,24 +365,6 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
               <label className="block text-sm font-medium text-gray-700">
                 Post Title
               </label>
-              <button
-                type="button"
-                onClick={handleGenerateSuggestions}
-                disabled={isGenerating}
-                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#F25129] to-[#FFC107] px-4 py-1.5 text-xs font-semibold text-white shadow-md transition-all duration-300 hover:from-[#E0451F] hover:to-[#E55A2B] hover:shadow-lg hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    <span>Generating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-3 w-3" />
-                    <span>Help me write</span>
-                  </>
-                )}
-              </button>
             </div>
             <div className="relative">
               <FileText className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -295,16 +387,28 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
 
           {/* Content */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Content
-            </label>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Content
+              </label>
+              <button
+                type="button"
+                onClick={handleGenerateSuggestions}
+                disabled={isGenerating}
+                className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                title="Generate AI suggestions"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-[#F25129]" />
+                {isGenerating ? 'Generating…' : 'AI suggestions'}
+              </button>
+            </div>
             <textarea
               {...register('content')}
               rows={6}
               className={`w-full px-4 py-3 rounded-lg border ${
                 errors.content ? 'border-red-300' : 'border-gray-300'
               } focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
-              placeholder="Share your thoughts, experiences, or ask questions... Or click 'Help me write' for AI suggestions!"
+              placeholder="Share your thoughts, experiences, or ask questions..."
             />
             <div className="mt-1 flex justify-between text-xs text-gray-500">
               <span className={content.trim().length > 2000 ? 'text-red-600' : ''}>
@@ -394,7 +498,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
           </div>
 
           {/* Submit */}
-          <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
+          <div className="flex flex-col-reverse gap-3 pt-6 border-t border-gray-200 sm:flex-row sm:justify-end sm:space-x-3">
             <button
               type="button"
               onClick={onClose}
@@ -410,8 +514,63 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onPostCreate
               {isLoading ? 'Publishing…' : 'Publish Post'}
             </button>
           </div>
-        </form>
-      </div>
+            </form>
+          </div>
+
+          {/* Mobile preview (inside modal) */}
+          <AnimatePresence mode="wait" initial={false}>
+            {previewMode && (
+              <motion.div
+                key="mobile-preview"
+                initial={{ opacity: 0, x: 12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 12 }}
+                transition={{ duration: 0.18 }}
+                className="md:hidden flex-1 overflow-y-auto bg-gradient-to-br from-[#fff7f3] via-[#fffbe6] to-[#ffe3c2] px-3 py-4"
+              >
+                <div className="mx-auto w-full max-w-md">
+                  <PostCard post={previewPost} />
+                </div>
+
+                <div className="mt-4 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewMode(false)}
+                    className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50"
+                  >
+                    Back to editor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSubmit(onSubmit)}
+                    disabled={isLoading}
+                    className="flex-1 rounded-xl bg-gradient-to-r from-[#F25129] to-[#FFC107] px-4 py-3 text-sm font-semibold text-white shadow hover:from-[#E0451F] hover:to-[#E55A2A] disabled:opacity-50"
+                  >
+                    {isLoading ? 'Publishing…' : 'Publish'}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Desktop preview panel */}
+          <AnimatePresence>
+            {previewMode && (
+              <motion.aside
+                initial={{ opacity: 0, x: 24 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 24 }}
+                transition={{ duration: 0.22 }}
+                className="hidden md:flex w-[420px] flex-col border-l border-b-4 border-[#F25129] border-gray-200/70 bg-gradient-to-br from-[#fff7f3] via-[#fffbe6] to-[#ffe3c2]"
+              >
+                <div className="flex-1 overflow-y-auto p-5 sm:p-6 pb-16 min-h-[120px]">
+                  <PostCard post={previewPost} />
+                </div>
+              </motion.aside>
+            )}
+          </AnimatePresence>
+        </div>
+      </motion.div>
     </div>
   );
 };

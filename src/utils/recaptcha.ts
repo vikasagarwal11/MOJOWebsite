@@ -16,23 +16,43 @@ declare global {
 export function configureRecaptcha(): void {
   if (typeof window === 'undefined') return;
 
-  const version = import.meta.env.VITE_RECAPTCHA_VERSION || 'v2';
-  const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+  // Safety: never enable custom/Enterprise reCAPTCHA config during local dev.
+  // Firebase Phone Auth handles its own app-verifier on web; injecting enterprise.js or
+  // window.recaptchaOptions in dev can cause hard-to-debug Phone Auth failures.
+  const configuredVersion = import.meta.env.VITE_RECAPTCHA_VERSION || 'v2';
+  const isLocalhost =
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1';
+  const version = (import.meta.env.DEV || isLocalhost) ? 'v2' : configuredVersion;
 
-  if (!siteKey) {
-    console.warn('⚠️ reCAPTCHA: No site key found in environment variables');
+  // IMPORTANT:
+  // Firebase Phone Auth manages its own reCAPTCHA v2 widget + site key.
+  // Setting window.recaptchaOptions/siteKey or pre-loading scripts can break Phone Auth
+  // and trigger "INVALID_APP_CREDENTIAL" / "auth/invalid-app-credential".
+  if (version !== 'enterprise') {
+    try {
+      // Ensure we don't leak a previous enterprise config into dev.
+      delete (window as any).recaptchaOptions;
+    } catch {
+      // ignore
+    }
+    console.log('✅ reCAPTCHA: Skipping custom config (Firebase Phone Auth handles v2)');
     return;
   }
 
-  // Set global options
+  const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+  if (!siteKey) {
+    console.warn('⚠️ reCAPTCHA: Enterprise mode selected but no site key found');
+    return;
+  }
+
+  // Set global options (enterprise only)
   window.recaptchaOptions = {
-    version,
-    enterprise: version === 'enterprise',
-    siteKey
+    enterprise: true,
   };
 
-  // Load the reCAPTCHA script if not already loaded
-  loadRecaptchaScript(version, siteKey);
+  // Load the Enterprise script if not already loaded
+  loadRecaptchaScript('enterprise', siteKey);
 }
 
 /**
@@ -62,8 +82,11 @@ function loadRecaptchaScript(version: string, siteKey: string): void {
     script.src = `https://www.google.com/recaptcha/enterprise.js?render=${siteKey}`;
     console.log('🔄 reCAPTCHA: Loading Enterprise script...');
   } else {
-    script.src = `https://www.google.com/recaptcha/api.js?render=${siteKey}`;
-    console.log('🔄 reCAPTCHA: Loading v2 script...');
+    // v2 widgets require explicit rendering (grecaptcha.render).
+    // NOTE: Firebase Phone Auth uses reCAPTCHA v2 internally and does not require a site key,
+    // but loading the wrong script (v3 style) can interfere with the widget.
+    script.src = 'https://www.google.com/recaptcha/api.js?render=explicit';
+    console.log('🔄 reCAPTCHA: Loading v2 (explicit) script...');
   }
 
   script.onload = () => {

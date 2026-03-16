@@ -9,6 +9,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { ContactService } from '../services/contactService';
 import { ContactMessageFormData } from '../types/contact';
+import { SEO_CONFIG } from '../config/seo';
 
 // Contact form validation schema
 const contactSchema = z.object({
@@ -17,7 +18,7 @@ const contactSchema = z.object({
   phone: z.string().optional(),
   subject: z.string().min(5, 'Subject must be at least 5 characters'),
   message: z.string().min(10, 'Message must be at least 10 characters'),
-  inquiryType: z.enum(['general', 'events', 'membership', 'technical', 'partnership', 'other']),
+  inquiryType: z.enum(['general', 'events', 'membership', 'technical', 'partnership', 'start-a-chapter', 'other']),
 });
 
 type ContactFormData = z.infer<typeof contactSchema>;
@@ -28,7 +29,7 @@ const Contact: React.FC = () => {
   const [searchParams] = useSearchParams();
   
   // Get inquiry type from URL parameters
-  const urlInquiryType = searchParams.get('inquiryType') as 'general' | 'events' | 'membership' | 'technical' | 'partnership' | 'other' | null;
+  const urlInquiryType = searchParams.get('inquiryType') as 'general' | 'events' | 'membership' | 'technical' | 'partnership' | 'start-a-chapter' | 'other' | null;
 
   const {
     register,
@@ -40,7 +41,11 @@ const Contact: React.FC = () => {
     resolver: zodResolver(contactSchema),
     defaultValues: {
       inquiryType: urlInquiryType || 'general',
-      message: urlInquiryType === 'partnership' ? 'I am interested in becoming a sponsor for Moms Fitness Mojo. Please provide me with information about sponsorship opportunities, packages, and how we can collaborate to benefit your community.' : '',
+      message: urlInquiryType === 'partnership' 
+        ? 'I am interested in becoming a sponsor for Moms Fitness Mojo. Please provide me with information about sponsorship opportunities, packages, and how we can collaborate to benefit your community.'
+        : urlInquiryType === 'start-a-chapter'
+        ? 'I am interested in starting a Moms Fitness Mojo chapter in my area. Please provide me with information about how to get started, what support is available, and the requirements for starting a new chapter.'
+        : '',
     },
   });
 
@@ -51,6 +56,9 @@ const Contact: React.FC = () => {
       if (urlInquiryType === 'partnership') {
         setValue('message', 'I am interested in becoming a sponsor for Moms Fitness Mojo. Please provide me with information about sponsorship opportunities, packages, and how we can collaborate to benefit your community.');
         setValue('subject', 'Sponsorship Inquiry - Partnership Opportunities');
+      } else if (urlInquiryType === 'start-a-chapter') {
+        setValue('message', 'I am interested in starting a Moms Fitness Mojo chapter in my area. Please provide me with information about how to get started, what support is available, and the requirements for starting a new chapter.');
+        setValue('subject', 'Start A Chapter - New Chapter Inquiry');
       }
     }
   }, [urlInquiryType, setValue]);
@@ -93,6 +101,7 @@ const Contact: React.FC = () => {
     { value: 'membership', label: 'Membership Questions' },
     { value: 'technical', label: 'Technical Support' },
     { value: 'partnership', label: 'Partnership Opportunities' },
+    { value: 'start-a-chapter', label: 'Start A Chapter' },
     { value: 'other', label: 'Other' },
   ];
 
@@ -101,31 +110,22 @@ const Contact: React.FC = () => {
     '@context': 'https://schema.org',
     '@type': 'ContactPage',
     name: 'Contact Moms Fitness Mojo',
-    url: 'https://momfitnessmojo.web.app/contact',
+    url: SEO_CONFIG.getUrl('/contact'),
     description: 'Get in touch with Moms Fitness Mojo. We\'d love to hear from you! Whether you have questions about our community, want to join an event, or just want to say hello, we\'re here to help.',
     mainEntity: {
       '@type': 'Organization',
-      name: 'Moms Fitness Mojo',
-      url: 'https://momfitnessmojo.web.app',
-      logo: 'https://momfitnessmojo.web.app/assets/logo/square-logo.svg',
-      email: 'momsfitnessmojo@gmail.com',
-      address: {
-        '@type': 'PostalAddress',
-        addressLocality: 'Short Hills',
-        addressRegion: 'NJ',
-        addressCountry: 'US',
-      },
+      name: SEO_CONFIG.siteName,
+      url: SEO_CONFIG.baseUrl,
+      logo: SEO_CONFIG.defaultLogo,
+      email: SEO_CONFIG.email,
+      address: SEO_CONFIG.address,
       contactPoint: {
         '@type': 'ContactPoint',
         contactType: 'customer service',
-        email: 'momsfitnessmojo@gmail.com',
+        email: SEO_CONFIG.email,
         availableLanguage: 'English',
       },
-      sameAs: [
-        'https://www.instagram.com/momsfitnessmojo/',
-        'https://www.facebook.com/momsfitnessmojo/',
-        'https://www.linkedin.com/company/momsfitnessmojo/',
-      ],
+      sameAs: Object.values(SEO_CONFIG.socialMedia),
     },
   };
 
@@ -138,20 +138,20 @@ const Contact: React.FC = () => {
           name="description"
           content="Get in touch with Moms Fitness Mojo. We'd love to hear from you! Whether you have questions about our community, want to join an event, or just want to say hello, we're here to help."
         />
-        <link rel="canonical" href="https://momfitnessmojo.web.app/contact" />
+        <link rel="canonical" href={SEO_CONFIG.getUrl('/contact')} />
         
         {/* Open Graph */}
         <meta property="og:type" content="website" />
         <meta property="og:title" content="Contact Moms Fitness Mojo" />
         <meta property="og:description" content="Get in touch with Moms Fitness Mojo. We'd love to hear from you! Whether you have questions about our community, want to join an event, or just want to say hello, we're here to help." />
-        <meta property="og:url" content="https://momfitnessmojo.web.app/contact" />
-        <meta property="og:image" content="https://momfitnessmojo.web.app/assets/logo/facebook-post.svg" />
+        <meta property="og:url" content={SEO_CONFIG.getUrl('/contact')} />
+        <meta property="og:image" content={SEO_CONFIG.defaultImage} />
         
         {/* Twitter */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="Contact Moms Fitness Mojo" />
         <meta name="twitter:description" content="Get in touch with Moms Fitness Mojo. We'd love to hear from you!" />
-        <meta name="twitter:image" content="https://momfitnessmojo.web.app/assets/logo/square-logo.svg" />
+        <meta name="twitter:image" content={SEO_CONFIG.defaultLogo} />
         
         {/* Structured Data */}
         <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>

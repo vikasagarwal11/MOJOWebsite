@@ -1,4 +1,5 @@
 import React from 'react';
+import { SEO_CONFIG } from '../../config/seo';
 
 interface OrganizationSchemaProps {
   name?: string;
@@ -15,13 +16,13 @@ interface OrganizationSchemaProps {
 }
 
 export const OrganizationSchema: React.FC<OrganizationSchemaProps> = ({
-  name = "Moms Fitness Mojo",
-  description = "A supportive fitness community for moms to connect, share fitness journeys, and grow together",
-  url = "https://momsfitnessmojo.com",
-  logo = "https://momsfitnessmojo.com/logo.png",
-  email = "momsfitnessmojo@gmail.com",
-  phone,
-  socialMedia = {}
+  name = SEO_CONFIG.siteName,
+  description = SEO_CONFIG.defaultDescription,
+  url = SEO_CONFIG.baseUrl,
+  logo = SEO_CONFIG.defaultLogo,
+  email = SEO_CONFIG.email,
+  phone = SEO_CONFIG.phone,
+  socialMedia = SEO_CONFIG.socialMedia
 }) => {
   const schema = {
     "@context": "https://schema.org",
@@ -41,14 +42,9 @@ export const OrganizationSchema: React.FC<OrganizationSchemaProps> = ({
     ...(Object.keys(socialMedia).length > 0 && {
       "sameAs": Object.values(socialMedia).filter(Boolean)
     }),
-    "address": {
-      "@type": "PostalAddress",
-      "addressLocality": "Short Hills",
-      "addressRegion": "NJ",
-      "addressCountry": "US"
-    },
-    "foundingDate": "2024",
-    "knowsAbout": ["Fitness", "Women's Health", "Community Building", "Wellness", "Motherhood"]
+    "address": SEO_CONFIG.address,
+    "foundingDate": SEO_CONFIG.foundingDate,
+    "knowsAbout": SEO_CONFIG.knowsAbout
   };
 
   return (
@@ -116,7 +112,7 @@ export const EventSchema: React.FC<EventSchemaProps> = ({
     "organizer": {
       "@type": "Organization",
       "name": organizer,
-      "url": "https://momsfitnessmojo.com"
+      "url": SEO_CONFIG.baseUrl
     },
     ...(price && {
       "offers": {
@@ -124,7 +120,7 @@ export const EventSchema: React.FC<EventSchemaProps> = ({
         "price": price.toString(),
         "priceCurrency": priceCurrency,
         "availability": "https://schema.org/InStock",
-        "url": "https://momsfitnessmojo.com/events"
+        "url": SEO_CONFIG.getUrl('/events')
       }
     }),
     ...(image && { "image": image }),
@@ -190,8 +186,8 @@ export const LocalBusinessSchema: React.FC<LocalBusinessSchemaProps> = ({
     "openingHours": openingHours,
     "priceRange": priceRange,
     "category": categories,
-    "url": "https://momsfitnessmojo.com",
-    "logo": "https://momsfitnessmojo.com/logo.png"
+    "url": SEO_CONFIG.baseUrl,
+    "logo": SEO_CONFIG.defaultLogo
   };
 
   return (
@@ -231,7 +227,7 @@ export const PersonSchema: React.FC<PersonSchemaProps> = ({
     "worksFor": {
       "@type": "Organization",
       "name": worksFor,
-      "url": "https://momsfitnessmojo.com"
+      "url": SEO_CONFIG.baseUrl
     },
     ...(email && { "email": email }),
     ...(sameAs.length > 0 && { "sameAs": sameAs })

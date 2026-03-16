@@ -1,43 +1,41 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle,
   Calendar,
-  UserPlus,
-  Users,
   ChevronDown,
-  Heart,
+  Clock,
+  MapPin,
   QrCode,
+  UserPlus,
+  Users
 } from 'lucide-react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { EventDoc } from '../hooks/useEvents';
-import { useAuth } from '../contexts/AuthContext';
-import { useUserBlocking } from '../hooks/useUserBlocking';
-import { useAttendees } from '../hooks/useAttendees';
-import { useFamilyMembers } from '../hooks/useFamilyMembers';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { AttendeeList } from '../components/events/AttendeeList';
-import { LoadingButton } from '../components/ui/LoadingSpinner';
-import { CreateAttendeeData, AttendeeStatus, AgeGroup, Relationship } from '../types/attendee';
-import { FamilyMember } from '../types/family';
+import { useAuth } from '../contexts/AuthContext';
+import { useAttendees } from '../hooks/useAttendees';
+import { EventDoc } from '../hooks/useEvents';
+import { useUserBlocking } from '../hooks/useUserBlocking';
+import { AgeGroup, Attendee, AttendeeStatus, CreateAttendeeData, Relationship } from '../types/attendee';
+import { normalizeUSPhoneToE164OrNull } from '../utils/phone';
 
+import { collection, doc, getDocFromServer, getDocsFromServer, onSnapshot, query, where } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import toast from 'react-hot-toast';
-import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 // Import hooks
-import { useEventDates } from '../components/events/RSVPModalNew/hooks/useEventDates';
 import { useCapacityState } from '../components/events/RSVPModalNew/hooks/useCapacityState';
+import { useEventDates } from '../components/events/RSVPModalNew/hooks/useEventDates';
 import { getCapacityBadgeClasses } from '../components/events/RSVPModalNew/rsvpUi';
 import { useWaitlistPositions } from '../hooks/useWaitlistPositions';
 // Import components
-import { Header } from '../components/events/RSVPModalNew/components/Header';
-import { EventDetails } from '../components/events/RSVPModalNew/components/EventDetails';
-import { AttendeeInputRowMemo } from '../components/events/RSVPModalNew/components/AttendeeInputRow';
-import { QRCodeTab } from '../components/events/QRCodeTab';
-import { PaymentSection } from '../components/events/PaymentSection';
-import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
-import { AutoPromotionManager } from '../components/admin/AutoPromotionManager';
-import { EventImage } from '../components/events/EventImage';
 import { Helmet } from 'react-helmet-async';
+import { AutoPromotionManager } from '../components/admin/AutoPromotionManager';
+import { PaymentSection } from '../components/events/PaymentSection';
+import { QRCodeTab } from '../components/events/QRCodeTab';
+import { AttendeeInputRowMemo } from '../components/events/RSVPModalNew/components/AttendeeInputRow';
+import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
+import { OTPVerificationModal } from '../components/modals/OTPVerificationModal';
 import { createEventCanonicalUrl } from '../utils/seo';
 
 const RSVPPage: React.FC = () => {
@@ -45,48 +43,26 @@ const RSVPPage: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
-  const closeBtnRef = useRef<HTMLButtonElement>(null);
-  
   // Real-time event loading with onSnapshot (NOT getDoc)
   const [event, setEvent] = useState<EventDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // ============================================================================
   // CRITICAL: All hooks must be called BEFORE any early returns
   // React Rules of Hooks require hooks to be called in the same order every render
   // ============================================================================
-  
-  // Mobile detection
-  const [isMobile, setIsMobile] = useState(false);
-  
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768); // md breakpoint
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
 
-  // Reduced-motion aware transitions
-  const prefersReduced = useReducedMotion();
-  
   // Initialize all state hooks (must be unconditional)
-  const [isAddSectionCollapsed, setIsAddSectionCollapsed] = useState(true);
-  const [showFamilyMembers, setShowFamilyMembers] = useState(false);
-  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  const [isAddSectionCollapsed, setIsAddSectionCollapsed] = useState(false);
+  const [isEventDetailsCollapsed, setIsEventDetailsCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<'attendees' | 'qr' | 'whosGoing'>('attendees');
-  const [familySizeInfo, setFamilySizeInfo] = useState<{ current: number; max: number; canAdd: boolean }>({ current: 0, max: 4, canAdd: true });
   const [isAdding, setIsAdding] = useState(false);
-  
+
   // Use real-time event data for capacity state - initialize with safe fallback
   const [realTimeAttendingCount, setRealTimeAttendingCount] = useState<number>(0);
-  
-  // Ref to track previous family info - must be BEFORE early returns to maintain hook count
-  const prevFamilyInfoRef = useRef<{ primaryGoing: boolean; familyCount: number } | null>(null);
-  
+
+
   // Load event from URL using onSnapshot for real-time updates
   useEffect(() => {
     if (!eventId) {
@@ -96,7 +72,7 @@ const RSVPPage: React.FC = () => {
     }
 
     const eventRef = doc(db, 'events', eventId);
-    
+
     // Real-time listener for live updates (same pattern as EventDetailsPage)
     const unsubscribe = onSnapshot(
       eventRef,
@@ -140,7 +116,7 @@ const RSVPPage: React.FC = () => {
       if (doc.exists()) {
         const data = doc.data();
         const newCount = data.attendingCount || 0;
-        
+
         // Only update if count actually changed
         setRealTimeAttendingCount(prevCount => {
           if (prevCount !== newCount) {
@@ -148,7 +124,7 @@ const RSVPPage: React.FC = () => {
           }
           return prevCount;
         });
-        
+
         // Only update event if attendingCount changed (not the entire event to prevent loops)
         setEvent(prevEvent => {
           if (prevEvent && prevEvent.attendingCount !== newCount) {
@@ -167,24 +143,68 @@ const RSVPPage: React.FC = () => {
   // Check if current user is the event creator (admin) or has admin role
   const isEventCreator = currentUser?.id === event?.createdBy;
   const isAdmin = currentUser?.role === 'admin' || isEventCreator;
-  
+  const isGuestTrulyPublic = !currentUser && event?.visibility === 'truly_public';
+
+  // Check if members are allowed to add attendees
+  // Note: allowMembersToAddAttendees may exist on event but not in EventDoc type
+  const allowMembersToAddAttendees = (event as any)?.allowMembersToAddAttendees;
+  const canAddAttendees = isGuestTrulyPublic || isAdmin || (allowMembersToAddAttendees === true);
+
+  // Helper to generate unique IDs (defined early for use in state initializers)
+  const makeId = () =>
+    (globalThis as any).crypto?.randomUUID
+      ? (globalThis as any).crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+
+  // Guest RSVP modal state
+  type GuestRow = { id: string; name: string; relationship: Relationship; ageGroup: AgeGroup };
+  const [guestFirstName, setGuestFirstName] = useState('');
+  const [guestLastName, setGuestLastName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestRows, setGuestRows] = useState<GuestRow[]>(() => [{ id: makeId(), name: '', relationship: 'guest', ageGroup: 'adult' }]);
+  const [guestSubmitting, setGuestSubmitting] = useState(false);
+  const [guestSubmitted, setGuestSubmitted] = useState(false);
+  const [guestMemberExists, setGuestMemberExists] = useState(false);
+  const [guestAttendees, setGuestAttendees] = useState<Attendee[]>([]);
+  // OTP Verification state for guest payments
+  const [showOTPModal, setShowOTPModal] = useState(false);
+  const [guestSessionToken, setGuestSessionToken] = useState<string | null>(null);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [showAdditionalMembersForm, setShowAdditionalMembersForm] = useState(false);
+
+  // No local caching for guest RSVP data. Firestore is the source of truth.
+
+  // Debug log to verify event settings
+  useEffect(() => {
+    if (event?.id) {
+      console.log('🔍 RSVPPage - Event settings check:', {
+        eventId: event.id,
+        isAdmin,
+        allowMembersToAddAttendees,
+        canAddAttendees,
+        maxAttendees: event.maxAttendees,
+        attendingCount: event.attendingCount
+      });
+    }
+  }, [event?.id, isAdmin, allowMembersToAddAttendees, canAddAttendees, event?.maxAttendees, event?.attendingCount]);
+
   // Use our new date hook - safe fallback for null event
   const emptyEvent = useMemo(() => ({} as EventDoc), []);
-  const { 
+  const {
     isEventPast
   } = useEventDates(event || emptyEvent);
-  
+
   // Event-dependent hooks - safe fallbacks for null event
-  const { attendees, counts, addAttendee, bulkAddAttendees, refreshAttendees, updateAttendee, error: attendeesError } = useAttendees(
+  const { attendees, counts, bulkAddAttendees, refreshAttendees, updateAttendee, error: attendeesError } = useAttendees(
     event?.id || '',
     currentUser?.id || '',
     isAdmin
   );
-  const { familyMembers } = useFamilyMembers();
 
   // Real-time waitlist positions - ONLY when waitlist is enabled
   const { positions: waitlistPositions, myPosition: waitlistPosition, waitlistCount } = useWaitlistPositions(
-    event?.waitlistEnabled ? (event?.id || '') : '', 
+    event?.waitlistEnabled ? (event?.id || '') : '',
     event?.waitlistEnabled ? currentUser?.id : undefined
   );
 
@@ -196,11 +216,6 @@ const RSVPPage: React.FC = () => {
     relationship: Relationship;
     rsvpStatus: AttendeeStatus;
   };
-
-  const makeId = () =>
-    (globalThis as any).crypto?.randomUUID
-      ? (globalThis as any).crypto.randomUUID()
-      : Math.random().toString(36).slice(2);
 
   // Bulk form data hook - must be unconditional
   const [bulkFormData, setBulkFormData] = useState<{ familyMembers: BulkRow[] }>(() => ({
@@ -215,8 +230,18 @@ const RSVPPage: React.FC = () => {
     ],
   }));
 
+  // Modal state for non-refundable warning
+  const [showNonRefundableModal, setShowNonRefundableModal] = useState(false);
+  const [pendingStatusChange, setPendingStatusChange] = useState<{
+    attendeeId: string;
+    status: AttendeeStatus;
+  } | null>(null);
+
   // Create capacity state using real-time count and waitlist data - BEFORE early returns
-  const liveGoingCount = typeof counts.totalGoing === 'number' ? counts.totalGoing : realTimeAttendingCount;
+  // CRITICAL: Always use realTimeAttendingCount for capacity checks, NOT counts.totalGoing
+  // because counts.totalGoing only includes the current user's attendees, not all attendees
+  // For a user who hasn't RSVP'd, counts.totalGoing would be 0, causing incorrect capacity checks
+  const liveGoingCount = realTimeAttendingCount;
 
   const mockCountsWithRealTime = useMemo(() => ({
     ...counts,
@@ -227,61 +252,53 @@ const RSVPPage: React.FC = () => {
 
   // Use capacity state hook - safe fallbacks for null event
   const capacityState = useCapacityState(
-    mockCountsWithRealTime, 
-    event?.maxAttendees || 0, 
-    event?.waitlistEnabled || false, 
+    mockCountsWithRealTime,
+    event?.maxAttendees || 0,
+    event?.waitlistEnabled || false,
     event?.waitlistLimit || undefined
   );
+
+  // Capacity UI state - improved state handling
+  const capacityUI = useMemo(() => {
+    if (!capacityState) return null;
+
+    if (!capacityState.canAddMore && !capacityState.canWaitlist) {
+      return {
+        tone: 'error' as const,
+        title: 'Event is Full',
+        subtitle: 'No more RSVPs can be accepted.',
+      };
+    }
+
+    if (!capacityState.canAddMore && capacityState.canWaitlist) {
+      return {
+        tone: 'warning' as const,
+        title: 'Event is Full — Waitlist Available',
+        subtitle: 'Join the waitlist and you\'ll be auto-notified if a spot opens.',
+        showWaitlistPosition: true,
+      };
+    }
+
+    if (capacityState.isNearlyFull) {
+      return {
+        tone: 'info' as const,
+        title: 'Limited Spots Remaining',
+        subtitle: capacityState.slotsRemainingText || 'Hurry! Spots are filling up fast.',
+      };
+    }
+
+    return null;
+  }, [capacityState]);
 
   // Blocked users check (non-hook, safe to call)
   const isBlockedFromRSVP = blockedUsers.some(
     (block) => block.blockCategory === 'rsvp_only' && block.isActive
   );
 
-  // Calculate family size info - use ref to track previous values and prevent infinite loops
-  // NOTE: prevFamilyInfoRef is already declared above (before early returns) to maintain hook count
-  useEffect(() => {
-    if (!currentUser) {
-      setFamilySizeInfo({ current: 0, max: 4, canAdd: false });
-      prevFamilyInfoRef.current = null;
-      return;
-    }
-
-    // Find primary attendee
-    const primaryAttendee = attendees.find(
-      attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'primary'
-    );
-    const isPrimaryGoing = primaryAttendee?.rsvpStatus === 'going';
-
-    // Count family members
-    const currentFamilyCount = attendees.filter(
-      attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'family_member'
-    ).length;
-
-    const maxFamilyMembers = 4;
-    const canAddMore = isPrimaryGoing && currentFamilyCount < maxFamilyMembers;
-
-    // Only update if values actually changed to prevent infinite loops
-    const currentFamilyInfo = { primaryGoing: isPrimaryGoing, familyCount: currentFamilyCount };
-    const prevFamilyInfo = prevFamilyInfoRef.current;
-    
-    if (
-      !prevFamilyInfo ||
-      prevFamilyInfo.primaryGoing !== isPrimaryGoing ||
-      prevFamilyInfo.familyCount !== currentFamilyCount
-    ) {
-      prevFamilyInfoRef.current = currentFamilyInfo;
-      setFamilySizeInfo({
-        current: currentFamilyCount,
-        max: maxFamilyMembers,
-        canAdd: canAddMore
-      });
-    }
-  }, [currentUser?.id, attendees]);
 
   // Memoize the ready to add count to prevent unnecessary re-renders
-  const readyToAddCount = useMemo(() => 
-    bulkFormData.familyMembers.filter((m) => m.name.trim()).length, 
+  const readyToAddCount = useMemo(() =>
+    bulkFormData.familyMembers.filter((m) => m.name.trim()).length,
     [bulkFormData.familyMembers]
   );
 
@@ -311,27 +328,11 @@ const RSVPPage: React.FC = () => {
     }));
   }, []);
 
-  // Helper functions (not hooks, but must be defined before early returns)
-  const handleClose = useCallback(() => {
-    navigate(-1); // Go back to previous page
-  }, [navigate]);
-
-  // Available family members (not a hook, but computed value)
-  const availableFamilyMembers = useMemo(() => {
-    if (!currentUser || !familyMembers) return [];
-    return familyMembers.filter(
-      (familyMember) =>
-        !attendees.some(
-          (attendee) =>
-            attendee.userId === currentUser.id && attendee.familyMemberId === familyMember.id
-        )
-    );
-  }, [currentUser?.id, familyMembers, attendees]);
 
   // ============================================================================
   // NOW safe to do early returns - all hooks have been called
   // ============================================================================
-  
+
   // Return early if loading
   if (loading) {
     return (
@@ -363,8 +364,8 @@ const RSVPPage: React.FC = () => {
     );
   }
 
-  // Return early if no user
-  if (!currentUser) {
+  // Return early if no user and event is not truly public
+  if (!currentUser && event?.visibility !== 'truly_public') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center">
         <div className="text-center">
@@ -389,7 +390,7 @@ const RSVPPage: React.FC = () => {
     waitlistEnabled: event.waitlistEnabled,
     waitlistLimit: event.waitlistLimit
   });
-  
+
   // Debug admin status
   console.log('🔍 Admin Status Debug:', {
     currentUserId: currentUser?.id,
@@ -403,7 +404,283 @@ const RSVPPage: React.FC = () => {
   // NOTE: This runs after early returns, but it's just logging, not a hook
   // All hooks are already declared above before early returns
 
+  // Helper function to update primary member and cascade to family members
+  const handleCascadingStatusUpdate = async (attendeeId: string, newStatus: AttendeeStatus) => {
+    const attendeeToUpdate = attendees.find(a => a.attendeeId === attendeeId);
+    if (!attendeeToUpdate) return;
+
+    // Update the primary/target attendee
+    await updateAttendee(attendeeId, { rsvpStatus: newStatus });
+
+    // If this is a primary member changing to "not-going", cascade to family members
+    if (attendeeToUpdate.attendeeType === 'primary' && newStatus === 'not-going') {
+      const familyMembers = attendees.filter(
+        a => a.userId === attendeeToUpdate.userId &&
+          a.attendeeType === 'family_member' &&
+          a.rsvpStatus === 'going'
+      );
+
+      if (familyMembers.length > 0) {
+        toast.loading(`Updating ${familyMembers.length} family member(s)...`);
+
+        // Update all family members to not-going
+        await Promise.all(
+          familyMembers.map(member =>
+            updateAttendee(member.attendeeId, { rsvpStatus: 'not-going' })
+          )
+        );
+
+        toast.dismiss();
+        toast.success(`Updated ${familyMembers.length} family member(s) to Not Going`);
+      }
+    }
+
+    await refreshAttendees();
+  };
+
+  // Handler for verifying phone BEFORE RSVP submission
+  const handleVerifyPhone = () => {
+    const firstName = guestFirstName.trim();
+    const lastName = guestLastName.trim();
+    const email = guestEmail.trim().toLowerCase();
+    const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+
+    // Validate contact info before showing OTP modal
+    if (!firstName || !lastName) { toast.error('First and last name are required'); return; }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error('Please enter a valid email address'); return; }
+    if (!phoneE164) { toast.error('Please enter a valid US phone number'); return; }
+
+    // Clear any previous guest state before starting a new verification flow
+    setGuestAttendees([]);
+    setGuestSubmitted(false);
+    setGuestMemberExists(false);
+    setGuestSessionToken(null);
+    setIsPhoneVerified(false);
+    setShowAdditionalMembersForm(false);
+
+    // Open OTP modal for verification
+    setShowOTPModal(true);
+  };
+
+  // Handler for OTP verification success
+  const handleOTPVerified = async (sessionToken: string) => {
+    console.log('[FRONTEND] OTP Verified! Session token received');
+    console.log('[FRONTEND] Session token (first 10 chars):', sessionToken?.substring(0, 10) + '...');
+    console.log('[FRONTEND] Session token length:', sessionToken?.length);
+    setGuestSessionToken(sessionToken);
+    setIsPhoneVerified(true);
+    setShowAdditionalMembersForm(true);
+    toast.success('Phone verified! You can now add additional members and submit your RSVP.');
+
+    if (!event?.id) return;
+    const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+    if (!phoneE164) return;
+    const phoneDigits = phoneE164.replace(/[^\d]/g, '');
+    const guestUserId = `guest_${event.id}_${phoneDigits}`;
+
+    try {
+      console.log('[GUEST] Fetching existing guest attendees after OTP verify');
+      const existing = await fetchGuestAttendeesFromFirestore(event.id, guestUserId, phoneE164);
+      if (existing.length > 0) {
+        setGuestAttendees(existing);
+        setGuestSubmitted(true);
+        console.log('[GUEST] Existing attendees loaded:', existing.map(a => ({ id: a.attendeeId, paymentStatus: a.paymentStatus })));
+      }
+    } catch (error) {
+      console.error('[GUEST] Failed to fetch attendees after OTP verify:', error);
+    }
+  };
+
+  const fetchGuestAttendeesFromFirestore = async (
+    targetEventId: string,
+    targetGuestUserId: string | undefined,
+    targetGuestPhone: string | undefined
+  ): Promise<Attendee[]> => {
+    if (!targetEventId) return [];
+
+    const attendeesRef = collection(db, 'events', targetEventId, 'attendees');
+    let snapshot = targetGuestUserId
+      ? await getDocsFromServer(query(attendeesRef, where('userId', '==', targetGuestUserId), where('rsvpStatus', '==', 'going')))
+      : null;
+
+    if (!snapshot || snapshot.empty) {
+      if (targetGuestPhone) {
+        snapshot = await getDocsFromServer(query(attendeesRef, where('guestPhone', '==', targetGuestPhone), where('rsvpStatus', '==', 'going')));
+      }
+    }
+
+    if (!snapshot || snapshot.empty) return [];
+
+    return snapshot.docs.map((attendeeSnap) => {
+      const data = attendeeSnap.data();
+      return {
+        attendeeId: attendeeSnap.id,
+        eventId: targetEventId,
+        userId: data.userId,
+        attendeeType: data.attendeeType,
+        relationship: data.relationship,
+        name: data.name,
+        ageGroup: data.ageGroup,
+        rsvpStatus: data.rsvpStatus,
+        paymentStatus: data.paymentStatus || 'unpaid',
+        createdAt: data.createdAt?.toDate?.() || new Date(),
+        updatedAt: data.updatedAt?.toDate?.() || new Date(),
+      } as Attendee;
+    });
+  };
+
+  // Function to refresh guest attendees from Firestore
+  const refreshGuestAttendees = async (): Promise<Attendee[]> => {
+    if (!event?.id || guestAttendees.length === 0) return;
+
+    try {
+      console.log('🔄 [GUEST] Refreshing guest attendees from Firestore');
+      const attendeeIds = guestAttendees.map(a => a.attendeeId);
+
+      // Fetch updated attendee data from Firestore
+      const updatedAttendees: Attendee[] = [];
+      for (const attendeeId of attendeeIds) {
+        const attendeeRef = doc(db, 'events', event.id, 'attendees', attendeeId);
+        const attendeeSnap = await getDocFromServer(attendeeRef);
+
+        if (attendeeSnap.exists()) {
+          const data = attendeeSnap.data();
+          updatedAttendees.push({
+            attendeeId: attendeeSnap.id,
+            eventId: event.id,
+            userId: data.userId,
+            attendeeType: data.attendeeType,
+            relationship: data.relationship,
+            name: data.name,
+            ageGroup: data.ageGroup,
+            rsvpStatus: data.rsvpStatus,
+            paymentStatus: data.paymentStatus,
+            createdAt: data.createdAt?.toDate?.() || new Date(),
+            updatedAt: data.updatedAt?.toDate?.() || new Date(),
+          });
+        }
+      }
+
+      let finalAttendees = updatedAttendees;
+
+      if (updatedAttendees.length !== attendeeIds.length) {
+        console.warn('⚠️ [GUEST] Some attendee IDs missing. Falling back to query by userId/guestPhone.');
+        const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+        const fallback = await fetchGuestAttendeesFromFirestore(
+          event.id,
+          guestAttendees[0]?.userId,
+          phoneE164 || undefined
+        );
+        if (fallback.length > 0) {
+          finalAttendees = fallback;
+        }
+      }
+
+      console.log('✅ [GUEST] Refreshed attendees:', finalAttendees.map(a => ({ id: a.attendeeId, paymentStatus: a.paymentStatus })));
+      setGuestAttendees(finalAttendees);
+
+      // No local caching
+      return finalAttendees;
+    } catch (error) {
+      console.error('❌ [GUEST] Error refreshing guest attendees:', error);
+      return guestAttendees;
+    }
+  };
+
+  const handleSubmitGuestRsvp = async () => {
+    if (!event?.id) return;
+    if (!isPhoneVerified) {
+      toast.error('Please verify your phone number first');
+      return;
+    }
+
+    const firstName = guestFirstName.trim();
+    const lastName = guestLastName.trim();
+    const email = guestEmail.trim().toLowerCase();
+    const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+
+    // Additional validation (should never happen since phone was verified)
+    if (!phoneE164) {
+      toast.error('Invalid phone number');
+      return;
+    }
+
+      const additionalAttendees = guestRows
+        .map((r) => ({ name: r.name.trim(), relationship: (r.relationship || 'guest') as Relationship, ageGroup: (r.ageGroup || 'adult') as AgeGroup }))
+        .filter((r) => r.name.length > 0);
+
+    try {
+      setGuestSubmitting(true);
+      setGuestMemberExists(false);
+      const fn = httpsCallable<
+        { eventId: string; guest: { firstName: string; lastName: string; email: string; phoneNumber: string }; additionalAttendees: Array<{ name: string; relationship: string; ageGroup: string }> },
+        { success: boolean; memberExists?: boolean; message?: string; error?: string; attendeeIds?: string[]; guestUserId?: string; attendees?: Array<{ name: string; relationship: string; attendeeType: 'primary' | 'family_member'; ageGroup: string }> }
+      >(getFunctions(undefined, 'us-east1'), 'submitTrulyPublicGuestRsvp');
+
+      const result = await fn({ eventId: event.id, guest: { firstName, lastName, email, phoneNumber: phoneE164 }, additionalAttendees });
+
+      if (!result.data?.success) {
+        if (result.data?.memberExists) {
+          setGuestMemberExists(true);
+          toast.error(result.data?.message || 'You are already a member. Please login.');
+          return;
+        }
+        toast.error(result.data?.error || result.data?.message || 'Unable to submit RSVP');
+        return;
+      }
+
+      // Always re-fetch from Firestore to get real paymentStatus (avoid re-marking paid as unpaid)
+      const guestUserId = result.data.guestUserId || `guest-${email}`;
+
+      let finalAttendees = await fetchGuestAttendeesFromFirestore(
+        event.id,
+        guestUserId,
+        phoneE164
+      );
+
+      // If Firestore fetch returns nothing (edge case), fall back to backend response
+      if (finalAttendees.length === 0) {
+        const returnedIds = result.data.attendeeIds || [];
+        const serverAttendees = result.data.attendees && result.data.attendees.length > 0
+          ? result.data.attendees
+          : [{ name: `${firstName} ${lastName}`, relationship: 'self', attendeeType: 'primary' as const, ageGroup: 'adult' as AgeGroup }, ...additionalAttendees.map(a => ({ name: a.name, relationship: a.relationship, attendeeType: 'family_member' as const, ageGroup: a.ageGroup }))];
+        const built: Attendee[] = serverAttendees.map((m, i) => ({
+          attendeeId: returnedIds[i] || '',
+          eventId: event.id,
+          userId: guestUserId,
+          attendeeType: m.attendeeType,
+          relationship: m.relationship as Relationship,
+          name: m.name,
+          ageGroup: m.ageGroup,
+          rsvpStatus: 'going',
+          paymentStatus: 'unpaid',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }));
+        finalAttendees = built.filter(a => a.attendeeId);
+      }
+
+      setGuestAttendees(finalAttendees);
+      setGuestSubmitted(true);
+
+      console.log('✅ [FRONTEND] RSVP Submitted! Session token still available:', guestSessionToken ? 'YES' : 'NO');
+      if (guestSessionToken) {
+        console.log('✅ [FRONTEND] Session token (first 10 chars):', guestSessionToken.substring(0, 10) + '...');
+      }
+      toast.success(result.data?.message || 'RSVP submitted successfully!');
+    } catch (err: any) {
+      console.error('Failed to submit guest RSVP:', err);
+      toast.error(err?.message || 'Unable to submit RSVP');
+    } finally {
+      setGuestSubmitting(false);
+    }
+  };
+
   const handleBulkAddFamilyMembers = async () => {
+    if (!canAddAttendees) {
+      toast.error('This event is restricted to members. Please contact the host.');
+      return;
+    }
     if (!currentUser || bulkFormData.familyMembers.length === 0) return;
     const validMembers = bulkFormData.familyMembers.filter((m) => m.name.trim());
     if (validMembers.length === 0) return;
@@ -422,7 +699,7 @@ const RSVPPage: React.FC = () => {
       }
       // Update form data to set waitlisted status
       setBulkFormData(prev => ({
-        familyMembers: prev.familyMembers.map(m => 
+        familyMembers: prev.familyMembers.map(m =>
           m.name.trim() ? { ...m, rsvpStatus: 'waitlisted' as AttendeeStatus } : m
         )
       }));
@@ -430,12 +707,12 @@ const RSVPPage: React.FC = () => {
 
     try {
       setIsAdding(true);
-      
+
       // Check if primary member is already an attendee
       const existingPrimaryAttendee = attendees.find(
         attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'primary'
       );
-      
+
       const attendeesData: CreateAttendeeData[] = validMembers.map((member) => ({
         eventId: event.id,
         userId: currentUser.id,
@@ -445,7 +722,7 @@ const RSVPPage: React.FC = () => {
         ageGroup: member.ageGroup || 'adult',
         rsvpStatus: member.rsvpStatus || 'going',
       }));
-      
+
       // Add primary member if not already exists, or update existing one to going
       if (!existingPrimaryAttendee) {
         attendeesData.unshift({
@@ -462,7 +739,7 @@ const RSVPPage: React.FC = () => {
         await updateAttendee(existingPrimaryAttendee.attendeeId, { rsvpStatus: 'going' });
         toast.success('You have been automatically set to "going" since family members are attending.');
       }
-      
+
       await bulkAddAttendees(attendeesData);
       setBulkFormData({
         familyMembers: [{ id: makeId(), name: '', ageGroup: 'adult', relationship: 'guest', rsvpStatus: 'going' }],
@@ -477,112 +754,6 @@ const RSVPPage: React.FC = () => {
     }
   };
 
-  const handleAddFamilyMember = async (familyMember: FamilyMember) => {
-    if (!currentUser) return;
-    try {
-      setIsAdding(true);
-      
-      // Check if primary member is already an attendee
-      const existingPrimaryAttendee = attendees.find(
-        attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'primary'
-      );
-      
-      const attendeesToAdd: CreateAttendeeData[] = [];
-      
-      // Add family member
-      attendeesToAdd.push({
-        eventId: event.id,
-        userId: currentUser.id,
-        attendeeType: 'family_member',
-        familyMemberId: familyMember.id,
-        relationship: 'guest',
-        name: familyMember.name,
-        ageGroup: familyMember.ageGroup || 'adult',
-        rsvpStatus: 'going',
-      });
-      
-      // Add primary member if not already exists, or update existing one to going
-      if (!existingPrimaryAttendee) {
-        attendeesToAdd.push({
-          eventId: event.id,
-          userId: currentUser.id,
-          attendeeType: 'primary',
-          relationship: 'self',
-          name: currentUser.displayName || `${currentUser.firstName} ${currentUser.lastName}`.trim() || 'You',
-          ageGroup: 'adult',
-          rsvpStatus: 'going',
-        });
-      } else if (existingPrimaryAttendee.rsvpStatus !== 'going') {
-        // Update existing primary member to going status
-        await updateAttendee(existingPrimaryAttendee.attendeeId, { rsvpStatus: 'going' });
-        toast.success('You have been automatically set to "going" since a family member is attending.');
-      }
-      
-      // Add family member (and primary if new)
-      if (attendeesToAdd.length === 1) {
-        await addAttendee(attendeesToAdd[0]);
-      } else {
-        await bulkAddAttendees(attendeesToAdd);
-      }
-      
-      await refreshAttendees();
-      toast.success(`${familyMember.name} added successfully!${!existingPrimaryAttendee ? ' You have also been added as attending.' : ''}`);
-    } catch (error) {
-      console.error('Failed to add family member:', error);
-      toast.error('Failed to add family member. Please try again.');
-    } finally {
-      setIsAdding(false);
-    }
-  };
-
-  const handleBulkAddFromProfile = async (members: FamilyMember[]) => {
-    if (!currentUser || members.length === 0) return;
-    try {
-      setIsAdding(true);
-      
-      // Check if primary member is already an attendee
-      const existingPrimaryAttendee = attendees.find(
-        attendee => attendee.userId === currentUser.id && attendee.attendeeType === 'primary'
-      );
-      
-      const attendeesData: CreateAttendeeData[] = members.map((member) => ({
-        eventId: event.id,
-        userId: currentUser.id,
-        attendeeType: 'family_member',
-        familyMemberId: member.id,
-        relationship: 'guest',
-        name: member.name,
-        ageGroup: member.ageGroup || 'adult',
-        rsvpStatus: 'going',
-      }));
-      
-      // Add primary member if not already exists, or update existing one to going
-      if (!existingPrimaryAttendee) {
-        attendeesData.unshift({
-          eventId: event.id,
-          userId: currentUser.id,
-          attendeeType: 'primary',
-          relationship: 'self',
-          name: currentUser.displayName || `${currentUser.firstName} ${currentUser.lastName}`.trim() || 'You',
-          ageGroup: 'adult',
-          rsvpStatus: 'going',
-        });
-      } else if (existingPrimaryAttendee.rsvpStatus !== 'going') {
-        // Update existing primary member to going status
-        await updateAttendee(existingPrimaryAttendee.attendeeId, { rsvpStatus: 'going' });
-        toast.success('You have been automatically set to "going" since family members are attending.');
-      }
-      
-      await bulkAddAttendees(attendeesData);
-      await refreshAttendees();
-      toast.success(`${members.length} family members added successfully!${!existingPrimaryAttendee ? ' You have also been added as attending.' : ''}`);
-    } catch (error) {
-      console.error('Failed to add family members:', error);
-      toast.error('Failed to add family members. Please try again.');
-    } finally {
-      setIsAdding(false);
-    }
-  };
 
   const canonicalUrl = event ? createEventCanonicalUrl(event) : '';
 
@@ -594,211 +765,427 @@ const RSVPPage: React.FC = () => {
           <link rel="canonical" href={canonicalUrl} />
         </Helmet>
       )}
-      
-      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 py-8">
-        <div className="max-w-4xl mx-auto px-4">
-          {/* Back Button */}
-        <button
-          onClick={handleClose}
-          className="mb-4 text-[#F25129] hover:text-[#E0451F] flex items-center gap-2 transition-colors"
-        >
-          Back to Events
-        </button>
 
-        {/* Main Content Card */}
-        <div className="bg-white rounded-2xl shadow-2xl w-full flex flex-col overflow-hidden">
-          {/* Event Hero Image (non-cropped) */}
-          <EventImage
-            src={event.imageUrl}
-            alt={event.title || 'Event image'}
-            fit="contain"
-            aspect="16/9"
-            title={event.title}
-          />
+      {/* Mobile-First Design - Clean, No Nested Containers */}
+      <div className="min-h-screen bg-gray-50">
+        {/* Sticky Top Bar - Removed back arrow and RSVP text */}
+        <div className="sticky top-0 z-20 bg-white border-b border-gray-200 shadow-sm">
+          <div className="max-w-2xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3">
+            {/* Empty header - back navigation removed per user request */}
+          </div>
+        </div>
 
-          {/* Header Component */}
-          <Header 
-            event={event}
-            onClose={handleClose}
-            closeBtnRef={closeBtnRef}
-            isCompact={isMobile}
-            capacityState={capacityState}
-          />
-          
-          {/* Event Details (Mobile only) */}
-          <EventDetails 
-            event={event}
-            isMobile={isMobile}
-          />
+        <div className="max-w-2xl mx-auto px-4">
+          {/* Event Title - Centered with consistent styling from other pages */}
+          <div className="text-center mb-6 sm:mb-8 pt-6 sm:pt-8">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold bg-gradient-to-r from-[#F25129] to-[#FFC107] bg-clip-text text-transparent leading-relaxed pb-1">
+              {event.title}
+            </h1>
+          </div>
+          {/* Capacity Status Banner - Improved state handling */}
+          {capacityUI && (
+            <div className="mb-4">
+              <div
+                className={`rounded-xl border px-4 py-3 ${capacityUI.tone === 'error'
+                  ? 'bg-red-50 border-red-200 text-red-900'
+                  : capacityUI.tone === 'warning'
+                    ? 'bg-amber-50 border-amber-200 text-amber-900'
+                    : 'bg-blue-50 border-blue-200 text-blue-900'
+                  }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex-shrink-0">
+                    <AlertTriangle
+                      className={`w-5 h-5 ${capacityUI.tone === 'error'
+                        ? 'text-red-600'
+                        : capacityUI.tone === 'warning'
+                          ? 'text-amber-600'
+                          : 'text-blue-600'
+                        }`}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-sm leading-tight">{capacityUI.title}</div>
+                    <div className="text-xs sm:text-sm mt-0.5 opacity-90">{capacityUI.subtitle}</div>
+                    {capacityUI.showWaitlistPosition && waitlistPosition && (
+                      <div className="text-xs mt-1.5 opacity-80 font-medium">
+                        Your waitlist position: #{waitlistPosition}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
-          {/* Tab Navigation */}
-          <div className="px-6 py-3 border-b border-gray-200">
-            <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
+          {/* Event Details Section - Collapsible with dropdown */}
+          <div className="mb-4">
+            <div className="bg-gradient-to-br from-[#FFF5F2] to-[#FFE08A]/30 border border-[#F25129]/20 rounded-lg overflow-hidden">
+              <motion.button
+                onClick={() => setIsEventDetailsCollapsed((v) => !v)}
+                className="w-full p-3 sm:p-4 flex items-center justify-between touch-manipulation active:bg-[#F25129]/5 cursor-pointer"
+                aria-expanded={!isEventDetailsCollapsed}
+                aria-label={`${isEventDetailsCollapsed ? 'Expand' : 'Collapse'} Event Details`}
+              >
+                <div className="flex items-center gap-2 sm:gap-3 flex-1">
+                  <div className="p-1.5 sm:p-2 bg-white rounded-lg shadow-sm">
+                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <h4 className="font-semibold text-gray-900 text-xs sm:text-sm">Event Details</h4>
+                    {event.startAt && (
+                      <span className="text-xs text-[#F25129] font-medium">
+                        {new Date(event.startAt.seconds * 1000).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                        {event.startAt && (
+                          ` at ${new Date(event.startAt.seconds * 1000).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
+                          })}`
+                        )}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <motion.div animate={{ rotate: isEventDetailsCollapsed ? 0 : 180 }} transition={{ duration: 0.3 }}>
+                  <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
+                </motion.div>
+              </motion.button>
+
+              {!isEventDetailsCollapsed && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="border-t border-blue-200"
+                >
+                  <div className="bg-white rounded-b-lg p-4 sm:p-5">
+                    <div className="space-y-3">
+                      {/* Date - Orange icon background */}
+                      {event.startAt && (
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 bg-[#F25129]/10 rounded-lg flex-shrink-0 shadow-sm">
+                            <Calendar className="w-5 h-5 text-[#F25129]" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-gray-900 break-words">
+                              {new Date(event.startAt.seconds * 1000).toLocaleDateString('en-US', {
+                                weekday: 'long',
+                                month: 'long',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </div>
+                            <div className="text-xs text-gray-600 mt-0.5">
+                              {new Date(event.startAt.seconds * 1000).toLocaleDateString('en-US', { weekday: 'long' })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Time - Yellow icon background */}
+                      {event.startAt && (
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 bg-[#FFC107]/20 rounded-lg flex-shrink-0 shadow-sm">
+                            <Clock className="w-5 h-5 text-[#FFC107]" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-gray-900 break-words">
+                              {new Date(event.startAt.seconds * 1000).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true
+                              })}
+                              {event.endAt && ` - ${new Date(event.endAt.seconds * 1000).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true
+                              })}`}
+                            </div>
+                            {event.startAt && event.endAt && (
+                              <div className="text-xs text-gray-600 mt-0.5">
+                                {Math.round((event.endAt.seconds - event.startAt.seconds) / 3600)} hour
+                                {Math.round((event.endAt.seconds - event.startAt.seconds) / 3600) !== 1 ? 's' : ''}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Location - Orange icon background */}
+                      {(event.venueName || event.venueAddress || event.location) && (
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 bg-[#F25129]/10 rounded-lg flex-shrink-0 shadow-sm">
+                            <MapPin className="w-5 h-5 text-[#F25129]" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-gray-900 break-words">
+                              {event.location || (event.venueName && event.venueAddress
+                                ? `${event.venueName}, ${event.venueAddress}`
+                                : event.venueName || event.venueAddress || '')}
+                            </div>
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                                event.location || (event.venueName && event.venueAddress
+                                  ? `${event.venueName}, ${event.venueAddress}`
+                                  : event.venueName || event.venueAddress || '')
+                              )}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-[#F25129] hover:text-[#E0451F] hover:underline mt-0.5 inline-flex items-center gap-1 touch-manipulation"
+                              style={{ WebkitTapHighlightColor: 'transparent' }}
+                            >
+                              Get Directions
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                              </svg>
+                            </a>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Description */}
+                      {event.description && (
+                        <div className="pt-3 border-t border-gray-200">
+                          <div className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-2">DESCRIPTION</div>
+                          <p className="text-sm text-gray-700 leading-relaxed break-words whitespace-pre-wrap">
+                            {event.description}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          </div>
+
+          {/* Tab Navigation - Clean Mobile Design */}
+          <div className="bg-white border-b border-gray-200">
+            <div className="max-w-2xl mx-auto px-4 flex">
               <button
                 onClick={() => setActiveTab('attendees')}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === 'attendees'
-                    ? 'bg-white text-[#F25129] shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
+                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${activeTab === 'attendees'
+                  ? 'text-[#F25129] border-b-2 border-[#F25129] bg-orange-50/30'
+                  : 'text-gray-600 border-b-2 border-transparent active:bg-gray-50'
+                  }`}
               >
-                <Users className="w-4 h-4" />
-                Attendees
+                <Users className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden xs:inline sm:inline">Your RSVP</span>
+                <span className="xs:hidden">RSVP</span>
               </button>
               <button
                 onClick={() => setActiveTab('qr')}
                 disabled={!event.attendanceEnabled}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === 'qr'
-                    ? 'bg-white text-[#F25129] shadow-sm'
-                    : !event.attendanceEnabled
-                      ? 'text-gray-400 cursor-not-allowed'
-                      : 'text-gray-600 hover:text-gray-900'
-                }`}
-                title={!event.attendanceEnabled ? 'QR Code not activated for this event' : ''}
+                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${activeTab === 'qr'
+                  ? 'text-[#F25129] border-b-2 border-[#F25129] bg-orange-50/30'
+                  : !event.attendanceEnabled
+                    ? 'text-gray-300 cursor-not-allowed border-b-2 border-transparent'
+                    : 'text-gray-600 border-b-2 border-transparent active:bg-gray-50'
+                  }`}
+                title={!event.attendanceEnabled ? 'QR Code not activated' : ''}
               >
-                <QrCode className="w-4 h-4" />
-                QR Code
+                <QrCode className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden xs:inline sm:inline">QR Code</span>
+                <span className="xs:hidden">QR</span>
               </button>
               <button
                 onClick={() => setActiveTab('whosGoing')}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === 'whosGoing'
-                    ? 'bg-white text-[#F25129] shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
+                className={`flex-1 flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-3 sm:py-4 text-xs sm:text-sm font-semibold transition-all touch-manipulation ${activeTab === 'whosGoing'
+                  ? 'text-[#F25129] border-b-2 border-[#F25129] bg-orange-50/30'
+                  : 'text-gray-600 border-b-2 border-transparent active:bg-gray-50'
+                  }`}
               >
-                <Users className="w-4 h-4" />
-                Guest List
+                <Users className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span>Event Guests List</span>
               </button>
             </div>
           </div>
 
-          <div
-            className="flex-1 min-h-0 overflow-y-auto pb-6 pr-2 rsvp-modal-scrollbar modalScroll"
-            style={{ scrollbarGutter: 'stable both-edges', maxHeight: 'calc(100vh - 300px)' }}
-          >
-            {activeTab === 'qr' && event.attendanceEnabled ? (
-              <div className="p-6">
-                <QRCodeTab 
-                  event={event} 
-                  onEventUpdate={() => {
-                    // Refresh event data when QR attendance is toggled
-                    refreshAttendees();
-                  }}
-                />
-              </div>
-            ) : activeTab === 'qr' && !event.attendanceEnabled ? (
-              <div className="p-6 text-center">
-                <QrCode className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">QR Code Not Activated</h3>
-                <p className="text-gray-600 mb-4">
-                  QR code functionality is not enabled for this event.
-                </p>
-                <p className="text-sm text-gray-500">
-                  Contact an administrator to enable QR code features.
-                </p>
-              </div>
-            ) : activeTab === 'whosGoing' ? (
-              <div className="p-6">
-                <WhosGoingTab 
-                  event={event}
-                  attendees={attendees}
-                  isAdmin={isAdmin}
-                  waitlistPositions={waitlistPositions}
-                />
-              </div>
-            ) : isBlockedFromRSVP ? (
-              <div className="p-6 text-center">
-                <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">RSVP Access Restricted</h3>
-                <p className="text-gray-600">You are currently blocked from RSVPing to events. Please contact an administrator.</p>
-              </div>
-            ) : attendeesError ? (
-              <div className="p-6 text-center">
-                <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Error loading attendees</h3>
-                <p className="text-gray-600 mb-4">{attendeesError}</p>
-                <button
-                  onClick={() => refreshAttendees()}
-                  className="px-4 py-2 bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] transition-colors"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : isEventPast ? (
-              <div className="p-6 text-center">
-                <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">Event Has Passed</h3>
-                <p className="text-gray-600">This event has already occurred. RSVPs are no longer accepted.</p>
-              </div>
-            ) : (
-              <div className="p-3">
-                {/* Payment Section */}
-                <PaymentSection 
-                  event={event}
-                  attendees={attendees.filter(attendee => attendee.userId === currentUser?.id)}
-                  onPaymentComplete={() => {
-                    refreshAttendees();
-                  }}
-                  onPaymentError={(error) => {
-                    console.error('Payment error:', error);
-                  }}
-                />
+          {/* Content Wrapper */}
+          <div className="bg-white">
+            <div className="max-w-2xl mx-auto px-4">
+              {activeTab === 'qr' && event.attendanceEnabled ? (
+                <div className="px-4 py-6">
+                  <QRCodeTab
+                    event={event}
+                    onEventUpdate={() => {
+                      refreshAttendees();
+                    }}
+                  />
+                </div>
+              ) : activeTab === 'qr' && !event.attendanceEnabled ? (
+                <div className="px-4 py-12 text-center">
+                  <QrCode className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">QR Code Not Activated</h3>
+                  <p className="text-sm text-gray-600">
+                    QR code functionality is not enabled for this event.
+                  </p>
+                </div>
+              ) : activeTab === 'whosGoing' ? (
+                <div className="px-4 py-6">
+                  <WhosGoingTab
+                    event={event}
+                    attendees={attendees}
+                    isAdmin={isAdmin}
+                    waitlistPositions={waitlistPositions}
+                  />
+                </div>
+              ) : isBlockedFromRSVP ? (
+                <div className="px-4 py-12 text-center">
+                  <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">RSVP Access Restricted</h3>
+                  <p className="text-sm text-gray-600">You are currently blocked from RSVPing to events. Please contact an administrator.</p>
+                </div>
+              ) : attendeesError ? (
+                <div className="px-4 py-12 text-center">
+                  <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Error loading attendees</h3>
+                  <p className="text-sm text-gray-600 mb-4">{attendeesError}</p>
+                  <button
+                    onClick={() => refreshAttendees()}
+                    className="px-6 py-3 bg-[#F25129] text-white rounded-lg font-semibold active:scale-95 transition-transform"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : isEventPast ? (
+                <div className="px-4 py-12 text-center">
+                  <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Event Has Passed</h3>
+                  <p className="text-sm text-gray-600">This event has already occurred. RSVPs are no longer accepted.</p>
+                </div>
+              ) : (
+                <div className="px-4 py-4">
+                  {/* Payment Section */}
+                    <PaymentSection
+                      event={event}
+                      attendees={isGuestTrulyPublic ? guestAttendees : attendees.filter(attendee => attendee.userId === currentUser?.id)}
+                      onPaymentComplete={async () => {
+                        if (isGuestTrulyPublic) {
+                          const updated = await refreshGuestAttendees();
+                          if (updated && updated.length > 0) {
+                            setGuestSubmitted(true);
+                          }
+                        } else {
+                          refreshAttendees();
+                        }
+                      }}
+                      onPaymentError={(error) => { console.error('Payment error:', error); }}
+                      isGuest={isGuestTrulyPublic}
+                      guestUserId={isGuestTrulyPublic ? guestAttendees[0]?.userId : undefined}
+                      sessionToken={isGuestTrulyPublic ? (guestSessionToken || undefined) : undefined}
+                      onDeleteGuestAttendee={isGuestTrulyPublic ? async (attendeeId) => {
+                        try {
+                          if (!guestSessionToken) {
+                            toast.error('Session expired. Please verify your phone again.');
+                            return;
+                          }
+                          const fn = httpsCallable<
+                            { sessionToken: string; eventId: string; attendeeId: string },
+                            { success: boolean }
+                          >(getFunctions(undefined, 'us-east1'), 'deleteGuestAttendee');
+                          await fn({ sessionToken: guestSessionToken, eventId: event.id, attendeeId });
+                          await refreshGuestAttendees();
+                        } catch (error) {
+                          console.error('❌ Failed to delete guest attendee:', error);
+                          toast.error('Failed to remove attendee. Please try again.');
+                        }
+                      } : undefined}
+                    />
 
-                {isAdmin && (
-                  <div className="mb-4">
-                    <div className="flex items-center gap-3 mb-3">
-                      <h3 className="text-[15px] font-semibold text-gray-900">Manage Attendees</h3>
-                      <div className="flex items-center gap-2 text-[12px] text-gray-600">
-                        <span className="flex items-center gap-1">
-                          <div className="w-2 h-2 bg-green-500 rounded-full" />
-                          <span>{counts.goingCount} Going</span>
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <div className="w-2 h-2 bg-red-500 rounded-full" />
-                          <span>{counts.notGoingCount} Not Going</span>
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <div className="w-2 h-2 bg-purple-500 rounded-full" />
-                          <span>{counts.waitlistedCount} Waitlisted</span>
-                        </span>
-                      </div>
+                  {isGuestTrulyPublic && guestSubmitted && (
+                    <div className="mb-3 sm:mb-4 bg-emerald-50 border border-emerald-200 rounded-lg p-3 sm:p-4">
+                      <p className="text-sm text-emerald-700 font-medium">✓ RSVP submitted! Complete payment below if required.</p>
+                    </div>
+                  )}
+
+                  <div className="mb-3 sm:mb-4 bg-gray-50 rounded-lg p-2.5 sm:p-3 border border-gray-200">
+                    <h3 className="text-xs sm:text-sm font-semibold text-gray-900 mb-1.5 sm:mb-2">Manage Attendees</h3>
+                    <div className="flex flex-wrap gap-2 sm:gap-3 text-xs text-gray-600">
+                      <span className="flex items-center gap-1 sm:gap-1.5">
+                        <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-green-500 rounded-full" />
+                        <span className="font-medium">{realTimeAttendingCount} Going</span>
+                      </span>
+                      <span className="flex items-center gap-1 sm:gap-1.5">
+                        <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full" />
+                        <span className="font-medium">{counts.notGoingCount} Not Going</span>
+                      </span>
+                      <span className="flex items-center gap-1 sm:gap-1.5">
+                        <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 bg-purple-500 rounded-full" />
+                        <span className="font-medium">{waitlistCount} Waitlisted</span>
+                      </span>
                     </div>
                   </div>
-                )}
 
-                  <div className="bg-[#F25129]/10 border border-[#F25129]/20 rounded-lg mb-4">
+                  {/* Add Attendees Section - Show based on event settings */}
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg mb-3 sm:mb-4">
                     <motion.button
                       id="add-attendees-trigger"
                       aria-expanded={!isAddSectionCollapsed}
                       aria-controls="add-attendees-panel"
-                      onClick={() => setIsAddSectionCollapsed((v) => !v)}
-                      className="w-full p-3 flex items-center justify-between hover:bg-[#F25129]/20 transition-colors"
+                      onClick={() => canAddAttendees && setIsAddSectionCollapsed((v) => !v)}
+                      disabled={!canAddAttendees}
+                      className={`w-full p-3 sm:p-4 flex items-center justify-between touch-manipulation ${canAddAttendees ? 'active:bg-orange-100 cursor-pointer' : 'opacity-50 cursor-not-allowed'
+                        }`}
                       aria-label={`${isAddSectionCollapsed ? 'Expand' : 'Collapse'} Add Attendees section`}
+                      title={!canAddAttendees ? 'Only organizers can add non-members for this event. Contact the organizer for details.' : undefined}
                     >
-                      <div className="flex items-center gap-2">
-                        <UserPlus className="w-4 h-4 text-[#F25129]" />
-                        <h4 className="font-medium text-gray-900 text-[13px]">Add Attendees</h4>
-                        <span className="text-[12px] text-gray-500">
-                          ({readyToAddCount} ready to add)
-                        </span>
+                      <div className="flex items-center gap-2 sm:gap-3 flex-1">
+                        <div className={`p-1.5 sm:p-2 bg-white rounded-lg shadow-sm ${!canAddAttendees ? 'opacity-60' : ''}`}>
+                          <UserPlus className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
+                        </div>
+                        <div className="text-left flex-1">
+                          <h4 className={`font-semibold text-xs sm:text-sm ${!canAddAttendees ? 'text-gray-600' : 'text-gray-900'}`}>
+                            Add Attendees {!canAddAttendees && <span className="text-xs text-gray-500 font-normal">(Admin Only)</span>}
+                          </h4>
+                          {canAddAttendees && readyToAddCount > 0 && (
+                            <span className="text-xs text-orange-600 font-medium">
+                              {readyToAddCount} ready to add
+                            </span>
+                          )}
+                          {!canAddAttendees && (
+                            <span className="text-xs text-gray-500 font-normal block mt-0.5">
+                              Only organizers can add non-members for this event
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.2 }}>
-                        <ChevronDown className="w-5 h-5 text-gray-500" />
-                      </motion.div>
+                      <div className="flex items-center gap-2">
+
+                        {canAddAttendees && (
+                          <motion.div animate={{ rotate: isAddSectionCollapsed ? 0 : 180 }} transition={{ duration: 0.3 }}>
+                            <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-[#F25129]" />
+                          </motion.div>
+                        )}
+                      </div>
                     </motion.button>
 
-                    {!isAddSectionCollapsed && (
+                    {!isAddSectionCollapsed && canAddAttendees && (
                       <div className="px-4 pt-2">
-                        {capacityState.isNearlyFull && (
-                          <div className={`mb-3 p-3 rounded-lg text-sm ${getCapacityBadgeClasses(capacityState.state)}`}>
-                            <div className="flex items-center gap-2">
-                              <AlertTriangle className="w-4 h-4" />
+                        {!canAddAttendees && (
+                          <div className="mb-2 sm:mb-3 p-2.5 sm:p-3 rounded-lg text-xs sm:text-sm bg-gray-50 border border-gray-200">
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500" />
+                              <span className="font-medium text-gray-700">Adding attendees is restricted</span>
+                            </div>
+                            <p className="mt-1 text-xs text-gray-600">
+                              Only organizers can add non-members for this event. Contact the organizer for details.
+                            </p>
+                          </div>
+                        )}
+                        {canAddAttendees && capacityState.isNearlyFull && (
+                          <div className={`mb-2 sm:mb-3 p-2.5 sm:p-3 rounded-lg text-xs sm:text-sm ${getCapacityBadgeClasses(capacityState.state)}`}>
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                               <span className="font-medium">{capacityState.warningMessage}</span>
                             </div>
                             <p className="mt-1 text-xs opacity-90">
-                              {waitlistPosition 
+                              {waitlistPosition
                                 ? `You are waitlisted (#${waitlistPosition}). ${capacityState.slotsRemainingText}`
                                 : capacityState.slotsRemainingText
                               }
@@ -809,7 +1196,7 @@ const RSVPPage: React.FC = () => {
                     )}
 
                     <AnimatePresence>
-                      {!isAddSectionCollapsed && (
+                      {!isAddSectionCollapsed && canAddAttendees && (
                         <motion.div
                           id="add-attendees-panel"
                           role="region"
@@ -820,251 +1207,215 @@ const RSVPPage: React.FC = () => {
                           transition={{ duration: 0.3, ease: 'easeInOut' }}
                           className="overflow-hidden"
                         >
-                          <div className="p-2 pt-0">
-                            {/* Table Header */}
-                            <div className="border border-gray-200 rounded-lg overflow-hidden mb-2">
-                              <div className="bg-gray-50 px-2.5 py-1.5 border-b border-gray-200">
-                                <div className="grid grid-cols-12 gap-2 text-[12px] font-medium text-gray-600">
-                                  <div className="col-span-4">Name</div>
-                                  <div className="col-span-3">Age</div>
-                                  <div className="col-span-3">Relation</div>
-                                  <div className="col-span-2">Actions</div>
+                          {isGuestTrulyPublic ? (
+                            <div className="p-4 pt-2 space-y-3">
+                              {guestMemberExists ? (
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                                  <p className="text-sm text-amber-700 font-medium">You are already a member. Please login to RSVP.</p>
+                                  <button type="button" onClick={() => navigate('/login')} className="mt-2 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">Go to Login</button>
                                 </div>
-                              </div>
-                              
-                              {/* Table Body */}
-                              <div className="divide-y divide-gray-100">
-                                <div
-                                  className="max-h-[180px] overflow-y-auto rsvp-modal-scrollbar modalScroll"
-                                  style={{ scrollbarGutter: 'stable both-edges' }}
-                                >
-                                  {bulkFormData.familyMembers.map((member) => (
-                                    <div 
-                                      key={member.id}
-                                      className="py-2"
-                                    >
-                                      <div className="px-2.5">
-                                        <AttendeeInputRowMemo
-                                          member={member}
-                                          onUpdate={updateBulkFormField}
-                                          onRemove={removeBulkFormRow}
-                                          onAdd={addBulkFormRow}
+                              ) : (
+                                <>
+                                  {/* Step 1: Contact Information */}
+                                  <div className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">First Name *</label>
+                                        <input
+                                          value={guestFirstName}
+                                          onChange={(e) => setGuestFirstName(e.target.value)}
+                                          placeholder="First name"
+                                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                          disabled={isPhoneVerified}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Last Name *</label>
+                                        <input
+                                          value={guestLastName}
+                                          onChange={(e) => setGuestLastName(e.target.value)}
+                                          placeholder="Last name"
+                                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                          disabled={isPhoneVerified}
                                         />
                                       </div>
                                     </div>
-                                  ))}
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">Email *</label>
+                                      <input
+                                        type="email"
+                                        value={guestEmail}
+                                        onChange={(e) => setGuestEmail(e.target.value)}
+                                        placeholder="Email address"
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                        disabled={isPhoneVerified}
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">Phone *</label>
+                                      <input
+                                        type="tel"
+                                        value={guestPhone}
+                                        onChange={(e) => setGuestPhone(e.target.value)}
+                                        placeholder="Phone number"
+                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                        disabled={isPhoneVerified}
+                                      />
+                                    </div>
+
+                                    {/* Verify Phone Button - Only show if not verified */}
+                                    {!isPhoneVerified && (
+                                      <button
+                                        type="button"
+                                        onClick={handleVerifyPhone}
+                                        className="w-full py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg active:scale-95 transition-transform touch-manipulation"
+                                      >
+                                        Verify Phone Number
+                                      </button>
+                                    )}
+
+                                    {/* Verification Success Message */}
+                                    {isPhoneVerified && (
+                                      <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+                                        <div className="flex items-center gap-2">
+                                          <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                          </svg>
+                                          <span className="text-sm text-green-700 font-medium">✓ Phone verified successfully!</span>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Step 2: Additional Members - Only show after phone verification */}
+                                  {isPhoneVerified && showAdditionalMembersForm && (
+                                    <div className="rounded-lg border border-gray-200 p-3 space-y-3">
+                                      <div className="mb-2 flex items-center justify-between">
+                                        <h4 className="text-sm font-semibold text-gray-900">Additional Members <span className="text-xs font-normal text-gray-500">(Optional)</span></h4>
+                                        <button
+                                          type="button"
+                                          onClick={() => setGuestRows((prev) => [...prev, { id: makeId(), name: '', relationship: 'guest', ageGroup: 'adult' }])}
+                                          className="text-xs font-semibold text-[#F25129] hover:text-[#E0451F]"
+                                        >
+                                          + Add Row
+                                        </button>
+                                      </div>
+                                      <div className="space-y-2">
+                                        {guestRows.map((row) => (
+                                          <div key={row.id} className="flex gap-2">
+                                            <input
+                                              value={row.name}
+                                              onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, name: e.target.value } : r))}
+                                              placeholder="Member name"
+                                              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                            />
+                                            <select
+                                              value={row.ageGroup}
+                                              onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, ageGroup: e.target.value as AgeGroup } : r))}
+                                              className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+                                            >
+                                              <option value="0-2">Infant (0-2)</option>
+                                              <option value="3-5">Toddler (3-5)</option>
+                                              <option value="6-10">Child (6-10)</option>
+                                              <option value="11+">Teen (11+)</option>
+                                              <option value="adult">Adult</option>
+                                            </select>
+                                            <select
+                                              value={row.relationship}
+                                              onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, relationship: e.target.value as Relationship } : r))}
+                                              className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+                                            >
+                                              <option value="guest">Guest</option>
+                                              <option value="spouse">Spouse</option>
+                                              <option value="child">Child</option>
+                                            </select>
+                                            <button
+                                              type="button"
+                                              onClick={() => setGuestRows((prev) => prev.length > 1 ? prev.filter((r) => r.id !== row.id) : prev)}
+                                              className="px-2 py-2 text-xs text-gray-500 hover:text-red-500 border border-gray-200 rounded-lg"
+                                            >
+                                              ✕
+                                            </button>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Step 3: Submit RSVP - Only enabled after phone verification */}
+                                  {isPhoneVerified && (
+                                    <button
+                                      type="button"
+                                      onClick={handleSubmitGuestRsvp}
+                                      disabled={guestSubmitting}
+                                      className="w-full py-2.5 text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation"
+                                    >
+                                      {guestSubmitting ? 'Submitting...' : 'Submit RSVP'}
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="p-4 pt-2 space-y-3">
+                              {/* Mobile-Friendly Attendee Input - No table layout */}
+                              {bulkFormData.familyMembers.map((member) => (
+                                <div
+                                  key={member.id}
+                                  className="bg-white rounded-lg p-3 border border-gray-200"
+                                >
+                                  <AttendeeInputRowMemo
+                                    member={member}
+                                    onUpdate={updateBulkFormField}
+                                    onRemove={removeBulkFormRow}
+                                    onAdd={addBulkFormRow}
+                                  />
                                 </div>
+                              ))}
+
+                              <div className="pt-2.5 sm:pt-3 border-t border-orange-200">
+                                <button
+                                  onClick={handleBulkAddFamilyMembers}
+                                  disabled={
+                                    isAdding ||
+                                    bulkFormData.familyMembers.every((m) => !m.name.trim()) ||
+                                    (!capacityState.canAddMore && !capacityState.canWaitlist)
+                                  }
+                                  className="w-full px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation"
+                                >
+                                  {isAdding
+                                    ? 'Adding...'
+                                    : !capacityState.canAddMore && !capacityState.canWaitlist
+                                      ? 'Event Full'
+                                      : !capacityState.canAddMore && capacityState.canWaitlist
+                                        ? `Join Waitlist (${readyToAddCount})`
+                                        : `Add ${readyToAddCount} Attendee(s)`}
+                                </button>
                               </div>
                             </div>
-
-                            <div className="mt-4 pt-3 border-t border-[#F25129]/20">
-                              <button
-                                onClick={handleBulkAddFamilyMembers}
-                                disabled={
-                                  isAdding || 
-                                  bulkFormData.familyMembers.every((m) => !m.name.trim()) ||
-                                  (!capacityState.canAddMore && !capacityState.canWaitlist)
-                                }
-                                className="w-full px-3.5 py-2 text-sm bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                              >
-                                {isAdding
-                                  ? 'Adding...'
-                                  : !capacityState.canAddMore && !capacityState.canWaitlist
-                                    ? 'Event Full'
-                                    : !capacityState.canAddMore && capacityState.canWaitlist
-                                      ? `Join Waitlist (${readyToAddCount})`
-                                      : `Add ${readyToAddCount} Attendee(s)`}
-                              </button>
-                            </div>
-                          </div>
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
                   </div>
 
-                  {familyMembers.length > 0 && (
-                    <div className="bg-[#F25129]/10 border border-[#F25129]/20 rounded-lg mb-4">
-                      <motion.button
-                        id="family-members-trigger"
-                        aria-expanded={showFamilyMembers}
-                        aria-controls="family-members-panel"
-                        onClick={() => setShowFamilyMembers((v) => !v)}
-                        className="w-full p-3 flex items-center justify-between hover:bg-[#F25129]/20 transition-colors"
-                        aria-label={`${showFamilyMembers ? 'Collapse' : 'Expand'} Family Members section`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Heart className="w-4 h-4 text-[#F25129]" />
-                          <h4 className="font-medium text-gray-900 text-[13px]">Add from Family Profile</h4>
-                          <span className="text-[12px] text-gray-500">
-                            ({availableFamilyMembers.length} available, {familySizeInfo.current}/{familySizeInfo.max} used)
-                          </span>
-                        </div>
-                        <motion.div animate={{ rotate: showFamilyMembers ? 0 : 180 }} transition={{ duration: 0.2 }}>
-                          <ChevronDown className="w-5 h-5 text-gray-500" />
-                        </motion.div>
-                      </motion.button>
-
-                      <AnimatePresence>
-                        {showFamilyMembers && (
-                          <motion.div
-                            id="family-members-panel"
-                            role="region"
-                            aria-labelledby="family-members-trigger"
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.3, ease: 'easeInOut' }}
-                            className="overflow-hidden"
-                          >
-                            <div className="p-4 pt-0">
-                              {!familySizeInfo.canAdd && (
-                                <div className="mb-4 p-3 rounded-lg text-sm bg-yellow-50 border border-yellow-200">
-                                  <div className="flex items-center gap-2">
-                                    <AlertTriangle className="w-4 h-4 text-yellow-600" />
-                                    <span className="font-medium text-yellow-800">
-                                      {familySizeInfo.current >= familySizeInfo.max 
-                                        ? `Maximum family size reached (${familySizeInfo.max} family members)`
-                                        : 'Primary member must be "going" to add family members'
-                                      }
-                                    </span>
-                                  </div>
-                                  <p className="mt-1 text-xs text-yellow-700">
-                                    {familySizeInfo.current >= familySizeInfo.max 
-                                      ? 'You can add up to 4 family members per event.'
-                                      : 'Please set your status to "going" first, then you can add family members.'
-                                    }
-                                  </p>
-                                </div>
-                              )}
-
-                              {capacityState.isNearlyFull && familySizeInfo.canAdd && (
-                                <div className={`mb-4 p-3 rounded-lg text-sm ${getCapacityBadgeClasses(capacityState.state)}`}>
-                                  <div className="flex items-center gap-2">
-                                    <AlertTriangle className="w-4 h-4" />
-                                    <span className="font-medium">{capacityState.warningMessage}</span>
-                                  </div>
-                                  <p className="mt-1 text-xs opacity-90">
-                                    {waitlistPosition 
-                                      ? `You are waitlisted (#${waitlistPosition}). ${capacityState.slotsRemainingText}`
-                                      : capacityState.slotsRemainingText
-                                    }
-                                  </p>
-                                </div>
-                              )}
-
-                              {availableFamilyMembers.length > 0 ? (
-                                <>
-                                  <div className="border border-gray-200 rounded-lg overflow-hidden">
-                                    {/* Header row - hidden on mobile, visible on sm+ */}
-                                    <div className="hidden sm:block bg-gray-50 px-3 py-2 border-b border-gray-200">
-                                      <div className="grid grid-cols-12 gap-2 text-xs font-medium text-gray-600">
-                                        <div className="col-span-5">Name</div>
-                                        <div className="col-span-3">Age</div>
-                                        <div className="col-span-2">Status</div>
-                                        <div className="col-span-2">Action</div>
-                                      </div>
-                                    </div>
-
-                                    {/* Rows */}
-                                    <div className="divide-y divide-gray-100">
-                                      {availableFamilyMembers.map((familyMember, index) => (
-                                        <div
-                                          key={familyMember.id}
-                                          className={`px-3 py-2 hover:bg-[#F25129]/10 transition-colors ${
-                                            index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                                          }`}
-                                        >
-                                          {/* Stack on mobile, 12-col on sm+ */}
-                                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-                                            <div className="sm:col-span-5">
-                                              <span className="font-medium text-gray-900 text-[13px]">{familyMember.name}</span>
-                                            </div>
-                                            <div className="sm:col-span-3 text-[12px] text-gray-500">
-                                              {familyMember.ageGroup ? 
-                                                (familyMember.ageGroup === 'adult' ? 'Adult' :
-                                                 familyMember.ageGroup === '11+' ? '11+ Years' :
-                                                 familyMember.ageGroup === '0-2' ? '0-2 Years' :
-                                                 familyMember.ageGroup === '3-5' ? '3-5 Years' :
-                                                 familyMember.ageGroup === '6-10' ? '6-10 Years' :
-                                                 `${familyMember.ageGroup} years`) : 'Not set'}
-                                            </div>
-                                            <div className="sm:col-span-2">
-                                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800">
-                                                Available
-                                              </span>
-                                            </div>
-                                            <div className="sm:col-span-2">
-                                              <button
-                                                onClick={() => handleAddFamilyMember(familyMember)}
-                                                disabled={isAdding || !familySizeInfo.canAdd}
-                                                className="w-full px-2 py-1.5 text-[12px] bg-[#F25129] text-white rounded hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                              >
-                                                {isAdding ? 'Adding...' : !familySizeInfo.canAdd ? 'Cannot Add' : 'Add'}
-                                              </button>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-4 pt-3 border-t border-[#F25129]/20">
-                                    <LoadingButton
-                                      loading={isAdding}
-                                      disabled={!familySizeInfo.canAdd}
-                                      onClick={() => handleBulkAddFromProfile(availableFamilyMembers)}
-                                      className="w-full px-3.5 py-2 text-sm bg-[#F25129] text-white rounded-md hover:bg-[#E0451F] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                                    >
-                                      {!familySizeInfo.canAdd ? 'Cannot Add Family Members' : `Add All ${availableFamilyMembers.length} Family Members`}
-                                    </LoadingButton>
-                                  </div>
-                                </>
-                              ) : (
-                                <div className="text-center py-6">
-                                  <Users className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                                  <p className="text-gray-600 mb-2">All family members already added!</p>
-                                  <p className="text-sm text-gray-500">
-                                    Your family members from your profile have already been added to this event.
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  )}
-
                   <div className="bg-white border border-gray-200 rounded-lg p-4">
                     <AttendeeList
                       eventId={event.id}
+                      event={event}
                       isAdmin={isAdmin}
                       waitlistPositions={waitlistPositions}
                       capacityState={capacityState}
                       onAttendeeUpdate={async () => {
-                        try { await refreshAttendees(); } catch {}
+                        try { await refreshAttendees(); } catch { }
+                      }}
+                      onCascadingStatusUpdate={handleCascadingStatusUpdate}
+                      onRequestNonRefundableModal={(attendeeId, status) => {
+                        setPendingStatusChange({ attendeeId, status });
+                        setShowNonRefundableModal(true);
                       }}
                     />
                   </div>
-
-                  {event.description && (
-                    <div className="mt-6 bg-gray-50 rounded-lg p-4">
-                      <h4 className="font-medium text-gray-900 mb-2">Event Details</h4>
-                      <div className="relative">
-                        <p className={`text-gray-700 leading-relaxed break-words ${!isDescriptionExpanded ? 'line-clamp-2' : ''}`}>
-                          {event.description}
-                        </p>
-                        {event.description.length > 120 && (
-                          <button
-                            onClick={() => setIsDescriptionExpanded((v) => !v)}
-                            className="text-[#F25129] hover:text-[#E0451F] text-sm font-medium mt-1"
-                          >
-                            {isDescriptionExpanded ? 'Show less' : 'View event details...'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Admin Tools */}
                   {isAdmin && (
@@ -1075,26 +1426,92 @@ const RSVPPage: React.FC = () => {
                     />
                   )}
                 </div>
-            )}
-          </div>
-
-          <div className="border-t border-gray-200 p-4 bg-gray-50 mt-2 safe-footer">
-            <div className="flex items-center justify-end">
-              <div className="flex gap-3">
-                <motion.button
-                  whileHover={prefersReduced ? undefined : { scale: 1.05 }}
-                  whileTap={prefersReduced ? undefined : { scale: 0.95 }}
-                  onClick={handleClose}
-                  className="px-3 py-1.5 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors text-[13px]"
-                >
-                  Close
-                </motion.button>
-              </div>
+              )}
             </div>
           </div>
+
         </div>
       </div>
-    </div>
+      {/* Non-Refundable Confirmation Modal */}
+      {showNonRefundableModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+          onClick={() => setShowNonRefundableModal(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative"
+          >
+            <button
+              onClick={() => setShowNonRefundableModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Close"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+            </div>
+
+            <h3 className="text-xl font-bold text-gray-900 text-center mb-4">
+              Non-Refundable Event
+            </h3>
+
+            <p className="text-gray-700 text-center mb-6 leading-relaxed">
+              This event is non-refundable.<br />
+              Are you sure you want to change your RSVP to Not Going?
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowNonRefundableModal(false)}
+                className="flex-1 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setShowNonRefundableModal(false);
+                  if (pendingStatusChange) {
+                    await handleCascadingStatusUpdate(pendingStatusChange.attendeeId, pendingStatusChange.status);
+                    setPendingStatusChange(null);
+                  }
+                }}
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-semibold rounded-lg transition-all shadow-lg hover:shadow-xl"
+              >
+                Yes
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+
+      {/* OTP Verification Modal for Guest Payments */}
+      {showOTPModal && isGuestTrulyPublic && (
+        <OTPVerificationModal
+          isOpen={showOTPModal}
+          onClose={() => setShowOTPModal(false)}
+          onVerified={handleOTPVerified}
+          phone={guestPhone}
+          email={guestEmail}
+          firstName={guestFirstName}
+          lastName={guestLastName}
+          eventId={event?.id || ''}
+        />
+      )}
     </>
   );
 };

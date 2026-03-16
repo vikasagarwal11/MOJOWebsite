@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 interface Notification {
   id: string;
   userId: string;
-  type: 'waitlist_promotion' | 'event_reminder' | 'rsvp_confirmation' | 'general' | 'account_approval_request' | 'account_approved' | 'approval_question' | 'approval_response' | 'content_approved' | 'content_rejected';
+  type: 'waitlist_promotion' | 'event_reminder' | 'rsvp_confirmation' | 'general' | 'account_approval_request' | 'account_approved' | 'approval_question' | 'approval_response' | 'content_approved' | 'content_rejected' | 'media_pending_approval';
   title: string;
   message: string;
   eventId?: string;
@@ -117,6 +117,12 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ userId, onNavig
       }
     }
 
+    // Navigate to Content Moderation for media pending approval
+    if (notification.type === 'media_pending_approval' && notification.metadata?.mediaId) {
+      // Navigate to admin profile with Content Moderation section active
+      window.location.href = '/profile?tab=admin&section=moderation';
+    }
+
     // Close notification center
     setIsOpen(false);
   };
@@ -156,6 +162,12 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ userId, onNavig
         return '❓';
       case 'approval_response':
         return '💬';
+      case 'media_pending_approval':
+        return '🖼️';
+      case 'content_approved':
+        return '✅';
+      case 'content_rejected':
+        return '❌';
       default:
         return '📢';
     }
@@ -177,6 +189,12 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({ userId, onNavig
         return 'border-yellow-500 bg-yellow-50';
       case 'approval_response':
         return 'border-blue-500 bg-blue-50';
+      case 'media_pending_approval':
+        return 'border-amber-500 bg-amber-50';
+      case 'content_approved':
+        return 'border-green-500 bg-green-50';
+      case 'content_rejected':
+        return 'border-red-500 bg-red-50';
       default:
         return 'border-gray-500 bg-gray-50';
     }

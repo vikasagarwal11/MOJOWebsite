@@ -1,5 +1,6 @@
 import React from 'react';
 import { EventDoc } from '../../hooks/useEvents';
+import { SEO_CONFIG } from '../../config/seo';
 
 interface EventSchemaProps {
   event: EventDoc;
@@ -63,12 +64,12 @@ export const EventSchema: React.FC<EventSchemaProps> = ({ event }) => {
     },
     "organizer": {
       "@type": "Organization",
-      "name": "Moms Fitness Mojo",
-      "url": "https://momfitnessmojo.web.app"
+      "name": SEO_CONFIG.siteName,
+      "url": SEO_CONFIG.baseUrl
     },
     "isAccessibleForFree": true,
     "maximumAttendeeCapacity": event.maxCapacity || 100,
-    "image": event.imageUrl || "https://momfitnessmojo.web.app/assets/logo/facebook-post.svg"
+    "image": event.imageUrl || SEO_CONFIG.defaultImage
   };
 
   return (

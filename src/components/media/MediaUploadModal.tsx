@@ -1,10 +1,10 @@
+import { zodResolver } from '@hookform/resolvers/zod';
+import { FileText, Upload, X } from "lucide-react";
 import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { X, Upload, FileText, ChevronLeft, ChevronRight } from "lucide-react";
-import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { z } from 'zod';
+import { useAuth } from '../../contexts/AuthContext';
 import { useUploader } from '../../hooks/useUploader';
 import { detectKind } from '../../utils/detectKind';
 import { getImageSize, getVideoDuration } from '../../utils/getMediaMetadata';
@@ -13,6 +13,7 @@ import EventTypeahead from './EventTypeahead';
 
 const schema = z.object({
   title: z.string().min(1, 'Title is required'),
+  mediaDate: z.string().min(1, 'Photo date is required'),
   description: z.string().optional(),
 });
 
@@ -84,12 +85,15 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
           title: data.title.trim(),
           titleLower: data.title.trim().toLowerCase(),
           description: data.description?.trim() || undefined,
+          mediaDate: new Date(`${data.mediaDate}T00:00:00`),
           type: kind,
           eventId: selectedEvent.id ?? null,
           eventTitle: selectedEvent.title ?? null,
           uploadedBy: currentUser.id,
           uploaderName: currentUser.displayName || 'Member',
           isPublic: true,
+          moderationStatus: 'pending', // CRITICAL: Set to pending so content requires approval
+          requiresApproval: true,
           likesCount: 0,
           commentsCount: 0,
           viewsCount: 0, // Initialize views counter for consistency
@@ -224,6 +228,16 @@ export default function MediaUploadModal({ events, onClose, onMediaUploaded }:{ 
                 placeholder="Enter media title"/>
             </div>
             {errors.title && <p className="mt-1 text-sm text-red-600">{String(errors.title.message)}</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Photo Date</label>
+            <input
+              {...register('mediaDate')}
+              type="date"
+              className={`w-full px-4 py-3 rounded-lg border ${errors.mediaDate ? 'border-red-300' : 'border-gray-300'} focus:ring-2 focus:ring-[#F25129]`}
+            />
+            {errors.mediaDate && <p className="mt-1 text-sm text-red-600">{String(errors.mediaDate.message)}</p>}
           </div>
 
           <div>

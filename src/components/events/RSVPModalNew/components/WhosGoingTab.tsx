@@ -9,11 +9,12 @@ import { db } from '../../../../config/firebase';
 import { safeStringConversion } from '../../../../utils/dataSanitizer';
 import { safeISODate } from '../../../../utils/dateUtils';
 import { EllipsisScroller } from '../../../common/EllipsisScroller';
+import CommentSection from '../../../common/CommentSection';
 
 interface WhosGoingTabProps {
   event: EventDoc;
-  attendees: Attendee[];
-  isAdmin: boolean;
+  attendees?: Attendee[];
+  isAdmin?: boolean;
   waitlistPositions?: Map<string, number>;
 }
 
@@ -33,8 +34,8 @@ type StatusFilter = 'all' | 'going' | 'not-going' | 'waitlisted';
 
 export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
   event,
-  attendees,
-  isAdmin,
+  attendees = [],
+  isAdmin = false,
   waitlistPositions = new Map()
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -121,20 +122,24 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
 
     allAttendees.forEach(attendee => {
       if (attendee.attendeeType === 'primary') {
-        // Find family members for this user
+        // Find family members and guests for this user
         const familyMembers = allAttendees.filter(f => 
           f.userId === attendee.userId && f.attendeeType === 'family_member'
         );
+        const guests = allAttendees.filter(f => 
+          f.userId === attendee.userId && f.attendeeType === 'guest'
+        );
         
-        // Only count family members with "going" status
+        // Only count family members and guests with "going" status
         const goingFamilyMembers = familyMembers.filter(f => f.rsvpStatus === 'going');
+        const goingGuests = guests.filter(f => f.rsvpStatus === 'going');
 
         grouped[attendee.userId] = {
           userId: attendee.userId,
           name: attendee.name,
           status: attendee.rsvpStatus,
-          // Only count family members who are "going" - if primary is not going, show 0
-          familyCount: attendee.rsvpStatus === 'not-going' ? 0 : goingFamilyMembers.length,
+          // Count both family members and guests who are "going" - if primary is not going, show 0
+          familyCount: attendee.rsvpStatus === 'not-going' ? 0 : goingFamilyMembers.length + goingGuests.length,
           displayName: attendee.name,
           email: userContacts[attendee.userId]?.email || 'Not Available',
           phone: userContacts[attendee.userId]?.phone || 'Not Available',
@@ -221,13 +226,29 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
     setCurrentPage(1);
   }, [searchTerm, statusFilter]);
 
-  // Count attendees by status
+  // Count total people by status (primary + family members + guests)
   const statusCounts = useMemo(() => {
-    return groupedAttendees.reduce((counts, attendee) => {
-      counts[attendee.status] = (counts[attendee.status] || 0) + 1;
-      return counts;
-    }, {} as Record<string, number>);
-  }, [groupedAttendees]);
+    const counts: Record<string, number> = {
+      'going': 0,
+      'not-going': 0,
+      'waitlisted': 0
+    };
+
+    // Count ALL attendees individually by their status (primary, family_member, guest)
+    // This ensures accurate counts even when family members have different statuses than primary
+    allAttendees.forEach(attendee => {
+      const status = attendee.rsvpStatus || attendee.status;
+      if (status === 'going') {
+        counts['going'] += 1;
+      } else if (status === 'not-going') {
+        counts['not-going'] += 1;
+      } else if (status === 'waitlisted') {
+        counts['waitlisted'] += 1;
+      }
+    });
+
+    return counts;
+  }, [allAttendees]);
 
 
   // CSV escaping function to prevent injection attacks
@@ -583,6 +604,19 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
           Showing {filteredAttendees.length} of {groupedAttendees.length} attendees
         </div>
       )}
+
+      {/* Event Comments */}
+      <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
+        <h4 className="mb-1 text-base font-semibold text-gray-900">Event Comments</h4>
+        <p className="mb-4 text-sm text-gray-600">
+          Share updates or questions with members for this event.
+        </p>
+        <CommentSection
+          collectionPath={`events/${event.id}/comments`}
+          initialOpen={true}
+          pageSize={20}
+        />
+      </div>
     </div>
   );
 };

@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, getDocs, onSnapshot, Timestamp, limit as limitQuery, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, onSnapshot, Timestamp, limit as limitQuery, updateDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { AccountApprovalService } from '../../services/accountApprovalService';
 import { useAuth } from '../../contexts/AuthContext';
-import { CheckCircle, XCircle, MessageSquare, Search, Filter, Clock, User, Mail, MapPin, X } from 'lucide-react';
+import { CheckCircle, XCircle, MessageSquare, Search, Filter, Clock, User, Mail, MapPin, X, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { AccountApproval, ApprovalMessage } from '../../types';
 import { format } from 'date-fns';
 import GrandfatherUsersButton from './GrandfatherUsersButton';
+import { sanitizeFirebaseData } from '../../utils/dataSanitizer';
+import { safeISODate } from '../../utils/dateUtils';
 
 type StatusFilter = 'all' | 'pending' | 'needs_clarification' | 'approved' | 'rejected';
 
@@ -23,6 +25,7 @@ const AccountApprovalsAdmin: React.FC = () => {
   const [showQuestionModal, setShowQuestionModal] = useState(false);
   const [questionMessage, setQuestionMessage] = useState('');
   const [threadMessages, setThreadMessages] = useState<ApprovalMessage[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'admin') return;
@@ -128,6 +131,273 @@ const AccountApprovalsAdmin: React.FC = () => {
     }
   };
 
+  const handleExportUsers = async () => {
+    if (isExporting) return;
+    
+    try {
+      setIsExporting(true);
+      toast.loading('Exporting users...', { id: 'export-users' });
+
+      const formatDateTime = (value: any) => {
+        if (!value) return '';
+        try {
+          const d: Date | null =
+            value instanceof Date ? value : value?.toDate ? value.toDate() : null;
+          return d ? format(d, 'MMM d, yyyy h:mm a') : '';
+        } catch {
+          return '';
+        }
+      };
+
+      const formatDateOnly = (value: any) => {
+        if (!value) return '';
+        try {
+          const d: Date | null =
+            value instanceof Date ? value : value?.toDate ? value.toDate() : null;
+          return d ? format(d, 'MMM d, yyyy') : '';
+        } catch {
+          return '';
+        }
+      };
+
+      // Get all approvals (not just filtered ones)
+      const approvalsRef = collection(db, 'accountApprovals');
+      const q = query(approvalsRef, orderBy('submittedAt', 'desc'));
+      const snapshot = await getDocs(q);
+      
+      const allApprovals = snapshot.docs.map(doc => {
+        const docData = doc.data();
+        return {
+          id: doc.id,
+          ...docData,
+          submittedAt: (docData.submittedAt as Timestamp)?.toDate() || new Date(),
+          reviewedAt: (docData.reviewedAt as Timestamp)?.toDate(),
+          lastMessageAt: (docData.lastMessageAt as Timestamp)?.toDate(),
+        } as AccountApproval;
+      });
+
+      // Fetch user docs for: applicant + referenced userIds (reviewedBy / referredBy / etc.)
+      const userDataMap = new Map<string, any>();
+      const relatedUserIds = new Set<string>();
+      for (const a of allApprovals) {
+        if (a.userId) relatedUserIds.add(a.userId);
+        if (a.reviewedBy) relatedUserIds.add(a.reviewedBy);
+        if (a.referredBy) relatedUserIds.add(a.referredBy);
+      }
+      const uniqueRelatedUserIds = [...relatedUserIds];
+
+      await Promise.all(
+        uniqueRelatedUserIds.map(async (userId) => {
+          try {
+            const userDoc = await getDoc(doc(db, 'users', userId));
+            if (userDoc.exists()) {
+              const rawData = userDoc.data();
+              const userData = sanitizeFirebaseData(rawData);
+              userDataMap.set(userId, userData);
+            }
+          } catch (error) {
+            console.error(`Error fetching user ${userId}:`, error);
+          }
+        })
+      );
+
+      const getUserDisplayName = (userId: string | undefined) => {
+        if (!userId) return '';
+        const u = userDataMap.get(userId);
+        if (!u) return '';
+        return (
+          u.displayName ||
+          [u.firstName, u.lastName].filter(Boolean).join(' ') ||
+          u.email ||
+          ''
+        );
+      };
+
+      const getUserEmail = (userId: string | undefined) => {
+        if (!userId) return '';
+        const u = userDataMap.get(userId);
+        return u?.email || '';
+      };
+
+      // Prepare export data
+      const exportData = allApprovals.map((approval) => {
+        const userData = userDataMap.get(approval.userId) || {};
+
+        return {
+          // Identification
+          approvalId: approval.id,
+          userUid: approval.userId || '',
+          
+          // Name
+          firstName: approval.firstName || '',
+          lastName: approval.lastName || '',
+          displayName: approval.firstName && approval.lastName 
+            ? `${approval.firstName} ${approval.lastName}`
+            : userData.displayName || '',
+          
+          // Contact Information
+          email: approval.email || userData.email || '',
+          phoneNumber: approval.phoneNumber || userData.phoneNumber || '',
+          location: approval.location || userData.location || '',
+          
+          // Approval Status
+          approvalStatus: approval.status || 'pending',
+          awaitingResponseFrom: approval.awaitingResponseFrom || '',
+          unreadCountAdmin: approval.unreadCount?.admin || 0,
+          unreadCountUser: approval.unreadCount?.user || 0,
+          
+          // Dates
+          submittedAt: formatDateTime(approval.submittedAt),
+          reviewedAt: formatDateTime(approval.reviewedAt),
+          userCreatedAt: formatDateTime(userData.createdAt),
+          lastMessageAt: formatDateTime(approval.lastMessageAt),
+          
+          // Referral Information
+          howDidYouHear: approval.howDidYouHear || '',
+          howDidYouHearOther: approval.howDidYouHearOther || '',
+          referredById: approval.referredBy || '',
+          referredByName: getUserDisplayName(approval.referredBy),
+          referredByEmail: getUserEmail(approval.referredBy),
+          referralNotes: approval.referralNotes || '',
+          
+          // Review Information
+          reviewedById: approval.reviewedBy || '',
+          reviewedByName: getUserDisplayName(approval.reviewedBy),
+          reviewedByEmail: getUserEmail(approval.reviewedBy),
+          rejectionReason: approval.rejectionReason || '',
+          adminNotes: approval.adminNotes || '',
+          
+          // User Account Information
+          userRole: userData.role || '',
+          userStatus: userData.status || '',
+          membershipTier: userData.membershipTier || '',
+          eventHistory: userData.eventHistory || 0,
+          joinDate: formatDateOnly(userData.joinDate),
+          
+          // Additional User Info
+          canEditExercises: userData.canEditExercises || false,
+          approvedAt: formatDateTime(userData.approvedAt),
+          approvedById: userData.approvedBy || '',
+          approvedByName: getUserDisplayName(userData.approvedBy),
+          approvedByEmail: getUserEmail(userData.approvedBy),
+
+          rejectedAt: formatDateTime(userData.rejectedAt),
+          rejectedById: userData.rejectedBy || '',
+          rejectedByName: getUserDisplayName(userData.rejectedBy),
+          rejectedByEmail: getUserEmail(userData.rejectedBy),
+        };
+      });
+
+      // Create CSV
+      const headers = [
+        'Approval ID',
+        'User UID',
+        'First Name',
+        'Last Name',
+        'Display Name',
+        'Email',
+        'Phone Number',
+        'Location',
+        'Approval Status',
+        'Awaiting Response From',
+        'Unread Count (Admin)',
+        'Unread Count (User)',
+        'Submitted At',
+        'Reviewed At',
+        'User Created At',
+        'Last Message At',
+        'How Did You Hear',
+        'How Did You Hear (Other)',
+        'Referred By ID',
+        'Referred By Name',
+        'Referred By Email',
+        'Referral Notes',
+        'Reviewed By ID',
+        'Reviewed By Name',
+        'Reviewed By Email',
+        'Rejection Reason',
+        'Admin Notes',
+        'User Role',
+        'User Status',
+        'Membership Tier',
+        'Event History',
+        'Join Date',
+        'Can Edit Exercises',
+        'Approved At',
+        'Approved By ID',
+        'Approved By Name',
+        'Approved By Email',
+        'Rejected At',
+        'Rejected By ID',
+        'Rejected By Name',
+        'Rejected By Email'
+      ];
+
+      const csvRows = [
+        headers.join(','),
+        ...exportData.map(row => [
+          row.approvalId,
+          row.userUid,
+          `"${row.firstName}"`,
+          `"${row.lastName}"`,
+          `"${row.displayName}"`,
+          `"${row.email}"`,
+          `"${row.phoneNumber}"`,
+          `"${row.location}"`,
+          row.approvalStatus,
+          row.awaitingResponseFrom,
+          row.unreadCountAdmin,
+          row.unreadCountUser,
+          `"${row.submittedAt}"`,
+          `"${row.reviewedAt}"`,
+          `"${row.userCreatedAt}"`,
+          `"${row.lastMessageAt}"`,
+          `"${row.howDidYouHear}"`,
+          `"${row.howDidYouHearOther}"`,
+          `"${row.referredById}"`,
+          `"${row.referredByName}"`,
+          `"${row.referredByEmail}"`,
+          `"${row.referralNotes}"`,
+          `"${row.reviewedById}"`,
+          `"${row.reviewedByName}"`,
+          `"${row.reviewedByEmail}"`,
+          `"${row.rejectionReason}"`,
+          `"${row.adminNotes}"`,
+          row.userRole,
+          row.userStatus,
+          row.membershipTier,
+          row.eventHistory,
+          `"${row.joinDate}"`,
+          row.canEditExercises,
+          `"${row.approvedAt}"`,
+          `"${row.approvedById}"`,
+          `"${row.approvedByName}"`,
+          `"${row.approvedByEmail}"`,
+          `"${row.rejectedAt}"`,
+          `"${row.rejectedById}"`,
+          `"${row.rejectedByName}"`,
+          `"${row.rejectedByEmail}"`
+        ].join(','))
+      ];
+
+      const csv = csvRows.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `account_approvals_export_${safeISODate(new Date())}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      toast.success(`Exported ${exportData.length} user accounts`, { id: 'export-users' });
+    } catch (error: any) {
+      console.error('Error exporting users:', error);
+      toast.error(error?.message || 'Failed to export users', { id: 'export-users' });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const loadThread = (approvalId: string) => {
     const qMessages = query(
       collection(db, 'approvalMessages'),
@@ -201,7 +471,17 @@ const AccountApprovalsAdmin: React.FC = () => {
             )}
           </p>
         </div>
-        <GrandfatherUsersButton />
+        <div className="flex gap-3">
+          <button
+            onClick={handleExportUsers}
+            disabled={isExporting || approvals.length === 0}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4" />
+            {isExporting ? 'Exporting...' : 'Export All Users'}
+          </button>
+          <GrandfatherUsersButton />
+        </div>
       </div>
 
       {/* Filters and Search */}

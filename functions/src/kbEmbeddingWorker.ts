@@ -1,9 +1,9 @@
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onDocumentWritten } from 'firebase-functions/v2/firestore';
-import { onCall } from 'firebase-functions/v2/https';
 import type { CallableRequest } from 'firebase-functions/v2/https';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { embedText } from './utils/embeddings';
+import { onCall } from 'firebase-functions/v2/https';
 import { ensureAdmin } from './utils/admin';
+import { embedText } from './utils/embeddings';
 
 const db = getFirestore();
 
@@ -105,7 +105,7 @@ async function processChunkDoc(
 
 export const ensureChunkEmbedding = onDocumentWritten(
   {
-    region: 'us-central1',
+    region: 'us-east1',
     document: 'kb_chunks/{chunkId}',
     retry: false,
   },
@@ -138,7 +138,7 @@ export const ensureChunkEmbedding = onDocumentWritten(
 );
 
 export const backfillKnowledgeBaseEmbeddings = onCall(
-  { region: 'us-central1', timeoutSeconds: 540, memory: '1GiB' },
+  { region: 'us-east1', timeoutSeconds: 540, memory: '1GiB' },
   async (request: CallableRequest) => {
     await ensureAdmin(request.auth);
 
@@ -180,7 +180,7 @@ export const backfillKnowledgeBaseEmbeddings = onCall(
 
 // Lightweight status overview for admin console
 export const getKnowledgeEmbeddingStatus = onCall(
-  { region: 'us-central1', timeoutSeconds: 60, memory: '256MiB' },
+  { region: 'us-east1', timeoutSeconds: 60, memory: '256MiB' },
   async (request: CallableRequest) => {
     await ensureAdmin(request.auth);
     const c = db.collection('kb_chunks');
@@ -224,7 +224,7 @@ export const getKnowledgeEmbeddingStatus = onCall(
 
 // Retry failed (or pending) chunk embeddings in-place
 export const retryFailedKnowledgeEmbeddings = onCall(
-  { region: 'us-central1', timeoutSeconds: 540, memory: '1GiB' },
+  { region: 'us-east1', timeoutSeconds: 540, memory: '1GiB' },
   async (request: CallableRequest) => {
     await ensureAdmin(request.auth);
     const statuses = Array.isArray(request.data?.statuses)

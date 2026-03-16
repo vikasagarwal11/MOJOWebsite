@@ -1,14 +1,18 @@
 import { Timestamp } from 'firebase/firestore';
 
 // Payment status types
-export type PaymentStatus = 'unpaid' | 'paid' | 'refunded' | 'failed' | 'pending';
-export type PaymentMethod = 'card' | 'bank_transfer' | 'cash' | 'other';
+export type PaymentStatus = 'unpaid' | 'paid' | 'refunded' | 'failed' | 'pending' | 'waiting_for_approval' | 'rejected';
+export type PaymentMethod = 'card' | 'bank_transfer' | 'cash' | 'paypal' | 'venmo' | 'zelle' | 'other';
+
+// Event payment method types (Stripe vs Zelle)
+export type EventPaymentMethod = 'stripe' | 'zelle';
 export type RefundStatus = 'none' | 'partial' | 'full' | 'requested';
 
 // Age group pricing configuration
 export interface AgeGroupPricing {
   ageGroup: '0-2' | '3-5' | '6-10' | '11+' | 'adult';
-  price: number; // Price in cents
+  price: number; // NET price in cents (what admin receives after Stripe fees)
+  chargePrice?: number; // CHARGE price in cents (what user pays, includes Stripe fees)
   label: string; // Display label like "Adults", "Children (3-5)", etc.
 }
 
@@ -16,7 +20,10 @@ export interface AgeGroupPricing {
 export interface EventPricing {
   isFree: boolean;
   requiresPayment: boolean;
-  adultPrice: number; // Price in cents for adults
+  payThere?: boolean; // Payment handled at event or with organization
+  paymentMethod?: EventPaymentMethod; // 'stripe' or 'zelle' - determines payment flow
+  adultPrice: number; // NET price in cents for adults (what admin receives after Stripe fees)
+  adultChargePrice?: number; // CHARGE price in cents for adults (what user pays, includes Stripe fees)
   ageGroupPricing: AgeGroupPricing[];
   currency: string; // ISO currency code (e.g., 'USD')
   paymentDeadline?: Timestamp; // Optional deadline for payments
@@ -24,6 +31,22 @@ export interface EventPricing {
     allowed: boolean;
     deadline?: Timestamp; // Refund deadline
     feePercentage?: number; // Refund fee percentage (0-100)
+  };
+  eventSupportAmount?: number; // Additional event support fee in cents (NET amount, optional)
+  eventSupportChargeAmount?: number; // CHARGE amount for event support (what user pays, includes Stripe fees)
+
+  // NEW: Guest payment configuration
+  /** Enable/disable guest payment flow (payment without account) */
+  allowGuestPayments?: boolean;
+
+  /** Available payment methods for guest users */
+  guestPaymentMethods?: ('stripe' | 'zelle')[];
+
+  /** Zelle configuration (if enabled for guests) */
+  zelleConfig?: {
+    recipientEmail: string;
+    recipientPhone: string;
+    enabled: boolean;
   };
 }
 
@@ -80,6 +103,8 @@ export interface PaymentSummary {
     price: number;
     quantity: number;
     subtotal: number;
+    ticketPrice?: number; // Ticket charge amount (with proportional Stripe fee)
+    eventSupport?: number; // Event support charge amount (with proportional Stripe fee)
   }[];
   status: PaymentStatus;
   canRefund: boolean;
