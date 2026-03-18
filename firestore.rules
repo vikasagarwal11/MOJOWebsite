@@ -1332,6 +1332,17 @@ service cloud.firestore {
         isAdmin()
       );
     }
+
+    // =========================
+    // Internal analytics (client-write, admin-read)
+    // =========================
+    match /analytics/{docId} {
+      allow create: if
+        request.resource.data.eventType is string &&
+        request.resource.data.eventType.size() > 0;
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
     
     // --- Default Security: Deny all unknown collections ---
     match /{document=**} {

@@ -1,10 +1,11 @@
 import { collection, deleteDoc, doc, DocumentReference, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { listAll, ref } from 'firebase/storage';
-import { AlertTriangle, Calendar, CheckCircle, ChevronDown, ChevronUp, Dumbbell, Eye, FolderTree, Image, Loader2, MessageSquare, RefreshCw, Search, Settings, Shield, ShieldCheck, Star, Trash2, UserCheck, Users, Video, XCircle } from 'lucide-react';
+import { AlertTriangle, BarChart3, Calendar, CheckCircle, ChevronDown, ChevronUp, Dumbbell, Eye, FolderTree, Image, Loader2, MessageSquare, RefreshCw, Search, Settings, Shield, ShieldCheck, Star, Trash2, UserCheck, Users, Video, XCircle } from 'lucide-react';
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import AccountApprovalsAdmin from '../components/admin/AccountApprovalsAdmin';
+import AnalyticsDashboard from '../components/admin/AnalyticsDashboard';
 import { AssistantConfigPanel } from '../components/admin/AssistantConfigPanel';
 import BulkAttendeesPanel from '../components/admin/BulkAttendeesPanel';
 import CleanupToolPanel from '../components/admin/CleanupToolPanel';
@@ -84,7 +85,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
-  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig' | 'kbGaps' | 'accountApprovals' | 'moderation' | 'trustedUsers' | 'supportToolCategories'>('events');
+  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig' | 'kbGaps' | 'accountApprovals' | 'moderation' | 'trustedUsers' | 'supportToolCategories' | 'analytics'>('events');
   const { currentUser } = useAuth();
   
   // Media management state
@@ -663,6 +664,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
 
   // Debug logging moved to useEffect to prevent setState during render
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     console.log('🔍 ProfileAdminTab: Current state', {
       allEvents: allEvents.length,
       loadingAdminEvents,
@@ -842,6 +844,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           <FolderTree className="w-4 h-4 inline mr-2" />
           Support Tool Categories
         </button>
+        <button
+          onClick={() => setActiveAdminSection('analytics')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'analytics'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4 inline mr-2" />
+          Analytics Dashboard
+        </button>
         <Link
           to="/admin/error-logs"
           className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center"
@@ -907,11 +920,13 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                 }
                 
                 if (paginatedEvents.length === 0 && allEvents.length > 0) {
-                  console.warn('⚠️ ProfileAdminTab: No events in paginated slice but allEvents has events', {
-                    eventsPage,
-                    PAGE_SIZE,
-                    totalEvents: allEvents.length
-                  });
+                  if (import.meta.env.DEV) {
+                    console.warn('⚠️ ProfileAdminTab: No events in paginated slice but allEvents has events', {
+                      eventsPage,
+                      PAGE_SIZE,
+                      totalEvents: allEvents.length
+                    });
+                  }
                   // Reset to page 0 if current page has no events
                   if (eventsPage > 0) {
                     setEventsPage(0);
@@ -2045,6 +2060,11 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       {/* Support Tool Categories Section */}
       {activeAdminSection === 'supportToolCategories' && (
         <SupportToolCategoriesPanel />
+      )}
+
+      {/* Analytics Dashboard Section */}
+      {activeAdminSection === 'analytics' && (
+        <AnalyticsDashboard />
       )}
     </div>
   );

@@ -60,7 +60,7 @@ const Header: React.FC = () => {
     // { name: 'Challenges', href: '/challenges' }, // Hidden for now
     { name: 'Posts', href: '/posts' },
     { name: 'MFM Stories', href: '/mfmstories' },
-    // { name: 'Support Tools', href: '/support-tools' }, // Hidden for now - not rolling out in initial phase
+    // { name: 'Support Tools', href: '/support-tools' }, // Hidden from menu bar header
     { name: 'About Us', href: '/about' },
     { name: 'Founder', href: '/founder' },
     // { name: 'Press', href: '/press' }, // Hidden for now

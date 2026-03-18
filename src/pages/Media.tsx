@@ -14,6 +14,7 @@ import { db } from '../config/firebase';
 import { useLightbox } from '../hooks/useLightbox';
 import { batchResolveThumbnailUrls, extractThumbnailPaths } from '../utils/batchThumbnailResolver';
 import { isUserApproved } from '../utils/userUtils';
+import { logAnalyticsEvent } from '../services/analyticsService';
 
 const Media: React.FC = () => {
   const { currentUser } = useAuth();
@@ -269,6 +270,34 @@ const Media: React.FC = () => {
 
   // Lightbox functionality - use displayedMedia for pagination-aware navigation
   const lightbox = useLightbox(displayedMedia, { loop: true });
+  const lastLoggedMediaRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (lightbox.index === null || lightbox.index === undefined) {
+      lastLoggedMediaRef.current = null;
+      return;
+    }
+
+    const item = displayedMedia[lightbox.index];
+    if (!item?.id) return;
+    if (lastLoggedMediaRef.current === item.id) return;
+    lastLoggedMediaRef.current = item.id;
+
+    logAnalyticsEvent({
+      eventType: 'media_open',
+      mediaId: item.id,
+      page: window.location.pathname,
+      userId: currentUser?.id,
+      userType: currentUser?.role || (currentUser ? 'member' : 'guest'),
+      metadata: {
+        mediaTitle: item.title,
+        mediaType: item.type,
+        eventId: item.eventId,
+        eventTitle: item.eventTitle,
+        source: 'lightbox',
+      },
+    });
+  }, [lightbox.index, displayedMedia, currentUser?.id, currentUser?.role]);
 
   const toggleSelectionMode = useCallback(() => {
     setSelectionMode((prev) => {

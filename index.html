@@ -98,6 +98,24 @@
     <link rel="stylesheet" href="/assets/css/logo-compatibility.css" />
     
     <!-- reCAPTCHA script will be loaded dynamically by the React app -->
+    
+    <!-- Google Analytics (GA4) via gtag.js -->
+    <script>
+      (function () {
+        var gaId = '%VITE_GA_MEASUREMENT_ID%';
+        if (!gaId || gaId === '%VITE_GA_MEASUREMENT_ID%') return;
+        if (/^G-?X{4,}$/i.test(gaId) || gaId.indexOf('XXXX') !== -1) return;
+        var script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(gaId);
+        document.head.appendChild(script);
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        window.gtag = window.gtag || gtag;
+        gtag('js', new Date());
+        gtag('config', gaId, { send_page_view: false });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

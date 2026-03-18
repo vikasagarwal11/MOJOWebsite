@@ -43,7 +43,8 @@ const eventSchema = z.object({
   location: z.string().optional(), // Optional for backward compatibility
   venueName: z.string().optional(),
   venueAddress: z.string().optional(),
-  maxAttendees: z.string().min(1, 'Max attendees is required').refine((val) => {
+  maxAttendees: z.string().optional().refine((val) => {
+    if (!val) return true;
     const num = parseInt(val);
     return !isNaN(num) && num > 0;
   }, 'Max attendees must be a positive number'),
@@ -207,7 +208,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     endDate: eventToEdit.endAt ? safeFormat(tsToDate(eventToEdit.endAt), 'yyyy-MM-dd') : undefined,
     isAllDay: false, // Default to false for existing events
     location: eventToEdit.location,
-    maxAttendees: eventToEdit.maxAttendees,
+    maxAttendees: eventToEdit.maxAttendees?.toString() || '',
     waitlistEnabled: eventToEdit.waitlistEnabled || false,
     waitlistLimit: eventToEdit.waitlistLimit?.toString() || '',
     waitlistCount: eventToEdit.waitlistCount?.toString() || '0',
@@ -230,6 +231,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({ onClose, onEventCre
     duration: '1', // Default 1 hour duration
     attendanceEnabled: false, // Default to false for new events
     allowMembersToAddAttendees: false, // Default to false for new events
+    maxAttendees: '',
     requiresPayment: false, // Default to free events
     payThere: false, // Default to no pay there
     paymentMethod: 'stripe', // Default to Stripe
@@ -1797,7 +1799,7 @@ useEffect(() => {
               {/* Max Attendees */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  Max Attendees <span className="text-red-500">*</span>
+                  Max Attendees
                 </label>
                 <div className="relative">
                   <Users className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />

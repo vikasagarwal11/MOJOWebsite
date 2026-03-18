@@ -1,6 +1,9 @@
 import { Firestore, Timestamp } from 'firebase-admin/firestore';
+import sgMail from '@sendgrid/mail';
 import { GuestInvoice } from '../types/guestInvoice';
 import { PaymentTransaction } from '../types/paymentTransaction';
+
+let sendGridInitialized = false;
 
 /**
  * Email Notification Service
@@ -11,11 +14,13 @@ export class EmailNotificationService {
     private db: Firestore;
     private fromEmail: string;
     private fromName: string;
+    private sendGridApiKey: string;
 
     constructor(db: Firestore) {
         this.db = db;
         this.fromEmail = process.env.EMAIL_FROM || 'noreply@example.com';
         this.fromName = process.env.EMAIL_FROM_NAME || 'Moms Fitness Mojo';
+        this.sendGridApiKey = process.env.SENDGRID_API_KEY || '';
     }
 
     /**
@@ -167,8 +172,37 @@ export class EmailNotificationService {
         };
 
         const to = emailData.to;
-        const from = formatAddress(emailData.from);
+        const from = formatAddress(emailData.from) || this.fromEmail;
         const replyTo = formatAddress(emailData.replyTo);
+
+        if (!to) {
+            throw new Error('Email "to" address is required');
+        }
+
+        if (this.shouldUseSendGrid()) {
+            if (!sendGridInitialized) {
+                sgMail.setApiKey(this.sendGridApiKey);
+                sendGridInitialized = true;
+            }
+
+            const msg = {
+                to,
+                from,
+                replyTo,
+                subject: emailData.subject,
+                text: emailData.text,
+                html: emailData.html
+            };
+
+            const [response] = await sgMail.send(msg as any);
+            const headers = (response && (response as any).headers) || {};
+            const messageId =
+                headers['x-message-id'] ||
+                headers['X-Message-Id'] ||
+                headers['x-message-id'.toLowerCase()] ||
+                undefined;
+            return messageId ? String(messageId) : `sendgrid:${response?.statusCode ?? 'unknown'}`;
+        }
 
         // Firebase Trigger Email extension expects "to" and "message"
         // Keep top-level fields for compatibility with other providers
@@ -191,6 +225,14 @@ export class EmailNotificationService {
 
         const docRef = await this.db.collection('mail').add(mailPayload);
         return docRef.id;
+    }
+
+    private shouldUseSendGrid(): boolean {
+        const key = (this.sendGridApiKey || '').trim();
+        if (!key) return false;
+        if (key.toUpperCase().includes('PLACEHOLDER')) return false;
+        if (key === 'SG_PLACEHOLDER_REPLACE_WITH_ACTUAL_KEY') return false;
+        return true;
     }
 
     private async getRecipient(transaction: PaymentTransaction): Promise<{ email: string; name: string }> {
@@ -256,8 +298,9 @@ export class EmailNotificationService {
     ): string {
         const amount = (transaction.amount / 100).toFixed(2);
         const breakdown = transaction.metadata?.breakdown || [];
-        const breakdownHtml = breakdown.length
-            ? `<ul>${breakdown.map(item => `<li>${item.attendeeName} (${item.ageGroup}): $${(item.subtotal / 100).toFixed(2)}</li>`).join('')}</ul>`
+        const chargedBreakdown = this.allocateChargeBreakdown(breakdown, transaction.amount);
+        const breakdownHtml = chargedBreakdown.length
+            ? `<ul>${chargedBreakdown.map(item => `<li>${item.attendeeName} (${item.ageGroup}): $${(item.chargeAmount / 100).toFixed(2)}</li>`).join('')}</ul>`
             : '<p>No itemized breakdown available.</p>';
 
         return `
@@ -294,7 +337,7 @@ export class EmailNotificationService {
                 <li><strong>Payment Method:</strong> Credit/Debit Card</li>
                 <li><strong>Date:</strong> ${new Date().toLocaleDateString()}</li>
               </ul>
-              <h3>Itemized Receipt</h3>
+              <h3>Itemized Receipt (Amount Paid)</h3>
               ${breakdownHtml}
             </div>
             
@@ -332,8 +375,9 @@ export class EmailNotificationService {
     ): string {
         const amount = (transaction.amount / 100).toFixed(2);
         const breakdown = transaction.metadata?.breakdown || [];
-        const breakdownText = breakdown.length
-            ? breakdown.map(item => `- ${item.attendeeName} (${item.ageGroup}): $${(item.subtotal / 100).toFixed(2)}`).join('\n')
+        const chargedBreakdown = this.allocateChargeBreakdown(breakdown, transaction.amount);
+        const breakdownText = chargedBreakdown.length
+            ? chargedBreakdown.map(item => `- ${item.attendeeName} (${item.ageGroup}): $${(item.chargeAmount / 100).toFixed(2)}`).join('\n')
             : '- No itemized breakdown available.';
 
         return `
@@ -349,7 +393,7 @@ Payment Details:
 - Payment Method: Credit/Debit Card
 - Date: ${new Date().toLocaleDateString()}
 
-Itemized Receipt:
+Itemized Receipt (Amount Paid):
 ${breakdownText}
 
 Event Details:
@@ -376,8 +420,9 @@ The Moms Fitness Mojo Team
     ): string {
         const amount = (transaction.amount / 100).toFixed(2);
         const breakdown = transaction.metadata?.breakdown || [];
-        const breakdownHtml = breakdown.length
-            ? `<ul>${breakdown.map(item => `<li>${item.attendeeName} (${item.ageGroup}): $${(item.subtotal / 100).toFixed(2)}</li>`).join('')}</ul>`
+        const chargedBreakdown = this.allocateChargeBreakdown(breakdown, transaction.amount);
+        const breakdownHtml = chargedBreakdown.length
+            ? `<ul>${chargedBreakdown.map(item => `<li>${item.attendeeName} (${item.ageGroup}): $${(item.chargeAmount / 100).toFixed(2)}</li>`).join('')}</ul>`
             : '<p>No itemized breakdown available.</p>';
 
         return `
@@ -414,7 +459,7 @@ The Moms Fitness Mojo Team
                 <li><strong>Payment Method:</strong> Zelle</li>
                 <li><strong>Verified Date:</strong> ${new Date().toLocaleDateString()}</li>
               </ul>
-              <h3>Itemized Receipt</h3>
+              <h3>Itemized Receipt (Amount Paid)</h3>
               ${breakdownHtml}
             </div>
             
@@ -452,8 +497,9 @@ The Moms Fitness Mojo Team
     ): string {
         const amount = (transaction.amount / 100).toFixed(2);
         const breakdown = transaction.metadata?.breakdown || [];
-        const breakdownText = breakdown.length
-            ? breakdown.map(item => `- ${item.attendeeName} (${item.ageGroup}): $${(item.subtotal / 100).toFixed(2)}`).join('\n')
+        const chargedBreakdown = this.allocateChargeBreakdown(breakdown, transaction.amount);
+        const breakdownText = chargedBreakdown.length
+            ? chargedBreakdown.map(item => `- ${item.attendeeName} (${item.ageGroup}): $${(item.chargeAmount / 100).toFixed(2)}`).join('\n')
             : '- No itemized breakdown available.';
 
         return `
@@ -470,7 +516,7 @@ Payment Details:
 - Payment Method: Zelle
 - Verified Date: ${new Date().toLocaleDateString()}
 
-Itemized Receipt:
+Itemized Receipt (Amount Paid):
 ${breakdownText}
 
 Event Details:
@@ -609,5 +655,41 @@ The Moms Fitness Mojo Team
      */
     private sleep(ms: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    private allocateChargeBreakdown(
+        breakdown: Array<{ attendeeName: string; ageGroup: string; subtotal: number }>,
+        chargeTotal: number
+    ): Array<{ attendeeName: string; ageGroup: string; chargeAmount: number }> {
+        if (!breakdown.length || chargeTotal <= 0) return [];
+
+        const netTotal = breakdown.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+        if (netTotal <= 0) {
+            return breakdown.map(item => ({
+                attendeeName: item.attendeeName,
+                ageGroup: item.ageGroup,
+                chargeAmount: 0
+            }));
+        }
+
+        let running = 0;
+        return breakdown.map((item, index) => {
+            if (index === breakdown.length - 1) {
+                const remainder = chargeTotal - running;
+                return {
+                    attendeeName: item.attendeeName,
+                    ageGroup: item.ageGroup,
+                    chargeAmount: remainder
+                };
+            }
+            const share = item.subtotal / netTotal;
+            const allocated = Math.round(chargeTotal * share);
+            running += allocated;
+            return {
+                attendeeName: item.attendeeName,
+                ageGroup: item.ageGroup,
+                chargeAmount: allocated
+            };
+        });
     }
 }

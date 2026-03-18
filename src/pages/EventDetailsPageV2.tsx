@@ -13,12 +13,15 @@ import {
     Users,
     XCircle
 } from 'lucide-react';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import CommentSection from '../components/common/CommentSection';
 import { EventImage } from '../components/events/EventImage';
 import { EventSeo } from '../components/seo/EventSeo';
 import { auth, db } from '../config/firebase';
+import { useAuth } from '../contexts/AuthContext';
 import { EventDoc } from '../hooks/useEvents';
+import { logAnalyticsEvent } from '../services/analyticsService';
 import { safeFormat, safeToDate } from '../utils/dateUtils';
 
 type AttendeeDoc = {
@@ -83,10 +86,12 @@ function toMapsUrl(addressOrName: string) {
 const EventDetailsPageV2: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
 
   const [event, setEvent] = useState<EventDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loggedEventViewRef = useRef<string | null>(null);
 
   const [userAttendee, setUserAttendee] = useState<AttendeeDoc | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -121,6 +126,26 @@ const EventDetailsPageV2: React.FC = () => {
 
     return () => unsubscribe();
   }, [eventId]);
+
+  useEffect(() => {
+    if (!event?.id) return;
+    if (loggedEventViewRef.current === event.id) return;
+    loggedEventViewRef.current = event.id;
+
+    logAnalyticsEvent({
+      eventType: 'event_view',
+      eventId: event.id,
+      page: window.location.pathname,
+      userId: currentUser?.id,
+      userType: currentUser?.role || (currentUser ? 'member' : 'guest'),
+      metadata: {
+        eventTitle: event.title,
+        eventTags: event.tags || [],
+        eventCategory: event.tags?.[0] || 'uncategorized',
+        source: 'event_details_page_v2',
+      },
+    });
+  }, [event?.id, event?.title, currentUser?.id, currentUser?.role]);
 
   useEffect(() => {
     if (!eventId) return;
@@ -438,6 +463,17 @@ const EventDetailsPageV2: React.FC = () => {
                       <div className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{(event as any)?.policy}</div>
                     </div>
                   ) : null}
+                </div>
+
+                <div className="mt-6 rounded-3xl border border-black/5 bg-white p-5 shadow-sm sm:p-6">
+                  <div className="text-sm font-semibold text-gray-900">Conversation</div>
+                  <div className="mt-3">
+                    <CommentSection
+                      collectionPath={`events/${event.id}/comments`}
+                      initialOpen={true}
+                      pageSize={10}
+                    />
+                  </div>
                 </div>
               </div>
 

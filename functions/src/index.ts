@@ -1,8 +1,6 @@
-import ffprobe from '@ffprobe-installer/ffprobe';
 import { SpeechClient } from '@google-cloud/speech';
 import { CloudTasksClient } from "@google-cloud/tasks";
 import type { Request, Response } from "express";
-import ffmpegStatic from 'ffmpeg-static';
 import { initializeApp } from "firebase-admin/app";
 import { DocumentData, FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -389,6 +387,9 @@ const sendPromotionNotifications = async (
 // Get Firestore instance - using momsfitnessmojo database
 const db = getFirestore();
 
+// Toggle for event RSVP notifications only
+const EVENT_NOTIFICATIONS_ENABLED = process.env.EVENT_NOTIFICATIONS_ENABLED !== 'false';
+
 // ───────────────── SMS SERVICE (Twilio) ─────────────────
 
 /**
@@ -598,9 +599,27 @@ async function findMediaDocRef(name: string, dir: string, tries = 5): Promise<Fi
   return null;
 }
 
-// FFmpeg paths
-ffmpeg.setFfmpegPath(ffmpegStatic as string);
-ffmpeg.setFfprobePath(ffprobe.path);
+// FFmpeg paths (lazy initialization to avoid cold-start crashes)
+let ffmpegConfigured = false;
+function ensureFfmpegConfigured() {
+  if (ffmpegConfigured) return;
+  // Lazy-require binaries to avoid crashing container during startup
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const ffmpegStatic = require('ffmpeg-static');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const ffprobe = require('@ffprobe-installer/ffprobe');
+
+  if (!ffmpegStatic) {
+    throw new Error('ffmpeg-static binary not found for this environment.');
+  }
+  if (!ffprobe?.path) {
+    throw new Error('ffprobe binary not found for this environment.');
+  }
+  ffmpeg.setFfmpegPath(ffmpegStatic as string);
+  ffmpeg.setFfprobePath(ffprobe.path);
+  ffmpegConfigured = true;
+  console.log('✅ FFmpeg configured');
+}
 
 // ───────────────── Manifest Rewriter (NEW) ─────────────────
 function rewriteManifestWithAbsoluteUrls(
@@ -1078,6 +1097,10 @@ export const onEventCreatedNotification = onDocumentCreated("events/{eventId}", 
 
 // ───────────────── EVENTS: RSVP notifications (New Attendee System) ─────────────────
 export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attendeeId}", async (event) => {
+  if (!EVENT_NOTIFICATIONS_ENABLED) {
+    console.log('ℹ️ notifyRsvp: Event notifications disabled, skipping');
+    return;
+  }
   console.log(`🔍 notifyRsvp: Function triggered for eventId=${event.params.eventId}, attendeeId=${event.params.attendeeId}`);
 
   const beforeData = event.data?.before.exists ? event.data?.before.data() : null;
@@ -4234,7 +4257,8 @@ const createWatermarkOverlayFile = async (): Promise<string> => {
 };
 
 const applyVideoWatermark = async (sourcePath: string, outputPath: string): Promise<void> => {
-  const overlayPath = await createWatermarkOverlayFile();
+    ensureFfmpegConfigured();
+    const overlayPath = await createWatermarkOverlayFile();
 
   try {
     await new Promise<void>((resolve, reject) => {

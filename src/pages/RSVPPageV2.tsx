@@ -11,8 +11,8 @@ import {
     Users,
     XCircle
 } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { PaymentSection } from '../components/events/PaymentSection';
 import { QRCodeTab } from '../components/events/QRCodeTab';
 import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
@@ -26,6 +26,7 @@ import { useAttendees } from '../hooks/useAttendees';
 import { EventDoc } from '../hooks/useEvents';
 import { useFamilyMembers } from '../hooks/useFamilyMembers';
 import { useWaitlistPositions } from '../hooks/useWaitlistPositions';
+import { logAnalyticsEvent } from '../services/analyticsService';
 import { AgeGroup, Attendee, AttendeeStatus, CreateAttendeeData, Relationship } from '../types/attendee';
 import { safeFormat, safeToDate } from '../utils/dateUtils';
 
@@ -82,11 +83,14 @@ function getVenueLine(event?: EventDoc | null) {
 const RSVPPageV2: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { currentUser } = useAuth();
 
   const [event, setEvent] = useState<EventDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loggedEventViewRef = useRef<string | null>(null);
+  const paymentSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [activeView, setActiveView] = useState<ActiveView>('rsvp');
   const [saving, setSaving] = useState(false);
@@ -100,6 +104,26 @@ const RSVPPageV2: React.FC = () => {
     () => Boolean(currentUser?.role === 'admin' || (event?.createdBy && currentUser?.id === event.createdBy)),
     [currentUser, event]
   );
+
+  useEffect(() => {
+    if (!event?.id) return;
+    if (loggedEventViewRef.current === event.id) return;
+    loggedEventViewRef.current = event.id;
+
+    logAnalyticsEvent({
+      eventType: 'event_view',
+      eventId: event.id,
+      page: window.location.pathname,
+      userId: currentUser?.id,
+      userType: currentUser?.role || (currentUser ? 'member' : 'guest'),
+      metadata: {
+        eventTitle: event.title,
+        eventTags: event.tags || [],
+        eventCategory: event.tags?.[0] || 'uncategorized',
+        source: 'rsvp_page_v2',
+      },
+    });
+  }, [event?.id, event?.title, currentUser?.id, currentUser?.role]);
 
   // Safe event for hooks
   const emptyEvent = useMemo(() => ({} as EventDoc), []);
@@ -137,6 +161,14 @@ const RSVPPageV2: React.FC = () => {
 
     return () => unsubscribe();
   }, [eventId]);
+
+  // Scroll to payment section when navigating with #payment
+  useEffect(() => {
+    if (location.hash !== '#payment') return;
+    if (!paymentSectionRef.current) return;
+    console.log('[RSVP] Navigated to payment section via hash', { eventId: event?.id });
+    paymentSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [location.hash, event?.id]);
 
   // Attendees hook (user-scoped unless admin)
   const {
@@ -894,14 +926,14 @@ const RSVPPageV2: React.FC = () => {
                       </div>
                     )}
 
-                    <div className="mt-5">
-                      <PaymentSection
-                        event={event}
-                        attendees={myAttendees}
-                        onPaymentComplete={() => showToast('Payment updated')}
-                        onPaymentError={(msg) => showToast(msg)}
-                      />
-                    </div>
+                      <div className="mt-5" id="payment" ref={paymentSectionRef}>
+                        <PaymentSection
+                          event={event}
+                          attendees={myAttendees}
+                          onPaymentComplete={() => showToast('Payment updated')}
+                          onPaymentError={(msg) => showToast(msg)}
+                        />
+                      </div>
 
                     <div className="mt-6 rounded-2xl border border-black/10 bg-white p-4">
                       <h4 className="mb-1 text-base font-semibold text-gray-900">Event Comments</h4>

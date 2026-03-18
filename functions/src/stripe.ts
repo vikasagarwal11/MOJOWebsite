@@ -540,17 +540,25 @@ export const createPaymentIntent = onCall(
 export const stripeWebhook = onRequest(
   { region: 'us-east1', secrets: [stripeSecret, stripeWebhookSecret] },
   async (req, res) => {
+    const requestId = req.get('x-request-id') || req.get('x-cloud-trace-context') || 'unknown';
+
+    if (req.method !== 'POST') {
+      console.warn('⚠️ stripeWebhook: Invalid method', { method: req.method, requestId });
+      res.status(405).send('Method Not Allowed');
+      return;
+    }
+
     const sig = req.headers['stripe-signature'];
 
     if (!sig) {
-      console.error('❌ No stripe-signature header found');
+      console.error('❌ No stripe-signature header found', { requestId });
       res.status(400).send('Missing stripe-signature header');
       return;
     }
 
     const webhookSecret = stripeWebhookSecret.value() || process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
-      console.error('❌ STRIPE_WEBHOOK_SECRET not configured');
+      console.error('❌ STRIPE_WEBHOOK_SECRET not configured', { requestId });
       res.status(500).send('Webhook secret not configured');
       return;
     }
@@ -558,15 +566,23 @@ export const stripeWebhook = onRequest(
     let event: Stripe.Event;
 
     try {
+      if (!req.rawBody || (req.rawBody as Buffer).length === 0) {
+        console.error('❌ Missing rawBody for webhook signature verification', { requestId });
+        res.status(400).send('Missing rawBody');
+        return;
+      }
       // Verify webhook signature
       event = getStripe().webhooks.constructEvent(
         req.rawBody,
         sig,
         webhookSecret
       );
-      console.log('✅ Webhook signature verified:', event.type);
+      console.log('✅ Webhook signature verified:', { type: event.type, requestId });
     } catch (err: any) {
-      console.error('❌ Webhook signature verification failed:', err.message);
+      console.error('❌ Webhook signature verification failed:', {
+        message: err?.message,
+        requestId,
+      });
       res.status(400).send(`Webhook Error: ${err.message}`);
       return;
     }
@@ -587,13 +603,17 @@ export const stripeWebhook = onRequest(
           break;
 
         default:
-          console.log(`ℹ️ Unhandled event type: ${event.type}`);
+          console.log(`ℹ️ Unhandled event type: ${event.type}`, { requestId });
       }
 
-      res.json({ received: true });
+      res.status(200).json({ received: true });
     } catch (error: any) {
-      console.error('❌ Error processing webhook:', error);
-      res.status(500).send(`Webhook processing error: ${error.message}`);
+      console.error('❌ Error processing webhook:', {
+        message: error?.message,
+        stack: error?.stack,
+        requestId,
+      });
+      res.status(500).send(`Webhook processing error: ${error?.message || 'unknown'}`);
     }
   });
 

@@ -4,6 +4,8 @@ import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from 
 // import { shareUrl } from '../../utils/share';
 import { getDownloadURL, ref } from 'firebase/storage';
 import { storage } from '../../config/firebase';
+import { useAuth } from '../../contexts/AuthContext';
+import { logAnalyticsEvent } from '../../services/analyticsService';
 import { useSwipeRaw } from '../../hooks/useSwipeRaw';
 import { attachHls, detachHls } from '../../utils/hls';
 import { useImageOrientation } from '../../utils/imageOrientation';
@@ -48,11 +50,13 @@ export default function MediaLightbox({
   // const [isDownloading, setIsDownloading] = useState(false);
   const lastTapTimeRef = useRef<number>(0);
   const singleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loggedPlayRef = useRef<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const zoomRef = useRef<ReactZoomPanPinchRef | null>(null);
   const { correctImageOrientation } = useImageOrientation();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const { currentUser } = useAuth();
   const isVideo = item?.type === 'video';
   const fallbackTriggeredRef = useRef(false);
 
@@ -305,6 +309,7 @@ export default function MediaLightbox({
   useEffect(() => {
     setScale(1);
     fallbackTriggeredRef.current = false;
+    loggedPlayRef.current = null;
     if (zoomRef.current) {
       zoomRef.current.resetTransform();
     }
@@ -503,7 +508,26 @@ export default function MediaLightbox({
                     videoRef.current.play().catch(() => {});
                   }
                 }}
-                onPlay={() => setVideoLoading(false)}
+                onPlay={() => {
+                  setVideoLoading(false);
+                  if (item?.id && loggedPlayRef.current !== item.id) {
+                    loggedPlayRef.current = item.id;
+                    logAnalyticsEvent({
+                      eventType: 'media_play',
+                      mediaId: item.id,
+                      page: window.location.pathname,
+                      userId: currentUser?.id,
+                      userType: currentUser?.role || (currentUser ? 'member' : 'guest'),
+                      metadata: {
+                        mediaTitle: item.title,
+                        mediaType: item.type,
+                        eventId: item.eventId,
+                        eventTitle: item.eventTitle,
+                        source: 'lightbox',
+                      },
+                    });
+                  }
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (!videoRef.current) return;
