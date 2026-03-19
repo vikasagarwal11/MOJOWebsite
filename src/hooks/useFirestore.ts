@@ -31,6 +31,14 @@ const debugWarn = (...args: any[]) => {
   }
 };
 
+function safeStringify(value: any) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 /** Remove undefined so Firestore doesn’t throw on writes. */
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
@@ -204,6 +212,13 @@ function enforceGuestPolicy(
     if (!hasAnyOrderBy(out) && !hasOrderByField(out, 'createdAt')) {
       out.push(orderBy('createdAt', 'desc'));
     }
+  } else if (collectionName === 'resources') {
+    // Keep guest queries within rules: only public and not deleted
+    if (!hasWhereEquals(out, 'isPublic', true)) out.unshift(where('isPublic', '==', true));
+    if (!hasWhereEquals(out, 'isDeleted', false)) out.unshift(where('isDeleted', '==', false));
+    if (!hasAnyOrderBy(out) && !hasOrderByField(out, 'createdAt')) {
+      out.push(orderBy('createdAt', 'desc'));
+    }
   }
 
   return out;
@@ -352,6 +367,19 @@ export const useFirestore = () => {
       // Check if user is approved (approved users or legacy users without status field)
       const isApproved = currentUser && (currentUser.status === 'approved' || !currentUser.status);
       let safeConstraints = enforceGuestPolicy(collectionName, !!isApproved, queryConstraints);
+
+      // For resources, ensure non-admin users never query deleted docs (rules require !isDeleted)
+      const isAdmin = currentUser?.role === 'admin';
+      const shouldClientSortResources = collectionName === 'resources' && !isAdmin;
+      if (collectionName === 'resources' && !isAdmin) {
+        if (!hasWhereEquals(safeConstraints, 'isDeleted', false)) {
+          safeConstraints = [where('isDeleted', '==', false), ...safeConstraints];
+        }
+      }
+      if (shouldClientSortResources) {
+        // Avoid composite index requirements; sort by createdAt on the client instead
+        safeConstraints = safeConstraints.filter((c: any) => c?.type !== 'orderBy');
+      }
       
       debugLog('🔍 [useFirestore] Guest policy enforced:', { 
         collectionName, 
@@ -437,7 +465,9 @@ export const useFirestore = () => {
               // For where constraints, ensure field and value are valid
               if (constraint.type === 'where') {
                 const field = constraint.field?.toString?.() || constraint._field?.toString?.();
-                const value = constraint.value || constraint._value;
+                const value = Object.prototype.hasOwnProperty.call(constraint, 'value')
+                  ? (constraint as any).value
+                  : (constraint as any)._value;
                 const isValid = field && value !== undefined && value !== null;
                 debugLog('🔍 [useFirestore] Where constraint validation:', { field, value, isValid });
                 return isValid;
@@ -498,6 +528,13 @@ export const useFirestore = () => {
         q,
         (snapshot) => {
           let rows = snapshot.docs.map(d => normalizeDoc({ id: d.id, ...d.data() }));
+          if (collectionName === 'resources' && shouldClientSortResources) {
+            rows = rows.sort((a: any, b: any) => {
+              const aTime = a?.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+              const bTime = b?.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+              return bTime - aTime;
+            });
+          }
           
           if (collectionName === 'media') {
             console.log('📸 [MEDIA DEBUG] Raw snapshot:', {
@@ -576,13 +613,20 @@ export const useFirestore = () => {
           setLoading(false);
         },
         (error: any) => {
-          console.error('❌ [useFirestore] Snapshot error:', { 
-            collectionName, 
-            error: error.message,
-            code: error.code,
-            stack: error.stack,
-            constraints: queryConstraints.length
-          });
+          const errorMessage =
+            error?.message ??
+            (typeof error === 'string' ? error : error?.toString?.() ?? safeStringify(error) ?? 'Unknown error');
+
+          console.error(
+            `❌ [useFirestore] Snapshot error (${collectionName}): ${errorMessage}`,
+            {
+              code: error?.code,
+              stack: error?.stack,
+              constraints: queryConstraints.length,
+              rawError: safeStringify(error),
+              error
+            }
+          );
           setLoading(false);
 
           // Only show toast for critical errors, not all errors

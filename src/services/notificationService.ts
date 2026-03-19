@@ -12,6 +12,7 @@ import {
 import { db } from '../config/firebase';
 import { getMessaging, MessagePayload } from 'firebase/messaging';
 import app from '../config/firebase';
+import { getNotificationSettings, isInAppNotificationEnabled } from './notificationSettingsService';
 
 export interface Notification {
   id: string;
@@ -43,6 +44,12 @@ class NotificationService {
    */
   async createNotification(data: CreateNotificationData): Promise<string> {
     try {
+      const enabled = await isInAppNotificationEnabled(data.type);
+      if (!enabled) {
+        console.log('ℹ️ Notification skipped by admin settings:', data.type);
+        return '';
+      }
+
       const notificationData = {
         ...data,
         read: false,
@@ -108,6 +115,11 @@ class NotificationService {
     newPosition?: number;
   }): Promise<void> {
     try {
+      const settings = await getNotificationSettings();
+      if (settings.waitlistPromotion === false) {
+        console.log('ℹ️ Promotion notifications disabled by admin settings');
+        return;
+      }
       const notificationTitle = '🎉 Waitlist Promotion Confirmed!';
       const notificationMessage = `You've been promoted from waitlist for "${promotionData.eventTitle}"`;
       

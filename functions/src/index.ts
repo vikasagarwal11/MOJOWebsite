@@ -122,6 +122,7 @@ import { manualDeleteKnowledgeSource, manualUpsertKnowledgeSource, type Knowledg
 import { syncStaticKnowledgeEntries } from './staticContent';
 import { ensureAdmin } from './utils/admin';
 import { sendEventCreatedSMS } from './utils/notifications';
+import { isNotificationTypeEnabled } from './utils/notificationSettings';
 
 // Export the new attendee count management functions
 export { backfillKnowledgeBaseEmbeddings, bulkAttendeeOperation, ensureChunkEmbedding, getKnowledgeEmbeddingStatus, manualRecalculateCount, onAttendeeChange, retryFailedKnowledgeEmbeddings };
@@ -298,6 +299,10 @@ const sendPromotionNotifications = async (
   eventId: string
 ): Promise<void> => {
   try {
+    if (!(await isNotificationTypeEnabled('waitlistPromotion'))) {
+      console.log('ℹ️ Waitlist promotion notifications disabled by admin, skipping');
+      return;
+    }
     console.log(`📱 Sending notifications to ${promotedUsers.length} promoted users`);
 
     // Get event data for notification
@@ -1099,6 +1104,10 @@ export const onEventCreatedNotification = onDocumentCreated("events/{eventId}", 
 export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attendeeId}", async (event) => {
   if (!EVENT_NOTIFICATIONS_ENABLED) {
     console.log('ℹ️ notifyRsvp: Event notifications disabled, skipping');
+    return;
+  }
+  if (!(await isNotificationTypeEnabled('eventRsvp'))) {
+    console.log('ℹ️ notifyRsvp: Event RSVP notifications disabled by admin, skipping');
     return;
   }
   console.log(`🔍 notifyRsvp: Function triggered for eventId=${event.params.eventId}, attendeeId=${event.params.attendeeId}`);
@@ -5399,6 +5408,11 @@ export const onAccountApprovalCreated = onDocumentCreated(
         approvalId: event.params.approvalId
       });
 
+      if (!(await isNotificationTypeEnabled('adminApprovalRequest'))) {
+        console.log('ℹ️ onAccountApprovalCreated: Admin approval request notifications disabled');
+        return;
+      }
+
       // Get all admins
       const adminsSnapshot = await db.collection('users')
         .where('role', '==', 'admin')
@@ -5461,7 +5475,8 @@ export const onAccountApprovalCreated = onDocumentCreated(
             type: 'account_approval_request',
             approvalId: event.params.approvalId,
             userId: userId,
-          }
+          },
+          'adminApprovalRequest'
         );
       });
 
@@ -5520,6 +5535,10 @@ export const onAccountApprovalUpdated = onDocumentWritten(
 
       // Status changed to approved
       if (afterStatus === 'approved' && beforeStatus !== 'approved') {
+        if (!(await isNotificationTypeEnabled('accountApproval'))) {
+          console.log('ℹ️ Account approval notifications disabled by admin, skipping');
+          return;
+        }
         const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
 
         // Create in-app notification for user - capture DocumentReference to avoid race condition
@@ -5601,6 +5620,10 @@ export const onAccountApprovalUpdated = onDocumentWritten(
 
       // Status changed to rejected
       if (afterStatus === 'rejected' && beforeStatus !== 'rejected') {
+        if (!(await isNotificationTypeEnabled('accountRejection'))) {
+          console.log('ℹ️ Account rejection notifications disabled by admin, skipping');
+          return;
+        }
         const rejectionReason = afterData.rejectionReason || 'No reason provided.';
         const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
 
@@ -6141,6 +6164,10 @@ export const onApprovalMessageCreated = onDocumentCreated(
           console.error('❌ Failed to send/queue admin question SMS:', smsError);
         }
       } else {
+        if (!(await isNotificationTypeEnabled('adminApprovalRequest'))) {
+          console.log('ℹ️ Admin approval response notifications disabled by admin, skipping');
+          return;
+        }
         // User responded - notify all admins with push + SMS fallback
         const adminsSnapshot = await db.collection('users')
           .where('role', '==', 'admin')
@@ -6189,7 +6216,8 @@ export const onApprovalMessageCreated = onDocumentCreated(
                 approvalId: approvalId,
                 messageId: event.params.messageId,
                 userId: approvalData.userId,
-              }
+              },
+              'adminApprovalRequest'
             );
           });
 

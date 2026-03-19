@@ -1013,6 +1013,12 @@ service cloud.firestore {
       allow read: if isSignedIn(); // Any authenticated user can read (for function calls)
       allow write: if isAdmin(); // Only admins can update configuration
     }
+
+    // --- Notification Settings (admin managed, readable by clients) ---
+    match /appConfig/notificationSettings {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
     
     // --- KB Gaps (admin managed) ---
     match /kb_gaps/{gapId} {
@@ -1331,6 +1337,43 @@ service cloud.firestore {
         // Admins can read all attendees
         isAdmin()
       );
+    }
+
+    // =========================
+    // Resources (community knowledge hub)
+    // =========================
+    function getResourceCategory(categoryId) {
+      return get(/databases/$(database)/documents/resourceCategories/$(categoryId)).data;
+    }
+
+    function resourceCategoryAllowsPublicRead(categoryId) {
+      let cat = getResourceCategory(categoryId);
+      return cat != null && cat.allowPublicRead == true;
+    }
+
+    match /resourceCategories/{categoryId} {
+      allow read: if true;
+      allow create, update, delete: if isSignedIn() && isAdmin();
+    }
+
+    match /resources/{resourceId} {
+      allow read: if
+        isAdmin() ||
+        (isSignedIn() && resource.data.contributorId == request.auth.uid) ||
+        (!resource.data.isDeleted && (resource.data.isPublic != false || isSignedIn()));
+
+      allow create: if isSignedIn() &&
+        request.auth.uid == request.resource.data.contributorId &&
+        isNonEmptyString(request.resource.data.title) &&
+        isNonEmptyString(request.resource.data.description) &&
+        isNonEmptyString(request.resource.data.categoryId) &&
+        request.resource.data.isDeleted == false;
+
+      allow update: if isSignedIn() &&
+        (isAdmin() || request.auth.uid == resource.data.contributorId);
+
+      allow delete: if isSignedIn() &&
+        (isAdmin() || request.auth.uid == resource.data.contributorId);
     }
 
     // =========================

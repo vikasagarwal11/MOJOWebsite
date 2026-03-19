@@ -4,6 +4,159 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Resource markdown styling */
+.resource-markdown {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: #4b5563;
+  word-break: break-word;
+}
+
+.resource-markdown > * + * {
+  margin-top: 0.75rem;
+}
+
+.resource-markdown h1,
+.resource-markdown h2,
+.resource-markdown h3 {
+  color: #111827;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.resource-markdown h1 { font-size: 1.25rem; }
+.resource-markdown h2 { font-size: 1.1rem; }
+.resource-markdown h3 { font-size: 1rem; }
+
+.resource-markdown ul,
+.resource-markdown ol {
+  padding-left: 1.25rem;
+}
+
+.resource-markdown ul li {
+  list-style: disc;
+}
+
+.resource-markdown ol li {
+  list-style: decimal;
+}
+
+.resource-markdown a {
+  color: #f25129;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.resource-markdown blockquote {
+  border-left: 3px solid #f25129;
+  padding-left: 0.75rem;
+  color: #6b7280;
+  background: #fff5f2;
+  border-radius: 0.5rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.resource-markdown code {
+  background: #f3f4f6;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.4rem;
+  font-size: 0.85em;
+  color: #111827;
+}
+
+.resource-markdown pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+
+/* Rich text editor + output */
+.resource-editor .ql-toolbar {
+  border-radius: 0.75rem 0.75rem 0 0;
+  border-color: #e5e7eb;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+}
+
+.resource-editor .ql-container {
+  border-radius: 0 0 0.75rem 0.75rem;
+  border-color: #e5e7eb;
+  min-height: 160px;
+  font-family: inherit;
+}
+
+.resource-editor .ql-editor {
+  min-height: 140px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.resource-richtext {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: #4b5563;
+  word-break: break-word;
+}
+
+.resource-richtext h1,
+.resource-richtext h2,
+.resource-richtext h3 {
+  color: #111827;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.resource-richtext h1 { font-size: 1.25rem; }
+.resource-richtext h2 { font-size: 1.1rem; }
+.resource-richtext h3 { font-size: 1rem; }
+
+.resource-richtext ul,
+.resource-richtext ol {
+  padding-left: 1.25rem;
+}
+
+.resource-richtext ul li { list-style: disc; }
+.resource-richtext ol li { list-style: decimal; }
+
+.resource-richtext a {
+  color: #f25129;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.resource-richtext blockquote {
+  border-left: 3px solid #f25129;
+  padding-left: 0.75rem;
+  color: #6b7280;
+  background: #fff5f2;
+  border-radius: 0.5rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.resource-richtext code {
+  background: #f3f4f6;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.4rem;
+  font-size: 0.85em;
+  color: #111827;
+}
+
+.resource-richtext pre {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+
 /* ===== RESPONSIVE BASE STYLES ===== */
 
 /* Stabilize scrollbar across all routes to prevent layout shift */

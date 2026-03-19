@@ -13,6 +13,8 @@ import ContactMessagesAdmin from '../components/admin/ContactMessagesAdmin';
 import { ContentModerationPanel } from '../components/admin/ContentModerationPanel';
 import { KBGapsPanel } from '../components/admin/KBGapsPanel';
 import { SupportToolCategoriesPanel } from '../components/admin/SupportToolCategoriesPanel';
+import ResourceCategoriesPanel from '../components/admin/ResourceCategoriesPanel';
+import NotificationSettingsPanel from '../components/admin/NotificationSettingsPanel';
 import { TrustedUsersPanel } from '../components/admin/TrustedUsersPanel';
 import EventCardNew from '../components/events/EventCardNew';
 import { db, storage } from '../config/firebase';
@@ -85,7 +87,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
-  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig' | 'kbGaps' | 'accountApprovals' | 'moderation' | 'trustedUsers' | 'supportToolCategories' | 'analytics'>('events');
+  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig' | 'kbGaps' | 'accountApprovals' | 'moderation' | 'trustedUsers' | 'supportToolCategories' | 'resourceCategories' | 'analytics' | 'notifications'>('events');
   const { currentUser } = useAuth();
   
   // Media management state
@@ -768,6 +770,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           System Tools
         </button>
         <button
+          onClick={() => setActiveAdminSection('notifications')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'notifications'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Settings className="w-4 h-4 inline mr-2" />
+          Notifications
+        </button>
+        <button
           onClick={() => setActiveAdminSection('testimonials')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeAdminSection === 'testimonials'
@@ -843,6 +856,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         >
           <FolderTree className="w-4 h-4 inline mr-2" />
           Support Tool Categories
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('resourceCategories')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'resourceCategories'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <FolderTree className="w-4 h-4 inline mr-2" />
+          Resource Categories
         </button>
         <button
           onClick={() => setActiveAdminSection('analytics')}
@@ -1591,6 +1615,13 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
         </div>
       )}
 
+      {/* Notifications Section */}
+      {activeAdminSection === 'notifications' && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <NotificationSettingsPanel />
+        </div>
+      )}
+
       {/* Testimonials Moderation Section */}
       {activeAdminSection === 'testimonials' && (
         <div className="bg-white rounded-lg border border-gray-200 p-6">
@@ -2060,6 +2091,11 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       {/* Support Tool Categories Section */}
       {activeAdminSection === 'supportToolCategories' && (
         <SupportToolCategoriesPanel />
+      )}
+
+      {/* Resource Categories Section */}
+      {activeAdminSection === 'resourceCategories' && (
+        <ResourceCategoriesPanel />
       )}
 
       {/* Analytics Dashboard Section */}

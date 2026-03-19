@@ -35,6 +35,7 @@ import Reset from './pages/Reset';
 import RSVPPage from './pages/RSVPPage';
 import RSVPPageV2 from './pages/RSVPPageV2';
 import GuestRSVPPage from './pages/GuestRSVPPage';
+import Resources from './pages/Resources';
 import ShareYourStory from './pages/ShareYourStory';
 import Sponsors from './pages/Sponsors';
 import Testimonials from './pages/Testimonials';
@@ -200,6 +201,9 @@ function AppRouter() {
             <Route path="media" element={<Media />} />  {/* UPDATED VERSION WITH LIVE UPLOAD */}
           {/* <Route path="media" element={<MediaGallery />} />  OLD VERSION - COMMENTED OUT */}
             <Route path="posts" element={<Posts />} />
+            <Route path="resources" element={<Resources />} />
+            <Route path="resources/:categorySlug" element={<Resources />} />
+            <Route path="resources/:categorySlug/:subcategorySlug" element={<Resources />} />
             <Route path="support-tools" element={<SupportTools />} />
             <Route path="support-tools/:categorySlug" element={<SupportTools />} />
             <Route path="sponsors" element={<Sponsors />} />
