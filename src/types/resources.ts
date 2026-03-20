@@ -39,6 +39,10 @@ export interface ResourceEntry {
     instructor?: string;
     notes?: string;
   };
+  moderationStatus?: 'pending' | 'approved' | 'rejected';
+  moderationReason?: string | null;
+  moderatedAt?: Date;
+  moderatedBy?: string;
   isPublic: boolean;
   isDeleted: boolean;
   deletedAt?: Date;
@@ -62,4 +66,8 @@ export interface CreateResourceEntryData {
     instructor?: string;
     notes?: string;
   };
+  moderationStatus?: 'pending' | 'approved' | 'rejected';
+  moderationReason?: string | null;
+  moderatedAt?: Date;
+  moderatedBy?: string;
 }

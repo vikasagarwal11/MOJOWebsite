@@ -18,6 +18,7 @@ import toast from 'react-hot-toast';
 import { db } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { sanitizeFirebaseData } from '../utils/dataSanitizer';
+import { stripUndefined } from '../utils/firestore';
 
 const ENABLE_FIRESTORE_DEBUG = import.meta.env.DEV || true; // Temporarily enabled for debugging
 const debugLog = (...args: any[]) => {
@@ -37,11 +38,6 @@ function safeStringify(value: any) {
   } catch {
     return String(value);
   }
-}
-
-/** Remove undefined so Firestore doesn’t throw on writes. */
-function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
-  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
 /**
@@ -374,6 +370,10 @@ export const useFirestore = () => {
       if (collectionName === 'resources' && !isAdmin) {
         if (!hasWhereEquals(safeConstraints, 'isDeleted', false)) {
           safeConstraints = [where('isDeleted', '==', false), ...safeConstraints];
+        }
+        if (!safeConstraints.some((c: any) => c?.type === 'where' && (c?.field?.toString?.() === 'moderationStatus'))) {
+          // Only fetch approved resources for non-admins to satisfy rules and avoid permission errors
+          safeConstraints = [where('moderationStatus', '==', 'approved'), ...safeConstraints];
         }
       }
       if (shouldClientSortResources) {

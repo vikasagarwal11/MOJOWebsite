@@ -521,6 +521,24 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "moderationStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "resources",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "isDeleted",
           "order": "ASCENDING"
         },

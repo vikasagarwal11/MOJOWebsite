@@ -10,6 +10,7 @@ export type NotificationSettings = {
   adminApprovalRequest: boolean;
   contentModeration: boolean;
   adminQuestion: boolean;
+  adminNotifications: boolean;
   generalInApp: boolean;
   eventReminders: boolean;
   contentStatus: boolean;
@@ -26,6 +27,7 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   adminApprovalRequest: true,
   contentModeration: true,
   adminQuestion: true,
+  adminNotifications: true,
   generalInApp: true,
   eventReminders: true,
   contentStatus: true,
@@ -56,6 +58,7 @@ export async function getNotificationSettings(): Promise<NotificationSettings> {
     adminApprovalRequest: normalize(merged.adminApprovalRequest),
     contentModeration: normalize(merged.contentModeration),
     adminQuestion: normalize(merged.adminQuestion),
+    adminNotifications: normalize(merged.adminNotifications),
     generalInApp: normalize(merged.generalInApp),
     eventReminders: normalize(merged.eventReminders),
     contentStatus: normalize(merged.contentStatus),

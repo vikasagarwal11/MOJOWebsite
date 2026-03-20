@@ -35,12 +35,22 @@ export const ResourceCategoriesPanel: React.FC = () => {
     const unsub = onSnapshot(
       q,
       snapshot => {
-        const list = snapshot.docs.map(docSnap => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-          createdAt: docSnap.data().createdAt?.toDate?.() ?? new Date(),
-          updatedAt: docSnap.data().updatedAt?.toDate?.() ?? new Date(),
-        })) as ResourceCategory[];
+        const normalizeIcon = (icon?: string) => {
+          const trimmed = (icon || '').trim();
+          if (!trimmed) return '';
+          if (trimmed === '?' || trimmed === '???') return '';
+          return trimmed;
+        };
+        const list = snapshot.docs.map(docSnap => {
+          const raw = docSnap.data() as ResourceCategory;
+          return {
+            id: docSnap.id,
+            ...raw,
+            icon: normalizeIcon(raw.icon),
+            createdAt: docSnap.data().createdAt?.toDate?.() ?? new Date(),
+            updatedAt: docSnap.data().updatedAt?.toDate?.() ?? new Date(),
+          };
+        }) as ResourceCategory[];
         setCategories(list);
         setLoading(false);
       },
@@ -216,7 +226,7 @@ export const ResourceCategoriesPanel: React.FC = () => {
         name: 'Recipes',
         slug: 'recipes',
         description: 'Healthy, quick, and family-friendly meal ideas.',
-        icon: '???',
+        icon: '',
         color: '#F25129',
         order: 0,
         isActive: true,
@@ -233,7 +243,7 @@ export const ResourceCategoriesPanel: React.FC = () => {
         name: 'Recommendations',
         slug: 'recommendations',
         description: 'Community-curated recommendations for moms.',
-        icon: '?',
+        icon: '',
         color: '#FFC107',
         order: 1,
         isActive: true,
@@ -250,7 +260,7 @@ export const ResourceCategoriesPanel: React.FC = () => {
         name: 'Classes & Schedules',
         slug: 'classes-schedules',
         description: 'Classes moms attend regularly with schedules and notes.',
-        icon: '???',
+        icon: '',
         color: '#F25129',
         order: 2,
         isActive: true,

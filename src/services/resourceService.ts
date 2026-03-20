@@ -16,7 +16,10 @@ export async function createResourceEntry(
   data: CreateResourceEntryData,
   contributorId: string,
   contributorName: string,
-  contributorPhoto?: string
+  contributorPhoto?: string,
+  options?: {
+    isAdmin?: boolean;
+  }
 ): Promise<string> {
   const categoryRef = doc(db, 'resourceCategories', data.categoryId);
   const categorySnap = await getDoc(categoryRef);
@@ -36,6 +39,11 @@ export async function createResourceEntry(
     }
   }
 
+  const schedule = data.schedule ? stripUndefined({ ...data.schedule }) : undefined;
+  const cleanSchedule = schedule && Object.keys(schedule).length > 0 ? schedule : undefined;
+
+  const moderationStatus = options?.isAdmin ? 'approved' : 'pending';
+
   const entryData = stripUndefined({
     title: data.title.trim(),
     description: data.description.trim(),
@@ -52,7 +60,11 @@ export async function createResourceEntry(
     contributorName,
     contributorPhoto,
     tags: data.tags || [],
-    schedule: data.schedule,
+    schedule: cleanSchedule,
+    moderationStatus,
+    moderationReason: null,
+    moderatedAt: options?.isAdmin ? serverTimestamp() : null,
+    moderatedBy: options?.isAdmin ? contributorId : null,
     isPublic: category.allowPublicRead ?? true,
     isDeleted: false,
     createdAt: serverTimestamp(),
@@ -65,7 +77,11 @@ export async function createResourceEntry(
 
 export async function updateResourceEntry(
   entryId: string,
-  data: CreateResourceEntryData
+  data: CreateResourceEntryData,
+  options?: {
+    resetModeration?: boolean;
+    moderatorId?: string;
+  }
 ): Promise<void> {
   const categoryRef = doc(db, 'resourceCategories', data.categoryId);
   const categorySnap = await getDoc(categoryRef);
@@ -85,6 +101,18 @@ export async function updateResourceEntry(
     }
   }
 
+  const schedule = data.schedule ? stripUndefined({ ...data.schedule }) : undefined;
+  const cleanSchedule = schedule && Object.keys(schedule).length > 0 ? schedule : undefined;
+
+  const moderationReset = options?.resetModeration
+    ? {
+        moderationStatus: 'pending',
+        moderationReason: null,
+        moderatedAt: null,
+        moderatedBy: null,
+      }
+    : {};
+
   const updateData = stripUndefined({
     title: data.title.trim(),
     description: data.description.trim(),
@@ -98,8 +126,9 @@ export async function updateResourceEntry(
     contact: data.contact?.trim() || undefined,
     website: data.website?.trim() || undefined,
     tags: data.tags || [],
-    schedule: data.schedule,
+    schedule: cleanSchedule,
     isPublic: category.allowPublicRead ?? true,
+    ...moderationReset,
     updatedAt: serverTimestamp(),
   });
 

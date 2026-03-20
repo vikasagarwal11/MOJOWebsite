@@ -5,7 +5,7 @@ import { notificationService } from './notificationService';
 
 export interface ModerationAction {
   contentId: string;
-  contentType: 'post' | 'media';
+  contentType: 'post' | 'media' | 'resource';
   action: 'approve' | 'reject';
   adminId: string;
   reason?: string;
@@ -17,7 +17,7 @@ export class ModerationService {
    */
   static async approveContent(
     contentId: string,
-    contentType: 'post' | 'media',
+    contentType: 'post' | 'media' | 'resource',
     adminId: string
   ): Promise<void> {
     if (!contentId || !contentType || !adminId) {
@@ -28,7 +28,8 @@ export class ModerationService {
     }
 
     try {
-      const collectionName = contentType === 'post' ? 'posts' : contentType;
+      const collectionName =
+        contentType === 'post' ? 'posts' : contentType === 'resource' ? 'resources' : contentType;
       const contentRef = doc(db, collectionName, contentId);
       const contentDoc = await getDoc(contentRef);
       
@@ -40,7 +41,12 @@ export class ModerationService {
       }
 
       const contentData = contentDoc.data();
-      const authorId = contentType === 'post' ? contentData.authorId : contentData.uploadedBy;
+      const authorId =
+        contentType === 'post'
+          ? contentData.authorId
+          : contentType === 'media'
+            ? contentData.uploadedBy
+            : contentData.contributorId;
 
       // Validate content data
       if (!authorId) {
@@ -67,7 +73,12 @@ export class ModerationService {
           action: 'approved',
           adminId,
           authorId,
-          contentTitle: contentType === 'post' ? contentData.title || 'Untitled Post' : 'Media Upload',
+          contentTitle:
+            contentType === 'post'
+              ? contentData.title || 'Untitled Post'
+              : contentType === 'media'
+                ? 'Media Upload'
+                : contentData.title || 'Resource',
           reason: null,
           createdAt: serverTimestamp(),
         });
@@ -79,9 +90,12 @@ export class ModerationService {
       // Send notification to author (non-blocking)
       if (authorId) {
         try {
-          const contentTitle = contentType === 'post' 
-            ? contentData.title || 'Your post'
-            : 'Your media';
+          const contentTitle =
+            contentType === 'post'
+              ? contentData.title || 'Your post'
+              : contentType === 'media'
+                ? 'Your media'
+                : contentData.title || 'Your resource';
           
           await notificationService.createNotification({
             userId: authorId,
@@ -100,7 +114,9 @@ export class ModerationService {
         }
       }
 
-      toast.success(`${contentType === 'post' ? 'Post' : 'Media'} approved successfully`);
+      toast.success(
+        `${contentType === 'post' ? 'Post' : contentType === 'media' ? 'Media' : 'Resource'} approved successfully`
+      );
     } catch (error: any) {
       console.error('❌ [ModerationService] Error approving content:', {
         error,
@@ -132,7 +148,7 @@ export class ModerationService {
    */
   static async rejectContent(
     contentId: string,
-    contentType: 'post' | 'media',
+    contentType: 'post' | 'media' | 'resource',
     adminId: string,
     reason?: string
   ): Promise<void> {
@@ -144,7 +160,8 @@ export class ModerationService {
     }
 
     try {
-      const collectionName = contentType === 'post' ? 'posts' : contentType;
+      const collectionName =
+        contentType === 'post' ? 'posts' : contentType === 'resource' ? 'resources' : contentType;
       const contentRef = doc(db, collectionName, contentId);
       const contentDoc = await getDoc(contentRef);
       
@@ -156,7 +173,12 @@ export class ModerationService {
       }
 
       const contentData = contentDoc.data();
-      const authorId = contentType === 'post' ? contentData.authorId : contentData.uploadedBy;
+      const authorId =
+        contentType === 'post'
+          ? contentData.authorId
+          : contentType === 'media'
+            ? contentData.uploadedBy
+            : contentData.contributorId;
 
       // Validate content data
       if (!authorId) {
@@ -183,7 +205,12 @@ export class ModerationService {
           action: 'rejected',
           adminId,
           authorId,
-          contentTitle: contentType === 'post' ? contentData.title || 'Untitled Post' : 'Media Upload',
+          contentTitle:
+            contentType === 'post'
+              ? contentData.title || 'Untitled Post'
+              : contentType === 'media'
+                ? 'Media Upload'
+                : contentData.title || 'Resource',
           reason: reason || 'Content does not meet community guidelines',
           createdAt: serverTimestamp(),
         });
@@ -195,9 +222,12 @@ export class ModerationService {
       // Send notification to author (non-blocking)
       if (authorId) {
         try {
-          const contentTitle = contentType === 'post' 
-            ? contentData.title || 'Your post'
-            : 'Your media';
+          const contentTitle =
+            contentType === 'post'
+              ? contentData.title || 'Your post'
+              : contentType === 'media'
+                ? 'Your media'
+                : contentData.title || 'Your resource';
           
           await notificationService.createNotification({
             userId: authorId,
@@ -217,7 +247,9 @@ export class ModerationService {
         }
       }
 
-      toast.success(`${contentType === 'post' ? 'Post' : 'Media'} rejected`);
+      toast.success(
+        `${contentType === 'post' ? 'Post' : contentType === 'media' ? 'Media' : 'Resource'} rejected`
+      );
     } catch (error: any) {
       console.error('❌ [ModerationService] Error rejecting content:', {
         error,

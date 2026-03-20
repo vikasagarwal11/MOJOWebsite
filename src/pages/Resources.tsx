@@ -10,6 +10,12 @@ import ResourceCard from '../components/resources/ResourceCard';
 import ResourceFormModal from '../components/resources/ResourceFormModal';
 import { softDeleteResourceEntry } from '../services/resourceService';
 
+const normalizeCategoryIcon = (icon?: string) => {
+  const trimmed = (icon || '').trim();
+  if (!trimmed || trimmed === '?' || trimmed === '???') return '';
+  return trimmed;
+};
+
 const Resources: React.FC = () => {
   const { categorySlug, subcategorySlug } = useParams<{ categorySlug?: string; subcategorySlug?: string }>();
   const navigate = useNavigate();
@@ -26,9 +32,14 @@ const Resources: React.FC = () => {
     loading: boolean;
   };
 
-  const activeCategories = useMemo(
-    () => (categories || []).filter(cat => cat.isActive),
+  const normalizedCategories = useMemo(
+    () => (categories || []).map(cat => ({ ...cat, icon: normalizeCategoryIcon(cat.icon) })),
     [categories]
+  );
+
+  const activeCategories = useMemo(
+    () => normalizedCategories.filter(cat => cat.isActive),
+    [normalizedCategories]
   );
 
   const topCategories = useMemo(
@@ -88,6 +99,7 @@ const Resources: React.FC = () => {
   const filteredEntries = useMemo(() => {
     const list = (entries || []).filter(entry => {
       if (entry.isDeleted) return false;
+      if (entry.moderationStatus !== 'approved') return false;
       if (entry.isPublic === false && !currentUser) return false;
       if (selectedCategory && entry.categoryId !== selectedCategory.id) return false;
       if (selectedSubcategory && entry.subcategoryId !== selectedSubcategory.id) return false;

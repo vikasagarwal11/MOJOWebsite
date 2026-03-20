@@ -8,6 +8,7 @@ import { performanceService } from './services/performanceService';
 import { registerSW } from './sw-register';
 import { initializeGlobalErrorPrevention } from './utils/globalErrorPrevention';
 import { configureRecaptcha } from './utils/recaptcha';
+import { FIREBASE_ENV_MISMATCH, FIREBASE_ENV_MISMATCH_DETAILS } from './config/firebase';
 
 console.log('🚀 Main.tsx - Starting application initialization...');
 
@@ -77,13 +78,32 @@ if (!container) {
 }
 const root = createRoot(container);
 
-root.render(
-  <StrictMode>
-    <HelmetProvider>
-      <App />
-    </HelmetProvider>
-  </StrictMode>
-);
+if (FIREBASE_ENV_MISMATCH) {
+  console.error('[Firebase] Environment mismatch detected. Blocking app boot.', FIREBASE_ENV_MISMATCH_DETAILS);
+  root.render(
+    <StrictMode>
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-6">
+        <div className="max-w-2xl w-full bg-slate-900/70 border border-red-500/40 rounded-2xl p-6 shadow-lg">
+          <h1 className="text-2xl font-semibold text-red-300 mb-3">Maintenance</h1>
+          <p className="text-sm text-slate-200 mb-4">
+            We’re performing maintenance right now. Please check back shortly.
+          </p>
+          <p className="text-xs text-slate-400">
+            If you need immediate help, please contact support.
+          </p>
+        </div>
+      </div>
+    </StrictMode>
+  );
+} else {
+  root.render(
+    <StrictMode>
+      <HelmetProvider>
+        <App />
+      </HelmetProvider>
+    </StrictMode>
+  );
+}
 
 // Register service worker only in production
 registerSW();

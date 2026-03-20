@@ -392,6 +392,129 @@ const sendPromotionNotifications = async (
 // Get Firestore instance - using momsfitnessmojo database
 const db = getFirestore();
 
+// Scheduled: Send event reminders 3 days prior (paid + pending payments)
+export const sendEventRemindersThreeDaysPrior = onSchedule({
+  schedule: 'every day 09:00',
+  timeZone: 'America/New_York',
+  region: 'us-east1'
+}, async () => {
+  try {
+    if (!(await isNotificationTypeEnabled('eventReminders'))) {
+      console.log('ℹ️ Event reminders disabled by admin, skipping');
+      return;
+    }
+
+    const now = new Date();
+    const windowStart = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const windowEnd = new Date(windowStart.getTime() + 24 * 60 * 60 * 1000);
+
+    const eventsSnapshot = await db.collection('events')
+      .where('startAt', '>=', Timestamp.fromDate(windowStart))
+      .where('startAt', '<=', Timestamp.fromDate(windowEnd))
+      .get();
+
+    if (eventsSnapshot.empty) {
+      console.log('ℹ️ No events found in 3-day reminder window');
+      return;
+    }
+
+    console.log(`🔔 Processing ${eventsSnapshot.size} event(s) for 3-day reminders`);
+
+    for (const eventDoc of eventsSnapshot.docs) {
+      const eventId = eventDoc.id;
+      const eventData = eventDoc.data() || {};
+
+      if (eventData.status && eventData.status !== 'scheduled') {
+        console.log(`⏭️ Skipping event ${eventId} (status: ${eventData.status})`);
+        continue;
+      }
+
+      const eventTitle = String(eventData.title || 'Event');
+      const when = formatEventWhen(eventData);
+      const requiresPayment =
+        !!eventData?.pricing?.requiresPayment ||
+        ((eventData?.pricing?.eventSupportAmount ?? 0) > 0);
+
+      const attendeesSnapshot = await db.collection('events')
+        .doc(eventId)
+        .collection('attendees')
+        .where('rsvpStatus', '==', 'going')
+        .get();
+
+      if (attendeesSnapshot.empty) {
+        console.log(`ℹ️ No attendees to remind for event ${eventId}`);
+        continue;
+      }
+
+      const byUser = new Map<string, { pendingPayment: boolean }>();
+      attendeesSnapshot.docs.forEach((doc) => {
+        const data = doc.data() || {};
+        const userId = String(data.userId || '').trim();
+        if (!userId || userId.startsWith('guest_')) return;
+
+        const paymentStatus = String(data.paymentStatus || (requiresPayment ? 'unpaid' : 'not_required'));
+        const isPending = requiresPayment && PAYMENT_PENDING_STATUSES.has(paymentStatus);
+        const existing = byUser.get(userId);
+        byUser.set(userId, { pendingPayment: (existing?.pendingPayment || false) || isPending });
+      });
+
+      for (const [userId, info] of byUser.entries()) {
+        const logId = `${eventId}_${userId}_3d`;
+        const logRef = db.collection('event_reminder_logs').doc(logId);
+        const logSnap = await logRef.get();
+        if (logSnap.exists) {
+          continue;
+        }
+
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (!userDoc.exists) {
+          console.warn(`⚠️ User not found for reminder: ${userId}`);
+          continue;
+        }
+        const userData = userDoc.data();
+
+        const reminderType = info.pendingPayment ? 'payment_pending' : 'welcome';
+        const title = info.pendingPayment ? 'Payment Reminder' : 'Event Reminder';
+        const message = info.pendingPayment
+          ? `Reminder: your payment for "${eventTitle}" is still pending. Please complete payment to confirm your spot on ${when}.`
+          : `You're confirmed for "${eventTitle}" on ${when}. Welcome and see you there!`;
+
+        const notificationRef = db.collection('notifications').doc();
+        await notificationRef.set({
+          userId,
+          type: 'event_reminder',
+          title,
+          message,
+          eventId,
+          read: false,
+          createdAt: FieldValue.serverTimestamp(),
+          metadata: {
+            reminderType,
+            daysBefore: 3,
+            eventDate: when
+          }
+        });
+
+        await sendUserPushNotification(userId, userData, title, message, {
+          type: 'event_reminder',
+          eventId,
+          reminderType
+        });
+
+        await logRef.set({
+          eventId,
+          userId,
+          reminderType,
+          sentAt: FieldValue.serverTimestamp(),
+          eventStartAt: eventData.startAt || null
+        });
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error sending 3-day event reminders:', error);
+  }
+});
+
 // Toggle for event RSVP notifications only
 const EVENT_NOTIFICATIONS_ENABLED = process.env.EVENT_NOTIFICATIONS_ENABLED !== 'false';
 
@@ -428,6 +551,47 @@ async function sendSMSViaTwilio(phoneNumber: string, message: string): Promise<{
   } catch (error: any) {
     console.error('❌ Twilio SMS failed:', error?.message || error);
     return { success: false, error: error?.message || 'Failed to send SMS' };
+  }
+}
+const PAYMENT_PENDING_STATUSES = new Set(['unpaid', 'pending', 'waiting_for_approval']);
+
+function getEventStartDate(eventData: any): Date | null {
+  if (!eventData) return null;
+  if (eventData.startAt?.toDate) return eventData.startAt.toDate();
+  if (eventData.date?.toDate) return eventData.date.toDate();
+  if (eventData.startAt instanceof Date) return eventData.startAt;
+  if (eventData.date instanceof Date) return eventData.date;
+  return null;
+}
+
+function formatEventWhen(eventData: any): string {
+  const startAt = getEventStartDate(eventData);
+  if (!startAt) return 'soon';
+  return startAt.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+async function sendUserPushNotification(
+  userId: string,
+  userData: any,
+  title: string,
+  body: string,
+  data?: Record<string, string>
+): Promise<void> {
+  const fcmToken = userData?.fcmToken;
+  const pushEnabled = userData?.notificationPreferences?.pushEnabled !== false;
+  if (!pushEnabled || !fcmToken) return;
+
+  try {
+    const { getMessaging } = await import('firebase-admin/messaging');
+    const messaging = getMessaging();
+    await messaging.send({
+      token: fcmToken,
+      notification: { title, body },
+      data: data || {},
+    });
+    console.log(`✅ Push notification sent to user ${userId}`);
+  } catch (error: any) {
+    console.warn(`⚠️ Push notification failed for user ${userId}:`, error?.message || error);
   }
 }
 type StorageBucket = ReturnType<ReturnType<typeof getStorage>['bucket']>;

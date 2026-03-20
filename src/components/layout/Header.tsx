@@ -29,6 +29,8 @@ const Header: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileResourcesOpen, setMobileResourcesOpen] = useState(false);
+  const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [resourcesSubOpen, setResourcesSubOpen] = useState(false);
   const { currentUser, logout } = useAuth();
   const location = useLocation();
 
@@ -138,7 +140,15 @@ const Header: React.FC = () => {
             <div className="flex items-center gap-1 lg:gap-2">
               {navigation.map((item) =>
                 item.children ? (
-                  <div key={item.name} className="relative group">
+                  <div
+                    key={item.name}
+                    className="relative"
+                    onMouseEnter={() => setResourcesOpen(true)}
+                    onMouseLeave={() => {
+                      setResourcesOpen(false);
+                      setResourcesSubOpen(false);
+                    }}
+                  >
                     <Link
                       to={item.href}
                       className={`px-2 lg:px-3 py-2 rounded-lg text-xs lg:text-sm font-medium transition-all duration-200 inline-flex items-center gap-1 ${
@@ -147,14 +157,29 @@ const Header: React.FC = () => {
                           : 'text-white/90 hover:text-white hover:bg-white/10'
                       }`}
                       aria-haspopup="menu"
+                      aria-expanded={resourcesOpen}
                     >
                       {item.name}
                     </Link>
-                    <div className="absolute left-0 mt-2 w-56 rounded-xl border border-white/10 bg-white shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition">
+                    <div
+                      className={`absolute left-0 top-full w-56 rounded-xl border border-white/10 bg-white shadow-xl transition ${
+                        resourcesOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                      }`}
+                      onMouseEnter={() => setResourcesOpen(true)}
+                      onMouseLeave={() => {
+                        setResourcesOpen(false);
+                        setResourcesSubOpen(false);
+                      }}
+                    >
                       <div className="py-2">
                         {item.children.map(child =>
                           child.children ? (
-                            <div key={child.name} className="relative group/sub">
+                            <div
+                              key={child.name}
+                              className="relative"
+                              onMouseEnter={() => setResourcesSubOpen(true)}
+                              onMouseLeave={() => setResourcesSubOpen(false)}
+                            >
                               <Link
                                 to={child.href}
                                 className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-[#F25129]/10 flex items-center justify-between"
@@ -162,7 +187,13 @@ const Header: React.FC = () => {
                                 {child.name}
                                 <span className="text-gray-400">›</span>
                               </Link>
-                              <div className="absolute left-full top-0 ml-2 w-64 rounded-xl border border-gray-200 bg-white shadow-xl opacity-0 pointer-events-none group-hover/sub:opacity-100 group-hover/sub:pointer-events-auto transition">
+                              <div
+                                className={`absolute left-full top-0 w-64 rounded-xl border border-gray-200 bg-white shadow-xl transition ${
+                                  resourcesSubOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                                }`}
+                                onMouseEnter={() => setResourcesSubOpen(true)}
+                                onMouseLeave={() => setResourcesSubOpen(false)}
+                              >
                                 <div className="py-2">
                                   {child.children.map(grand => (
                                     <Link

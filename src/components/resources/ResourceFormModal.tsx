@@ -101,9 +101,15 @@ const ResourceFormModal: React.FC<ResourceFormModalProps> = ({ categories, entry
       .map(tag => tag.trim())
       .filter(Boolean);
 
-    const schedule = scheduleEnabled
+    const hasScheduleContent =
+      scheduleDays.length > 0 ||
+      scheduleTime.trim().length > 0 ||
+      scheduleInstructor.trim().length > 0 ||
+      scheduleNotes.trim().length > 0;
+
+    const schedule = scheduleEnabled && hasScheduleContent
       ? {
-          days: scheduleDays.length > 0 ? scheduleDays : undefined,
+          days: scheduleDays,
           time: scheduleTime.trim() || undefined,
           instructor: scheduleInstructor.trim() || undefined,
           notes: scheduleNotes.trim() || undefined,
@@ -146,17 +152,23 @@ const ResourceFormModal: React.FC<ResourceFormModalProps> = ({ categories, entry
     try {
       const payload = buildPayload();
 
+      const isAdmin = currentUser.role === 'admin';
+
       if (entry) {
-        await updateResourceEntry(entry.id, payload);
-        toast.success('Resource updated.');
+        await updateResourceEntry(entry.id, payload, {
+          resetModeration: !isAdmin,
+          moderatorId: isAdmin ? currentUser.id : undefined,
+        });
+        toast.success(isAdmin ? 'Resource updated.' : 'Resource changes submitted for approval.');
       } else {
         await createResourceEntry(
           payload,
           currentUser.id,
           currentUser.displayName || 'Member',
-          currentUser.photoURL || undefined
+          currentUser.photoURL || undefined,
+          { isAdmin }
         );
-        toast.success('Resource added.');
+        toast.success(isAdmin ? 'Resource added.' : 'Resource submitted for approval.');
       }
 
       onSaved();
