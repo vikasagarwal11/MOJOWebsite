@@ -387,7 +387,6 @@ const Home: React.FC = () => {
             {/* Right: Hero Carousel (same size as before) */}
             <div className="relative max-w-lg ml-auto min-h-[200px]">
               <HeroCarousel 
-                imagesDirectory="/assets/hero-images"
                 duration={4}
               />
             </div>

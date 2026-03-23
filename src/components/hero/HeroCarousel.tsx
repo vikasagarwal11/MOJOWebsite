@@ -1,58 +1,47 @@
-import React, { useEffect, useState } from 'react';
+import { where } from 'firebase/firestore';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useFirestore } from '../../hooks/useFirestore';
 
 interface HeroCarouselProps {
-  imagesDirectory: string;
   duration?: number; // Duration per slide in seconds
 }
 
 const HeroCarousel: React.FC<HeroCarouselProps> = ({
-  imagesDirectory,
   duration = 4,
 }) => {
   const [images, setImages] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const { useRealtimeCollection } = useFirestore();
+  const heroMediaSnapshot = useRealtimeCollection('media', [
+    where('showOnHomepage', '==', true),
+  ]);
 
   const debug = import.meta.env.DEV;
 
+  const heroImages = useMemo(() => {
+    const raw = heroMediaSnapshot.data ?? [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const media of raw) {
+      if (media?.type !== 'image') continue;
+      const url = media.url || media.thumbnailUrl;
+      if (!url || seen.has(url)) continue;
+      seen.add(url);
+      out.push(url);
+      if (out.length >= 20) break;
+    }
+    return out;
+  }, [heroMediaSnapshot.data]);
+
   useEffect(() => {
-    // Keep this tiny and deterministic: check a short, sensible list.
-    const discoverImages = async () => {
-      // Put your likely hero photos here (add/remove as you add files)
-      // Images are numbered in order: 001, 002, 003, etc.
-      const candidates = [
-        '001.jpeg',
-        '002.JPG',
-        '003.jpg',
-        '004.JPG',
-        '005.jpeg',
-        '006.JPG',
-        '007.jpeg',
-        '008.JPG',
-        '009.jpeg',
-        '010.jpeg',
-        '011.jpg',
-        '012.jpeg',
-        '013.jpg'
-      ];
-
-      const check = async (name: string) => {
-        const url = `${imagesDirectory}/${name}`;
-        try {
-          const res = await fetch(url, { method: 'GET' });
-          const type = res.headers.get('content-type') || '';
-          if (!res.ok || !type.startsWith('image/')) return null;
-          return url; // store full URL
-        } catch {
-          return null;
-        }
-      };
-
-      const results = await Promise.all(candidates.map(check));
-      const valid = results.filter(Boolean) as string[];
-      setImages(valid.length ? valid : [`${imagesDirectory}/001.jpeg`]);
-    };
-    discoverImages();
-  }, [imagesDirectory]);
+    if (heroImages.length > 0) {
+      setImages(heroImages);
+      setCurrentIndex(0);
+      return;
+    }
+    setImages([]);
+    setCurrentIndex(0);
+  }, [heroImages]);
 
   useEffect(() => {
     if (images.length === 0) return;
@@ -95,7 +84,7 @@ const HeroCarousel: React.FC<HeroCarouselProps> = ({
         <img
           src={images[currentIndex]}   // now already a full URL
           alt="Moms Fitness Mojo community activities and events"
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain bg-gray-100"
           onError={(e) => {
             console.error('HeroCarousel: Failed to load image', images[currentIndex], e);
             // Remove the bad image and move on

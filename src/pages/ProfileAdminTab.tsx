@@ -97,6 +97,9 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const MEDIA_PAGE_SIZE = 10;
   const [expandedMediaId, setExpandedMediaId] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+  const [updatingHeroMediaId, setUpdatingHeroMediaId] = useState<string | null>(null);
+  const HERO_LIMIT = 20;
+  const heroLimitTooltip = 'u have puttted 20 images on frontend delete some phptos from admin panel to add kore';
 
   // Testimonials moderation state
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<TestimonialStatus | 'all'>('pending');
@@ -424,6 +427,62 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       toast.error('Failed to load media files');
     } finally {
       setLoadingMedia(false);
+    }
+  };
+
+  const heroMedia = useMemo(() => {
+    return allMedia.filter((media) => media?.type === 'image' && media?.showOnHomepage);
+  }, [allMedia]);
+
+  const heroCount = heroMedia.length;
+
+  const handleAddToHero = async (mediaId: string) => {
+    if (heroCount >= HERO_LIMIT) {
+      toast.error('Hero carousel is full. Remove some images to add more.');
+      return;
+    }
+    setUpdatingHeroMediaId(mediaId);
+    try {
+      await updateDoc(doc(db, 'media', mediaId), {
+        showOnHomepage: true,
+        heroCarouselAddedAt: serverTimestamp(),
+      });
+      setAllMedia((prev) =>
+        prev.map((media) =>
+          media.id === mediaId
+            ? { ...media, showOnHomepage: true, heroCarouselAddedAt: new Date() }
+            : media
+        )
+      );
+      toast.success('Added to homepage carousel');
+    } catch (error) {
+      console.error('Failed to add media to hero carousel:', error);
+      toast.error('Failed to add image to homepage');
+    } finally {
+      setUpdatingHeroMediaId(null);
+    }
+  };
+
+  const handleRemoveFromHero = async (mediaId: string) => {
+    setUpdatingHeroMediaId(mediaId);
+    try {
+      await updateDoc(doc(db, 'media', mediaId), {
+        showOnHomepage: false,
+        heroCarouselAddedAt: null,
+      });
+      setAllMedia((prev) =>
+        prev.map((media) =>
+          media.id === mediaId
+            ? { ...media, showOnHomepage: false, heroCarouselAddedAt: null }
+            : media
+        )
+      );
+      toast.success('Removed from homepage carousel');
+    } catch (error) {
+      console.error('Failed to remove media from hero carousel:', error);
+      toast.error('Failed to remove image from homepage');
+    } finally {
+      setUpdatingHeroMediaId(null);
     }
   };
 
@@ -1247,6 +1306,56 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
             </div>
           ) : (
             <div className="space-y-4">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Homepage Hero Carousel</h3>
+                    <p className="text-xs text-gray-600">
+                      Showing {heroCount} of {HERO_LIMIT} images on the homepage.
+                    </p>
+                  </div>
+                  <span className="text-xs font-medium text-gray-600">
+                    {heroCount}/{HERO_LIMIT} active
+                  </span>
+                </div>
+
+                {heroCount === 0 ? (
+                  <p className="mt-3 text-xs text-gray-500">
+                    No images are currently on the homepage carousel. Use "Add to Frontend" below to publish images.
+                  </p>
+                ) : (
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                    {heroMedia.map((media) => {
+                      const thumb = media.thumbnailUrl || media.url;
+                      return (
+                        <div key={media.id} className="rounded-lg border border-gray-200 bg-white p-2">
+                          <div className="relative w-full overflow-hidden rounded-md bg-gray-100 aspect-[4/3]">
+                            {thumb ? (
+                              <img
+                                src={thumb}
+                                alt="Hero carousel"
+                                className="h-full w-full object-contain"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">
+                                No preview
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleRemoveFromHero(media.id)}
+                            disabled={updatingHeroMediaId === media.id}
+                            className="mt-2 w-full rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {updatingHeroMediaId === media.id ? 'Removing...' : 'Remove from Frontend'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 gap-4">
                 {allMedia.slice(mediaPage * MEDIA_PAGE_SIZE, (mediaPage + 1) * MEDIA_PAGE_SIZE).map((media) => {
                   const isExpanded = expandedMediaId === media.id;
@@ -1255,6 +1364,8 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                   const qualityLevels = media.qualityLevels || [];
                   const failedQualities = media.failedQualities || [];
                   const bgSummary = media.backgroundProcessingSummary;
+                  const isHeroImage = media?.type === 'image' && media?.showOnHomepage;
+                  const heroActionDisabled = updatingHeroMediaId === media.id || (!isHeroImage && heroCount >= HERO_LIMIT);
                   
                   // Get thumbnail URL - prefer thumbnailUrl, fallback to url for images
                   const thumbnailUrl = media.thumbnailUrl || (media.type === 'image' ? media.url : null);
@@ -1316,6 +1427,30 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                               >
                                 {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                               </button>
+                              {media.type === 'image' && (
+                                <button
+                                  onClick={() => {
+                                    if (isHeroImage) {
+                                      handleRemoveFromHero(media.id);
+                                    } else {
+                                      handleAddToHero(media.id);
+                                    }
+                                  }}
+                                  disabled={heroActionDisabled}
+                                  title={!isHeroImage && heroCount >= HERO_LIMIT ? heroLimitTooltip : undefined}
+                                  className={`px-2 py-1 text-xs rounded ${
+                                    isHeroImage
+                                      ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                      : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                                >
+                                  {updatingHeroMediaId === media.id
+                                    ? 'Updating...'
+                                    : isHeroImage
+                                      ? 'Remove from Frontend'
+                                      : 'Add to Frontend'}
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleDeleteMedia(media.id, media)}
                                 className="p-1 text-red-500 hover:bg-red-50 rounded"

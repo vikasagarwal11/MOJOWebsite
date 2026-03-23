@@ -50,10 +50,10 @@ export class ModerationService {
 
       // Validate content data
       if (!authorId) {
-        const error = new Error('Content missing author information');
-        console.error('❌ [ModerationService] Content missing author:', { contentId, contentType, contentData });
-        toast.error('Content is missing author information. Cannot approve.');
-        throw error;
+        console.warn('⚠️ [ModerationService] Content missing author info, approving without notification:', {
+          contentId,
+          contentType,
+        });
       }
 
       // Update moderation status
@@ -182,10 +182,10 @@ export class ModerationService {
 
       // Validate content data
       if (!authorId) {
-        const error = new Error('Content missing author information');
-        console.error('❌ [ModerationService] Content missing author:', { contentId, contentType, contentData });
-        toast.error('Content is missing author information. Cannot reject.');
-        throw error;
+        console.warn('⚠️ [ModerationService] Content missing author info, rejecting without notification:', {
+          contentId,
+          contentType,
+        });
       }
 
       // Update moderation status
@@ -339,4 +339,7 @@ export class ModerationService {
     }
   }
 }
+
+
+
 

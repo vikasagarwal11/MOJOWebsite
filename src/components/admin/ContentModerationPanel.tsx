@@ -108,8 +108,8 @@ export const ContentModerationPanel: React.FC = () => {
           const originalMediaType = data.type; // This is 'image' or 'video' from the media document
           return {
             id: doc.id,
-            type: 'media' as const,
             ...data,
+            type: 'media' as const,
             // Preserve 'image' | 'video' from media document as mediaType (after spread to ensure it's not overwritten)
             mediaType: originalMediaType || (data as any).mediaType,
           };
@@ -237,8 +237,8 @@ export const ContentModerationPanel: React.FC = () => {
           const originalMediaType = data.type; // This is 'image' or 'video' from the media document
           return {
             id: doc.id,
-            type: 'media' as const,
             ...data,
+            type: 'media' as const,
             // Preserve 'image' | 'video' from media document as mediaType (after spread to ensure it's not overwritten)
             mediaType: originalMediaType || (data as any).mediaType,
           };
@@ -319,6 +319,9 @@ export const ContentModerationPanel: React.FC = () => {
     setProcessingIds(prev => new Set(prev).add(content.id));
     try {
       await ModerationService.approveContent(content.id, content.type, currentUser.id);
+    } catch (error: any) {
+      console.error('Failed to approve content:', error);
+      toast.error(error?.message || 'Failed to approve content');
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
@@ -342,6 +345,9 @@ export const ContentModerationPanel: React.FC = () => {
         return next;
       });
       setExpandedId(null);
+    } catch (error: any) {
+      console.error('Failed to reject content:', error);
+      toast.error(error?.message || 'Failed to reject content');
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
