@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Heart, MessageCircle, Reply, ChevronDown, ChevronRight, Image, X, Smile, MoreVertical, Trash2 } from 'lucide-react';
+import { Heart, MessageCircle, Reply, ChevronDown, ChevronRight, Smile, Trash2 } from 'lucide-react';
 import { safeFormat } from '../../utils/dateUtils';
 import { collection, addDoc, serverTimestamp, doc, setDoc, deleteDoc, onSnapshot, query } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -443,29 +443,6 @@ const { reactionCounts, userReactions, toggleReaction } = useReactions(comment.i
         {/* Inline Reply Form */}
         {replyingTo === comment.id && (
           <div className="mt-2 ml-4 space-y-2">
-            {/* Reply File Preview */}
-            {replyFiles && replyFiles.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {replyFiles.map((file: File, index: number) => (
-                  <div key={index} className="flex items-center gap-2 bg-gray-100 px-3 py-2 rounded-lg">
-                    <Image className="w-4 h-4 text-gray-600" />
-                    <span className="text-sm text-gray-700 truncate max-w-32">{file.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (setReplyFiles) {
-                          setReplyFiles((prev: File[]) => prev.filter((_: File, i: number) => i !== index));
-                        }
-                      }}
-                      className="text-gray-500 hover:text-red-500"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            
             <form onSubmit={handleSubmitReply} className="flex space-x-2">
               <input
                 type="text"
@@ -478,20 +455,6 @@ const { reactionCounts, userReactions, toggleReaction } = useReactions(comment.i
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
                 autoFocus
               />
-              <input
-                type="file"
-                id={`reply-file-${comment.id}`}
-                multiple
-                accept="image/*,video/*"
-                onChange={(e) => setReplyFiles?.(Array.from(e.target.files || []))}
-                className="hidden"
-              />
-              <label
-                htmlFor={`reply-file-${comment.id}`}
-                className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer flex items-center"
-              >
-                <Image className="w-4 h-4 text-gray-600" />
-              </label>
               <button
                 type="submit"
                 disabled={(!replyText?.trim() && (!replyFiles || replyFiles.length === 0)) || uploading}
@@ -808,32 +771,9 @@ const CommentSection: React.FC<CommentSectionProps> = ({
             maxLength={500}
           />
           <div className="flex items-center justify-between mt-2">
-            <div className="flex items-center gap-2">
-              <input
-                type="file"
-                id="comment-file-input"
-                multiple
-                accept="image/*,video/*"
-                onChange={(e) => {
-                  const files = Array.from(e.target.files || []);
-                  setSelectedFiles(files);
-                }}
-                className="hidden"
-              />
-              <label
-                htmlFor="comment-file-input"
-                className="px-3 py-2 text-sm text-gray-600 hover:text-[#F25129] cursor-pointer border border-gray-300 rounded-lg hover:border-[#F25129] transition-colors"
-              >
-                <Image className="w-4 h-4 inline mr-1" />
-                Attach
-              </label>
-              {selectedFiles.length > 0 && (
-                <span className="text-sm text-gray-600">{selectedFiles.length} file(s) selected</span>
-              )}
-            </div>
             <button
               type="submit"
-              disabled={uploading || (!newComment.trim() && selectedFiles.length === 0)}
+              disabled={uploading || !newComment.trim()}
               className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {uploading ? 'Posting...' : 'Post Comment'}

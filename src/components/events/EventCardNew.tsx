@@ -6,6 +6,7 @@ import { useInView } from 'react-intersection-observer';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { EventDoc } from '../../hooks/useEvents';
+import { logAnalyticsEvent } from '../../services/analyticsService';
 import { useUserBlocking } from '../../hooks/useUserBlocking';
 import { safeFormat, safeToDate } from '../../utils/dateUtils';
 import { distributeStripeFees } from '../../utils/stripePricing';
@@ -58,8 +59,8 @@ const PayTherePrice: React.FC = () => {
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
       >
-        <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
-        <span className="font-semibold text-blue-600">
+        <Tag className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+        <span className="font-semibold text-emerald-600">
           Pay There
         </span>
       </div>
@@ -243,6 +244,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete }) => 
   
   // Verify actual "going" count vs stored count
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     if (event.id) {
       // Calculate actual "going" count from all attendees (not just user's attendees)
       // Note: counts.totalGoing only includes user's attendees, so we need to query all
@@ -258,7 +260,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete }) => 
           const userNotGoingCount = attendees.filter(a => a.rsvpStatus === 'not-going').length;
           const userWaitlistedCount = attendees.filter(a => a.rsvpStatus === 'waitlisted').length;
           
-          if (import.meta.env.DEV || hasDiscrepancy) {
+          if (import.meta.env.DEV) {
             console.log('🔍 EventCardNew - Attendee count verification:', {
               eventId: event.id,
               eventTitle: event.title,
@@ -278,14 +280,6 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete }) => 
               clarification: `The displayed count (${storedCount}) represents ONLY attendees with "going" status, NOT "not-going" attendees. Your ${userNotGoingCount} "not-going" attendee(s) are NOT included in this count.`
             });
             
-            if (hasDiscrepancy) {
-              console.warn(`⚠️ EventCardNew - Count discrepancy detected for event ${event.id}:`, {
-                stored: storedCount,
-                actual: totalGoing,
-                difference: storedCount - totalGoing,
-                action: 'The Cloud Function onAttendeeChange should automatically fix this. If it persists, use manualRecalculateCount Cloud Function.'
-              });
-            }
           }
         } catch (error) {
           console.error('Error verifying attendee count:', error);
@@ -301,6 +295,7 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete }) => 
   
   // Debug: Log when component renders with new count
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     console.log('🔄 EventCardNew: Component rendered with count:', {
       eventId: event.id,
       realTimeAttendingCount,
@@ -484,6 +479,33 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete }) => 
       currentUser: currentUser?.id
     });
     
+
+    let landingSection: string | undefined;
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = window.sessionStorage.getItem('mojo_landing_section');
+        landingSection = stored || undefined;
+      }
+    } catch {
+      landingSection = undefined;
+    }
+
+    logAnalyticsEvent({
+      eventType: 'event_click',
+      eventId: event.id,
+      page: window.location.pathname,
+      userId: currentUser?.id,
+      userType: currentUser?.role || (currentUser ? 'member' : 'guest'),
+      metadata: {
+        eventTitle: event.title,
+        eventTags: event.tags || [],
+        eventCategory: event.tags?.[0] || 'uncategorized',
+        landingSection,
+        action: 'view_details',
+        source: 'event_card',
+      },
+    });
+
     navigate(`/events/${event.id}/rsvp`);
   };
 
@@ -499,6 +521,33 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete }) => 
     }
     if (!isUserApproved(currentUser)) {
       toast.error('Your account is pending approval. You can browse events but cannot RSVP yet.');
+      return;
+    }
+
+    const isPaidEvent = !!(event.pricing && (event.pricing.requiresPayment || (event.pricing.eventSupportAmount && event.pricing.eventSupportAmount > 0)));
+
+    // For paid events, auto-add "going" then route to payment section
+    if (status === 'going' && isPaidEvent) {
+      console.log('[RSVP] Paid event: auto-adding primary attendee and routing to RSVP page', {
+        eventId: event.id,
+        eventTitle: event.title,
+        userId: currentUser?.id
+      });
+      await processRSVP('going');
+      await refreshAttendees();
+
+      const updatedUserGoingAttendees = attendees.filter(
+        a => a.userId === currentUser?.id && a.rsvpStatus === 'going'
+      );
+      const unpaidCount = updatedUserGoingAttendees.filter(
+        a => !a.paymentStatus || a.paymentStatus === 'unpaid' || a.paymentStatus === 'pending'
+      ).length;
+
+      console.log('[RSVP] Routing to payment section for paid event', {
+        eventId: event.id,
+        unpaidCount
+      });
+      navigate(`/events/${event.id}/rsvp#payment`);
       return;
     }
 
@@ -906,8 +955,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete }) => 
                     return (
                       <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-2.5">
-                          <Tag className="w-5 h-5 text-purple-600 flex-shrink-0" />
-                          <span className="font-semibold text-purple-600">
+                          <Tag className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                          <span className="font-semibold text-emerald-600">
                             ${(ticketNet / 100).toFixed(2)}
                           </span>
                         </div>
@@ -941,8 +990,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete }) => 
                   return (
                     <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-2.5">
-                        <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                        <span className="font-semibold text-blue-600">
+                        <Tag className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                        <span className="font-semibold text-emerald-600">
                           ${(ticketCharge / 100).toFixed(2)}
                         </span>
                       </div>
@@ -964,8 +1013,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete }) => 
                     return (
                       <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-2.5">
-                          <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                          <span className="font-semibold text-blue-600">
+                          <Tag className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                          <span className="font-semibold text-emerald-600">
                             ${(supportNet / 100).toFixed(2)}
                           </span>
                         </div>
@@ -987,8 +1036,8 @@ const EventCardNew: React.FC<EventCardProps> = ({ event, onEdit, onDelete }) => 
                   return (
                     <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-2.5">
-                        <Tag className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                        <span className="font-semibold text-blue-600">
+                        <Tag className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                        <span className="font-semibold text-emerald-600">
                           ${(supportCharge / 100).toFixed(2)}
                         </span>
                       </div>

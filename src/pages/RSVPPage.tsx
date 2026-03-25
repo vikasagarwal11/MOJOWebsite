@@ -9,8 +9,8 @@ import {
   UserPlus,
   Users
 } from 'lucide-react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AttendeeList } from '../components/events/AttendeeList';
 import { useAuth } from '../contexts/AuthContext';
 import { useAttendees } from '../hooks/useAttendees';
@@ -28,6 +28,7 @@ import { useCapacityState } from '../components/events/RSVPModalNew/hooks/useCap
 import { useEventDates } from '../components/events/RSVPModalNew/hooks/useEventDates';
 import { getCapacityBadgeClasses } from '../components/events/RSVPModalNew/rsvpUi';
 import { useWaitlistPositions } from '../hooks/useWaitlistPositions';
+import { logAnalyticsEvent } from '../services/analyticsService';
 // Import components
 import { Helmet } from 'react-helmet-async';
 import { AutoPromotionManager } from '../components/admin/AutoPromotionManager';
@@ -35,18 +36,27 @@ import { PaymentSection } from '../components/events/PaymentSection';
 import { QRCodeTab } from '../components/events/QRCodeTab';
 import { AttendeeInputRowMemo } from '../components/events/RSVPModalNew/components/AttendeeInputRow';
 import { WhosGoingTab } from '../components/events/RSVPModalNew/components/WhosGoingTab';
+import CommentSection from '../components/common/CommentSection';
 import { OTPVerificationModal } from '../components/modals/OTPVerificationModal';
 import { createEventCanonicalUrl } from '../utils/seo';
+
+const generateGuestRowId = () =>
+  (globalThis as any).crypto?.randomUUID
+    ? (globalThis as any).crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
 
 const RSVPPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { currentUser } = useAuth();
   const { blockedUsers } = useUserBlocking();
   // Real-time event loading with onSnapshot (NOT getDoc)
   const [event, setEvent] = useState<EventDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loggedEventViewRef = useRef<string | null>(null);
+  const paymentSectionRef = useRef<HTMLDivElement | null>(null);
 
   // ============================================================================
   // CRITICAL: All hooks must be called BEFORE any early returns
@@ -99,6 +109,14 @@ const RSVPPage: React.FC = () => {
     return () => unsubscribe();
   }, [eventId]);
 
+  // Scroll to payment section when navigating with #payment
+  useEffect(() => {
+    if (location.hash !== '#payment') return;
+    if (!paymentSectionRef.current) return;
+    console.log('[RSVP] Navigated to payment section via hash', { eventId: event?.id });
+    paymentSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [location.hash, event?.id]);
+
   // Update realTimeAttendingCount when event changes
   useEffect(() => {
     if (event?.attendingCount !== undefined) {
@@ -150,19 +168,13 @@ const RSVPPage: React.FC = () => {
   const allowMembersToAddAttendees = (event as any)?.allowMembersToAddAttendees;
   const canAddAttendees = isGuestTrulyPublic || isAdmin || (allowMembersToAddAttendees === true);
 
-  // Helper to generate unique IDs (defined early for use in state initializers)
-  const makeId = () =>
-    (globalThis as any).crypto?.randomUUID
-      ? (globalThis as any).crypto.randomUUID()
-      : Math.random().toString(36).slice(2);
-
   // Guest RSVP modal state
   type GuestRow = { id: string; name: string; relationship: Relationship; ageGroup: AgeGroup };
   const [guestFirstName, setGuestFirstName] = useState('');
   const [guestLastName, setGuestLastName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
-  const [guestRows, setGuestRows] = useState<GuestRow[]>(() => [{ id: makeId(), name: '', relationship: 'guest', ageGroup: 'adult' }]);
+      const [guestRows, setGuestRows] = useState<GuestRow[]>(() => [{ id: generateGuestRowId(), name: '', relationship: 'guest', ageGroup: 'adult' }]);
   const [guestSubmitting, setGuestSubmitting] = useState(false);
   const [guestSubmitted, setGuestSubmitted] = useState(false);
   const [guestMemberExists, setGuestMemberExists] = useState(false);
@@ -172,6 +184,27 @@ const RSVPPage: React.FC = () => {
   const [guestSessionToken, setGuestSessionToken] = useState<string | null>(null);
   const [isPhoneVerified, setIsPhoneVerified] = useState(false);
   const [showAdditionalMembersForm, setShowAdditionalMembersForm] = useState(false);
+
+  useEffect(() => {
+    if (!event?.id) return;
+    if (loggedEventViewRef.current === event.id) return;
+    loggedEventViewRef.current = event.id;
+
+    logAnalyticsEvent({
+      eventType: 'event_view',
+      eventId: event.id,
+      page: window.location.pathname,
+      userId: currentUser?.id,
+      guestEmail: guestEmail || undefined,
+      userType: currentUser?.role || (isGuestTrulyPublic ? 'guest' : 'anonymous'),
+      metadata: {
+        eventTitle: event.title,
+        eventTags: event.tags || [],
+        eventCategory: event.tags?.[0] || 'uncategorized',
+        source: 'rsvp_page',
+      },
+    });
+  }, [event?.id, event?.title, currentUser?.id, currentUser?.role, isGuestTrulyPublic, guestEmail]);
 
   // No local caching for guest RSVP data. Firestore is the source of truth.
 
@@ -221,7 +254,7 @@ const RSVPPage: React.FC = () => {
   const [bulkFormData, setBulkFormData] = useState<{ familyMembers: BulkRow[] }>(() => ({
     familyMembers: [
       {
-        id: makeId(),
+        id: generateGuestRowId(),
         name: '',
         ageGroup: 'adult',
         relationship: 'guest',
@@ -306,7 +339,7 @@ const RSVPPage: React.FC = () => {
     setBulkFormData((prev) => ({
       familyMembers: [
         ...prev.familyMembers,
-        { id: makeId(), name: '', ageGroup: 'adult', relationship: 'guest', rsvpStatus: 'going' },
+        { id: generateGuestRowId(), name: '', ageGroup: 'adult', relationship: 'guest', rsvpStatus: 'going' },
       ],
     }));
   }, []);
@@ -742,7 +775,7 @@ const RSVPPage: React.FC = () => {
 
       await bulkAddAttendees(attendeesData);
       setBulkFormData({
-        familyMembers: [{ id: makeId(), name: '', ageGroup: 'adult', relationship: 'guest', rsvpStatus: 'going' }],
+        familyMembers: [{ id: generateGuestRowId(), name: '', ageGroup: 'adult', relationship: 'guest', rsvpStatus: 'going' }],
       });
       await refreshAttendees();
       toast.success(`${validMembers.length} attendee(s) added successfully!${!existingPrimaryAttendee ? ' You have also been added as attending.' : ''}`);
@@ -957,6 +990,7 @@ const RSVPPage: React.FC = () => {
                           </p>
                         </div>
                       )}
+
                     </div>
                   </div>
                 </motion.div>
@@ -1061,42 +1095,45 @@ const RSVPPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="px-4 py-4">
-                  {/* Payment Section */}
-                    <PaymentSection
-                      event={event}
-                      attendees={isGuestTrulyPublic ? guestAttendees : attendees.filter(attendee => attendee.userId === currentUser?.id)}
-                      onPaymentComplete={async () => {
-                        if (isGuestTrulyPublic) {
-                          const updated = await refreshGuestAttendees();
-                          if (updated && updated.length > 0) {
-                            setGuestSubmitted(true);
+                    {/* Payment Section */}
+                    <div id="payment" ref={paymentSectionRef}>
+                      <PaymentSection
+                        event={event}
+                        attendees={isGuestTrulyPublic ? guestAttendees : attendees.filter(attendee => attendee.userId === currentUser?.id)}
+                        onPaymentComplete={async () => {
+                          if (isGuestTrulyPublic) {
+                            const updated = await refreshGuestAttendees();
+                            if (updated && updated.length > 0) {
+                              setGuestSubmitted(true);
+                            }
+                          } else {
+                            refreshAttendees();
                           }
-                        } else {
-                          refreshAttendees();
-                        }
-                      }}
-                      onPaymentError={(error) => { console.error('Payment error:', error); }}
-                      isGuest={isGuestTrulyPublic}
-                      guestUserId={isGuestTrulyPublic ? guestAttendees[0]?.userId : undefined}
-                      sessionToken={isGuestTrulyPublic ? (guestSessionToken || undefined) : undefined}
-                      onDeleteGuestAttendee={isGuestTrulyPublic ? async (attendeeId) => {
-                        try {
-                          if (!guestSessionToken) {
-                            toast.error('Session expired. Please verify your phone again.');
-                            return;
+                        }}
+                        onPaymentError={(error) => { console.error('Payment error:', error); }}
+                        isGuest={isGuestTrulyPublic}
+                        guestUserId={isGuestTrulyPublic ? guestAttendees[0]?.userId : undefined}
+                        guestEmail={isGuestTrulyPublic ? guestEmail : undefined}
+                        sessionToken={isGuestTrulyPublic ? (guestSessionToken || undefined) : undefined}
+                        onDeleteGuestAttendee={isGuestTrulyPublic ? async (attendeeId) => {
+                          try {
+                            if (!guestSessionToken) {
+                              toast.error('Session expired. Please verify your phone again.');
+                              return;
+                            }
+                            const fn = httpsCallable<
+                              { sessionToken: string; eventId: string; attendeeId: string },
+                              { success: boolean }
+                            >(getFunctions(undefined, 'us-east1'), 'deleteGuestAttendee');
+                            await fn({ sessionToken: guestSessionToken, eventId: event.id, attendeeId });
+                            await refreshGuestAttendees();
+                          } catch (error) {
+                            console.error('❌ Failed to delete guest attendee:', error);
+                            toast.error('Failed to remove attendee. Please try again.');
                           }
-                          const fn = httpsCallable<
-                            { sessionToken: string; eventId: string; attendeeId: string },
-                            { success: boolean }
-                          >(getFunctions(undefined, 'us-east1'), 'deleteGuestAttendee');
-                          await fn({ sessionToken: guestSessionToken, eventId: event.id, attendeeId });
-                          await refreshGuestAttendees();
-                        } catch (error) {
-                          console.error('❌ Failed to delete guest attendee:', error);
-                          toast.error('Failed to remove attendee. Please try again.');
-                        }
-                      } : undefined}
-                    />
+                        } : undefined}
+                      />
+                    </div>
 
                   {isGuestTrulyPublic && guestSubmitted && (
                     <div className="mb-3 sm:mb-4 bg-emerald-50 border border-emerald-200 rounded-lg p-3 sm:p-4">
@@ -1294,7 +1331,7 @@ const RSVPPage: React.FC = () => {
                                         <h4 className="text-sm font-semibold text-gray-900">Additional Members <span className="text-xs font-normal text-gray-500">(Optional)</span></h4>
                                         <button
                                           type="button"
-                                          onClick={() => setGuestRows((prev) => [...prev, { id: makeId(), name: '', relationship: 'guest', ageGroup: 'adult' }])}
+                                          onClick={() => setGuestRows((prev) => [...prev, { id: generateGuestRowId(), name: '', relationship: 'guest', ageGroup: 'adult' }])}
                                           className="text-xs font-semibold text-[#F25129] hover:text-[#E0451F]"
                                         >
                                           + Add Row
@@ -1427,6 +1464,20 @@ const RSVPPage: React.FC = () => {
                   )}
                 </div>
               )}
+            </div>
+
+            <div className="mt-6 px-4 pb-6">
+              <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <h4 className="mb-1 text-base font-semibold text-gray-900">Event Comments</h4>
+                <p className="mb-4 text-sm text-gray-600">
+                  Share updates or questions with members for this event.
+                </p>
+                <CommentSection
+                  collectionPath={`events/${event.id}/comments`}
+                  initialOpen={true}
+                  pageSize={20}
+                />
+              </div>
             </div>
           </div>
 

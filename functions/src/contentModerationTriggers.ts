@@ -1,5 +1,6 @@
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { isNotificationTypeEnabled } from './utils/notificationSettings';
 import {
   adjustUserTrustScore,
   analyzeMediaSafeSearch,
@@ -192,6 +193,12 @@ async function handleModeration(job: ModerationJob) {
         mediaType
       });
 
+      const notificationsEnabled = await isNotificationTypeEnabled('contentModeration');
+      if (!notificationsEnabled) {
+        console.log('ℹ️ [ModerationTriggers] Content moderation notifications disabled, skipping');
+        return;
+      }
+
       // Get all admins
       const adminsSnapshot = await db.collection('users')
         .where('role', '==', 'admin')
@@ -248,7 +255,8 @@ async function handleModeration(job: ModerationJob) {
             type: 'media_pending_approval',
             mediaId: mediaId,
             uploadedBy: uploadedBy,
-          }
+          },
+          'contentModeration'
         );
       });
 

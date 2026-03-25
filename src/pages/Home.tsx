@@ -11,7 +11,7 @@ import {
   Users,
   X
 } from 'lucide-react';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import toast from 'react-hot-toast';
 import { useInView } from 'react-intersection-observer';
@@ -22,6 +22,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useFirestore } from '../hooks/useFirestore';
 import { useTestimonials } from '../hooks/useTestimonials';
 import { SEO_CONFIG } from '../config/seo';
+import { logAnalyticsEvent } from '../services/analyticsService';
 
 const LazyImage: React.FC<{ src: string; alt: string; className?: string }> = ({ src, alt, className }) => {
   const { ref, inView } = useInView({
@@ -78,6 +79,63 @@ const Home: React.FC = () => {
   const isAuthed = !!currentUser;
   const { useRealtimeCollection } = useFirestore();
   const navigate = useNavigate();
+  const lastSectionRef = useRef<string | null>(null);
+
+  const trackCta = useCallback((label: string, section: string, destination?: string) => {
+    logAnalyticsEvent({
+      eventType: 'cta_click',
+      page: '/',
+      userId: currentUser?.id,
+      userType: currentUser?.role || (currentUser ? 'member' : 'guest'),
+      metadata: {
+        label,
+        section,
+        destination,
+        action: 'cta_click',
+        source: 'home',
+      },
+    });
+  }, [currentUser?.id, currentUser?.role]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const sectionIds = ['hero', 'features', 'moments', 'stats', 'community', 'stories', 'actions'];
+    const sections = sectionIds
+      .map(id => document.getElementById(id))
+      .filter((node): node is HTMLElement => Boolean(node));
+    if (sections.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const id = (entry.target as HTMLElement).id;
+          if (!id || lastSectionRef.current === id) return;
+          lastSectionRef.current = id;
+          try {
+            window.sessionStorage.setItem('mojo_landing_section', id);
+          } catch {
+            // ignore storage errors
+          }
+          logAnalyticsEvent({
+            eventType: 'section_view',
+            page: '/',
+            userId: currentUser?.id,
+            userType: currentUser?.role || (currentUser ? 'member' : 'guest'),
+            metadata: {
+              section: id,
+              action: 'section_view',
+              source: 'home',
+            },
+          });
+        });
+      },
+      { threshold: 0.6 }
+    );
+
+    sections.forEach(section => observer.observe(section));
+    return () => observer.disconnect();
+  }, [currentUser?.id, currentUser?.role]);
 
   const scrollToSection = useCallback((sectionId: string) => {
     if (typeof window === 'undefined') return;
@@ -274,6 +332,7 @@ const Home: React.FC = () => {
                   <Link
                     to="/register"
                     className="inline-flex items-center justify-center rounded-full px-6 py-3 text-sm sm:text-base font-semibold bg-[#F25129] text-white shadow hover:shadow-md transition-all duration-300 touch-target w-full sm:w-auto"
+                    onClick={() => trackCta('Join MOJO', 'hero', '/register')}
                   >
                     Join MOJO
                   </Link>
@@ -285,6 +344,7 @@ const Home: React.FC = () => {
                       rel="noopener noreferrer"
                       className="inline-flex items-center justify-center w-11 h-11 rounded-full border-2 border-gray-300 text-gray-700 hover:border-[#E4405F] hover:text-[#E4405F] hover:bg-[#E4405F]/10 transition-all duration-300 touch-target"
                       aria-label="Follow us on Instagram"
+                      onClick={() => trackCta('Instagram', 'hero', 'https://www.instagram.com/momsfitnessmojo/')}
                     >
                       <Instagram className="w-5 h-5" />
                     </a>
@@ -294,6 +354,7 @@ const Home: React.FC = () => {
                       rel="noopener noreferrer"
                       className="inline-flex items-center justify-center w-11 h-11 rounded-full border-2 border-gray-300 text-gray-700 hover:border-[#1877F2] hover:text-[#1877F2] hover:bg-[#1877F2]/10 transition-all duration-300 touch-target"
                       aria-label="Follow us on Facebook"
+                      onClick={() => trackCta('Facebook', 'hero', 'https://www.facebook.com/momsfitnessmojo')}
                     >
                       <Facebook className="w-5 h-5" />
                     </a>
@@ -326,7 +387,6 @@ const Home: React.FC = () => {
             {/* Right: Hero Carousel (same size as before) */}
             <div className="relative max-w-lg ml-auto min-h-[200px]">
               <HeroCarousel 
-                imagesDirectory="/assets/hero-images"
                 duration={4}
               />
             </div>
@@ -405,6 +465,7 @@ const Home: React.FC = () => {
           <Link
             to="/media"
             className="inline-flex items-center rounded-full px-4 sm:px-5 py-2 sm:py-2.5 text-sm font-semibold text-[#F25129] border border-[#F25129]/40 hover:bg-[#F25129]/10 transition-colors duration-300 touch-target"
+            onClick={() => trackCta('View Gallery', 'moments', '/media')}
           >
             View Gallery
           </Link>
@@ -601,7 +662,11 @@ const Home: React.FC = () => {
           <p className="mx-auto max-w-2xl text-sm sm:text-base text-gray-600 px-4">
             Real words from the women shaping Moms Fitness Mojo. Scroll through our community stories. Feeling inspired?{' '}
             {isAuthed ? (
-              <Link to="/share-your-story" className="font-semibold text-[#F25129] hover:underline">
+              <Link
+                to="/share-your-story"
+                className="font-semibold text-[#F25129] hover:underline"
+                onClick={() => trackCta('Share Your Story', 'stories', '/share-your-story')}
+              >
                 Tap &ldquo;Share Your Story&rdquo; to add yours.
               </Link>
             ) : (
@@ -639,6 +704,7 @@ const Home: React.FC = () => {
                  <Link
                    to="/events"
                    className="flex items-center justify-center gap-2 px-4 sm:px-5 py-3 sm:py-4 bg-white rounded-xl border border-[#F25129]/20 hover:shadow-lg transition touch-target w-full sm:w-auto"
+                   onClick={() => trackCta('Upcoming Events', 'actions', '/events')}
                  >
                    <Calendar className="w-5 h-5 text-[#F25129]" />
                    <span className="text-sm sm:text-base">Upcoming Events</span>
@@ -646,6 +712,7 @@ const Home: React.FC = () => {
                  <Link
                    to="/media"
                    className="flex items-center justify-center gap-2 px-4 sm:px-5 py-3 sm:py-4 bg-white rounded-xl border border-[#F25129]/20 hover:shadow-lg transition touch-target w-full sm:w-auto"
+                   onClick={() => trackCta('Media Gallery', 'actions', '/media')}
                  >
                    <ImageIcon className="w-5 h-5 text-[#F25129]" />
                    <span className="text-sm sm:text-base">Media Gallery</span>

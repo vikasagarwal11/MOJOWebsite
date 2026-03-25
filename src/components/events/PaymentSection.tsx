@@ -1,12 +1,13 @@
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
-import { deleteDoc, doc, getDocFromServer, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, getDocFromServer, updateDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { AlertTriangle, CheckCircle, ChevronDown, CreditCard, DollarSign, Loader2, Users, XCircle } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { EventDoc } from '../../hooks/useEvents';
+import { logAnalyticsEvent } from '../../services/analyticsService';
 import { PaymentService } from '../../services/paymentService';
 import { Attendee } from '../../types/attendee';
 import { PaymentStatusAnimation } from './PaymentStatusAnimation';
@@ -88,6 +89,7 @@ interface PaymentSectionProps {
   onPaymentError?: (error: string) => void;
   isGuest?: boolean;
   guestUserId?: string;
+  guestEmail?: string;
   sessionToken?: string; // OTP session token for guest payments
   onDeleteGuestAttendee?: (attendeeId: string) => Promise<void>;
 }
@@ -287,6 +289,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
   onPaymentError,
   isGuest = false,
   guestUserId,
+  guestEmail,
   sessionToken,
   onDeleteGuestAttendee,
 }) => {
@@ -311,6 +314,41 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
   // Zelle payment state
   const [showZelleModal, setShowZelleModal] = useState(false);
   const isZellePayment = event.pricing?.paymentMethod === 'zelle';
+
+  const paidStorageKey = useMemo(() => {
+    const userKey = currentUser?.id || guestUserId || 'guest';
+    return `mojo_paid_attendees_${event.id}_${userKey}`;
+  }, [event.id, currentUser?.id, guestUserId]);
+
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.sessionStorage.getItem(paidStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setLocallyPaidAttendeeIds(new Set(parsed.filter(Boolean)));
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [paidStorageKey]);
+
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const arr = Array.from(locallyPaidAttendeeIds);
+      if (arr.length === 0) {
+        window.sessionStorage.removeItem(paidStorageKey);
+      } else {
+        window.sessionStorage.setItem(paidStorageKey, JSON.stringify(arr));
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [locallyPaidAttendeeIds, paidStorageKey]);
 
   // Keep local paid overrides trimmed to current attendees
   useEffect(() => {
@@ -447,6 +485,26 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
     return unpaidAmount > 0;
   }, [paymentSummary, unpaidAttendees]);
 
+  const getPaymentAmountCents = () => {
+    if (isGuest && typeof guestServerAmount === 'number') {
+      return guestServerAmount;
+    }
+    if (!paymentSummary) return 0;
+    return unpaidAttendees.reduce((sum, attendee) => {
+      const breakdownItem = paymentSummary.breakdown.find(b => b.attendeeId === attendee.attendeeId);
+      return sum + (breakdownItem?.subtotal || 0);
+    }, 0);
+  };
+
+  const buildPaymentMetadata = () => ({
+    eventTitle: event.title,
+    paymentMethod: isZellePayment ? 'zelle' : 'stripe',
+    attendeeCount: unpaidAttendees.length,
+    amountCents: getPaymentAmountCents(),
+    currency: guestServerCurrency || paymentSummary?.currency,
+    source: 'payment_section',
+  });
+
   /**
    * Handle Zelle payment flow
    * Shows QR modal only. Do NOT update payment status here.
@@ -525,6 +583,16 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
     }
     console.log('💳 [FRONTEND] Is guest:', isGuest);
     console.log('💳 [FRONTEND] Unpaid attendees:', unpaidAttendees.length);
+
+    logAnalyticsEvent({
+      eventType: 'payment_click',
+      eventId: event.id,
+      page: window.location.pathname,
+      userId: currentUser?.id,
+      guestEmail,
+      userType: currentUser?.role || (isGuest ? 'guest' : 'anonymous'),
+      metadata: buildPaymentMetadata(),
+    });
 
     // For guest users (not authenticated), we need to collect contact info and verify OTP first
     // For now, show an error message directing them to sign in
@@ -631,6 +699,16 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
         setClientSecret(result.data.clientSecret);
         setShowPaymentForm(true);
         setIsExpanded(true);
+
+        logAnalyticsEvent({
+          eventType: 'payment_start',
+          eventId: event.id,
+          page: window.location.pathname,
+          userId: currentUser?.id,
+          guestEmail,
+          userType: currentUser?.role || (isGuest ? 'guest' : 'anonymous'),
+          metadata: buildPaymentMetadata(),
+        });
       } else {
         const createPaymentIntentFn = httpsCallable<
           { eventId: string; userId: string; attendeeIds: string[] },
@@ -649,6 +727,16 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
         setClientSecret(result.data.clientSecret);
         setShowPaymentForm(true);
         setIsExpanded(true);
+
+        logAnalyticsEvent({
+          eventType: 'payment_start',
+          eventId: event.id,
+          page: window.location.pathname,
+          userId: currentUser?.id,
+          guestEmail,
+          userType: currentUser?.role || (isGuest ? 'guest' : 'anonymous'),
+          metadata: buildPaymentMetadata(),
+        });
       }
     } catch (error: any) {
       console.error('❌ Error creating payment intent:', error);
@@ -689,6 +777,19 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
 
     console.log('✅ [SUCCESS] Total amount paid:', totalPaid);
 
+    logAnalyticsEvent({
+      eventType: 'payment_success',
+      eventId: event.id,
+      page: window.location.pathname,
+      userId: currentUser?.id,
+      guestEmail,
+      userType: currentUser?.role || (isGuest ? 'guest' : 'anonymous'),
+      metadata: {
+        ...buildPaymentMetadata(),
+        amountCents: totalPaid,
+      },
+    });
+
     setAnimationAmount(totalPaid);
       setPaymentError(null); // Clear any previous errors
       setPaymentWarning(null);
@@ -717,7 +818,6 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
       unpaidAttendees.forEach(att => next.add(att.attendeeId));
       return next;
     });
-
     // Trigger refresh to update UI
     console.log('🔄 [SUCCESS] Calling onPaymentComplete callback to refresh attendees');
     console.log('🔄 [SUCCESS] onPaymentComplete exists?', !!onPaymentComplete);

@@ -1,8 +1,6 @@
-import ffprobe from '@ffprobe-installer/ffprobe';
 import { SpeechClient } from '@google-cloud/speech';
 import { CloudTasksClient } from "@google-cloud/tasks";
 import type { Request, Response } from "express";
-import ffmpegStatic from 'ffmpeg-static';
 import { initializeApp } from "firebase-admin/app";
 import { DocumentData, FieldValue, getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -124,6 +122,7 @@ import { manualDeleteKnowledgeSource, manualUpsertKnowledgeSource, type Knowledg
 import { syncStaticKnowledgeEntries } from './staticContent';
 import { ensureAdmin } from './utils/admin';
 import { sendEventCreatedSMS } from './utils/notifications';
+import { isNotificationTypeEnabled } from './utils/notificationSettings';
 
 // Export the new attendee count management functions
 export { backfillKnowledgeBaseEmbeddings, bulkAttendeeOperation, ensureChunkEmbedding, getKnowledgeEmbeddingStatus, manualRecalculateCount, onAttendeeChange, retryFailedKnowledgeEmbeddings };
@@ -300,6 +299,10 @@ const sendPromotionNotifications = async (
   eventId: string
 ): Promise<void> => {
   try {
+    if (!(await isNotificationTypeEnabled('waitlistPromotion'))) {
+      console.log('ℹ️ Waitlist promotion notifications disabled by admin, skipping');
+      return;
+    }
     console.log(`📱 Sending notifications to ${promotedUsers.length} promoted users`);
 
     // Get event data for notification
@@ -389,6 +392,132 @@ const sendPromotionNotifications = async (
 // Get Firestore instance - using momsfitnessmojo database
 const db = getFirestore();
 
+// Scheduled: Send event reminders 3 days prior (paid + pending payments)
+export const sendEventRemindersThreeDaysPrior = onSchedule({
+  schedule: 'every day 09:00',
+  timeZone: 'America/New_York',
+  region: 'us-east1'
+}, async () => {
+  try {
+    if (!(await isNotificationTypeEnabled('eventReminders'))) {
+      console.log('ℹ️ Event reminders disabled by admin, skipping');
+      return;
+    }
+
+    const now = new Date();
+    const windowStart = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const windowEnd = new Date(windowStart.getTime() + 24 * 60 * 60 * 1000);
+
+    const eventsSnapshot = await db.collection('events')
+      .where('startAt', '>=', Timestamp.fromDate(windowStart))
+      .where('startAt', '<=', Timestamp.fromDate(windowEnd))
+      .get();
+
+    if (eventsSnapshot.empty) {
+      console.log('ℹ️ No events found in 3-day reminder window');
+      return;
+    }
+
+    console.log(`🔔 Processing ${eventsSnapshot.size} event(s) for 3-day reminders`);
+
+    for (const eventDoc of eventsSnapshot.docs) {
+      const eventId = eventDoc.id;
+      const eventData = eventDoc.data() || {};
+
+      if (eventData.status && eventData.status !== 'scheduled') {
+        console.log(`⏭️ Skipping event ${eventId} (status: ${eventData.status})`);
+        continue;
+      }
+
+      const eventTitle = String(eventData.title || 'Event');
+      const when = formatEventWhen(eventData);
+      const requiresPayment =
+        !!eventData?.pricing?.requiresPayment ||
+        ((eventData?.pricing?.eventSupportAmount ?? 0) > 0);
+
+      const attendeesSnapshot = await db.collection('events')
+        .doc(eventId)
+        .collection('attendees')
+        .where('rsvpStatus', '==', 'going')
+        .get();
+
+      if (attendeesSnapshot.empty) {
+        console.log(`ℹ️ No attendees to remind for event ${eventId}`);
+        continue;
+      }
+
+      const byUser = new Map<string, { pendingPayment: boolean }>();
+      attendeesSnapshot.docs.forEach((doc) => {
+        const data = doc.data() || {};
+        const userId = String(data.userId || '').trim();
+        if (!userId || userId.startsWith('guest_')) return;
+
+        const paymentStatus = String(data.paymentStatus || (requiresPayment ? 'unpaid' : 'not_required'));
+        const isPending = requiresPayment && PAYMENT_PENDING_STATUSES.has(paymentStatus);
+        const existing = byUser.get(userId);
+        byUser.set(userId, { pendingPayment: (existing?.pendingPayment || false) || isPending });
+      });
+
+      for (const [userId, info] of byUser.entries()) {
+        const logId = `${eventId}_${userId}_3d`;
+        const logRef = db.collection('event_reminder_logs').doc(logId);
+        const logSnap = await logRef.get();
+        if (logSnap.exists) {
+          continue;
+        }
+
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (!userDoc.exists) {
+          console.warn(`⚠️ User not found for reminder: ${userId}`);
+          continue;
+        }
+        const userData = userDoc.data();
+
+        const reminderType = info.pendingPayment ? 'payment_pending' : 'welcome';
+        const title = info.pendingPayment ? 'Payment Reminder' : 'Event Reminder';
+        const message = info.pendingPayment
+          ? `Reminder: your payment for "${eventTitle}" is still pending. Please complete payment to confirm your spot on ${when}.`
+          : `You're confirmed for "${eventTitle}" on ${when}. Welcome and see you there!`;
+
+        const notificationRef = db.collection('notifications').doc();
+        await notificationRef.set({
+          userId,
+          type: 'event_reminder',
+          title,
+          message,
+          eventId,
+          read: false,
+          createdAt: FieldValue.serverTimestamp(),
+          metadata: {
+            reminderType,
+            daysBefore: 3,
+            eventDate: when
+          }
+        });
+
+        await sendUserPushNotification(userId, userData, title, message, {
+          type: 'event_reminder',
+          eventId,
+          reminderType
+        });
+
+        await logRef.set({
+          eventId,
+          userId,
+          reminderType,
+          sentAt: FieldValue.serverTimestamp(),
+          eventStartAt: eventData.startAt || null
+        });
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error sending 3-day event reminders:', error);
+  }
+});
+
+// Toggle for event RSVP notifications only
+const EVENT_NOTIFICATIONS_ENABLED = process.env.EVENT_NOTIFICATIONS_ENABLED !== 'false';
+
 // ───────────────── SMS SERVICE (Twilio) ─────────────────
 
 /**
@@ -422,6 +551,47 @@ async function sendSMSViaTwilio(phoneNumber: string, message: string): Promise<{
   } catch (error: any) {
     console.error('❌ Twilio SMS failed:', error?.message || error);
     return { success: false, error: error?.message || 'Failed to send SMS' };
+  }
+}
+const PAYMENT_PENDING_STATUSES = new Set(['unpaid', 'pending', 'waiting_for_approval']);
+
+function getEventStartDate(eventData: any): Date | null {
+  if (!eventData) return null;
+  if (eventData.startAt?.toDate) return eventData.startAt.toDate();
+  if (eventData.date?.toDate) return eventData.date.toDate();
+  if (eventData.startAt instanceof Date) return eventData.startAt;
+  if (eventData.date instanceof Date) return eventData.date;
+  return null;
+}
+
+function formatEventWhen(eventData: any): string {
+  const startAt = getEventStartDate(eventData);
+  if (!startAt) return 'soon';
+  return startAt.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+async function sendUserPushNotification(
+  userId: string,
+  userData: any,
+  title: string,
+  body: string,
+  data?: Record<string, string>
+): Promise<void> {
+  const fcmToken = userData?.fcmToken;
+  const pushEnabled = userData?.notificationPreferences?.pushEnabled !== false;
+  if (!pushEnabled || !fcmToken) return;
+
+  try {
+    const { getMessaging } = await import('firebase-admin/messaging');
+    const messaging = getMessaging();
+    await messaging.send({
+      token: fcmToken,
+      notification: { title, body },
+      data: data || {},
+    });
+    console.log(`✅ Push notification sent to user ${userId}`);
+  } catch (error: any) {
+    console.warn(`⚠️ Push notification failed for user ${userId}:`, error?.message || error);
   }
 }
 type StorageBucket = ReturnType<ReturnType<typeof getStorage>['bucket']>;
@@ -598,9 +768,27 @@ async function findMediaDocRef(name: string, dir: string, tries = 5): Promise<Fi
   return null;
 }
 
-// FFmpeg paths
-ffmpeg.setFfmpegPath(ffmpegStatic as string);
-ffmpeg.setFfprobePath(ffprobe.path);
+// FFmpeg paths (lazy initialization to avoid cold-start crashes)
+let ffmpegConfigured = false;
+function ensureFfmpegConfigured() {
+  if (ffmpegConfigured) return;
+  // Lazy-require binaries to avoid crashing container during startup
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const ffmpegStatic = require('ffmpeg-static');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const ffprobe = require('@ffprobe-installer/ffprobe');
+
+  if (!ffmpegStatic) {
+    throw new Error('ffmpeg-static binary not found for this environment.');
+  }
+  if (!ffprobe?.path) {
+    throw new Error('ffprobe binary not found for this environment.');
+  }
+  ffmpeg.setFfmpegPath(ffmpegStatic as string);
+  ffmpeg.setFfprobePath(ffprobe.path);
+  ffmpegConfigured = true;
+  console.log('✅ FFmpeg configured');
+}
 
 // ───────────────── Manifest Rewriter (NEW) ─────────────────
 function rewriteManifestWithAbsoluteUrls(
@@ -1078,6 +1266,14 @@ export const onEventCreatedNotification = onDocumentCreated("events/{eventId}", 
 
 // ───────────────── EVENTS: RSVP notifications (New Attendee System) ─────────────────
 export const notifyRsvp = onDocumentWritten("events/{eventId}/attendees/{attendeeId}", async (event) => {
+  if (!EVENT_NOTIFICATIONS_ENABLED) {
+    console.log('ℹ️ notifyRsvp: Event notifications disabled, skipping');
+    return;
+  }
+  if (!(await isNotificationTypeEnabled('eventRsvp'))) {
+    console.log('ℹ️ notifyRsvp: Event RSVP notifications disabled by admin, skipping');
+    return;
+  }
   console.log(`🔍 notifyRsvp: Function triggered for eventId=${event.params.eventId}, attendeeId=${event.params.attendeeId}`);
 
   const beforeData = event.data?.before.exists ? event.data?.before.data() : null;
@@ -4234,7 +4430,8 @@ const createWatermarkOverlayFile = async (): Promise<string> => {
 };
 
 const applyVideoWatermark = async (sourcePath: string, outputPath: string): Promise<void> => {
-  const overlayPath = await createWatermarkOverlayFile();
+    ensureFfmpegConfigured();
+    const overlayPath = await createWatermarkOverlayFile();
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -5375,6 +5572,11 @@ export const onAccountApprovalCreated = onDocumentCreated(
         approvalId: event.params.approvalId
       });
 
+      if (!(await isNotificationTypeEnabled('adminApprovalRequest'))) {
+        console.log('ℹ️ onAccountApprovalCreated: Admin approval request notifications disabled');
+        return;
+      }
+
       // Get all admins
       const adminsSnapshot = await db.collection('users')
         .where('role', '==', 'admin')
@@ -5437,7 +5639,8 @@ export const onAccountApprovalCreated = onDocumentCreated(
             type: 'account_approval_request',
             approvalId: event.params.approvalId,
             userId: userId,
-          }
+          },
+          'adminApprovalRequest'
         );
       });
 
@@ -5496,6 +5699,10 @@ export const onAccountApprovalUpdated = onDocumentWritten(
 
       // Status changed to approved
       if (afterStatus === 'approved' && beforeStatus !== 'approved') {
+        if (!(await isNotificationTypeEnabled('accountApproval'))) {
+          console.log('ℹ️ Account approval notifications disabled by admin, skipping');
+          return;
+        }
         const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
 
         // Create in-app notification for user - capture DocumentReference to avoid race condition
@@ -5577,6 +5784,10 @@ export const onAccountApprovalUpdated = onDocumentWritten(
 
       // Status changed to rejected
       if (afterStatus === 'rejected' && beforeStatus !== 'rejected') {
+        if (!(await isNotificationTypeEnabled('accountRejection'))) {
+          console.log('ℹ️ Account rejection notifications disabled by admin, skipping');
+          return;
+        }
         const rejectionReason = afterData.rejectionReason || 'No reason provided.';
         const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
 
@@ -6117,6 +6328,10 @@ export const onApprovalMessageCreated = onDocumentCreated(
           console.error('❌ Failed to send/queue admin question SMS:', smsError);
         }
       } else {
+        if (!(await isNotificationTypeEnabled('adminApprovalRequest'))) {
+          console.log('ℹ️ Admin approval response notifications disabled by admin, skipping');
+          return;
+        }
         // User responded - notify all admins with push + SMS fallback
         const adminsSnapshot = await db.collection('users')
           .where('role', '==', 'admin')
@@ -6165,7 +6380,8 @@ export const onApprovalMessageCreated = onDocumentCreated(
                 approvalId: approvalId,
                 messageId: event.params.messageId,
                 userId: approvalData.userId,
-              }
+              },
+              'adminApprovalRequest'
             );
           });
 

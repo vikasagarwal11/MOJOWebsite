@@ -1,5 +1,6 @@
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { SMS_TEMPLATES, SMS_TYPES } from './smsTemplates';
+import { isNotificationTypeEnabled } from './notificationSettings';
 
 const db = getFirestore();
 
@@ -50,8 +51,14 @@ export async function sendAdminNotificationWithFallback(
   title: string,
   body: string,
   smsMessage: string,
-  data?: Record<string, string>
+  data?: Record<string, string>,
+  notificationType: Parameters<typeof isNotificationTypeEnabled>[0] = 'adminNotifications'
 ): Promise<void> {
+  const enabled = await isNotificationTypeEnabled(notificationType);
+  if (!enabled) {
+    console.log(`ℹ️ Admin notification disabled (${notificationType}), skipping for ${adminId}`);
+    return;
+  }
   const fcmToken = adminData?.fcmToken;
   const phoneNumber = adminData?.phoneNumber;
   const pushEnabled = adminData?.notificationPreferences?.pushEnabled !== false; // Default to true if not set
@@ -104,6 +111,11 @@ export async function sendWaitlistPromotionSMS(
   eventTitle: string,
   smsEnabled: boolean = true
 ): Promise<{ success: boolean; error?: string; sid?: string }> {
+  const enabled = await isNotificationTypeEnabled('waitlistPromotion');
+  if (!enabled) {
+    console.log(`ℹ️ Waitlist promotion notifications disabled, skipping SMS for ${userId}`);
+    return { success: false, error: 'Disabled by admin' };
+  }
   if (!smsEnabled) {
     console.log(`ℹ️ SMS notifications disabled for user ${userId}, skipping waitlist promotion SMS`);
     return { success: false, error: 'SMS disabled by user' };
@@ -142,6 +154,11 @@ export async function queueAccountApprovalSMS(
   notificationId: string,
   smsEnabled: boolean = true
 ): Promise<{ success: boolean; error?: string }> {
+  const enabled = await isNotificationTypeEnabled('accountApproval');
+  if (!enabled) {
+    console.log(`ℹ️ Account approval notifications disabled, skipping SMS for ${userId}`);
+    return { success: false, error: 'Disabled by admin' };
+  }
   if (!smsEnabled) {
     console.log(`ℹ️ SMS notifications disabled for user ${userId}, skipping account approval SMS`);
     return { success: false, error: 'SMS disabled by user' };
@@ -198,6 +215,11 @@ export async function sendAccountApprovalSMSNow(
   phoneNumber: string,
   smsEnabled: boolean = true
 ): Promise<{ success: boolean; error?: string; sid?: string }> {
+  const enabled = await isNotificationTypeEnabled('accountApproval');
+  if (!enabled) {
+    console.log(`ℹ️ Account approval notifications disabled, skipping SMS for ${userId}`);
+    return { success: false, error: 'Disabled by admin' };
+  }
   if (!smsEnabled) {
     console.log(`ℹ️ SMS notifications disabled for user ${userId}, skipping account approval SMS`);
     return { success: false, error: 'SMS disabled by user' };
@@ -233,6 +255,11 @@ export async function sendAccountRejectionSMS(
   rejectionReason: string,
   smsEnabled: boolean = true
 ): Promise<{ success: boolean; error?: string; sid?: string }> {
+  const enabled = await isNotificationTypeEnabled('accountRejection');
+  if (!enabled) {
+    console.log(`ℹ️ Account rejection notifications disabled, skipping SMS for ${userId}`);
+    return { success: false, error: 'Disabled by admin' };
+  }
   if (!smsEnabled) {
     console.log(`ℹ️ SMS notifications disabled for user ${userId}, skipping account rejection SMS`);
     return { success: false, error: 'SMS disabled by user' };
@@ -270,6 +297,11 @@ export async function queueAdminQuestionSMS(
   notificationId: string,
   smsEnabled: boolean = true
 ): Promise<{ success: boolean; error?: string }> {
+  const enabled = await isNotificationTypeEnabled('adminQuestion');
+  if (!enabled) {
+    console.log(`ℹ️ Admin question notifications disabled, skipping SMS for ${userId}`);
+    return { success: false, error: 'Disabled by admin' };
+  }
   if (!smsEnabled) {
     console.log(`ℹ️ SMS notifications disabled for user ${userId}, skipping admin question SMS`);
     return { success: false, error: 'SMS disabled by user' };
@@ -315,6 +347,11 @@ export async function sendAdminQuestionSMSNow(
   phoneNumber: string,
   smsEnabled: boolean = true
 ): Promise<{ success: boolean; error?: string; sid?: string }> {
+  const enabled = await isNotificationTypeEnabled('adminQuestion');
+  if (!enabled) {
+    console.log(`ℹ️ Admin question notifications disabled, skipping SMS for ${userId}`);
+    return { success: false, error: 'Disabled by admin' };
+  }
   if (!smsEnabled) {
     console.log(`ℹ️ SMS notifications disabled for user ${userId}, skipping admin question SMS`);
     return { success: false, error: 'SMS disabled by user' };
@@ -350,6 +387,11 @@ export async function sendEventCreatedSMS(
   eventDate: string,
   eventLink: string
 ): Promise<{ success: boolean; sentCount: number; failedCount: number; errors: string[] }> {
+  const enabled = await isNotificationTypeEnabled('eventCreatedSms');
+  if (!enabled) {
+    console.log('ℹ️ Event created SMS disabled, skipping broadcast');
+    return { success: true, sentCount: 0, failedCount: 0, errors: [] };
+  }
   try {
     console.log(`📱 Starting event creation SMS broadcast for event: ${eventId}`);
     

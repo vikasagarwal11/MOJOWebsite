@@ -18,9 +18,19 @@ function bust(url?: string, version?: Date) {
   return url + (url.includes('?') ? '&' : '?') + 'v=' + v;
 }
 
+type NavItem = {
+  name: string;
+  href: string;
+  matchPrefix?: boolean;
+  children?: NavItem[];
+};
+
 const Header: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [mobileResourcesOpen, setMobileResourcesOpen] = useState(false);
+  const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [resourcesSubOpen, setResourcesSubOpen] = useState(false);
   const { currentUser, logout } = useAuth();
   const location = useLocation();
 
@@ -48,9 +58,10 @@ const Header: React.FC = () => {
   useEffect(() => {
     setUserMenuOpen(false);
     setIsMobileMenuOpen(false);
+    setMobileResourcesOpen(false);
   }, [location.pathname]);
 
-  const navigation = [
+  const navigation: NavItem[] = [
     { name: 'Home', href: '/' },
     { name: 'Events', href: '/events' },
     // { name: 'Events - 2', href: '/events-v2' }, // Removed - no longer needed
@@ -59,14 +70,35 @@ const Header: React.FC = () => {
     // { name: 'Workouts', href: '/workouts' }, // Hidden for now
     // { name: 'Challenges', href: '/challenges' }, // Hidden for now
     { name: 'Posts', href: '/posts' },
+    {
+      name: 'Resources',
+      href: '/resources',
+      matchPrefix: true,
+      children: [
+        { name: 'Recipes', href: '/resources/recipes' },
+        {
+          name: 'Recommendations',
+          href: '/resources/recommendations',
+          children: [
+            { name: 'Gyms & Fitness Centers', href: '/resources/recommendations/gyms-fitness-centers' },
+            { name: 'Healthy Eating Places', href: '/resources/recommendations/healthy-eating-places' },
+            { name: 'Trainers & Coaches', href: '/resources/recommendations/trainers-coaches' },
+            { name: 'Wellness Services', href: '/resources/recommendations/wellness-services' },
+            { name: 'Kids Activities & Family Spots', href: '/resources/recommendations/kids-activities-family-friendly-spots' },
+          ],
+        },
+        { name: 'Classes & Schedules', href: '/resources/classes-schedules' },
+      ],
+    },
     { name: 'MFM Stories', href: '/mfmstories' },
-    // { name: 'Support Tools', href: '/support-tools' }, // Hidden for now - not rolling out in initial phase
+    // { name: 'Support Tools', href: '/support-tools' }, // Hidden from menu bar header
     { name: 'About Us', href: '/about' },
     { name: 'Founder', href: '/founder' },
     // { name: 'Press', href: '/press' }, // Hidden for now
   ];
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string, matchPrefix = false) =>
+    matchPrefix ? location.pathname.startsWith(path) : location.pathname === path;
 
   const handleLogout = async () => {
     try {
@@ -106,19 +138,102 @@ const Header: React.FC = () => {
           {/* Center nav (desktop only; mobile uses hamburger menu) */}
           <nav className="hidden md:flex flex-1 justify-center min-w-0" aria-label="Primary">
             <div className="flex items-center gap-1 lg:gap-2">
-              {navigation.map((item) => (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={`px-2 lg:px-3 py-2 rounded-lg text-xs lg:text-sm font-medium transition-all duration-200 ${
-                    isActive(item.href)
-                      ? 'bg-white/20 text-white'
-                      : 'text-white/90 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  {item.name}
-                </Link>
-              ))}
+              {navigation.map((item) =>
+                item.children ? (
+                  <div
+                    key={item.name}
+                    className="relative"
+                    onMouseEnter={() => setResourcesOpen(true)}
+                    onMouseLeave={() => {
+                      setResourcesOpen(false);
+                      setResourcesSubOpen(false);
+                    }}
+                  >
+                    <Link
+                      to={item.href}
+                      className={`px-2 lg:px-3 py-2 rounded-lg text-xs lg:text-sm font-medium transition-all duration-200 inline-flex items-center gap-1 ${
+                        isActive(item.href, item.matchPrefix)
+                          ? 'bg-white/20 text-white'
+                          : 'text-white/90 hover:text-white hover:bg-white/10'
+                      }`}
+                      aria-haspopup="menu"
+                      aria-expanded={resourcesOpen}
+                    >
+                      {item.name}
+                    </Link>
+                    <div
+                      className={`absolute left-0 top-full w-56 rounded-xl border border-white/10 bg-white shadow-xl transition ${
+                        resourcesOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                      }`}
+                      onMouseEnter={() => setResourcesOpen(true)}
+                      onMouseLeave={() => {
+                        setResourcesOpen(false);
+                        setResourcesSubOpen(false);
+                      }}
+                    >
+                      <div className="py-2">
+                        {item.children.map(child =>
+                          child.children ? (
+                            <div
+                              key={child.name}
+                              className="relative"
+                              onMouseEnter={() => setResourcesSubOpen(true)}
+                              onMouseLeave={() => setResourcesSubOpen(false)}
+                            >
+                              <Link
+                                to={child.href}
+                                className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-[#F25129]/10 flex items-center justify-between"
+                              >
+                                {child.name}
+                                <span className="text-gray-400">›</span>
+                              </Link>
+                              <div
+                                className={`absolute left-full top-0 w-64 rounded-xl border border-gray-200 bg-white shadow-xl transition ${
+                                  resourcesSubOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                                }`}
+                                onMouseEnter={() => setResourcesSubOpen(true)}
+                                onMouseLeave={() => setResourcesSubOpen(false)}
+                              >
+                                <div className="py-2">
+                                  {child.children.map(grand => (
+                                    <Link
+                                      key={grand.name}
+                                      to={grand.href}
+                                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-[#F25129]/10"
+                                    >
+                                      {grand.name}
+                                    </Link>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <Link
+                              key={child.name}
+                              to={child.href}
+                              className="block px-4 py-2 text-sm text-gray-700 hover:bg-[#F25129]/10"
+                            >
+                              {child.name}
+                            </Link>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <Link
+                    key={item.name}
+                    to={item.href}
+                    className={`px-2 lg:px-3 py-2 rounded-lg text-xs lg:text-sm font-medium transition-all duration-200 ${
+                      isActive(item.href, item.matchPrefix)
+                        ? 'bg-white/20 text-white'
+                        : 'text-white/90 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {item.name}
+                  </Link>
+                )
+              )}
               {/* Social Media Icons */}
               <div className="hidden lg:flex items-center gap-2 ml-2 pl-2 border-l border-white/20">
                 <a
@@ -280,7 +395,13 @@ const Header: React.FC = () => {
 
           {/* Mobile menu button - improved touch target */}
           <button
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            onClick={() =>
+              setIsMobileMenuOpen((open) => {
+                const next = !open;
+                if (!next) setMobileResourcesOpen(false);
+                return next;
+              })
+            }
             className="md:hidden p-2 rounded-lg text-white/90 hover:bg-white/10 transition-colors ml-auto touch-target"
             aria-label="Toggle menu"
             aria-expanded={isMobileMenuOpen}
@@ -293,20 +414,74 @@ const Header: React.FC = () => {
         {isMobileMenuOpen && (
           <div className="md:hidden border-t border-white/20 py-4 max-h-[calc(100vh-4rem)] overflow-y-auto">
             <div className="flex flex-col space-y-1">
-              {navigation.map((item) => (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={`px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 touch-target ${
-                    isActive(item.href)
-                      ? 'bg-white/20 text-white'
-                      : 'text-white/90 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  {item.name}
-                </Link>
-              ))}
+              {navigation.map((item) =>
+                item.children ? (
+                  <div key={item.name} className="flex flex-col">
+                    <button
+                      onClick={() => setMobileResourcesOpen((prev) => !prev)}
+                      className={`px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 touch-target flex items-center justify-between ${
+                        isActive(item.href, item.matchPrefix)
+                          ? 'bg-white/20 text-white'
+                          : 'text-white/90 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <span>{item.name}</span>
+                      <span className="text-white/80">{mobileResourcesOpen ? '-' : '+'}</span>
+                    </button>
+                    {mobileResourcesOpen && (
+                      <div className="ml-2 pl-3 border-l border-white/20 space-y-1">
+                        {item.children.map((child) =>
+                          child.children ? (
+                            <div key={child.name} className="flex flex-col">
+                              <Link
+                                to={child.href}
+                                onClick={() => setIsMobileMenuOpen(false)}
+                                className="px-3 py-2 rounded-lg text-sm text-white/90 hover:text-white hover:bg-white/10 transition"
+                              >
+                                {child.name}
+                              </Link>
+                              <div className="ml-2 pl-3 border-l border-white/10 space-y-1">
+                                {child.children.map((grand) => (
+                                  <Link
+                                    key={grand.name}
+                                    to={grand.href}
+                                    onClick={() => setIsMobileMenuOpen(false)}
+                                    className="px-3 py-2 rounded-lg text-xs text-white/80 hover:text-white hover:bg-white/10 transition"
+                                  >
+                                    {grand.name}
+                                  </Link>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <Link
+                              key={child.name}
+                              to={child.href}
+                              onClick={() => setIsMobileMenuOpen(false)}
+                              className="px-3 py-2 rounded-lg text-sm text-white/90 hover:text-white hover:bg-white/10 transition"
+                            >
+                              {child.name}
+                            </Link>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <Link
+                    key={item.name}
+                    to={item.href}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 touch-target ${
+                      isActive(item.href, item.matchPrefix)
+                        ? 'bg-white/20 text-white'
+                        : 'text-white/90 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {item.name}
+                  </Link>
+                )
+              )}
               
               {/* Social Media Icons - Mobile */}
               <div className="flex items-center gap-3 pt-3 border-t border-white/20 mt-2">

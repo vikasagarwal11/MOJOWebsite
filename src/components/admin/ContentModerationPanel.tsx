@@ -1,15 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, Eye, Loader2, MessageSquare, Image as ImageIcon, Video, AlertCircle, History, Edit, Save, X, Clock } from 'lucide-react';
+import { CheckCircle, XCircle, Eye, Loader2, MessageSquare, Image as ImageIcon, Video, AlertCircle, History, Edit, Save, X, Clock, BookOpen } from 'lucide-react';
 import { collection, query, where, orderBy, onSnapshot, getDocs, doc, getDoc, limit, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { ModerationService } from '../../services/moderationService';
+import { softDeleteResourceEntry } from '../../services/resourceService';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
 
+const sortByCreatedAtDesc = (a: any, b: any) => {
+  const aTime = a?.createdAt?.toDate?.()?.getTime?.() ?? (a?.createdAt ? new Date(a.createdAt).getTime() : 0);
+  const bTime = b?.createdAt?.toDate?.()?.getTime?.() ?? (b?.createdAt ? new Date(b.createdAt).getTime() : 0);
+  return bTime - aTime;
+};
+
 interface PendingContent {
   id: string;
-  type: 'post' | 'media';
+  type: 'post' | 'media' | 'resource';
   mediaType?: 'image' | 'video'; // For media items: 'image' or 'video'
   title?: string;
   content?: string;
@@ -18,6 +25,8 @@ interface PendingContent {
   uploadedBy?: string;
   authorName?: string;
   uploadedByName?: string;
+  contributorId?: string;
+  contributorName?: string;
   imageUrl?: string;
   thumbnailUrl?: string;
   url?: string;
@@ -31,10 +40,14 @@ export const ContentModerationPanel: React.FC = () => {
   const { currentUser } = useAuth();
   const [pendingPosts, setPendingPosts] = useState<PendingContent[]>([]);
   const [pendingMedia, setPendingMedia] = useState<PendingContent[]>([]);
+  const [pendingResources, setPendingResources] = useState<PendingContent[]>([]);
+  const [approvedResources, setApprovedResources] = useState<PendingContent[]>([]);
   const [rejectedPosts, setRejectedPosts] = useState<PendingContent[]>([]);
   const [rejectedMedia, setRejectedMedia] = useState<PendingContent[]>([]);
+  const [rejectedResources, setRejectedResources] = useState<PendingContent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'posts' | 'media' | 'rejected' | 'history'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'media' | 'resources' | 'rejected' | 'history'>('posts');
+  const [resourceView, setResourceView] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState<{ [key: string]: string }>({});
@@ -95,8 +108,8 @@ export const ContentModerationPanel: React.FC = () => {
           const originalMediaType = data.type; // This is 'image' or 'video' from the media document
           return {
             id: doc.id,
-            type: 'media' as const,
             ...data,
+            type: 'media' as const,
             // Preserve 'image' | 'video' from media document as mediaType (after spread to ensure it's not overwritten)
             mediaType: originalMediaType || (data as any).mediaType,
           };
@@ -111,6 +124,70 @@ export const ContentModerationPanel: React.FC = () => {
     );
 
     return () => unsubscribeMedia();
+  }, [currentUser]);
+
+  // Load pending resources
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'admin') return;
+
+    const resourcesQuery = query(
+      collection(db, 'resources'),
+      where('moderationStatus', '==', 'pending')
+    );
+
+    const unsubscribeResources = onSnapshot(
+      resourcesQuery,
+      (snapshot) => {
+        const resources = snapshot.docs.map(doc => ({
+          id: doc.id,
+          type: 'resource' as const,
+          ...doc.data(),
+        })) as PendingContent[];
+        setPendingResources(
+          resources
+            .filter(resource => !(resource as any).isDeleted)
+            .sort(sortByCreatedAtDesc)
+        );
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error loading pending resources:', error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribeResources();
+  }, [currentUser]);
+
+  // Load approved resources
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'admin') return;
+
+    const approvedResourcesQuery = query(
+      collection(db, 'resources'),
+      where('moderationStatus', '==', 'approved')
+    );
+
+    const unsubscribeApprovedResources = onSnapshot(
+      approvedResourcesQuery,
+      (snapshot) => {
+        const resources = snapshot.docs.map(doc => ({
+          id: doc.id,
+          type: 'resource' as const,
+          ...doc.data(),
+        })) as PendingContent[];
+        setApprovedResources(
+          resources
+            .filter(resource => !(resource as any).isDeleted)
+            .sort(sortByCreatedAtDesc)
+        );
+      },
+      (error) => {
+        console.error('Error loading approved resources:', error);
+      }
+    );
+
+    return () => unsubscribeApprovedResources();
   }, [currentUser]);
 
   // Load rejected posts
@@ -160,8 +237,8 @@ export const ContentModerationPanel: React.FC = () => {
           const originalMediaType = data.type; // This is 'image' or 'video' from the media document
           return {
             id: doc.id,
-            type: 'media' as const,
             ...data,
+            type: 'media' as const,
             // Preserve 'image' | 'video' from media document as mediaType (after spread to ensure it's not overwritten)
             mediaType: originalMediaType || (data as any).mediaType,
           };
@@ -174,6 +251,37 @@ export const ContentModerationPanel: React.FC = () => {
     );
 
     return () => unsubscribeRejectedMedia();
+  }, [currentUser]);
+
+  // Load rejected resources
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'admin') return;
+
+    const rejectedResourcesQuery = query(
+      collection(db, 'resources'),
+      where('moderationStatus', '==', 'rejected')
+    );
+
+    const unsubscribeRejectedResources = onSnapshot(
+      rejectedResourcesQuery,
+      (snapshot) => {
+        const resources = snapshot.docs.map(doc => ({
+          id: doc.id,
+          type: 'resource' as const,
+          ...doc.data(),
+        })) as PendingContent[];
+        setRejectedResources(
+          resources
+            .filter(resource => !(resource as any).isDeleted)
+            .sort(sortByCreatedAtDesc)
+        );
+      },
+      (error) => {
+        console.error('Error loading rejected resources:', error);
+      }
+    );
+
+    return () => unsubscribeRejectedResources();
   }, [currentUser]);
 
   // Load moderation history
@@ -211,6 +319,9 @@ export const ContentModerationPanel: React.FC = () => {
     setProcessingIds(prev => new Set(prev).add(content.id));
     try {
       await ModerationService.approveContent(content.id, content.type, currentUser.id);
+    } catch (error: any) {
+      console.error('Failed to approve content:', error);
+      toast.error(error?.message || 'Failed to approve content');
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
@@ -234,6 +345,9 @@ export const ContentModerationPanel: React.FC = () => {
         return next;
       });
       setExpandedId(null);
+    } catch (error: any) {
+      console.error('Failed to reject content:', error);
+      toast.error(error?.message || 'Failed to reject content');
     } finally {
       setProcessingIds(prev => {
         const next = new Set(prev);
@@ -246,13 +360,18 @@ export const ContentModerationPanel: React.FC = () => {
   const getContentForTab = () => {
     if (activeTab === 'posts') return pendingPosts;
     if (activeTab === 'media') return pendingMedia;
-    if (activeTab === 'rejected') return [...rejectedPosts, ...rejectedMedia];
+    if (activeTab === 'resources') {
+      if (resourceView === 'approved') return approvedResources;
+      if (resourceView === 'rejected') return rejectedResources;
+      return pendingResources;
+    }
+    if (activeTab === 'rejected') return [...rejectedPosts, ...rejectedMedia, ...rejectedResources];
     return [];
   };
 
   const pendingContent = getContentForTab();
-  const totalPending = pendingPosts.length + pendingMedia.length;
-  const totalRejected = rejectedPosts.length + rejectedMedia.length;
+  const totalPending = pendingPosts.length + pendingMedia.length + pendingResources.length;
+  const totalRejected = rejectedPosts.length + rejectedMedia.length + rejectedResources.length;
 
   return (
     <div className="space-y-6">
@@ -261,7 +380,7 @@ export const ContentModerationPanel: React.FC = () => {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Content Moderation</h2>
           <p className="text-gray-600 mt-1">
-            Review and approve pending posts and media
+            Review and approve pending posts, media, and resources
           </p>
         </div>
         {totalPending > 0 && (
@@ -272,7 +391,7 @@ export const ContentModerationPanel: React.FC = () => {
       </div>
 
       {/* Statistics Dashboard */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="bg-white border border-gray-200 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -309,6 +428,15 @@ export const ContentModerationPanel: React.FC = () => {
             <ImageIcon className="w-8 h-8 text-purple-500" />
           </div>
         </div>
+        <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Pending Resources</p>
+              <p className="text-2xl font-bold text-emerald-600">{pendingResources.length}</p>
+            </div>
+            <BookOpen className="w-8 h-8 text-emerald-500" />
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -336,6 +464,17 @@ export const ContentModerationPanel: React.FC = () => {
           Media ({pendingMedia.length})
         </button>
         <button
+          onClick={() => setActiveTab('resources')}
+          className={`px-4 py-2 font-medium transition-colors ${
+            activeTab === 'resources'
+              ? 'text-[#F25129] border-b-2 border-[#F25129]'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <BookOpen className="w-4 h-4 inline mr-2" />
+          Resources ({pendingResources.length})
+        </button>
+        <button
           onClick={() => setActiveTab('rejected')}
           className={`px-4 py-2 font-medium transition-colors ${
             activeTab === 'rejected'
@@ -358,6 +497,41 @@ export const ContentModerationPanel: React.FC = () => {
           History ({moderationHistory.length})
         </button>
       </div>
+
+      {activeTab === 'resources' && (
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={() => setResourceView('pending')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              resourceView === 'pending'
+                ? 'bg-amber-100 text-amber-800'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Pending ({pendingResources.length})
+          </button>
+          <button
+            onClick={() => setResourceView('approved')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              resourceView === 'approved'
+                ? 'bg-emerald-100 text-emerald-800'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Approved ({approvedResources.length})
+          </button>
+          <button
+            onClick={() => setResourceView('rejected')}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              resourceView === 'rejected'
+                ? 'bg-red-100 text-red-800'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Rejected ({rejectedResources.length})
+          </button>
+        </div>
+      )}
 
       {/* Moderation History */}
       {activeTab === 'history' && (
@@ -401,8 +575,10 @@ export const ContentModerationPanel: React.FC = () => {
                             <span className="text-sm text-gray-500 flex items-center gap-1">
                               {log.contentType === 'post' ? (
                                 <MessageSquare className="w-4 h-4" />
-                              ) : (
+                              ) : log.contentType === 'media' ? (
                                 <ImageIcon className="w-4 h-4" />
+                              ) : (
+                                <BookOpen className="w-4 h-4" />
                               )}
                               {log.contentType}
                             </span>
@@ -529,7 +705,12 @@ export const ContentModerationPanel: React.FC = () => {
             const isProcessing = processingIds.has(content.id);
             const isExpanded = expandedId === content.id;
             const authorId = content.type === 'post' ? content.authorId : content.uploadedBy;
-            const authorName = content.type === 'post' ? content.authorName : content.uploadedByName;
+            const authorName =
+              content.type === 'post'
+                ? content.authorName
+                : content.type === 'media'
+                  ? content.uploadedByName
+                  : content.contributorName;
 
             return (
               <div
@@ -618,13 +799,17 @@ export const ContentModerationPanel: React.FC = () => {
                       <div className="flex items-center gap-3 mb-2">
                         {content.type === 'post' ? (
                           <MessageSquare className="w-5 h-5 text-[#F25129]" />
-                        ) : (
+                        ) : content.type === 'media' ? (
                           <ImageIcon className="w-5 h-5 text-[#F25129]" />
+                        ) : (
+                          <BookOpen className="w-5 h-5 text-[#F25129]" />
                         )}
                         <h3 className="font-semibold text-gray-900">
                           {content.type === 'post' 
                             ? content.title || 'Untitled Post'
-                            : 'Media Upload'}
+                            : content.type === 'media'
+                              ? 'Media Upload'
+                              : content.title || 'Resource'}
                         </h3>
                         {content.moderationStatus === 'rejected' ? (
                           <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded">
@@ -648,48 +833,77 @@ export const ContentModerationPanel: React.FC = () => {
                   {editingId === content.id ? (
                     // Edit Mode
                     <div className="space-y-4">
-                      {content.type === 'post' ? (
-                        <>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                            <input
-                              type="text"
-                              value={editTitle}
-                              onChange={(e) => setEditTitle(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                              placeholder="Post title"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
-                            <textarea
-                              value={editContent}
-                              onChange={(e) => setEditContent(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                              rows={6}
-                              placeholder="Post content"
-                            />
-                          </div>
-                        </>
-                      ) : (
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                          <textarea
-                            value={editDescription}
-                            onChange={(e) => setEditDescription(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-                            rows={4}
-                            placeholder="Media description"
-                          />
-                        </div>
-                      )}
+                  {content.type === 'post' ? (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                          placeholder="Post title"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
+                        <textarea
+                          value={editContent}
+                          onChange={(e) => setEditContent(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                          rows={6}
+                          placeholder="Post content"
+                        />
+                      </div>
+                    </>
+                  ) : content.type === 'media' ? (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                      <textarea
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                        rows={4}
+                        placeholder="Media description"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                          placeholder="Resource title"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                        <textarea
+                          value={editDescription}
+                          onChange={(e) => setEditDescription(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
+                          rows={6}
+                          placeholder="Resource description"
+                        />
+                      </div>
+                    </>
+                  )}
                       <div className="flex gap-2">
                         <button
                           onClick={async () => {
                             if (!currentUser) return;
                             setProcessingIds(prev => new Set(prev).add(content.id));
                             try {
-                              const contentRef = doc(db, content.type, content.id);
+                              const contentCollection =
+                                content.type === 'post'
+                                  ? 'posts'
+                                  : content.type === 'media'
+                                    ? 'media'
+                                    : 'resources';
+                              const contentRef = doc(db, contentCollection, content.id);
                               const updates: any = {
                                 updatedAt: serverTimestamp(),
                               };
@@ -697,7 +911,10 @@ export const ContentModerationPanel: React.FC = () => {
                               if (content.type === 'post') {
                                 if (editTitle) updates.title = editTitle;
                                 if (editContent) updates.content = editContent;
+                              } else if (content.type === 'media') {
+                                if (editDescription) updates.description = editDescription;
                               } else {
+                                if (editTitle) updates.title = editTitle;
                                 if (editDescription) updates.description = editDescription;
                               }
                               
@@ -755,7 +972,7 @@ export const ContentModerationPanel: React.FC = () => {
                             {content.content}
                           </p>
                         </div>
-                      ) : (
+                      ) : content.type === 'media' ? (
                         <div>
                           {content.thumbnailUrl && (
                             <img
@@ -766,6 +983,12 @@ export const ContentModerationPanel: React.FC = () => {
                           )}
                           {content.description && (
                             <p className="text-gray-700">{content.description}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          {content.description && (
+                            <p className="text-gray-700 whitespace-pre-wrap line-clamp-3">{content.description}</p>
                           )}
                         </div>
                       )}
@@ -804,76 +1027,105 @@ export const ContentModerationPanel: React.FC = () => {
                 )}
 
                 {/* Actions */}
-                <div className="flex items-center gap-3">
-                  {editingId !== content.id && (
-                    <>
-                      <button
-                        onClick={() => setExpandedId(isExpanded ? null : content.id)}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                      >
-                        <Eye className="w-4 h-4 inline mr-2" />
-                        {isExpanded ? 'Hide' : 'View'} Details
-                      </button>
-                      <button
-                        onClick={() => {
-                          setEditingId(content.id);
-                          setEditTitle(content.title || '');
-                          setEditContent(content.content || '');
-                          setEditDescription(content.description || '');
-                        }}
-                        disabled={isProcessing}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                      >
-                        <Edit className="w-4 h-4" />
-                        Edit
-                      </button>
-                    </>
-                  )}
-                  
-                  {content.moderationStatus === 'rejected' ? (
-                    // For rejected content, only show re-approve button
-                    <button
-                      onClick={() => handleApprove(content)}
-                      disabled={isProcessing}
-                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      {isProcessing ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <CheckCircle className="w-4 h-4" />
-                      )}
-                      Re-approve
-                    </button>
+          <div className="flex items-center gap-3">
+            {editingId !== content.id && (
+              <>
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : content.id)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  <Eye className="w-4 h-4 inline mr-2" />
+                  {isExpanded ? 'Hide' : 'View'} Details
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingId(content.id);
+                    setEditTitle(content.title || '');
+                    setEditContent(content.content || '');
+                    setEditDescription(content.description || '');
+                  }}
+                  disabled={isProcessing}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  <Edit className="w-4 h-4" />
+                  Edit
+                </button>
+              </>
+            )}
+
+            {content.type === 'resource' && activeTab === 'resources' && resourceView === 'approved' && (
+              <button
+                onClick={async () => {
+                  if (!currentUser) return;
+                  const confirmDelete = window.confirm('Delete this resource? This will remove it from the approved list.');
+                  if (!confirmDelete) return;
+                  setProcessingIds(prev => new Set(prev).add(content.id));
+                  try {
+                    await softDeleteResourceEntry(content.id, currentUser.id);
+                    toast.success('Resource deleted');
+                  } catch (error: any) {
+                    console.error('Failed to delete resource:', error);
+                    toast.error(error?.message || 'Failed to delete resource');
+                  } finally {
+                    setProcessingIds(prev => {
+                      const next = new Set(prev);
+                      next.delete(content.id);
+                      return next;
+                    });
+                  }
+                }}
+                disabled={isProcessing}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <XCircle className="w-4 h-4" />
+                Delete
+              </button>
+            )}
+
+            {content.moderationStatus === 'rejected' ? (
+              // For rejected content, only show re-approve button
+              <button
+                onClick={() => handleApprove(content)}
+                disabled={isProcessing}
+                className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isProcessing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle className="w-4 h-4" />
+                )}
+                Re-approve
+              </button>
+            ) : content.moderationStatus === 'pending' ? (
+              // For pending content, show both approve and reject
+              <>
+                <button
+                  onClick={() => handleApprove(content)}
+                  disabled={isProcessing}
+                  className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isProcessing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    // For pending content, show both approve and reject
-                    <>
-                      <button
-                        onClick={() => handleApprove(content)}
-                        disabled={isProcessing}
-                        className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                      >
-                        {isProcessing ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <CheckCircle className="w-4 h-4" />
-                        )}
-                        Approve
-                      </button>
-                      
-                      <button
-                        onClick={() => handleReject(content)}
-                        disabled={isProcessing}
-                        className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                      >
-                        {isProcessing ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <XCircle className="w-4 h-4" />
-                        )}
-                        Reject
-                      </button>
-                    </>
+                    <CheckCircle className="w-4 h-4" />
                   )}
+                  Approve
+                </button>
+                
+                <button
+                  onClick={() => handleReject(content)}
+                  disabled={isProcessing}
+                  className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isProcessing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <XCircle className="w-4 h-4" />
+                  )}
+                  Reject
+                </button>
+              </>
+            ) : null}
                 </div>
 
                 {/* Expanded Details */}

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
-import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
+import { Navigate, Route, BrowserRouter as Router, Routes, useLocation } from 'react-router-dom';
 import { Provider as RollbarProvider, ErrorBoundary as RollbarErrorBoundary, useRollbar } from '@rollbar/react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RollbarUserTracker } from './components/RollbarUserTracker';
@@ -35,15 +35,17 @@ import Reset from './pages/Reset';
 import RSVPPage from './pages/RSVPPage';
 import RSVPPageV2 from './pages/RSVPPageV2';
 import GuestRSVPPage from './pages/GuestRSVPPage';
+import Resources from './pages/Resources';
 import ShareYourStory from './pages/ShareYourStory';
 import Sponsors from './pages/Sponsors';
 import Testimonials from './pages/Testimonials';
 import ErrorLogs from './pages/ErrorLogs';
-// import SupportTools from './pages/SupportTools'; // Hidden for now - not rolling out in initial phase
+import SupportTools from './pages/SupportTools';
 // import Workouts from './pages/Workouts'; // Hidden for now
 // import Challenges from './pages/Challenges'; // Hidden for now
 // import ChallengeDetail from './pages/ChallengeDetail'; // Hidden for now
 import AdminConsole from './pages/AdminConsole';
+import { logPageView } from './services/analyticsService';
 
 
 // Component to store Rollbar instance
@@ -117,11 +119,28 @@ function AppContent({ isRollbarEnabled }: { isRollbarEnabled: boolean }) {
 // Rename the original AppContent to AppRouter
 function AppRouter() {
   const { currentUser } = useAuth();
+  const userType = currentUser?.role || (currentUser ? 'member' : 'anonymous');
+
+  const AnalyticsRouteTracker = () => {
+    const location = useLocation();
+
+    useEffect(() => {
+      logPageView(`${location.pathname}${location.search}`, document.title, {
+        userId: currentUser?.id,
+        userType: currentUser ? userType : 'anonymous',
+      });
+    }, [location.key, currentUser?.id, userType]);
+
+    return null;
+  };
   
   return (
     <Router>
       {/* Scroll to top on route change */}
       <ScrollToTop />
+
+      {/* Route-level analytics */}
+      <AnalyticsRouteTracker />
       
       {/* Global Popup Alert Handler */}
       {currentUser && (
@@ -182,8 +201,11 @@ function AppRouter() {
             <Route path="media" element={<Media />} />  {/* UPDATED VERSION WITH LIVE UPLOAD */}
           {/* <Route path="media" element={<MediaGallery />} />  OLD VERSION - COMMENTED OUT */}
             <Route path="posts" element={<Posts />} />
-            {/* <Route path="support-tools" element={<SupportTools />} /> */} {/* Hidden for now - not rolling out in initial phase */}
-            {/* <Route path="support-tools/:categorySlug" element={<SupportTools />} /> */} {/* Hidden for now - not rolling out in initial phase */}
+            <Route path="resources" element={<Resources />} />
+            <Route path="resources/:categorySlug" element={<Resources />} />
+            <Route path="resources/:categorySlug/:subcategorySlug" element={<Resources />} />
+            <Route path="support-tools" element={<SupportTools />} />
+            <Route path="support-tools/:categorySlug" element={<SupportTools />} />
             <Route path="sponsors" element={<Sponsors />} />
             <Route path="profile" element={<Profile mode="profile" />} />
             <Route path="admin" element={<AdminConsole />} />

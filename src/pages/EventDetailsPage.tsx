@@ -1,22 +1,27 @@
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Calendar, CalendarCheck, CheckCircle, Clock, DollarSign, ExternalLink, MapPin, Tag, Users, XCircle } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { ArrowLeft, Calendar, CalendarCheck, CheckCircle, Clock, DollarSign, ExternalLink, MapPin, MessageCircle, Tag, Users, XCircle } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import CommentSection from '../components/common/CommentSection';
 import { EventImage } from '../components/events/EventImage';
 import { EventSeo } from '../components/seo/EventSeo';
 import { auth, db } from '../config/firebase';
+import { useAuth } from '../contexts/AuthContext';
 import { EventDoc } from '../hooks/useEvents';
+import { logAnalyticsEvent } from '../services/analyticsService';
 import { safeFormat, safeToDate } from '../utils/dateUtils';
 import { createEventCanonicalUrl } from '../utils/seo';
 
 const EventDetailsPage: React.FC = () => {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [event, setEvent] = useState<EventDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userAttendee, setUserAttendee] = useState<any>(null);
+  const loggedEventViewRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!eventId) {
@@ -50,6 +55,26 @@ const EventDetailsPage: React.FC = () => {
     // Cleanup listener on unmount
     return () => unsubscribe();
   }, [eventId]);
+
+  useEffect(() => {
+    if (!event?.id) return;
+    if (loggedEventViewRef.current === event.id) return;
+    loggedEventViewRef.current = event.id;
+
+    logAnalyticsEvent({
+      eventType: 'event_view',
+      eventId: event.id,
+      page: window.location.pathname,
+      userId: currentUser?.id,
+      userType: currentUser?.role || (currentUser ? 'member' : 'guest'),
+      metadata: {
+        eventTitle: event.title,
+        eventTags: event.tags || [],
+        eventCategory: event.tags?.[0] || 'uncategorized',
+        source: 'event_details_page',
+      },
+    });
+  }, [event?.id, event?.title, currentUser?.id, currentUser?.role]);
 
   // Fetch user's attendee record for payment status
   useEffect(() => {
@@ -464,6 +489,19 @@ const EventDetailsPage: React.FC = () => {
                 </p>
               </div>
             )}
+
+            {/* Comments */}
+            <div className="pt-6 border-t border-gray-200">
+              <div className="flex items-center gap-2 mb-3">
+                <MessageCircle className="w-4 h-4 text-[#F25129]" />
+                <h3 className="text-base font-semibold text-gray-900">Comments</h3>
+              </div>
+              <CommentSection
+                collectionPath={`events/${event.id}/comments`}
+                initialOpen={true}
+                pageSize={10}
+              />
+            </div>
 
             {/* Tags */}
             {event.tags && event.tags.length > 0 && (

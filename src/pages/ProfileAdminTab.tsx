@@ -1,10 +1,11 @@
 import { collection, deleteDoc, doc, DocumentReference, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { listAll, ref } from 'firebase/storage';
-import { AlertTriangle, Calendar, CheckCircle, ChevronDown, ChevronUp, Dumbbell, Eye, FolderTree, Image, Loader2, MessageSquare, RefreshCw, Search, Settings, Shield, ShieldCheck, Star, Trash2, UserCheck, Users, Video, XCircle } from 'lucide-react';
+import { AlertTriangle, BarChart3, Calendar, CheckCircle, ChevronDown, ChevronUp, Dumbbell, Eye, FolderTree, Image, Loader2, MessageSquare, RefreshCw, Search, Settings, Shield, ShieldCheck, Star, Trash2, UserCheck, Users, Video, XCircle } from 'lucide-react';
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import AccountApprovalsAdmin from '../components/admin/AccountApprovalsAdmin';
+import AnalyticsDashboard from '../components/admin/AnalyticsDashboard';
 import { AssistantConfigPanel } from '../components/admin/AssistantConfigPanel';
 import BulkAttendeesPanel from '../components/admin/BulkAttendeesPanel';
 import CleanupToolPanel from '../components/admin/CleanupToolPanel';
@@ -12,6 +13,8 @@ import ContactMessagesAdmin from '../components/admin/ContactMessagesAdmin';
 import { ContentModerationPanel } from '../components/admin/ContentModerationPanel';
 import { KBGapsPanel } from '../components/admin/KBGapsPanel';
 import { SupportToolCategoriesPanel } from '../components/admin/SupportToolCategoriesPanel';
+import ResourceCategoriesPanel from '../components/admin/ResourceCategoriesPanel';
+import NotificationSettingsPanel from '../components/admin/NotificationSettingsPanel';
 import { TrustedUsersPanel } from '../components/admin/TrustedUsersPanel';
 import EventCardNew from '../components/events/EventCardNew';
 import { db, storage } from '../config/firebase';
@@ -84,7 +87,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
-  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig' | 'kbGaps' | 'accountApprovals' | 'moderation' | 'trustedUsers' | 'supportToolCategories'>('events');
+  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig' | 'kbGaps' | 'accountApprovals' | 'moderation' | 'trustedUsers' | 'supportToolCategories' | 'resourceCategories' | 'analytics' | 'notifications'>('events');
   const { currentUser } = useAuth();
   
   // Media management state
@@ -94,6 +97,9 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const MEDIA_PAGE_SIZE = 10;
   const [expandedMediaId, setExpandedMediaId] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+  const [updatingHeroMediaId, setUpdatingHeroMediaId] = useState<string | null>(null);
+  const HERO_LIMIT = 20;
+  const heroLimitTooltip = 'u have puttted 20 images on frontend delete some phptos from admin panel to add kore';
 
   // Testimonials moderation state
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<TestimonialStatus | 'all'>('pending');
@@ -424,6 +430,62 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
     }
   };
 
+  const heroMedia = useMemo(() => {
+    return allMedia.filter((media) => media?.type === 'image' && media?.showOnHomepage);
+  }, [allMedia]);
+
+  const heroCount = heroMedia.length;
+
+  const handleAddToHero = async (mediaId: string) => {
+    if (heroCount >= HERO_LIMIT) {
+      toast.error('Hero carousel is full. Remove some images to add more.');
+      return;
+    }
+    setUpdatingHeroMediaId(mediaId);
+    try {
+      await updateDoc(doc(db, 'media', mediaId), {
+        showOnHomepage: true,
+        heroCarouselAddedAt: serverTimestamp(),
+      });
+      setAllMedia((prev) =>
+        prev.map((media) =>
+          media.id === mediaId
+            ? { ...media, showOnHomepage: true, heroCarouselAddedAt: new Date() }
+            : media
+        )
+      );
+      toast.success('Added to homepage carousel');
+    } catch (error) {
+      console.error('Failed to add media to hero carousel:', error);
+      toast.error('Failed to add image to homepage');
+    } finally {
+      setUpdatingHeroMediaId(null);
+    }
+  };
+
+  const handleRemoveFromHero = async (mediaId: string) => {
+    setUpdatingHeroMediaId(mediaId);
+    try {
+      await updateDoc(doc(db, 'media', mediaId), {
+        showOnHomepage: false,
+        heroCarouselAddedAt: null,
+      });
+      setAllMedia((prev) =>
+        prev.map((media) =>
+          media.id === mediaId
+            ? { ...media, showOnHomepage: false, heroCarouselAddedAt: null }
+            : media
+        )
+      );
+      toast.success('Removed from homepage carousel');
+    } catch (error) {
+      console.error('Failed to remove media from hero carousel:', error);
+      toast.error('Failed to remove image from homepage');
+    } finally {
+      setUpdatingHeroMediaId(null);
+    }
+  };
+
   // Delete media file
   const handleDeleteMedia = async (mediaId: string, mediaData: any) => {
     if (!confirm('Are you sure you want to delete this media file? This cannot be undone.')) return;
@@ -663,6 +725,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
 
   // Debug logging moved to useEffect to prevent setState during render
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
     console.log('🔍 ProfileAdminTab: Current state', {
       allEvents: allEvents.length,
       loadingAdminEvents,
@@ -766,6 +829,17 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           System Tools
         </button>
         <button
+          onClick={() => setActiveAdminSection('notifications')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'notifications'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <Settings className="w-4 h-4 inline mr-2" />
+          Notifications
+        </button>
+        <button
           onClick={() => setActiveAdminSection('testimonials')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeAdminSection === 'testimonials'
@@ -842,6 +916,28 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
           <FolderTree className="w-4 h-4 inline mr-2" />
           Support Tool Categories
         </button>
+        <button
+          onClick={() => setActiveAdminSection('resourceCategories')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'resourceCategories'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <FolderTree className="w-4 h-4 inline mr-2" />
+          Resource Categories
+        </button>
+        <button
+          onClick={() => setActiveAdminSection('analytics')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeAdminSection === 'analytics'
+              ? 'bg-[#F25129] text-white'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <BarChart3 className="w-4 h-4 inline mr-2" />
+          Analytics Dashboard
+        </button>
         <Link
           to="/admin/error-logs"
           className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center"
@@ -907,11 +1003,13 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                 }
                 
                 if (paginatedEvents.length === 0 && allEvents.length > 0) {
-                  console.warn('⚠️ ProfileAdminTab: No events in paginated slice but allEvents has events', {
-                    eventsPage,
-                    PAGE_SIZE,
-                    totalEvents: allEvents.length
-                  });
+                  if (import.meta.env.DEV) {
+                    console.warn('⚠️ ProfileAdminTab: No events in paginated slice but allEvents has events', {
+                      eventsPage,
+                      PAGE_SIZE,
+                      totalEvents: allEvents.length
+                    });
+                  }
                   // Reset to page 0 if current page has no events
                   if (eventsPage > 0) {
                     setEventsPage(0);
@@ -1208,6 +1306,56 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
             </div>
           ) : (
             <div className="space-y-4">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Homepage Hero Carousel</h3>
+                    <p className="text-xs text-gray-600">
+                      Showing {heroCount} of {HERO_LIMIT} images on the homepage.
+                    </p>
+                  </div>
+                  <span className="text-xs font-medium text-gray-600">
+                    {heroCount}/{HERO_LIMIT} active
+                  </span>
+                </div>
+
+                {heroCount === 0 ? (
+                  <p className="mt-3 text-xs text-gray-500">
+                    No images are currently on the homepage carousel. Use "Add to Frontend" below to publish images.
+                  </p>
+                ) : (
+                  <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                    {heroMedia.map((media) => {
+                      const thumb = media.thumbnailUrl || media.url;
+                      return (
+                        <div key={media.id} className="rounded-lg border border-gray-200 bg-white p-2">
+                          <div className="relative w-full overflow-hidden rounded-md bg-gray-100 aspect-[4/3]">
+                            {thumb ? (
+                              <img
+                                src={thumb}
+                                alt="Hero carousel"
+                                className="h-full w-full object-contain"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">
+                                No preview
+                              </div>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleRemoveFromHero(media.id)}
+                            disabled={updatingHeroMediaId === media.id}
+                            className="mt-2 w-full rounded-md bg-red-100 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {updatingHeroMediaId === media.id ? 'Removing...' : 'Remove from Frontend'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 gap-4">
                 {allMedia.slice(mediaPage * MEDIA_PAGE_SIZE, (mediaPage + 1) * MEDIA_PAGE_SIZE).map((media) => {
                   const isExpanded = expandedMediaId === media.id;
@@ -1216,6 +1364,8 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                   const qualityLevels = media.qualityLevels || [];
                   const failedQualities = media.failedQualities || [];
                   const bgSummary = media.backgroundProcessingSummary;
+                  const isHeroImage = media?.type === 'image' && media?.showOnHomepage;
+                  const heroActionDisabled = updatingHeroMediaId === media.id || (!isHeroImage && heroCount >= HERO_LIMIT);
                   
                   // Get thumbnail URL - prefer thumbnailUrl, fallback to url for images
                   const thumbnailUrl = media.thumbnailUrl || (media.type === 'image' ? media.url : null);
@@ -1277,6 +1427,30 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
                               >
                                 {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                               </button>
+                              {media.type === 'image' && (
+                                <button
+                                  onClick={() => {
+                                    if (isHeroImage) {
+                                      handleRemoveFromHero(media.id);
+                                    } else {
+                                      handleAddToHero(media.id);
+                                    }
+                                  }}
+                                  disabled={heroActionDisabled}
+                                  title={!isHeroImage && heroCount >= HERO_LIMIT ? heroLimitTooltip : undefined}
+                                  className={`px-2 py-1 text-xs rounded ${
+                                    isHeroImage
+                                      ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                      : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                                >
+                                  {updatingHeroMediaId === media.id
+                                    ? 'Updating...'
+                                    : isHeroImage
+                                      ? 'Remove from Frontend'
+                                      : 'Add to Frontend'}
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleDeleteMedia(media.id, media)}
                                 className="p-1 text-red-500 hover:bg-red-50 rounded"
@@ -1573,6 +1747,13 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Notifications Section */}
+      {activeAdminSection === 'notifications' && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <NotificationSettingsPanel />
         </div>
       )}
 
@@ -2045,6 +2226,16 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       {/* Support Tool Categories Section */}
       {activeAdminSection === 'supportToolCategories' && (
         <SupportToolCategoriesPanel />
+      )}
+
+      {/* Resource Categories Section */}
+      {activeAdminSection === 'resourceCategories' && (
+        <ResourceCategoriesPanel />
+      )}
+
+      {/* Analytics Dashboard Section */}
+      {activeAdminSection === 'analytics' && (
+        <AnalyticsDashboard />
       )}
     </div>
   );

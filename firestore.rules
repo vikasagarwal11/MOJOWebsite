@@ -1013,6 +1013,12 @@ service cloud.firestore {
       allow read: if isSignedIn(); // Any authenticated user can read (for function calls)
       allow write: if isAdmin(); // Only admins can update configuration
     }
+
+    // --- Notification Settings (admin managed, readable by clients) ---
+    match /appConfig/notificationSettings {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
     
     // --- KB Gaps (admin managed) ---
     match /kb_gaps/{gapId} {
@@ -1331,6 +1337,74 @@ service cloud.firestore {
         // Admins can read all attendees
         isAdmin()
       );
+    }
+
+    // =========================
+    // Resources (community knowledge hub)
+    // =========================
+    function getResourceCategory(categoryId) {
+      return get(/databases/$(database)/documents/resourceCategories/$(categoryId)).data;
+    }
+
+    function resourceCategoryAllowsPublicRead(categoryId) {
+      let cat = getResourceCategory(categoryId);
+      return cat != null && cat.allowPublicRead == true;
+    }
+
+    match /resourceCategories/{categoryId} {
+      allow read: if true;
+      allow create, update, delete: if isSignedIn() && isAdmin();
+    }
+
+    match /resources/{resourceId} {
+      allow read: if
+        isAdmin() ||
+        (isSignedIn() && resource.data.contributorId == request.auth.uid) ||
+        (!resource.data.isDeleted &&
+         (resource.data.isPublic != false || isSignedIn()) &&
+         (!('moderationStatus' in resource.data) || resource.data.moderationStatus == 'approved'));
+
+      allow create: if isSignedIn() &&
+        request.auth.uid == request.resource.data.contributorId &&
+        isNonEmptyString(request.resource.data.title) &&
+        isNonEmptyString(request.resource.data.description) &&
+        isNonEmptyString(request.resource.data.categoryId) &&
+        request.resource.data.isDeleted == false &&
+        (
+          (isAdmin() && (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus in ['approved', 'pending'])) ||
+          (!isAdmin() && (!('moderationStatus' in request.resource.data) || request.resource.data.moderationStatus == 'pending'))
+        );
+
+      allow update: if isSignedIn() &&
+        (
+          isAdmin() ||
+          (request.auth.uid == resource.data.contributorId &&
+           (
+             // Contributor can update content fields, and may reset moderation to pending
+             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['moderationStatus','moderatedAt','moderatedBy','moderationReason']) ||
+             (
+               request.resource.data.moderationStatus == 'pending' &&
+               (!('moderatedAt' in request.resource.data) || request.resource.data.moderatedAt == null) &&
+               (!('moderatedBy' in request.resource.data) || request.resource.data.moderatedBy == null) &&
+               (!('moderationReason' in request.resource.data) || request.resource.data.moderationReason == null)
+             )
+           )
+          )
+        );
+
+      allow delete: if isSignedIn() &&
+        (isAdmin() || request.auth.uid == resource.data.contributorId);
+    }
+
+    // =========================
+    // Internal analytics (client-write, admin-read)
+    // =========================
+    match /analytics/{docId} {
+      allow create: if
+        request.resource.data.eventType is string &&
+        request.resource.data.eventType.size() > 0;
+      allow read: if isAdmin();
+      allow update, delete: if false;
     }
     
     // --- Default Security: Deny all unknown collections ---

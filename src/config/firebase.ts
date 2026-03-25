@@ -35,6 +35,49 @@ const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || 'demo-project';
 const rawStorageBucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
 const storageBucket = normalizeStorageBucket(rawStorageBucket, projectId);
 
+const DEV_PROJECT_ID = 'momsfitnessmojo-dev';
+const STAGE_PROJECT_ID = 'momsfitnessmojostage';
+const PROD_PROJECT_ID = 'momsfitnessmojo-65d00';
+
+const PROD_HOSTNAMES = new Set([
+  'momsfitnessmojo.com',
+  'www.momsfitnessmojo.com',
+  'momsfitnessmojo-65d00.web.app',
+  'momsfitnessmojo-65d00.firebaseapp.com',
+]);
+const DEV_HOSTNAMES = new Set([
+  'localhost',
+  '127.0.0.1',
+  'momsfitnessmojo-dev.web.app',
+  'momsfitnessmojo-dev.firebaseapp.com',
+]);
+const STAGE_HOSTNAMES = new Set([
+  'momsfitnessmojostage.web.app',
+  'momsfitnessmojostage.firebaseapp.com',
+]);
+
+const getExpectedProjectId = (hostname: string) => {
+  if (PROD_HOSTNAMES.has(hostname)) return PROD_PROJECT_ID;
+  if (DEV_HOSTNAMES.has(hostname)) return DEV_PROJECT_ID;
+  if (STAGE_HOSTNAMES.has(hostname)) return STAGE_PROJECT_ID;
+  return null;
+};
+
+const runtimeHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+const expectedProjectId = runtimeHostname ? getExpectedProjectId(runtimeHostname) : null;
+
+export const FIREBASE_ENV_MISMATCH =
+  !!expectedProjectId && projectId !== expectedProjectId;
+export const FIREBASE_ENV_MISMATCH_DETAILS = FIREBASE_ENV_MISMATCH
+  ? {
+      hostname: runtimeHostname,
+      expectedProjectId,
+      actualProjectId: projectId,
+      mode: import.meta.env.MODE,
+      environment: import.meta.env.VITE_ENVIRONMENT,
+    }
+  : null;
+
 if (import.meta.env.DEV && rawStorageBucket && storageBucket !== rawStorageBucket.replace(/^gs:\/\//i, '')) {
   console.warn('[Firebase] Normalized storage bucket value. Check your VITE_FIREBASE_STORAGE_BUCKET env var.', {
     provided: rawStorageBucket,
@@ -106,7 +149,6 @@ if (import.meta.env.DEV) {
     const isLocalhost =
       window.location.hostname === 'localhost' ||
       window.location.hostname === '127.0.0.1';
-    const PROD_PROJECT_ID = 'momsfitnessmojo-65d00';
     if (isLocalhost && firebaseConfig.projectId === PROD_PROJECT_ID) {
       console.error(
         '[Firebase] Localhost is configured for the PRODUCTION Firebase project. This is almost always an env/build-mode mixup.',
@@ -133,6 +175,21 @@ if (import.meta.env.DEV) {
           mode: import.meta.env.MODE,
           projectId: firebaseConfig.projectId,
           fix: 'Run `firebase deploy --only hosting:momsfitnessmojo-dev --project momsfitnessmojo-dev` (predeploy will run `npm run build:dev`).'
+        }
+      );
+    }
+
+    const isProdHosting = PROD_HOSTNAMES.has(window.location.hostname) ||
+      window.location.hostname.endsWith('.momsfitnessmojo.com');
+    if (isProdHosting && firebaseConfig.projectId !== PROD_PROJECT_ID) {
+      console.error(
+        '[Firebase] Production hosting is serving a NON-PRODUCTION Firebase project. This will mix environments and can look like data loss.',
+        {
+          hostname: window.location.hostname,
+          mode: import.meta.env.MODE,
+          projectId: firebaseConfig.projectId,
+          expectedProjectId: PROD_PROJECT_ID,
+          fix: 'Rebuild with `npm run build` (production) and redeploy to the prod hosting target.'
         }
       );
     }
