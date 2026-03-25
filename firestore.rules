@@ -135,6 +135,12 @@ service cloud.firestore {
         (!('isReadOnly' in newData) || newData.isReadOnly is bool);
     }
 
+    // Mobile + web theming (public read; admin-only writes)
+    match /platform_branding/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // =========================
     // Event attendees (row-level): events/{eventId}/attendees/{userId}
     // =========================

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "313384637691",
+    "project_id": "momsfitnessmojo-65d00",
+    "storage_bucket": "momsfitnessmojo-65d00.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:313384637691:android:862cd595cbfcc262634c5e",
+        "android_client_info": {
+          "package_name": "com.momfitnessmojo.mojo_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBh4c6y4NElJoQTLNAl_necnrmRQMBY9s0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
