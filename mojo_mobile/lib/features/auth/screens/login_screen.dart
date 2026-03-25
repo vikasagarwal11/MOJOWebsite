@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,15 +6,165 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/providers/core_providers.dart';
 import '../../../core/theme/mojo_colors.dart';
+import '../../../firebase_options.dart';
+import '../../../utils/phone_utils.dart';
 
-class LoginScreen extends ConsumerWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _phoneController = TextEditingController();
+  final _codeController = TextEditingController();
+
+  bool _loading = false;
+  _LoginStep _step = _LoginStep.phone;
+  String? _verificationId;
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendVerificationCode() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (!firebaseOptionsConfigured) {
+      _showError('Firebase is not configured. Run flutterfire configure in mojo_mobile.');
+      return;
+    }
+
+    final e164 = normalizeUSPhoneToE164OrNull(_phoneController.text);
+    if (e164 == null) {
+      _showError('Please enter a valid US number (e.g., 212 555 0123).');
+      return;
+    }
+
+    setState(() => _loading = true);
+    final auth = ref.read(authServiceProvider);
+    try {
+      final registered = await auth.checkPhoneNumberRegistered(e164);
+      if (!registered) {
+        _showError('This phone number is not registered. Please register on the website first.');
+        return;
+      }
+
+      await auth.startPhoneVerification(
+        e164Phone: e164,
+        verificationCompleted: (credential) async {
+          if (!mounted) return;
+          setState(() => _loading = true);
+          try {
+            await auth.signInWithPhoneCredential(credential, requireUserDocument: true);
+            if (mounted) context.go('/');
+          } on FirebaseAuthException catch (e) {
+            _showError(e.message ?? e.code);
+          } catch (e) {
+            _showError(e.toString());
+          } finally {
+            if (mounted) setState(() => _loading = false);
+          }
+        },
+        verificationFailed: (e) {
+          if (!mounted) return;
+          setState(() => _loading = false);
+          _showError(_messageForPhoneAuthFailure(e));
+        },
+        codeSent: (verificationId, _) {
+          if (!mounted) return;
+          setState(() {
+            _loading = false;
+            _verificationId = verificationId;
+            _step = _LoginStep.code;
+          });
+        },
+      );
+    } on FirebaseAuthException catch (e) {
+      _showError(_messageForPhoneAuthFailure(e));
+    } catch (e) {
+      _showError(e.toString());
+    } finally {
+      if (mounted && _verificationId == null) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  String _messageForPhoneAuthFailure(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'invalid-phone-number':
+        return 'Invalid phone number. Please check and try again.';
+      case 'operation-not-allowed':
+        return 'Phone sign-in is disabled. Enable it in Firebase Console → Authentication.';
+      case 'too-many-requests':
+        return 'Too many attempts. Please wait a minute and try again.';
+      case 'network-request-failed':
+        return 'Network error. Check your connection and try again.';
+      default:
+        return e.message ?? e.code;
+    }
+  }
+
+  Future<void> _submitCode() async {
+    final code = _codeController.text.trim();
+    if (code.length < 6) {
+      _showError('Enter the 6-digit code from your SMS.');
+      return;
+    }
+    final vid = _verificationId;
+    if (vid == null) {
+      _showError('Request a new code from the previous step.');
+      return;
+    }
+    if (!firebaseOptionsConfigured) return;
+
+    setState(() => _loading = true);
+    try {
+      await ref.read(authServiceProvider).signInWithSmsCode(
+            verificationId: vid,
+            smsCode: code,
+            requireUserDocument: true,
+          );
+      if (mounted) context.go('/');
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-doc-missing' || (e.message?.contains('No account found') ?? false)) {
+        _showError('No account found. Please register on the website first.');
+        setState(() {
+          _step = _LoginStep.phone;
+          _verificationId = null;
+          _codeController.clear();
+        });
+      } else {
+        _showError(e.message ?? e.code);
+      }
+    } catch (e) {
+      _showError(e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _backToPhone() {
+    setState(() {
+      _step = _LoginStep.phone;
+      _verificationId = null;
+      _codeController.clear();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final branding = ref.watch(platformBrandingProvider).valueOrNull;
-
     final displayName = branding?.appDisplayName ?? 'Mom Fitness Mojo';
     const heroTitle = 'MOJO';
 
@@ -54,76 +205,126 @@ class LoginScreen extends ConsumerWidget {
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Welcome Back',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: MojoColors.textPrimary),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 32),
-                  TextFormField(
-                    decoration: InputDecoration(
-                      hintText: 'Email Address',
-                      prefixIcon: const Icon(Icons.email_outlined),
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      _step == _LoginStep.phone ? 'Welcome Back' : 'Enter code',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: MojoColors.textPrimary,
                       ),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      hintText: 'Password',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                    const SizedBox(height: 8),
+                    Text(
+                      _step == _LoginStep.phone
+                          ? 'Sign in with the same phone number you used on the website.'
+                          : 'We sent a verification code to your phone.',
+                      style: TextStyle(fontSize: 14, color: scheme.onSurfaceVariant),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (!firebaseOptionsConfigured) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Configure Firebase (flutterfire configure) to enable sign-in.',
+                        style: TextStyle(fontSize: 12, color: scheme.error),
+                        textAlign: TextAlign.center,
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () {},
-                      child: Text('Forgot Password?', style: TextStyle(color: scheme.primary)),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: () => context.go('/'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: scheme.primary,
-                      foregroundColor: scheme.onPrimary,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 0,
-                    ),
-                    child: const Text('Login', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text("Don't have an account? ", style: TextStyle(color: MojoColors.textSecondary)),
-                      GestureDetector(
-                        onTap: () {},
-                        child: Text(
-                          'Sign Up',
-                          style: TextStyle(color: scheme.primary, fontWeight: FontWeight.bold),
+                    ],
+                    const SizedBox(height: 24),
+                    if (_step == _LoginStep.phone) ...[
+                      TextFormField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
+                        autocorrect: false,
+                        decoration: InputDecoration(
+                          hintText: 'US mobile number',
+                          prefixIcon: const Icon(Icons.phone_outlined),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return 'Enter your phone number';
+                          if (normalizeUSPhoneToE164OrNull(v) == null) {
+                            return 'Use a valid US number (e.g., 212 555 0123)';
+                          }
+                          return null;
+                        },
+                      ),
+                    ] else ...[
+                      TextFormField(
+                        controller: _codeController,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        autocorrect: false,
+                        decoration: InputDecoration(
+                          hintText: '6-digit code',
+                          counterText: '',
+                          prefixIcon: const Icon(Icons.sms_outlined),
+                          filled: true,
+                          fillColor: Colors.grey.shade50,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: _loading ? null : _backToPhone,
+                          child: Text('Change number', style: TextStyle(color: scheme.primary)),
                         ),
                       ),
                     ],
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _loading
+                          ? null
+                          : () {
+                              if (_step == _LoginStep.phone) {
+                                _sendVerificationCode();
+                              } else {
+                                _submitCode();
+                              }
+                            },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: scheme.primary,
+                        foregroundColor: scheme.onPrimary,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: _loading
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : Text(
+                              _step == _LoginStep.phone ? 'Send code' : 'Verify & sign in',
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'New users: complete registration on the website first, then sign in here.',
+                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                      textAlign: TextAlign.center,
+                    ),
+                    TextButton(
+                      onPressed: _loading ? null : () => context.go('/'),
+                      child: const Text('Continue without signing in'),
+                    ),
+                  ],
+                ),
               ),
             ).animate().slideY(begin: 1.0, end: 0, duration: 800.ms, curve: Curves.easeOutCubic),
           ],
@@ -132,3 +333,5 @@ class LoginScreen extends ConsumerWidget {
     );
   }
 }
+
+enum _LoginStep { phone, code }

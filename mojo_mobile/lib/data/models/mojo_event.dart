@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../utils/event_image_url.dart';
+
 class MojoEvent {
   MojoEvent({
     required this.id,
@@ -41,7 +43,7 @@ class MojoEvent {
       startAt: _ts(d['startAt'] ?? d['date']),
       endAt: d['endAt'] != null ? _ts(d['endAt']) : null,
       description: d['description'] as String?,
-      imageUrl: d['imageUrl'] as String?,
+      imageUrl: pickEventImageUrl(d),
       venueName: d['venueName'] as String?,
       venueAddress: d['venueAddress'] as String?,
       location: d['location'] as String?,

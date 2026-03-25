@@ -1,89 +1,115 @@
 import 'package:flutter/material.dart';
-import 'chat_room_screen.dart';
-import '../../../core/theme/mojo_colors.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-class ChatListScreen extends StatelessWidget {
+import '../../../core/providers/core_providers.dart';
+
+/// Community tab: the website does not expose Firestore 1:1 DMs yet.
+/// Real-time community interaction happens via **Posts** and **Events** (and comments on web).
+class ChatListScreen extends ConsumerWidget {
   const ChatListScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final user = ref.watch(authStateProvider).valueOrNull;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mojo Community', style: TextStyle(fontWeight: FontWeight.bold)),
-        actions: [
-          IconButton(icon: const Icon(Icons.search), onPressed: () {}),
+        title: const Text('Community', style: TextStyle(fontWeight: FontWeight.bold)),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Icon(Icons.groups_2_outlined, size: 64, color: scheme.primary.withValues(alpha: 0.7)),
+          const SizedBox(height: 16),
+          Text(
+            'No separate chat inbox yet',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'This app does not show fake contacts. The MOJO website centers on Posts, Events, and '
+            'comments on the web—not a standalone DM inbox in Firestore. Use the shortcuts below to connect.',
+            style: TextStyle(color: scheme.onSurfaceVariant, height: 1.45),
+          ),
+          const SizedBox(height: 28),
+          _CtaCard(
+            icon: Icons.feed_outlined,
+            title: 'Community posts',
+            subtitle: 'See what members are sharing.',
+            onTap: () => context.go('/posts'),
+            scheme: scheme,
+          ),
+          const SizedBox(height: 12),
+          _CtaCard(
+            icon: Icons.event_outlined,
+            title: 'Events',
+            subtitle: 'RSVP and meet up at upcoming sessions.',
+            onTap: () => context.go('/events'),
+            scheme: scheme,
+          ),
+          const SizedBox(height: 24),
+          if (user == null)
+            OutlinedButton.icon(
+              onPressed: () => context.push('/login'),
+              icon: const Icon(Icons.login),
+              label: const Text('Sign in for your member profile'),
+            )
+          else
+            Text(
+              'Signed in as ${user.email ?? user.uid}',
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
+            ),
         ],
       ),
-      body: ListView.separated(
-        itemCount: 10,
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        separatorBuilder: (_, __) => const Divider(indent: 80, height: 1),
-        itemBuilder: (context, index) {
-          return ListTile(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChatRoomScreen(
-                    roomId: 'room_$index',
-                    roomName: index == 0 ? 'Mojo Moms Group' : 'Mom Friend ${index + 1}',
-                  ),
+    );
+  }
+}
+
+class _CtaCard extends StatelessWidget {
+  const _CtaCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    required this.scheme,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Icon(icon, color: scheme.primary, size: 32),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 4),
+                    Text(subtitle, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
+                  ],
                 ),
-              );
-            },
-            leading: Stack(
-              children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=$index'),
-                ),
-                if (index % 3 == 0)
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      width: 14,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        color: Colors.green,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            title: Text(
-              index == 0 ? 'Mojo Moms Group' : 'Mom Friend ${index + 1}',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Text(
-              index == 0 ? 'Sarah: See you all tomorrow at the park!' : 'Hey! Are you coming to the event?',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: index == 0 ? MojoColors.textPrimary : MojoColors.textSecondary),
-            ),
-            trailing: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                const Text('12:45 PM', style: TextStyle(fontSize: 11, color: MojoColors.textSecondary)),
-                const SizedBox(height: 4),
-                if (index < 2)
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(color: MojoColors.primaryOrange, shape: BoxShape.circle),
-                    child: const Text('2', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                  ),
-              ],
-            ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        backgroundColor: MojoColors.primaryOrange,
-        child: const Icon(Icons.message, color: Colors.white),
+              ),
+              Icon(Icons.chevron_right, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
       ),
     );
   }

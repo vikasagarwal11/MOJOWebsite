@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/providers/core_providers.dart';
@@ -15,7 +16,7 @@ class EventsScreen extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Mojo Events', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -23,8 +24,11 @@ class EventsScreen extends ConsumerWidget {
             indicatorColor: scheme.primary,
             labelColor: scheme.primary,
             unselectedLabelColor: MojoColors.textSecondary,
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             tabs: const [
               Tab(text: 'Upcoming'),
+              Tab(text: 'Past'),
               Tab(text: 'My RSVPs'),
             ],
           ),
@@ -32,7 +36,8 @@ class EventsScreen extends ConsumerWidget {
         body: TabBarView(
           children: [
             const _UpcomingTab(),
-            _RsvpPlaceholder(scheme: scheme),
+            const _PastTab(),
+            _RsvpTab(scheme: scheme),
           ],
         ),
         floatingActionButton: FloatingActionButton.extended(
@@ -68,7 +73,7 @@ class _UpcomingTab extends ConsumerWidget {
           padding: const EdgeInsets.all(16),
           itemCount: events.length,
           separatorBuilder: (_, __) => const SizedBox(height: 16),
-          itemBuilder: (context, index) => _EventCard(event: events[index]),
+          itemBuilder: (context, index) => _EventCard(event: events[index], isPast: false),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -77,18 +82,74 @@ class _UpcomingTab extends ConsumerWidget {
   }
 }
 
-class _RsvpPlaceholder extends StatelessWidget {
-  const _RsvpPlaceholder({required this.scheme});
+class _PastTab extends ConsumerWidget {
+  const _PastTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(pastEventsProvider);
+    final scheme = Theme.of(context).colorScheme;
+
+    return async.when(
+      data: (List<MojoEvent> events) {
+        if (events.isEmpty) {
+          return Center(
+            child: Text(
+              'No past events to show.',
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: events.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 16),
+          itemBuilder: (context, index) => _EventCard(event: events[index], isPast: true),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Could not load past events: $e')),
+    );
+  }
+}
+
+class _RsvpTab extends ConsumerWidget {
+  const _RsvpTab({required this.scheme});
 
   final ColorScheme scheme;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authStateProvider).valueOrNull;
+    if (user == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.event_available, size: 56, color: scheme.primary.withValues(alpha: 0.5)),
+              const SizedBox(height: 16),
+              Text(
+                'Sign in to see events you RSVP’d to.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 16),
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: () => context.push('/login'),
+                child: const Text('Sign in'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
-          'RSVP history will appear here once linked to event subcollections.',
+          'RSVP list from Firestore (events/{id}/rsvps) will be wired in a follow-up.',
           textAlign: TextAlign.center,
           style: TextStyle(color: scheme.onSurfaceVariant),
         ),
@@ -98,9 +159,10 @@ class _RsvpPlaceholder extends StatelessWidget {
 }
 
 class _EventCard extends StatelessWidget {
-  const _EventCard({required this.event});
+  const _EventCard({required this.event, this.isPast = false});
 
   final MojoEvent event;
+  final bool isPast;
 
   @override
   Widget build(BuildContext context) {
@@ -148,6 +210,16 @@ class _EventCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (isPast)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Chip(
+                      label: const Text('Past'),
+                      visualDensity: VisualDensity.compact,
+                      backgroundColor: scheme.surfaceContainerHighest,
+                      labelStyle: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                    ),
+                  ),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -219,7 +291,7 @@ class _EventCard extends StatelessWidget {
                     ],
                   ),
                 ],
-                if (event.visibility != null) ...[
+                if (!isPast && event.visibility != null) ...[
                   const SizedBox(height: 12),
                   Align(
                     alignment: Alignment.centerLeft,

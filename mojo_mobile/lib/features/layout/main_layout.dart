@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+
+import '../../core/providers/core_providers.dart';
 
 class MainLayout extends StatelessWidget {
   final Widget child;
@@ -69,9 +72,9 @@ class MainLayout extends StatelessWidget {
               label: 'Events',
             ),
             NavigationDestination(
-              icon: const Icon(Icons.chat_bubble_outline),
-              selectedIcon: Icon(Icons.chat_bubble, color: scheme.primary),
-              label: 'Chat',
+              icon: const Icon(Icons.groups_2_outlined),
+              selectedIcon: Icon(Icons.groups_2, color: scheme.primary),
+              label: 'Community',
             ),
             NavigationDestination(
               icon: const Icon(Icons.photo_library_outlined),
@@ -91,13 +94,15 @@ class MainLayout extends StatelessWidget {
   }
 }
 
-class MojoDrawer extends StatelessWidget {
+class MojoDrawer extends ConsumerWidget {
   const MojoDrawer({super.key, required this.scheme});
 
   final ColorScheme scheme;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authStateProvider).valueOrNull;
+
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
@@ -110,16 +115,42 @@ class MojoDrawer extends StatelessWidget {
                 end: Alignment.bottomRight,
               ),
             ),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                CircleAvatar(radius: 30, backgroundColor: Colors.white, child: Icon(Icons.person, size: 40)),
-                SizedBox(height: 10),
-                Text('Mojo Member', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                const CircleAvatar(radius: 30, backgroundColor: Colors.white, child: Icon(Icons.person, size: 40)),
+                const SizedBox(height: 10),
+                Text(
+                  user?.email ?? 'Guest',
+                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (user != null)
+                  const Text('Signed in', style: TextStyle(color: Colors.white70, fontSize: 12)),
               ],
             ),
           ),
+          if (user == null)
+            ListTile(
+              leading: Icon(Icons.login, color: scheme.primary),
+              title: const Text('Sign in'),
+              onTap: () {
+                Navigator.pop(context);
+                context.push('/login');
+              },
+            )
+          else
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text('Sign out', style: TextStyle(color: Colors.red)),
+              onTap: () async {
+                Navigator.pop(context);
+                await ref.read(authServiceProvider).signOut();
+              },
+            ),
+          const Divider(),
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('About Us'),
@@ -149,12 +180,6 @@ class MojoDrawer extends StatelessWidget {
           ListTile(
             leading: const Icon(FontAwesomeIcons.facebook),
             title: const Text('Follow on Facebook'),
-            onTap: () {},
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text('Logout', style: TextStyle(color: Colors.red)),
             onTap: () {},
           ),
         ],

@@ -42,6 +42,18 @@ class EventsRepository {
     );
   }
 
+  /// Past events (same pattern as web [useEvents] `buildPastQueries`): all events before a small skew cutoff.
+  Stream<List<MojoEvent>> watchPast({Duration skew = const Duration(minutes: 2)}) {
+    final pastCutoff = Timestamp.fromDate(DateTime.now().subtract(skew));
+    return _db
+        .collection('events')
+        .where('startAt', isLessThan: pastCutoff)
+        .orderBy('startAt', descending: true)
+        .limit(100)
+        .snapshots()
+        .map((snap) => snap.docs.map(MojoEvent.fromDoc).toList());
+  }
+
   List<MojoEvent> _mergeAndSort(List<QuerySnapshot<Map<String, dynamic>>> snaps) {
     final map = <String, MojoEvent>{};
     for (final snap in snaps) {
