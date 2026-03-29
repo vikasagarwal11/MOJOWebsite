@@ -580,271 +580,244 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
     </div>
     */}
     
-    {/* NEW: Event Filtering Section */}
-    <div className="p-4 bg-gradient-to-r from-[#F25129]/5 to-[#FFC107]/5 rounded-lg border border-[#F25129]/20">
-             <div className="flex items-center justify-between mb-3">
-         <h3 className="text-lg font-semibold text-[#F25129]">Event Filtering</h3>
-         <div className="flex items-center gap-3">
-           {/* NEW: Sorting Options */}
-           <div className="flex items-center gap-2">
-             <span className="text-xs text-[#F25129] font-medium">Sort by:</span>
-             <select
-               value={sortBy}
-               onChange={(e) => {
-                 const newSortBy = e.target.value as 'date' | 'title' | 'location' | 'rsvp-count';
-                 setSortBy(newSortBy);
-                 // Reset sort direction to asc when changing sort field (except rsvp-count which is always desc)
-                 if (newSortBy !== 'rsvp-count') {
-                   setSortDirection('asc');
-                 }
-               }}
-               className="px-2 py-1 text-xs border border-[#F25129]/20 rounded focus:ring-1 focus:ring-[#F25129]"
-             >
-               <option value="date">📅 Date</option>
-               <option value="title">📝 Title</option>
-               <option value="location">📍 Location</option>
-               <option value="rsvp-count">👥 RSVP Count</option>
-             </select>
-             {/* Sort Direction - Only show for date, title, and location */}
-             {(sortBy === 'date' || sortBy === 'title' || sortBy === 'location') && (
-               <select
-                 value={sortDirection}
-                 onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
-                 className="px-2 py-1 text-xs border border-[#F25129]/20 rounded focus:ring-1 focus:ring-[#F25129]"
-                 title={`Sort ${sortBy} in ${sortDirection === 'asc' ? 'ascending' : 'descending'} order`}
-               >
-                 <option value="asc">↑ Ascending</option>
-                 <option value="desc">↓ Descending</option>
-               </select>
-             )}
-           </div>
-           <span className="text-sm text-[#F25129]">
-             {filteredEvents.length} of {allEvents.length} events
-           </span>
-         </div>
-       </div>
-      
-      {/* NEW: Quick Date Range Filter Pills */}
-      <div className="flex gap-2 mb-3 flex-wrap">
-        {[
-          { value: 'all', label: 'All Events', icon: '📅' },
-          { value: 'upcoming', label: 'Upcoming', icon: '⏰' },
-          { value: 'this-week', label: 'This Week', icon: '📆' },
-          { value: 'past', label: 'Past', icon: '📚' }
-        ].map(filter => (
-          <button
-            key={filter.value}
-            onClick={() => setDateFilter(filter.value as 'all' | 'upcoming' | 'this-week' | 'past')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-              dateFilter === filter.value
-                ? 'bg-[#F25129]/10 border-[#F25129]/30 text-[#F25129] ring-2 ring-[#F25129]/20'
-                : 'bg-white border-[#F25129]/20 text-[#F25129] hover:bg-[#F25129]/5'
-            }`}
-            title={`Filter by ${filter.label}`}
-          >
-            {filter.icon} {filter.label}
-          </button>
-        ))}
+        {/* NEW: Event Filtering Section */}
+    <div className="rounded-xl border border-[#F25129]/20 bg-white p-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Event Filtering</h3>
+          <p className="text-xs text-gray-500">Filter events, attendance activity, and RSVP signal quickly.</p>
+        </div>
+        <span className="rounded-md bg-[#F25129]/10 px-2.5 py-1 text-xs font-semibold text-[#C74221]">
+          {filteredEvents.length} of {allEvents.length} events
+        </span>
       </div>
-      
-             {/* NEW: RSVP Activity Filter Pills */}
-       <div className="flex gap-2 mb-3 flex-wrap">
-         {[
-           { value: 'all', label: 'All Activity', icon: '📊', count: Object.values(rsvpsByEvent).reduce((sum, rsvps) => sum + rsvps.length, 0) },
-           { value: 'has-rsvps', label: 'Has RSVPs', icon: '✅', count: allEvents.filter(e => rsvpsByEvent[e.id]?.length > 0).length },
-           { value: 'no-rsvps', label: 'No RSVPs', icon: '📭', count: allEvents.filter(e => !rsvpsByEvent[e.id]?.length).length },
-           { value: 'high-activity', label: 'High Activity', icon: '🔥', count: allEvents.filter(e => (rsvpsByEvent[e.id]?.length || 0) >= 5).length }
-         ].map(filter => (
-           <button
-             key={filter.value}
-             onClick={() => setActivityFilter(filter.value as 'all' | 'has-rsvps' | 'no-rsvps' | 'high-activity')}
-             className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-               activityFilter === filter.value
-                 ? 'bg-blue-100 border-[#FFC107]/30 text-[#FFC107] ring-2 ring-[#FFC107]/20'
-                 : 'bg-white border-[#FFC107]/20 text-[#FFC107] hover:bg-[#FFC107]/10'
-             }`}
-             title={`${filter.label}: ${filter.count} events`}
-           >
-             {filter.icon} {filter.label} ({filter.count})
-           </button>
-         ))}
-       </div>
-       
-               {/* NEW: Advanced Search Toggle - Converted to Icon */}
-        <div className="flex items-center justify-between mb-3">
+
+      <div className="mb-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Sort</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-[#F25129]">Sort by:</span>
+          <select
+            value={sortBy}
+            onChange={(e) => {
+              const newSortBy = e.target.value as 'date' | 'title' | 'location' | 'rsvp-count';
+              setSortBy(newSortBy);
+              if (newSortBy !== 'rsvp-count') {
+                setSortDirection('asc');
+              }
+            }}
+            className="rounded-lg border border-[#F25129]/20 px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-[#F25129]"
+          >
+            <option value="date">Date</option>
+            <option value="title">Title</option>
+            <option value="location">Location</option>
+            <option value="rsvp-count">RSVP Count</option>
+          </select>
+          {(sortBy === 'date' || sortBy === 'title' || sortBy === 'location') && (
+            <select
+              value={sortDirection}
+              onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
+              className="rounded-lg border border-[#F25129]/20 px-3 py-2 text-xs font-medium focus:ring-1 focus:ring-[#F25129]"
+              title={`Sort ${sortBy} in ${sortDirection === 'asc' ? 'ascending' : 'descending'} order`}
+            >
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select>
+          )}
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Date Window</div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { value: 'all', label: 'All Events' },
+            { value: 'upcoming', label: 'Upcoming' },
+            { value: 'this-week', label: 'This Week' },
+            { value: 'past', label: 'Past' }
+          ].map(filter => (
+            <button
+              key={filter.value}
+              onClick={() => setDateFilter(filter.value as 'all' | 'upcoming' | 'this-week' | 'past')}
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-all ${
+                dateFilter === filter.value
+                  ? 'border-[#F25129]/35 bg-[#F25129]/10 text-[#F25129] ring-2 ring-[#F25129]/20'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-[#FFF4EF]'
+              }`}
+              title={`Filter by ${filter.label}`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">RSVP Activity</div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { value: 'all', label: 'All Activity', count: Object.values(rsvpsByEvent).reduce((sum, rsvps) => sum + rsvps.length, 0) },
+            { value: 'has-rsvps', label: 'Has RSVPs', count: allEvents.filter(e => rsvpsByEvent[e.id]?.length > 0).length },
+            { value: 'no-rsvps', label: 'No RSVPs', count: allEvents.filter(e => !rsvpsByEvent[e.id]?.length).length },
+            { value: 'high-activity', label: 'High Activity', count: allEvents.filter(e => (rsvpsByEvent[e.id]?.length || 0) >= 5).length }
+          ].map(filter => (
+            <button
+              key={filter.value}
+              onClick={() => setActivityFilter(filter.value as 'all' | 'has-rsvps' | 'no-rsvps' | 'high-activity')}
+              className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-all ${
+                activityFilter === filter.value
+                  ? 'border-[#FFC107]/30 bg-[#FFF8DE] text-[#A87000] ring-2 ring-[#FFC107]/20'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-[#FFFDF1]'
+              }`}
+              title={`${filter.label}: ${filter.count} events`}
+            >
+              {filter.label} ({filter.count})
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <div className="flex items-center justify-between">
           <button
             onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-            className={`p-2 rounded-full transition-all ${
-              showAdvancedSearch 
-                ? 'bg-[#F25129]/10 text-[#F25129] ring-2 ring-[#F25129]/30' 
-                : 'bg-white text-[#F25129] hover:bg-[#F25129]/5 hover:scale-105'
+            className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition-all ${
+              showAdvancedSearch
+                ? 'border-[#F25129]/35 bg-[#F25129]/10 text-[#F25129] ring-2 ring-[#F25129]/20'
+                : 'border-gray-200 bg-white text-[#F25129] hover:bg-[#FFF5F0]'
             }`}
             title={showAdvancedSearch ? 'Hide Advanced Search' : 'Show Advanced Search'}
             aria-label={showAdvancedSearch ? 'Hide Advanced Search' : 'Show Advanced Search'}
           >
-            {showAdvancedSearch ? '🔽' : '⚙️'}
+            Filters
           </button>
-          <span className="text-xs text-[#F25129]">
-            {showAdvancedSearch ? (
-              <span className="flex items-center gap-1">
-                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                Advanced filters active
-              </span>
-            ) : (
-              'Click ⚙️ to expand'
-            )}
+          <span className="text-xs text-[#C74221]">
+            {showAdvancedSearch ? 'Advanced filters active' : 'Click Advanced to expand'}
           </span>
         </div>
-       
-       {/* NEW: Advanced Search Panel */}
-       {showAdvancedSearch && (
-         <div className="p-4 bg-white border border-[#F25129]/20 rounded-lg mb-3">
-           <div className="grid md:grid-cols-2 gap-4">
-             {/* Location Filter */}
-             <div>
-               <label className="block text-sm font-medium text-gray-700 mb-2">
-                 📍 Location Filter
-               </label>
-               <input
-                 type="text"
-                 placeholder="Filter by location..."
-                 value={locationFilter}
-                 onChange={(e) => setLocationFilter(e.target.value)}
-                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
-               />
-             </div>
-             
-             {/* Creator Filter */}
-             <div>
-               <label className="block text-sm font-medium text-gray-700 mb-2">
-                 👤 Creator Filter
-               </label>
-               <input
-                 type="text"
-                 placeholder="Filter by creator..."
-                 value={creatorFilter}
-                 onChange={(e) => setCreatorFilter(e.target.value)}
-                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
-               />
-             </div>
-             
-             {/* Date Range Filter */}
-             <div>
-               <label className="block text-sm font-medium text-gray-700 mb-2">
-                 📅 Date Range Filter
-               </label>
-               <div className="flex items-center gap-2 mb-2">
-                 <input
-                   type="checkbox"
-                   checked={dateRangeFilter.enabled}
-                   onChange={(e) => setDateRangeFilter(prev => ({ ...prev, enabled: e.target.checked }))}
-                   className="rounded border-gray-300 text-[#F25129] focus:ring-[#F25129]"
-                 />
-                 <span className="text-sm text-gray-600">Enable date range</span>
-               </div>
-               {dateRangeFilter.enabled && (
-                 <div className="grid grid-cols-2 gap-2">
-                   <input
-                     type="date"
-                     value={dateRangeFilter.startDate}
-                     onChange={(e) => setDateRangeFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
-                   />
-                   <input
-                     type="date"
-                     value={dateRangeFilter.endDate}
-                     onChange={(e) => setDateRangeFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
-                   />
-                 </div>
-               )}
-             </div>
-             
-             {/* Max Attendees Filter */}
-             <div>
-               <label className="block text-sm font-medium text-gray-700 mb-2">
-                 👥 Max Attendees Filter
-               </label>
-               <div className="flex items-center gap-2 mb-2">
-                 <input
-                   type="checkbox"
-                   checked={maxAttendeesFilter.enabled}
-                   onChange={(e) => setMaxAttendeesFilter(prev => ({ ...prev, enabled: e.target.checked }))}
-                   className="rounded border-gray-300 text-[#F25129] focus:ring-[#F25129]"
-                 />
-                 <span className="text-sm text-gray-600">Enable attendee range</span>
-               </div>
-               {maxAttendeesFilter.enabled && (
-                 <div className="grid grid-cols-2 gap-2">
-                   <input
-                     type="number"
-                     placeholder="Min"
-                     value={maxAttendeesFilter.min}
-                     onChange={(e) => setMaxAttendeesFilter(prev => ({ ...prev, min: e.target.value }))}
-                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
-                   />
-                   <input
-                     type="number"
-                     placeholder="Max"
-                     value={maxAttendeesFilter.max}
-                     onChange={(e) => setMaxAttendeesFilter(prev => ({ ...prev, max: e.target.value }))}
-                     className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent text-sm"
-                   />
-                 </div>
-               )}
-             </div>
-           </div>
-           
-           {/* NEW: Active Advanced Filters Summary */}
-           {(locationFilter || creatorFilter || dateRangeFilter.enabled || maxAttendeesFilter.enabled) && (
-             <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-               <div className="flex items-center gap-2 mb-2">
-                 <span className="text-sm font-medium text-green-700">🎯 Active Advanced Filters:</span>
-               </div>
-               <div className="flex flex-wrap gap-2 text-xs">
-                 {locationFilter && (
-                   <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full">
-                     📍 Location: {locationFilter}
-                   </span>
-                 )}
-                 {creatorFilter && (
-                   <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full">
-                     👤 Creator: {creatorFilter}
-                   </span>
-                 )}
-                 {dateRangeFilter.enabled && (
-                   <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full">
-                     📅 Date Range: {dateRangeFilter.startDate} to {dateRangeFilter.endDate}
-                   </span>
-                 )}
-                 {maxAttendeesFilter.enabled && (
-                   <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full">
-                     👥 Attendees: {maxAttendeesFilter.min || '0'} - {maxAttendeesFilter.max || '∞'}
-                   </span>
-                 )}
-               </div>
-             </div>
-           )}
-         </div>
-       )}
-       
-       <div className="flex gap-3 items-center">
-        <input
-          type="text"
-          placeholder="Search events by title, description, or location..."
-          value={eventFilter}
-          onChange={(e) => setEventFilter(e.target.value)}
-          className="flex-1 px-4 py-2 border border-[#F25129]/30 rounded-lg focus:ring-2 focus:ring-[#F25129] focus:border-transparent"
-        />
-        <button
-          onClick={() => setEventFilter('')}
-          className="px-4 py-2 bg-[#F25129] text-white rounded-lg hover:bg-[#E0451F] transition-colors"
-        >
-          Clear Filter
-        </button>
+      </div>
+
+      {showAdvancedSearch && (
+        <div className="mb-3 rounded-lg border border-gray-200 p-3">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700">Location Filter</label>
+              <input
+                type="text"
+                placeholder="Filter by location..."
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[#F25129]"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700">Creator Filter</label>
+              <input
+                type="text"
+                placeholder="Filter by creator..."
+                value={creatorFilter}
+                onChange={(e) => setCreatorFilter(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[#F25129]"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700">Date Range Filter</label>
+              <div className="mb-2 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={dateRangeFilter.enabled}
+                  onChange={(e) => setDateRangeFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                  className="rounded border-gray-300 text-[#F25129] focus:ring-[#F25129]"
+                />
+                <span className="text-sm text-gray-600">Enable date range</span>
+              </div>
+              {dateRangeFilter.enabled && (
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="date"
+                    value={dateRangeFilter.startDate}
+                    onChange={(e) => setDateRangeFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[#F25129]"
+                  />
+                  <input
+                    type="date"
+                    value={dateRangeFilter.endDate}
+                    onChange={(e) => setDateRangeFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[#F25129]"
+                  />
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700">Max Attendees Filter</label>
+              <div className="mb-2 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={maxAttendeesFilter.enabled}
+                  onChange={(e) => setMaxAttendeesFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                  className="rounded border-gray-300 text-[#F25129] focus:ring-[#F25129]"
+                />
+                <span className="text-sm text-gray-600">Enable attendee range</span>
+              </div>
+              {maxAttendeesFilter.enabled && (
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    placeholder="Min"
+                    value={maxAttendeesFilter.min}
+                    onChange={(e) => setMaxAttendeesFilter(prev => ({ ...prev, min: e.target.value }))}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[#F25129]"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Max"
+                    value={maxAttendeesFilter.max}
+                    onChange={(e) => setMaxAttendeesFilter(prev => ({ ...prev, max: e.target.value }))}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-[#F25129]"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {(locationFilter || creatorFilter || dateRangeFilter.enabled || maxAttendeesFilter.enabled) && (
+            <div className="mt-3 rounded-lg border border-green-200 bg-green-50 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-sm font-medium text-green-700">Active Advanced Filters</span>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {locationFilter && <span className="rounded-full bg-green-100 px-2 py-1 text-green-800">Location: {locationFilter}</span>}
+                {creatorFilter && <span className="rounded-full bg-green-100 px-2 py-1 text-green-800">Creator: {creatorFilter}</span>}
+                {dateRangeFilter.enabled && (
+                  <span className="rounded-full bg-green-100 px-2 py-1 text-green-800">Date: {dateRangeFilter.startDate} to {dateRangeFilter.endDate}</span>
+                )}
+                {maxAttendeesFilter.enabled && (
+                  <span className="rounded-full bg-green-100 px-2 py-1 text-green-800">Attendees: {maxAttendeesFilter.min || '0'} - {maxAttendeesFilter.max || 'No max'}</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-2">
+        <div className="flex items-center gap-3">
+          <input
+            type="text"
+            placeholder="Search events by title, description, or location..."
+            value={eventFilter}
+            onChange={(e) => setEventFilter(e.target.value)}
+            className="flex-1 rounded-xl border border-[#F25129]/30 bg-white px-4 py-2.5 text-sm shadow-sm focus:border-transparent focus:ring-2 focus:ring-[#F25129]"
+          />
+          <button
+            onClick={() => setEventFilter('')}
+            className="rounded-xl bg-[#F25129] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#E0451F]"
+          >
+            Clear Filter
+          </button>
+        </div>
       </div>
     </div>
-    
+
     {/* Events with RSVP Management */}
     {loadingAdminEvents ? (
       <div className="text-center py-8 bg-gray-50 rounded-lg">
@@ -863,15 +836,16 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
       </div>
     ) : (
       <div className="space-y-6">
-        <h3 className="text-lg font-semibold text-gray-800">Event RSVP Details</h3>
-        {filteredEvents.map((event, index) => (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3">
+          <h3 className="text-lg font-semibold text-gray-900">Event RSVP Details</h3>
+          <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
+            {filteredEvents.length} event{filteredEvents.length === 1 ? '' : 's'}
+          </span>
+        </div>
+        {filteredEvents.map((event) => (
           <div 
             key={event.id} 
-            className={`space-y-4 p-4 rounded-lg ${
-              index % 2 === 0 
-                ? 'bg-[#FFC107]/10/50 border-l-4 border-[#FFC107]/20' 
-                : 'bg-pink-50/50 border-l-4 border-pink-200'
-            }`}
+            className="space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
           >
             {/* EventCard for consistent display - WITH top action icons in RSVP tab */}
                                                    <EventCardNew
@@ -882,12 +856,10 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
 
             {/* RSVP Management Section */}
             <div className="border-t border-gray-200 pt-4">
-              <div className="flex items-center justify-between mb-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-semibold text-gray-700">
-                    📋 RSVP Management
-                  </h4>
-                  <span className="text-xs text-gray-500 font-normal">
+                  <h4 className="text-sm font-semibold text-gray-700">RSVP Management</h4>
+                  <span className="rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
                     ({rsvpsByEvent[event.id]?.length || 0} total responses)
                   </span>
                 </div>
@@ -896,28 +868,28 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                    <button
                     onClick={() => exportRsvps(event)}
                     disabled={exportingRsvps === event.id}
-                    className={`p-2 rounded-full transition-colors ${
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
                       exportingRsvps === event.id
                         ? 'bg-gray-400 cursor-not-allowed'
-                        : 'bg-green-600 hover:bg-green-700 hover:scale-105'
+                        : 'bg-green-600 hover:bg-green-700'
                     } text-white`}
                     title={exportingRsvps === event.id ? 'Exporting...' : 'Export RSVPs CSV'}
                     aria-label={`Export RSVPs for ${event.title}`}
                   >
                     {exportingRsvps === event.id ? (
-                      <span className="text-sm">⏳</span>
+                      <span className="text-sm">...</span>
                     ) : (
-                      <span className="text-sm">📊</span>
+                      <span className="text-sm">CSV</span>
                     )}
                   </button>
               </div>
               
                              {/* ATTENDANCE MANAGEMENT - COMPACT & PROFESSIONAL */}
-               <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-[#FFC107]/20">
+               <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
                  <div className="flex items-center justify-between">
                    <div className="flex items-center gap-3">
-                     <span className="text-sm text-[#FFC107]">
-                       Update attendance (<strong className="text-[#FFC107] font-bold text-base">{Math.max(0, event.attendingCount || 0)} checked in</strong>)
+                     <span className="text-sm text-gray-700">
+                       Update attendance (<strong className="font-bold text-gray-900">{Math.max(0, event.attendingCount || 0)} checked in</strong>)
                      </span>
                    </div>
                    <div className="flex gap-2">
@@ -954,11 +926,11 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
 
               {/* WAITLIST COUNT MANAGEMENT */}
               {event.waitlistEnabled && (
-                <div className="mb-4 p-3 bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg border border-yellow-200">
+                <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-yellow-700">
-                        Update waitlist (<strong className="text-yellow-800 font-bold text-base">{Math.max(0, event.waitlistCount || 0)} waiting</strong>)
+                      <span className="text-sm text-gray-700">
+                        Update waitlist (<strong className="font-bold text-gray-900">{Math.max(0, event.waitlistCount || 0)} waiting</strong>)
                       </span>
                     </div>
                     <div className="flex gap-2">
@@ -995,10 +967,10 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
               )}
 
               {/* Read-Only Status Toggle */}
-              <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+              <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-blue-900">
+                    <span className="text-sm font-medium text-gray-800">
                       📖 Read-Only Status: <strong className={event.isReadOnly ? 'text-blue-700' : 'text-gray-600'}>
                         {event.isReadOnly ? 'Read-Only Mode' : 'Interactive Mode'}
                       </strong>
@@ -1039,44 +1011,53 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                     const primaryUserCount = Object.keys(organizeAttendeesByUser(attendees)).length;
                     
                     return (
-                      <div className="mb-4 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg">
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-sm font-medium text-gray-700">📊 Comprehensive RSVP Summary</span>
+                      <div className="mb-4 rounded-xl border border-gray-200 bg-gradient-to-r from-gray-50 to-white p-4">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                          <span className="text-sm font-semibold text-gray-800">Comprehensive RSVP Summary</span>
                           {/* Audit Trail toggle will be implemented in future version */}
                         </div>
                         
-                        {/* Primary Summary */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                            <span>Going: <strong>{billingSummary.going}</strong></span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="w-3 h-3 bg-red-500 rounded-full"></span>
-                            <span>Not Going: <strong>{billingSummary.notGoing}</strong></span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="w-3 h-3 bg-[#FFC107]/100 rounded-full"></span>
-                            <span>Total: <strong>{billingSummary.total}</strong></span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="w-3 h-3 bg-purple-500 rounded-full"></span>
-                            <span>Users: <strong>{primaryUserCount}</strong></span>
-                          </div>
-                        </div>
-
-                        {/* Billing Summary */}
-                        <div className="mt-3 pt-3 border-t border-gray-200">
-                          <div className="text-xs text-gray-600 space-y-2">
-                            <div className="font-medium text-gray-700">💰 Billing Breakdown:</div>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                              <div>👥 Adults: <strong>{billingSummary.byAgeGroup.adults}</strong></div>
-                              <div>👶 0-2 years: <strong>{billingSummary.byAgeGroup.children0to2}</strong></div>
-                              <div>🧒 3-5 years: <strong>{billingSummary.byAgeGroup.children3to5}</strong></div>
-                              <div>👦 6-10 years: <strong>{billingSummary.byAgeGroup.children6to10}</strong></div>
-                              <div>👧 11+ Years (Teen): <strong>{billingSummary.byAgeGroup.children11plus}</strong></div>
-                              <div>🎫 Guests: <strong>{billingSummary.byType.guests}</strong></div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                            <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">
+                              RSVP Status Summary
                             </div>
+                            <table className="min-w-full text-xs">
+                              <tbody>
+                                <tr className="border-b border-gray-100">
+                                  <td className="px-3 py-2 text-gray-600">Going</td>
+                                  <td className="px-3 py-2 text-right font-semibold text-gray-900">{billingSummary.going}</td>
+                                </tr>
+                                <tr className="border-b border-gray-100">
+                                  <td className="px-3 py-2 text-gray-600">Not Going</td>
+                                  <td className="px-3 py-2 text-right font-semibold text-gray-900">{billingSummary.notGoing}</td>
+                                </tr>
+                                <tr className="border-b border-gray-100">
+                                  <td className="px-3 py-2 text-gray-600">Total</td>
+                                  <td className="px-3 py-2 text-right font-semibold text-gray-900">{billingSummary.total}</td>
+                                </tr>
+                                <tr>
+                                  <td className="px-3 py-2 text-gray-600">Users</td>
+                                  <td className="px-3 py-2 text-right font-semibold text-gray-900">{primaryUserCount}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                            <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700">
+                              Billing Breakdown
+                            </div>
+                            <table className="min-w-full text-xs">
+                              <tbody>
+                                <tr className="border-b border-gray-100"><td className="px-3 py-2 text-gray-600">Adults</td><td className="px-3 py-2 text-right font-semibold text-gray-900">{billingSummary.byAgeGroup.adults}</td></tr>
+                                <tr className="border-b border-gray-100"><td className="px-3 py-2 text-gray-600">0-2 years</td><td className="px-3 py-2 text-right font-semibold text-gray-900">{billingSummary.byAgeGroup.children0to2}</td></tr>
+                                <tr className="border-b border-gray-100"><td className="px-3 py-2 text-gray-600">3-5 years</td><td className="px-3 py-2 text-right font-semibold text-gray-900">{billingSummary.byAgeGroup.children3to5}</td></tr>
+                                <tr className="border-b border-gray-100"><td className="px-3 py-2 text-gray-600">6-10 years</td><td className="px-3 py-2 text-right font-semibold text-gray-900">{billingSummary.byAgeGroup.children6to10}</td></tr>
+                                <tr className="border-b border-gray-100"><td className="px-3 py-2 text-gray-600">11+ years</td><td className="px-3 py-2 text-right font-semibold text-gray-900">{billingSummary.byAgeGroup.children11plus}</td></tr>
+                                <tr><td className="px-3 py-2 text-gray-600">Guests</td><td className="px-3 py-2 text-right font-semibold text-gray-900">{billingSummary.byType.guests}</td></tr>
+                              </tbody>
+                            </table>
                           </div>
                         </div>
                       </div>
@@ -1084,20 +1065,21 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                   })()}
                   
 
-                  {/* Two-Level Expandable RSVP List */}
+                  
+                  {/* Primary Users & Attendees Table */}
                   {(() => {
                     const attendees = rsvpsByEvent[event.id];
                     const currentFilter = getEventRsvpFilter(event.id);
-                    
+
                     return (
-                      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mt-4">
-                        <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium text-gray-700">👥 Primary Users & Their Attendees</span>
+                      <div className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                        <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-sm font-semibold text-gray-800">Primary Users & Their Attendees</span>
                             <select
                               value={currentFilter}
                               onChange={(e) => updateEventRsvpFilter(event.id, e.target.value as 'all' | 'going' | 'not-going' | 'waitlisted')}
-                              className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-xs"
+                              className="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:ring-2 focus:ring-[#F25129]"
                               aria-label={`Filter RSVPs for ${event.title}`}
                             >
                               <option value="all">All</option>
@@ -1106,27 +1088,21 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                               <option value="waitlisted">Waitlisted</option>
                             </select>
                           </div>
-                      
-                          {/* Quick Status Filter Pills */}
+
                           <div className="flex gap-2 flex-wrap">
-                            {(() => {
-                              // Helper to get status - check both 'status' and 'rsvpStatus' fields
-                              const getStatus = (r: any): string => r.status || r.rsvpStatus || 'unknown';
-                              
-                              return [
-                                { value: 'all', label: 'All', count: attendees.length, color: 'bg-gray-100 text-gray-700' },
-                                { value: 'going', label: 'Going', count: attendees.filter(r => getStatus(r) === 'going').length, color: 'bg-green-100 text-green-700' },
-                                { value: 'not-going', label: 'Not Going', count: attendees.filter(r => getStatus(r) === 'not-going').length, color: 'bg-red-100 text-red-700' },
-                                { value: 'waitlisted', label: 'Waitlisted', count: attendees.filter(r => getStatus(r) === 'waitlisted').length, color: 'bg-purple-100 text-purple-700' }
-                              ];
-                            })().map(filter => (
+                            {[ 
+                              { value: 'all', label: 'All', count: attendees.length, color: 'bg-gray-100 text-gray-700' },
+                              { value: 'going', label: 'Going', count: attendees.filter(r => (r.status || r.rsvpStatus) === 'going').length, color: 'bg-green-100 text-green-700' },
+                              { value: 'not-going', label: 'Not Going', count: attendees.filter(r => (r.status || r.rsvpStatus) === 'not-going').length, color: 'bg-red-100 text-red-700' },
+                              { value: 'waitlisted', label: 'Waitlisted', count: attendees.filter(r => (r.status || r.rsvpStatus) === 'waitlisted').length, color: 'bg-purple-100 text-purple-700' }
+                            ].map(filter => (
                               <button
                                 key={filter.value}
                                 onClick={() => updateEventRsvpFilter(event.id, filter.value as 'all' | 'going' | 'not-going' | 'waitlisted')}
-                                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 shadow-sm hover:shadow-md ${
+                                className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all duration-200 ${
                                   currentFilter === filter.value
-                                    ? filter.color + ' ring-2 ring-offset-2 ring-gray-400 scale-105'
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:scale-105'
+                                    ? filter.color + ' ring-2 ring-gray-400 ring-offset-2'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                                 }`}
                                 title={`${filter.label}: ${filter.count} responses`}
                               >
@@ -1135,226 +1111,127 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                             ))}
                           </div>
                         </div>
-                        
-                        {/* Clean List Format - Similar to RSVPModalNew */}
-                        <div className="max-h-80 overflow-y-auto">
+
+                        <div className="max-h-[460px] overflow-auto">
+                          <table className="min-w-full text-xs">
+                            <thead className="sticky top-0 z-10 bg-gray-100">
+                              <tr className="border-b border-gray-200 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+                                <th className="px-3 py-2">Name</th>
+                                <th className="px-3 py-2">Type</th>
+                                <th className="px-3 py-2">Contact</th>
+                                <th className="px-3 py-2">Payment</th>
+                                <th className="px-3 py-2">RSVP / Updated</th>
+                                <th className="px-3 py-2">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
                               {rsvpsByEvent[event.id]
                                 .filter(r => {
-                                  const currentFilter = getEventRsvpFilter(event.id);
-                                  if (currentFilter === 'all') return true;
-                                  // Check both 'status' and 'rsvpStatus' fields for compatibility
+                                  const selected = getEventRsvpFilter(event.id);
+                                  if (selected === 'all') return true;
                                   const rsvpStatus = r.status || r.rsvpStatus;
-                                  return rsvpStatus === currentFilter;
+                                  return rsvpStatus === selected;
                                 })
-                                .map(rsvp => (
-                                  <div key={rsvp.id} className="px-4 py-3.5 border-b border-gray-200 hover:bg-gray-50 transition-all duration-200 hover:shadow-sm hover:border-l-4 hover:border-l-[#FFC107] cursor-pointer">
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-2">
-                                <span className="font-medium text-sm text-gray-900">
-                                  {rsvp.attendeeType === 'primary' ? '👤 ' : '  '}
-                                  {rsvp.name || rsvp.attendeeName || userNames[rsvp.userId] || 'Loading...'}
-                                </span>
-                                                                          {rsvp.attendeeType === 'primary' ? (
-                                            <span className="text-xs text-[#FFC107] font-medium">
-                                              (Primary User)
-                                            </span>
-                                          ) : (
-                                            <>
-                                              <span className="text-xs text-gray-500">
-                                                ({rsvp.attendeeType === 'family_member' ? '👨‍👩‍👧‍👦 Family' : '🎫 Guest'})
-                                              </span>
-                                              {/* Only show child icon and age for actual kids */}
-                                              {rsvp.ageGroup && ['0-2', '3-5', '6-10', '11+'].includes(rsvp.ageGroup) && (
-                                                <span className="text-xs text-gray-500">
-                                                  👶 {rsvp.ageGroup === '11+' ? '11+' : rsvp.ageGroup}
-                                                </span>
-                                              )}
-                                            </>
-                                          )}
-                                <button
-                                  onClick={() => toggleContactInfo(rsvp.userId)}
-                                  className="text-xs text-[#FFC107] hover:text-[#FFC107] flex items-center gap-1"
-                                  title={showContactInfo[rsvp.userId] ? 'Hide contact info' : 'Show contact info'}
-                                >
-                                  {showContactInfo[rsvp.userId] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                  {showContactInfo[rsvp.userId] ? 'Hide' : 'Show'} Contact
-                                </button>
-                                
-                                {/* Payment Status Badge - Enhanced Professional Styling */}
-                                {event.pricing && event.pricing.requiresPayment && (
-                                  <div className="flex items-center gap-2.5">
-                                    <span className={`px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm border tracking-tight ${
-                                      rsvp.paymentStatus === 'paid' 
-                                        ? 'bg-green-100 text-green-700 border-green-300' 
-                                        : 'bg-yellow-100 text-yellow-700 border-yellow-300'
-                                    }`}>
-                                      {rsvp.paymentStatus === 'paid' ? '✓ Payment Successful' : '⏳ Payment Pending'}
-                                    </span>
-                                    <button
-                                      onClick={async () => {
-                                        try {
-                                          const newStatus = rsvp.paymentStatus === 'paid' ? 'unpaid' : 'paid';
-                                          const adminUserId = auth.currentUser?.uid || 'unknown';
-                                          
-                                          // Use PaymentService to update with transaction logging
-                                          if (event.pricing) {
-                                            await PaymentService.adminUpdatePaymentStatus(
-                                              event.id,
-                                              rsvp.id,
-                                              newStatus,
-                                              adminUserId,
-                                              event.pricing
-                                            );
-                                          } else {
-                                            // Fallback for events without pricing
-                                            await updateDoc(doc(db, 'events', event.id, 'attendees', rsvp.id), {
-                                              paymentStatus: newStatus,
-                                              updatedAt: serverTimestamp()
-                                            });
-                                          }
-                                          
-                                          toast.success(
-                                            newStatus === 'paid' 
-                                              ? '✓ Marked as paid (transaction logged)' 
-                                              : '⏳ Marked as pending payment'
-                                          );
-                                        } catch (error) {
-                                          console.error('Error updating payment status:', error);
-                                          toast.error('Failed to update payment status');
-                                        }
-                                      }}
-                                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-[#FFC107] text-white hover:bg-[#FFA000] transition-all duration-200 shadow-sm hover:shadow-md border border-[#FFA000]"
-                                      title={rsvp.paymentStatus === 'paid' ? 'Mark as unpaid' : 'Mark as paid'}
-                                    >
-                                      {rsvp.paymentStatus === 'paid' ? '💳 Mark Unpaid' : '✓ Mark Paid'}
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                              
-                              {/* Show contact info when toggled */}
-                              {showContactInfo[rsvp.userId] && userDetails[rsvp.userId] && (
-                                <div className="mt-2 p-2 bg-[#FFC107]/10 rounded text-xs text-[#FFC107] space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">📧 Email:</span>
-                                    <span>{userDetails[rsvp.userId].email}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">📱 Phone:</span>
-                                    <span>{userDetails[rsvp.userId].phone}</span>
-                                  </div>
-                                </div>
-                              )}
-                              <div className="text-xs text-gray-500 mt-1 flex items-center gap-3">
-                                <span>
-                                  📅 RSVP:{' '}
-                                  {rsvp.createdAt
-                                    ? new Date(rsvp.createdAt.toDate ? rsvp.createdAt.toDate() : rsvp.createdAt).toLocaleDateString('en-US', {
-                                        month: 'short',
-                                        day: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      })
-                                    : 'Unknown'}
-                                </span>
-                                {rsvp.updatedAt && (
-                                  <span>
-                                    🔄 Updated:{' '}
-                                    {new Date(rsvp.updatedAt.toDate ? rsvp.updatedAt.toDate() : rsvp.updatedAt).toLocaleDateString('en-US', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })}
-                                  </span>
-                                )}
-                              </div>
-                              
-                              {/* RSVP HISTORY VIEW - Easy to develop, low risk */}
-                              {rsvp.statusHistory && rsvp.statusHistory.length > 1 && (
-                                <details className="mt-2 text-xs">
-                                  <summary className="cursor-pointer text-[#FFC107] hover:text-[#FFC107] font-medium">
-                                    📋 View RSVP History ({rsvp.statusHistory.length} changes)
-                                  </summary>
-                                  <div className="mt-2 pl-4 space-y-1">
-                                    {rsvp.statusHistory.map((history: any, index: number) => (
-                                      <div key={index} className="flex items-center gap-2 text-gray-600">
-                                        <span className={`w-2 h-2 rounded-full ${
-                                          history.status === 'going' ? 'bg-green-500' :
-                                          'bg-red-500'
-                                        }`}></span>
-                                        <span className="font-medium capitalize">
-                                          {history.status === 'not-going' ? "Can't Go" : history.status}
-                                        </span>
-                                        <span>•</span>
-                                        <span>
-                                          {history.changedAt?.toDate?.()
-                                            ? new Date(history.changedAt.toDate()).toLocaleDateString('en-US', {
-                                                month: 'short',
-                                                day: 'numeric',
-                                                hour: '2-digit',
-                                                minute: '2-digit'
-                                              })
-                                            : 'Unknown time'}
-                                        </span>
-                                        {history.changedBy && (
-                                          <>
-                                            <span>•</span>
-                                            <span className="text-gray-500">
-                                              by {userNames[history.changedBy] || history.changedBy.slice(0, 8) + '...'}
-                                            </span>
-                                          </>
+                                .map((rsvp) => (
+                                  <tr key={rsvp.id} className="border-b border-gray-100 align-top hover:bg-[#FFF9F6]">
+                                    <td className="px-3 py-2">
+                                      <div className="font-medium text-sm text-gray-900">{rsvp.name || rsvp.attendeeName || userNames[rsvp.userId] || 'Unknown'}</div>
+                                      {rsvp.ageGroup && <div className="text-[11px] text-gray-500">{rsvp.ageGroup === '11+' ? '11+' : rsvp.ageGroup}</div>}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-700">
+                                      {rsvp.attendeeType === 'primary' ? 'Primary User' : rsvp.attendeeType === 'family_member' ? 'Family' : 'Guest'}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <button
+                                        onClick={() => toggleContactInfo(rsvp.userId)}
+                                        className="rounded border border-[#FFC107]/30 bg-[#FFF7D9] px-2 py-1 font-medium text-[#A87000] hover:bg-[#FFEFB8]"
+                                        title={showContactInfo[rsvp.userId] ? 'Hide contact info' : 'Show contact info'}
+                                      >
+                                        {showContactInfo[rsvp.userId] ? 'Hide Contact' : 'Show Contact'}
+                                      </button>
+                                      {showContactInfo[rsvp.userId] && userDetails[rsvp.userId] && (
+                                        <div className="mt-2 space-y-1 text-[11px] text-gray-600">
+                                          <div>{userDetails[rsvp.userId].email}</div>
+                                          <div>{userDetails[rsvp.userId].phone}</div>
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      {event.pricing && event.pricing.requiresPayment ? (
+                                        <div className="space-y-2">
+                                          <div className={`rounded border px-2 py-1 text-center font-bold ${rsvp.paymentStatus === 'paid' ? 'border-green-300 bg-green-100 text-green-700' : 'border-yellow-300 bg-yellow-100 text-yellow-700'}`}>
+                                            {rsvp.paymentStatus === 'paid' ? 'Payment Successful' : 'Payment Pending'}
+                                          </div>
+                                          <button
+                                            onClick={async () => {
+                                              try {
+                                                const newStatus = rsvp.paymentStatus === 'paid' ? 'unpaid' : 'paid';
+                                                const adminUserId = auth.currentUser?.uid || 'unknown';
+                                                if (event.pricing) {
+                                                  await PaymentService.adminUpdatePaymentStatus(event.id, rsvp.id, newStatus, adminUserId, event.pricing);
+                                                } else {
+                                                  await updateDoc(doc(db, 'events', event.id, 'attendees', rsvp.id), { paymentStatus: newStatus, updatedAt: serverTimestamp() });
+                                                }
+                                                toast.success(
+                                                  newStatus === 'paid'
+                                                    ? 'Marked as paid (transaction logged)'
+                                                    : 'Marked as pending payment'
+                                                );
+                                              } catch (error) {
+                                                console.error('Error updating payment status:', error);
+                                                toast.error('Failed to update payment status');
+                                              }
+                                            }}
+                                            className="w-full rounded border border-[#FFA000] bg-[#FFC107] px-2 py-1 font-bold text-white hover:bg-[#FFA000]"
+                                          >
+                                            {rsvp.paymentStatus === 'paid' ? 'Mark Unpaid' : 'Mark Paid'}
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <span className="text-gray-500">N/A</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 text-[11px] text-gray-600">
+                                      <div>
+                                        RSVP: {rsvp.createdAt ? new Date(rsvp.createdAt.toDate ? rsvp.createdAt.toDate() : rsvp.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unknown'}
+                                      </div>
+                                      {rsvp.updatedAt && (
+                                        <div className="mt-1">
+                                          Updated: {new Date(rsvp.updatedAt.toDate ? rsvp.updatedAt.toDate() : rsvp.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      <div className="flex min-w-[150px] flex-col gap-2">
+                                        <select
+                                          value={rsvp.status || rsvp.rsvpStatus || ''}
+                                          onChange={(e) => {
+                                            const newStatus = e.target.value as 'going' | 'not-going' | 'waitlisted' | '';
+                                            updateRsvp(event.id, rsvp.id, newStatus || null);
+                                          }}
+                                          className="w-full rounded border border-gray-300 px-2 py-1 focus:ring-2 focus:ring-[#F25129]"
+                                        >
+                                          <option value="going">Going</option>
+                                          <option value="not-going">Not Going</option>
+                                          <option value="waitlisted">Waitlisted</option>
+                                          <option value="">Remove</option>
+                                        </select>
+                                        {(rsvp.status || rsvp.rsvpStatus) === 'waitlisted' && (
+                                          <button onClick={() => updateRsvp(event.id, rsvp.id, 'going')} className="w-full rounded bg-green-600 px-2 py-1 text-white hover:bg-green-700">Promote</button>
+                                        )}
+                                        {analyzeLastMinuteChanges(rsvp, event.startAt) > 0 && (
+                                          <button onClick={() => blockUserFromRsvp(rsvp.userId)} className="w-full rounded bg-red-600 px-2 py-1 text-white hover:bg-red-700">Block</button>
                                         )}
                                       </div>
-                                    ))}
-                                  </div>
-                                </details>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <select
-                                value={rsvp.status || rsvp.rsvpStatus || ''}
-                                onChange={(e) => {
-                                  const newStatus = e.target.value as 'going' | 'not-going' | 'waitlisted' | '';
-                                  updateRsvp(event.id, rsvp.id, newStatus || null);
-                                }}
-                                className="px-2 py-1 rounded border border-gray-300 focus:ring-2 focus:ring-[#F25129] text-xs"
-                                aria-label={`Change RSVP status for ${userNames[rsvp.userId] || rsvp.userId}`}
-                              >
-                                <option value="going">✅ Going</option>
-                                <option value="not-going">❌ Not Going</option>
-                                <option value="waitlisted">🟣 Waitlisted</option>
-                                <option value="">🗑️ Remove</option>
-                              </select>
-                              {(rsvp.status || rsvp.rsvpStatus) === 'waitlisted' && (
-                                <button
-                                  onClick={() => updateRsvp(event.id, rsvp.id, 'going')}
-                                  className="ml-2 px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
-                                  aria-label={`Promote ${userNames[rsvp.userId] || rsvp.userId} from waitlist to going`}
-                                  title="Promote from waitlist to going"
-                                >
-                                  ⬆️ Promote
-                                </button>
-                              )}
-                              {analyzeLastMinuteChanges(rsvp, event.startAt) > 0 && (
-                                <button
-                                  onClick={() => blockUserFromRsvp(rsvp.userId)}
-                                  className="ml-2 px-2 py-1 bg-red-600 text-white rounded hover:bg-red-700 text-xs"
-                                  aria-label={`Block ${userNames[rsvp.userId] || rsvp.userId} from RSVPing`}
-                                >
-                                  Block
-                                </button>
-                              )}
-                                      </div>
-                                    </div>
-                                  </div>
+                                    </td>
+                                  </tr>
                                 ))}
+                            </tbody>
+                          </table>
                         </div>
                       </div>
                     );
-                  })()}
-                </>
+                  })()}</>
               ) : (
                 <div className="text-center py-8 bg-gray-50 rounded-lg">
                   <span className="text-4xl">📭</span>
@@ -1382,5 +1259,11 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
   </div>
   );
 };
+
+
+
+
+
+
 
 

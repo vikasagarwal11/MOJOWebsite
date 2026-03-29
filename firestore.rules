@@ -132,7 +132,11 @@ service cloud.firestore {
         (!('imageUrl' in newData) || (newData.imageUrl is string || newData.imageUrl == null)) &&
         (!('visibility' in newData) || newData.visibility in ['public', 'truly_public', 'members', 'private']) &&
         (!('status' in newData) || newData.status in ['scheduled', 'canceled', 'postponed', 'draft']) &&
-        (!('isReadOnly' in newData) || newData.isReadOnly is bool);
+        (!('isReadOnly' in newData) || newData.isReadOnly is bool) &&
+        (!('latitude' in newData) || (newData.latitude is number || newData.latitude == null)) &&
+        (!('longitude' in newData) || (newData.longitude is number || newData.longitude == null)) &&
+        (!('geohash' in newData) || (newData.geohash is string || newData.geohash == null)) &&
+        (!('region' in newData) || (newData.region is string || newData.region == null));
     }
 
     // =========================

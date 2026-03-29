@@ -36,6 +36,8 @@ export interface OTPVerifyResult {
 export interface PaymentIntentResponse {
     clientSecret?: string;
     paymentIntentId?: string;
+    customerName?: string;
+    customerEmail?: string;
     instructions?: ZelleInstructions;
     transactionId: string;
     amount: number;

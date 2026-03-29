@@ -18,10 +18,10 @@ import { useInView } from 'react-intersection-observer';
 import { Link, useNavigate } from 'react-router-dom';
 import HeroCarousel from '../components/hero/HeroCarousel';
 import TestimonialCarousel from '../components/home/TestimonialCarousel';
+import { SEO_CONFIG } from '../config/seo';
 import { useAuth } from '../contexts/AuthContext';
 import { useFirestore } from '../hooks/useFirestore';
 import { useTestimonials } from '../hooks/useTestimonials';
-import { SEO_CONFIG } from '../config/seo';
 import { logAnalyticsEvent } from '../services/analyticsService';
 
 const LazyImage: React.FC<{ src: string; alt: string; className?: string }> = ({ src, alt, className }) => {
@@ -385,7 +385,7 @@ const Home: React.FC = () => {
             </div>
             
             {/* Right: Hero Carousel (same size as before) */}
-            <div className="relative max-w-lg ml-auto min-h-[200px]">
+            <div className="relative max-w-lg ml-auto w-full flex-shrink-0">
               <HeroCarousel 
                 duration={4}
               />

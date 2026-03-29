@@ -1,5 +1,5 @@
-import { Firestore, Timestamp } from 'firebase-admin/firestore';
 import sgMail from '@sendgrid/mail';
+import { Firestore, Timestamp } from 'firebase-admin/firestore';
 import { GuestInvoice } from '../types/guestInvoice';
 import { PaymentTransaction } from '../types/paymentTransaction';
 
@@ -351,7 +351,7 @@ export class EmailNotificationService {
             
             ${stripeInvoiceUrl ? `<p><a href="${stripeInvoiceUrl}" class="button">View Stripe Invoice</a></p>` : ''}
             
-            <p>If you have any questions, please contact us at support@momsfitnessmojo.com</p>
+            <p>If you have any questions, please contact us at momsfitnessmojo@gmail.com</p>
             
             <p>Best regards,<br>The Moms Fitness Mojo Team</p>
           </div>
@@ -402,7 +402,7 @@ Event Details:
 
 ${stripeInvoiceUrl ? `View your Stripe invoice: ${stripeInvoiceUrl}` : ''}
 
-If you have any questions, please contact us at support@momsfitnessmojo.com
+If you have any questions, please contact us at momsfitnessmojo@gmail.com
 
 Best regards,
 The Moms Fitness Mojo Team
@@ -473,7 +473,7 @@ The Moms Fitness Mojo Team
             
             ${invoice ? '<p>Your invoice is attached to this email for your records.</p>' : ''}
             
-            <p>If you have any questions, please contact us at support@momsfitnessmojo.com</p>
+            <p>If you have any questions, please contact us at momsfitnessmojo@gmail.com</p>
             
             <p>Best regards,<br>The Moms Fitness Mojo Team</p>
           </div>
@@ -525,7 +525,7 @@ Event Details:
 
 ${invoice ? 'Your invoice is attached to this email for your records.' : ''}
 
-If you have any questions, please contact us at support@momsfitnessmojo.com
+If you have any questions, please contact us at momsfitnessmojo@gmail.com
 
 Best regards,
 The Moms Fitness Mojo Team
@@ -571,7 +571,7 @@ The Moms Fitness Mojo Team
               <p>${errorMessage}</p>
             </div>
             
-            <p>Please try again or contact us at support@momsfitnessmojo.com for assistance.</p>
+            <p>Please try again or contact us at momsfitnessmojo@gmail.com for assistance.</p>
             
             <p>Best regards,<br>The Moms Fitness Mojo Team</p>
           </div>
@@ -603,7 +603,7 @@ We encountered an issue processing your payment for ${eventInfo.title}.
 Error Details:
 ${errorMessage}
 
-Please try again or contact us at support@momsfitnessmojo.com for assistance.
+Please try again or contact us at momsfitnessmojo@gmail.com for assistance.
 
 Best regards,
 The Moms Fitness Mojo Team

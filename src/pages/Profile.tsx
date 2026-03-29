@@ -12,6 +12,7 @@ import { useUserBlocking } from '../hooks/useUserBlocking';
 import { sanitizeFirebaseData } from '../utils/dataSanitizer';
 import { safeISODate } from '../utils/dateUtils';
 import { normalizeEvent } from '../utils/normalizeEvent';
+import { calculateChargeAmount, calculateStripeFee } from '../utils/stripePricing';
 import { AdminKnowledgeBaseTab } from './AdminKnowledgeBaseTab';
 import { ProfileAdminTab } from './ProfileAdminTab';
 import { ProfileContentTab } from './ProfileContentTab';
@@ -793,23 +794,48 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         return;
       }
 
-      // Helper function to get price for an age group
-      const getPriceForAgeGroup = (ageGroup: string, pricing: any): number => {
+      const formatCents = (cents: number) => (cents / 100).toFixed(2);
+
+      const escapeCsvValue = (value: unknown) => {
+        const raw = value === null || value === undefined ? '' : String(value);
+        if (/[",\n\r]/.test(raw)) {
+          return `"${raw.replace(/"/g, '""')}"`;
+        }
+        return raw;
+      };
+
+      // Helper function to get price for an age group in cents
+      const getPriceForAgeGroupCents = (ageGroup: string, pricing: any): number => {
         if (!pricing || pricing.isFree || !pricing.requiresPayment) return 0;
         const agePricing = pricing.ageGroupPricing?.find((p: any) => p.ageGroup === ageGroup);
-        return agePricing ? agePricing.price / 100 : (pricing.adultPrice || 0) / 100;
+        return agePricing ? agePricing.price : (pricing.adultPrice || 0);
+      };
+
+      const getPaymentAmounts = (attendee: any) => {
+        const isPaid = attendee.paymentStatus === 'paid';
+        const ticketNetCents = isPaid ? getPriceForAgeGroupCents(attendee.ageGroup || 'adult', event.pricing) : 0;
+        const supportNetCents = isPaid && event.pricing?.eventSupportAmount ? event.pricing.eventSupportAmount : 0;
+        const netTotalCents = ticketNetCents + supportNetCents;
+        const chargeTotalCents = isPaid ? calculateChargeAmount(netTotalCents) : 0;
+        const stripeFeeCents = isPaid ? calculateStripeFee(chargeTotalCents) : 0;
+
+        return {
+          ticketNetCents,
+          supportNetCents,
+          netTotalCents,
+          chargeTotalCents,
+          stripeFeeCents
+        };
       };
 
       const attendeeDetails = await Promise.all(
         rsvps.map(async (attendee) => {
+          const paymentAmounts = getPaymentAmounts(attendee);
           try {
             const userDoc = await getDoc(doc(db, 'users', attendee.userId));
             if (userDoc.exists()) {
               const rawData = userDoc.data();
               const userData = sanitizeFirebaseData(rawData);
-              const isPaid = attendee.paymentStatus === 'paid';
-              const eventAmount = isPaid ? getPriceForAgeGroup(attendee.ageGroup || 'adult', event.pricing) : 0;
-              const eventSupportAmount = isPaid && event.pricing?.eventSupportAmount ? event.pricing.eventSupportAmount / 100 : 0;
               return {
                 // Attendee-specific data
                 attendeeId: attendee.attendeeId || attendee.id,
@@ -819,8 +845,11 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
                 relationship: attendee.relationship || '',
                 rsvpStatus: attendee.status,
                 paymentStatus: attendee.paymentStatus || 'unpaid',
-                eventAmount: isPaid ? eventAmount.toFixed(2) : '',
-                eventSupportAmount: eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
+                eventAmount: paymentAmounts.ticketNetCents > 0 ? formatCents(paymentAmounts.ticketNetCents) : '',
+                eventSupportAmount: paymentAmounts.supportNetCents > 0 ? formatCents(paymentAmounts.supportNetCents) : '',
+                totalNetAmount: paymentAmounts.netTotalCents > 0 ? formatCents(paymentAmounts.netTotalCents) : '',
+                totalSentToStripe: paymentAmounts.chargeTotalCents > 0 ? formatCents(paymentAmounts.chargeTotalCents) : '',
+                stripeFeeAmount: paymentAmounts.stripeFeeCents > 0 ? formatCents(paymentAmounts.stripeFeeCents) : '',
                 // User data
                 userId: attendee.userId,
                 firstName: userData.firstName || '',
@@ -834,9 +863,6 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
                 updatedDate: attendee.updatedAt instanceof Date ? attendee.updatedAt.toLocaleDateString('en-US') : 'Unknown'
               };
             }
-            const isPaid = attendee.paymentStatus === 'paid';
-            const eventAmount = isPaid ? getPriceForAgeGroup(attendee.ageGroup || 'adult', event.pricing) : 0;
-            const eventSupportAmount = isPaid && event.pricing?.eventSupportAmount ? event.pricing.eventSupportAmount / 100 : 0;
             return {
               // Attendee-specific data
               attendeeId: attendee.id,
@@ -846,8 +872,11 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               relationship: attendee.relationship || '',
               rsvpStatus: attendee.status,
               paymentStatus: attendee.paymentStatus || 'unpaid',
-              eventAmount: isPaid ? eventAmount.toFixed(2) : '',
-              eventSupportAmount: eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
+              eventAmount: paymentAmounts.ticketNetCents > 0 ? formatCents(paymentAmounts.ticketNetCents) : '',
+              eventSupportAmount: paymentAmounts.supportNetCents > 0 ? formatCents(paymentAmounts.supportNetCents) : '',
+              totalNetAmount: paymentAmounts.netTotalCents > 0 ? formatCents(paymentAmounts.netTotalCents) : '',
+              totalSentToStripe: paymentAmounts.chargeTotalCents > 0 ? formatCents(paymentAmounts.chargeTotalCents) : '',
+              stripeFeeAmount: paymentAmounts.stripeFeeCents > 0 ? formatCents(paymentAmounts.stripeFeeCents) : '',
               // User data
               userId: attendee.userId,
               firstName: 'Unknown',
@@ -861,9 +890,6 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               updatedDate: attendee.updatedAt instanceof Date ? attendee.updatedAt.toLocaleDateString('en-US') : 'Unknown'
             };
           } catch {
-            const isPaid = attendee.paymentStatus === 'paid';
-            const eventAmount = isPaid ? getPriceForAgeGroup(attendee.ageGroup || 'adult', event.pricing) : 0;
-            const eventSupportAmount = isPaid && event.pricing?.eventSupportAmount ? event.pricing.eventSupportAmount / 100 : 0;
             return {
               // Attendee-specific data
               attendeeId: attendee.id,
@@ -873,8 +899,11 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               relationship: attendee.relationship || '',
               rsvpStatus: attendee.status,
               paymentStatus: attendee.paymentStatus || 'unpaid',
-              eventAmount: isPaid ? eventAmount.toFixed(2) : '',
-              eventSupportAmount: eventSupportAmount > 0 ? eventSupportAmount.toFixed(2) : '',
+              eventAmount: paymentAmounts.ticketNetCents > 0 ? formatCents(paymentAmounts.ticketNetCents) : '',
+              eventSupportAmount: paymentAmounts.supportNetCents > 0 ? formatCents(paymentAmounts.supportNetCents) : '',
+              totalNetAmount: paymentAmounts.netTotalCents > 0 ? formatCents(paymentAmounts.netTotalCents) : '',
+              totalSentToStripe: paymentAmounts.chargeTotalCents > 0 ? formatCents(paymentAmounts.chargeTotalCents) : '',
+              stripeFeeAmount: paymentAmounts.stripeFeeCents > 0 ? formatCents(paymentAmounts.stripeFeeCents) : '',
               // User data
               userId: attendee.userId,
               firstName: 'Error',
@@ -900,6 +929,9 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         'Payment Status',
         'Event Amount',
         'Event Support Amount',
+        'Total Net Amount',
+        'Total Sent to Stripe',
+        'Stripe Fee / Stripe Gets',
         'User ID',
         'Primary User First Name',
         'Primary User Last Name',
@@ -917,13 +949,21 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
       const totalSupportAmount = attendeeDetails.reduce((sum, attendee) => {
         return sum + (attendee.eventSupportAmount ? parseFloat(attendee.eventSupportAmount) : 0);
       }, 0);
-      const grossTotal = totalEventAmount + totalSupportAmount;
+      const totalNetAmount = attendeeDetails.reduce((sum, attendee) => {
+        return sum + (attendee.totalNetAmount ? parseFloat(attendee.totalNetAmount) : 0);
+      }, 0);
+      const totalSentToStripe = attendeeDetails.reduce((sum, attendee) => {
+        return sum + (attendee.totalSentToStripe ? parseFloat(attendee.totalSentToStripe) : 0);
+      }, 0);
+      const totalStripeFee = attendeeDetails.reduce((sum, attendee) => {
+        return sum + (attendee.stripeFeeAmount ? parseFloat(attendee.stripeFeeAmount) : 0);
+      }, 0);
 
       const csvRows = [
-        headers.join(','),
+        headers.map(escapeCsvValue).join(','),
         ...attendeeDetails.map(attendee => [
           attendee.attendeeId,
-          `"${attendee.attendeeName}"`,
+          attendee.attendeeName,
           attendee.attendeeType,
           attendee.ageGroup,
           attendee.relationship,
@@ -931,20 +971,25 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
           attendee.paymentStatus,
           attendee.eventAmount,
           attendee.eventSupportAmount,
+          attendee.totalNetAmount,
+          attendee.totalSentToStripe,
+          attendee.stripeFeeAmount,
           attendee.userId,
-          `"${attendee.firstName}"`,
-          `"${attendee.lastName}"`,
-          `"${attendee.displayName}"`,
-          `"${attendee.email}"`,
-          `"${attendee.phone}"`,
-          `"${attendee.address}"`,
+          attendee.firstName,
+          attendee.lastName,
+          attendee.displayName,
+          attendee.email,
+          attendee.phone,
+          attendee.address,
           attendee.rsvpDate,
           attendee.updatedDate
-        ].join(',')),
-        // Add total row
-        ['', '', '', '', '', '', 'TOTAL', totalEventAmount.toFixed(2), totalSupportAmount > 0 ? totalSupportAmount.toFixed(2) : '', '', '', '', '', '', '', '', '', ''].join(','),
-        // Add gross total row
-        ['', '', '', '', '', '', 'GROSS TOTAL', '', '', grossTotal.toFixed(2), '', '', '', '', '', '', '', ''].join(',')
+        ].map(escapeCsvValue).join(',')),
+        // Summary rows
+        ['SUMMARY', 'Total Event Amount', '', '', '', '', '', totalEventAmount.toFixed(2), '', '', '', '', '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(','),
+        ['SUMMARY', 'Total Support Amount', '', '', '', '', '', '', totalSupportAmount.toFixed(2), '', '', '', '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(','),
+        ['SUMMARY', 'Total Net Amount (We Get After Stripe Cut)', '', '', '', '', '', '', '', totalNetAmount.toFixed(2), '', '', '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(','),
+        ['SUMMARY', 'Total Sent to Stripe', '', '', '', '', '', '', '', '', totalSentToStripe.toFixed(2), '', '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(','),
+        ['SUMMARY', 'Stripe Total / What Stripe Gets', '', '', '', '', '', '', '', '', '', totalStripeFee.toFixed(2), '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(',')
       ];
       const csv = csvRows.join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -1083,19 +1128,49 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
     );
   }
 
+  const isAdminMode = mode === 'admin' && currentUser?.role === 'admin';
+
   return (
     <div className={`${containerWidthClass} mx-auto px-4 py-12`}>
-      <div className="rounded-2xl border bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold mb-6">{headingText}</h1>
+      <div
+        className={`rounded-2xl border p-8 shadow-sm ${
+          isAdminMode
+            ? 'border-[#F25129]/15 bg-gradient-to-b from-[#FFF8F4] via-white to-[#FFFDF9]'
+            : 'bg-white'
+        }`}
+      >
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">{headingText}</h1>
+            {isAdminMode && (
+              <p className="mt-1 text-sm text-gray-600">
+                Unified admin workspace for operations, analytics, moderation, and finance.
+              </p>
+            )}
+          </div>
+          {isAdminMode && (
+            <span className="inline-flex items-center rounded-full border border-[#F25129]/20 bg-[#F25129]/10 px-3 py-1 text-xs font-semibold tracking-wide text-[#C43E1D]">
+              ADMIN ACCESS
+            </span>
+          )}
+        </div>
         {/* Tabs */}
-        <div className="flex flex-wrap gap-1 mb-8 bg-gray-100 p-1 rounded-lg">
+        <div
+          className={`mb-8 flex flex-wrap gap-1 rounded-lg p-1 ${
+            isAdminMode ? 'border border-[#F25129]/10 bg-[#FFF2EC]' : 'bg-gray-100'
+          }`}
+        >
           {availableTabs.map(tab => (
             <button
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
               className={`px-6 py-2 rounded-md font-medium transition-all duration-200 ${
-                activeTab === tab.key ? 'bg-white text-[#F25129] shadow-sm' : 'text-gray-600 hover:text-[#F25129]'
+                activeTab === tab.key
+                  ? 'bg-white text-[#F25129] shadow-sm'
+                  : isAdminMode
+                    ? 'text-[#9B5E52] hover:text-[#F25129]'
+                    : 'text-gray-600 hover:text-[#F25129]'
               }`}
               aria-selected={activeTab === tab.key}
             >

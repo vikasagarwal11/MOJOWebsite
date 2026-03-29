@@ -125,6 +125,8 @@ export interface PaymentIntentResponse {
     // For Stripe
     clientSecret?: string;
     paymentIntentId?: string;
+    customerName?: string;
+    customerEmail?: string;
 
     // For Zelle
     instructions?: ZelleInstructions;

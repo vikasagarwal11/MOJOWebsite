@@ -5726,7 +5726,18 @@ export const onAccountApprovalUpdated = onDocumentWritten(
           const userDoc = await db.collection('users').doc(userId).get();
           const userData = userDoc.data();
           const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
+          const rawPhoneNumber = String(afterData.phoneNumber || userData?.phoneNumber || '').trim();
+          const phoneNumber = normalizeUSPhoneToE164OrNull(rawPhoneNumber);
           const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
+
+          if (!phoneNumber) {
+            console.warn('⚠️ Skipping account approval SMS because phone number is invalid or missing', {
+              userId,
+              approvalId: event.params.approvalId,
+              rawPhoneNumber: rawPhoneNumber ? rawPhoneNumber.slice(0, 4) + '***' : null,
+            });
+            return;
+          }
 
           const project = process.env.GCLOUD_PROJECT || '';
           const isDev = project === 'momsfitnessmojo-dev' || project.endsWith('-dev');
@@ -5736,7 +5747,7 @@ export const onAccountApprovalUpdated = onDocumentWritten(
             await sendAccountApprovalSMSNow(
               userId,
               userName,
-              userData?.phoneNumber || '',
+              phoneNumber,
               smsEnabled
             );
           } else {
@@ -5744,7 +5755,7 @@ export const onAccountApprovalUpdated = onDocumentWritten(
             await queueAccountApprovalSMS(
               userId,
               userName,
-              userData?.phoneNumber || '',
+              phoneNumber,
               notificationId,
               smsEnabled
             );

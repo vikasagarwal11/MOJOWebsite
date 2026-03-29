@@ -16,6 +16,7 @@ import { SupportToolCategoriesPanel } from '../components/admin/SupportToolCateg
 import ResourceCategoriesPanel from '../components/admin/ResourceCategoriesPanel';
 import NotificationSettingsPanel from '../components/admin/NotificationSettingsPanel';
 import { TrustedUsersPanel } from '../components/admin/TrustedUsersPanel';
+import EventFinanceConsole from '../components/admin/EventFinanceConsole';
 import EventCardNew from '../components/events/EventCardNew';
 import { db, storage } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -52,6 +53,27 @@ interface Event {
   lastAttendanceUpdate?: any;
 }
 
+type AdminSectionKey =
+  | 'events'
+  | 'bulkAttendance'
+  | 'workouts'
+  | 'messages'
+  | 'users'
+  | 'media'
+  | 'maintenance'
+  | 'testimonials'
+  | 'posts'
+  | 'assistantConfig'
+  | 'kbGaps'
+  | 'accountApprovals'
+  | 'moderation'
+  | 'trustedUsers'
+  | 'supportToolCategories'
+  | 'resourceCategories'
+  | 'analytics'
+  | 'notifications'
+  | 'finance';
+
 type ProfileAdminTabProps = {
   allEvents: Event[];
   userNames: { [userId: string]: string };
@@ -87,7 +109,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isFixingStuckProcessing, setIsFixingStuckProcessing] = useState(false);
-  const [activeAdminSection, setActiveAdminSection] = useState<'events' | 'bulkAttendance' | 'workouts' | 'messages' | 'users' | 'media' | 'maintenance' | 'testimonials' | 'posts' | 'assistantConfig' | 'kbGaps' | 'accountApprovals' | 'moderation' | 'trustedUsers' | 'supportToolCategories' | 'resourceCategories' | 'analytics' | 'notifications'>('events');
+  const [activeAdminSection, setActiveAdminSection] = useState<AdminSectionKey>('events');
   const { currentUser } = useAuth();
   
   // Media management state
@@ -434,6 +456,33 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
     return allMedia.filter((media) => media?.type === 'image' && media?.showOnHomepage);
   }, [allMedia]);
 
+  const adminNavItems: {
+    key: AdminSectionKey;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    description: string;
+  }[] = [
+    { key: 'events', label: 'Event Management', icon: Calendar, description: 'Create, edit, and run events' },
+    { key: 'bulkAttendance', label: 'Bulk Attendees', icon: Users, description: 'Add attendees quickly at scale' },
+    { key: 'workouts', label: 'Workout Library', icon: Dumbbell, description: 'Manage workout sessions' },
+    { key: 'messages', label: 'Contact Messages', icon: MessageSquare, description: 'Review support inbox' },
+    { key: 'accountApprovals', label: 'Account Approvals', icon: UserCheck, description: 'Approve member requests' },
+    { key: 'users', label: 'User Management', icon: Eye, description: 'Search and manage users' },
+    { key: 'media', label: 'Media Management', icon: Video, description: 'Moderate and organize media' },
+    { key: 'maintenance', label: 'System Tools', icon: Search, description: 'Cleanup and maintenance tools' },
+    { key: 'notifications', label: 'Notifications', icon: Settings, description: 'Notification preferences' },
+    { key: 'testimonials', label: 'Testimonials', icon: Star, description: 'Moderate testimonials + AI prompts' },
+    { key: 'posts', label: 'Posts', icon: MessageSquare, description: 'Configure post AI prompts' },
+    { key: 'assistantConfig', label: 'Assistant Config', icon: Settings, description: 'Tune assistant behavior' },
+    { key: 'kbGaps', label: 'KB Gaps', icon: MessageSquare, description: 'Find missing knowledge coverage' },
+    { key: 'moderation', label: 'Content Moderation', icon: Shield, description: 'Safety and moderation controls' },
+    { key: 'trustedUsers', label: 'Trusted Users', icon: ShieldCheck, description: 'Manage trusted user list' },
+    { key: 'supportToolCategories', label: 'Support Tool Categories', icon: FolderTree, description: 'Category taxonomy for tools' },
+    { key: 'resourceCategories', label: 'Resource Categories', icon: FolderTree, description: 'Category taxonomy for resources' },
+    { key: 'analytics', label: 'Analytics Dashboard', icon: BarChart3, description: 'Engagement and conversion insights' },
+    { key: 'finance', label: 'Finance Console', icon: BarChart3, description: 'Revenue, Stripe, and collections' },
+  ];
+
   const heroCount = heroMedia.length;
 
   const handleAddToHero = async (mediaId: string) => {
@@ -737,214 +786,56 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
   }, [allEvents, loadingAdminEvents, eventsPage, activeAdminSection]);
 
   return (
-    <div className="grid gap-6">
+    <div className="relative grid gap-6">
+      <div className="pointer-events-none absolute inset-x-0 -top-4 h-32 rounded-3xl bg-gradient-to-r from-[#F25129]/15 via-[#FFC107]/10 to-[#F25129]/5 blur-2xl" />
       {/* Admin Section Navigation */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        <button
-          onClick={() => setActiveAdminSection('events')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'events'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Calendar className="w-4 h-4 inline mr-2" />
-          Event Management
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('bulkAttendance')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'bulkAttendance'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Users className="w-4 h-4 inline mr-2" />
-          Bulk Attendees
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('workouts')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'workouts'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Dumbbell className="w-4 h-4 inline mr-2" />
-          Workout Library
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('messages')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'messages'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <MessageSquare className="w-4 h-4 inline mr-2" />
-          Contact Messages
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('accountApprovals')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'accountApprovals'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <UserCheck className="w-4 h-4 inline mr-2" />
-          Account Approvals
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('users')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'users'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Eye className="w-4 h-4 inline mr-2" />
-          User Management
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('media')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'media'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Video className="w-4 h-4 inline mr-2" />
-          Media Management
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('maintenance')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'maintenance'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Search className="w-4 h-4 inline mr-2" />
-          System Tools
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('notifications')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'notifications'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Settings className="w-4 h-4 inline mr-2" />
-          Notifications
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('testimonials')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'testimonials'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Star className="w-4 h-4 inline mr-2" />
-          Testimonials
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('posts')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'posts'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <MessageSquare className="w-4 h-4 inline mr-2" />
-          Posts
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('assistantConfig')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'assistantConfig'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Settings className="w-4 h-4 inline mr-2" />
-          Assistant Config
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('kbGaps')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'kbGaps'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <MessageSquare className="w-4 h-4 inline mr-2" />
-          KB Gaps
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('moderation')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'moderation'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <Shield className="w-4 h-4 inline mr-2" />
-          Content Moderation
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('trustedUsers')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'trustedUsers'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <ShieldCheck className="w-4 h-4 inline mr-2" />
-          Trusted Users
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('supportToolCategories')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'supportToolCategories'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <FolderTree className="w-4 h-4 inline mr-2" />
-          Support Tool Categories
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('resourceCategories')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'resourceCategories'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <FolderTree className="w-4 h-4 inline mr-2" />
-          Resource Categories
-        </button>
-        <button
-          onClick={() => setActiveAdminSection('analytics')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeAdminSection === 'analytics'
-              ? 'bg-[#F25129] text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <BarChart3 className="w-4 h-4 inline mr-2" />
-          Analytics Dashboard
-        </button>
-        <Link
-          to="/admin/error-logs"
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center"
-        >
-          <AlertTriangle className="w-4 h-4 inline mr-2" />
-          Error Logs
-        </Link>
+      <div className="relative z-10 overflow-hidden rounded-2xl border border-gray-200 bg-white/90 p-4 shadow-sm backdrop-blur-sm">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Admin Command Center</h2>
+            <p className="text-sm text-gray-600">
+              Switch between admin modules with a cleaner dashboard flow.
+            </p>
+          </div>
+          <Link
+            to="/admin/error-logs"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+          >
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            Error Logs
+          </Link>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {adminNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeAdminSection === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setActiveAdminSection(item.key)}
+                className={`group rounded-xl border p-3 text-left transition-all ${
+                  isActive
+                    ? 'border-[#F25129]/40 bg-gradient-to-r from-[#F25129]/15 to-[#FFC107]/15 shadow-sm'
+                    : 'border-gray-200 bg-white hover:border-[#F25129]/25 hover:bg-[#FFF8F5]'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${
+                      isActive ? 'bg-[#F25129] text-white' : 'bg-gray-100 text-gray-600 group-hover:bg-[#F25129]/15'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className={`text-sm font-semibold ${isActive ? 'text-[#C23C1C]' : 'text-gray-800'}`}>{item.label}</span>
+                </div>
+                <p className={`mt-2 text-xs ${isActive ? 'text-[#9A3B22]' : 'text-gray-500'}`}>{item.description}</p>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Event Management Section */}
@@ -2236,6 +2127,11 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       {/* Analytics Dashboard Section */}
       {activeAdminSection === 'analytics' && (
         <AnalyticsDashboard />
+      )}
+
+      {/* Finance Console Section */}
+      {activeAdminSection === 'finance' && (
+        <EventFinanceConsole />
       )}
     </div>
   );
