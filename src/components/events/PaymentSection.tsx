@@ -1275,7 +1275,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                         </span>
                         {isZellePayment && hasUnpaidAmount && (
                           <p className="text-xs text-purple-700 font-semibold">
-                            💵 Zelle - No fees!
+                            💵 Zelle Payment
                           </p>
                         )}
                         {hasUnpaidAmount && paidAttendees.length > 0 && (

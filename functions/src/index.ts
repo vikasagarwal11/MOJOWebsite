@@ -539,18 +539,27 @@ async function sendSMSViaTwilio(phoneNumber: string, message: string): Promise<{
 
     const twilio = await import('twilio');
     const client = twilio.default(twilioAccountSid, twilioAuthToken);
+    const normalizedTo = normalizeUSPhoneToE164OrNull(phoneNumber);
+    if (!normalizedTo) {
+      const err = `Invalid phone format: "${phoneNumber}" (expected E.164, e.g. +14155550123)`;
+      console.error('❌ Twilio SMS failed:', err);
+      return { success: false, error: err };
+    }
 
     const result = await client.messages.create({
       body: message,
       from: twilioPhoneNumber,
-      to: phoneNumber,
+      to: normalizedTo,
     });
 
     console.log(`✅ SMS sent via Twilio. SID: ${result.sid}`);
     return { success: true, sid: result.sid };
   } catch (error: any) {
-    console.error('❌ Twilio SMS failed:', error?.message || error);
-    return { success: false, error: error?.message || 'Failed to send SMS' };
+    const code = error?.code ? ` code=${error.code}` : '';
+    const msg = error?.message || 'Failed to send SMS';
+    const more = error?.moreInfo ? ` moreInfo=${error.moreInfo}` : '';
+    console.error(`❌ Twilio SMS failed:${code} ${msg}${more}`.trim());
+    return { success: false, error: `${msg}${code}`.trim() };
   }
 }
 const PAYMENT_PENDING_STATUSES = new Set(['unpaid', 'pending', 'waiting_for_approval']);

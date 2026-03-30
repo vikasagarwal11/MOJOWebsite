@@ -44,7 +44,9 @@ interface AuthContextType {
     firstName: string,
     lastName: string,
     phoneNumber: string,
-    isLogin?: boolean
+    isLogin?: boolean,
+    smsConsentGiven?: boolean,
+    smsConsentVersion?: string
   ) => Promise<void>;
   verifyPhoneCode: (confirmationResult: ConfirmationResult, code: string) => Promise<any>;
   createPendingUser: (data: {
@@ -58,6 +60,8 @@ interface AuthContextType {
     howDidYouHearOther?: string;
     referredBy?: string;
     referralNotes?: string;
+    smsConsentGiven?: boolean;
+    smsConsentVersion?: string;
   }) => Promise<void>;
   checkIfUserExists: (phoneNumber: string) => Promise<boolean | { exists: boolean; canReapply?: boolean; message?: string; reapplyDate?: string; daysRemaining?: number; userStatus?: string }>;
   checkSMSDeliveryStatus: (phoneNumber: string, verificationId: string) => Promise<any>;
@@ -492,7 +496,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     firstName: string,
     lastName: string,
     phoneNumber: string,
-    isLogin: boolean = false
+    isLogin: boolean = false,
+    smsConsentGiven: boolean = false,
+    smsConsentVersion: string = 'v1'
   ) => {
     console.log('🔍 AuthContext: verifyCode called with:', {
       code,
@@ -564,6 +570,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           toast.success('Login successful. Checking account status...');
           // Don't block or sign out - let Layout.tsx handle routing
         }
+
+        if (smsConsentGiven) {
+          await updateDoc(userRef, {
+            smsConsentGiven: true,
+            smsConsentVersion,
+            smsConsentSource: 'login_phone_verification',
+            smsConsentLastConfirmedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
       } else {
         // This should only happen for re-authenticating an existing approved user, or old flow users
         console.log('🔍 AuthContext: Non-login successful verification for existing user. Proceeding.');
@@ -627,6 +643,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     howDidYouHearOther?: string;
     referredBy?: string;
     referralNotes?: string;
+    smsConsentGiven?: boolean;
+    smsConsentVersion?: string;
   }): Promise<void> => {
     console.log('🔍 AuthContext: createPendingUser called with:', { userId: data.userId, email: data.email });
     
@@ -659,6 +677,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           status: 'pending' as const, // Change from 'rejected' to 'pending'
           approvalRequestedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
+          ...(data.smsConsentGiven ? {
+            smsConsentGiven: true,
+            smsConsentVersion: data.smsConsentVersion || 'v1',
+            smsConsentSource: 'register_phone_verification',
+            smsConsentLastConfirmedAt: serverTimestamp(),
+          } : {}),
         };
         
         // Preserve rejectedAt for history (don't overwrite)
@@ -684,6 +708,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           status: 'pending' as const,
           blockedFromRsvp: false,
           approvalRequestedAt: serverTimestamp(),
+          smsConsentGiven: !!data.smsConsentGiven,
+          smsConsentVersion: data.smsConsentVersion || 'v1',
+          smsConsentSource: data.smsConsentGiven ? 'register_phone_verification' : null,
+          smsConsentGivenAt: data.smsConsentGiven ? serverTimestamp() : null,
+          smsConsentLastConfirmedAt: data.smsConsentGiven ? serverTimestamp() : null,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };

@@ -17,6 +17,7 @@ import ResourceCategoriesPanel from '../components/admin/ResourceCategoriesPanel
 import NotificationSettingsPanel from '../components/admin/NotificationSettingsPanel';
 import { TrustedUsersPanel } from '../components/admin/TrustedUsersPanel';
 import EventFinanceConsole from '../components/admin/EventFinanceConsole';
+import HomeStatsPanel from '../components/admin/HomeStatsPanel';
 import EventCardNew from '../components/events/EventCardNew';
 import { db, storage } from '../config/firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -72,6 +73,7 @@ type AdminSectionKey =
   | 'resourceCategories'
   | 'analytics'
   | 'notifications'
+  | 'homeStats'
   | 'finance';
 
 type ProfileAdminTabProps = {
@@ -471,6 +473,7 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
     { key: 'media', label: 'Media Management', icon: Video, description: 'Moderate and organize media' },
     { key: 'maintenance', label: 'System Tools', icon: Search, description: 'Cleanup and maintenance tools' },
     { key: 'notifications', label: 'Notifications', icon: Settings, description: 'Notification preferences' },
+    { key: 'homeStats', label: 'Homepage Stats', icon: BarChart3, description: 'Control homepage stat numbers' },
     { key: 'testimonials', label: 'Testimonials', icon: Star, description: 'Moderate testimonials + AI prompts' },
     { key: 'posts', label: 'Posts', icon: MessageSquare, description: 'Configure post AI prompts' },
     { key: 'assistantConfig', label: 'Assistant Config', icon: Settings, description: 'Tune assistant behavior' },
@@ -1645,6 +1648,13 @@ export const ProfileAdminTab: React.FC<ProfileAdminTabProps> = ({
       {activeAdminSection === 'notifications' && (
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <NotificationSettingsPanel />
+        </div>
+      )}
+
+      {/* Homepage Stats Section */}
+      {activeAdminSection === 'homeStats' && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <HomeStatsPanel />
         </div>
       )}
 

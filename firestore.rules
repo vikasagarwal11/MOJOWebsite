@@ -1023,6 +1023,12 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAdmin();
     }
+
+    // --- Homepage Stats Settings (admin managed, readable by clients) ---
+    match /appConfig/homeStats {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
     
     // --- KB Gaps (admin managed) ---
     match /kb_gaps/{gapId} {

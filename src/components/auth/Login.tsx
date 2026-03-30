@@ -13,6 +13,9 @@ import { normalizeUSPhoneToE164OrNull } from '../../utils/phone';
 // Keep the schema loose; we’ll do real normalization/validation in submit
 const phoneSchema = z.object({
   phoneNumber: z.string().min(7, 'Please enter your phone number'),
+  smsConsent: z.literal(true, {
+    errorMap: () => ({ message: 'Please provide consent to receive SMS/calls on this number.' }),
+  }),
 });
 
 const codeSchema = z.object({
@@ -26,6 +29,7 @@ const Login: React.FC = () => {
   const [step, setStep] = useState<'phone' | 'code'>('phone');
   const [isLoading, setIsLoading] = useState(false);
   const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [smsConsentGiven, setSmsConsentGiven] = useState(false);
   const { sendVerificationCode, verifyCode, checkIfUserExists } = useAuth();
   const navigate = useNavigate();
 
@@ -42,6 +46,7 @@ const Login: React.FC = () => {
   }, []);
 
   const onPhoneSubmit = async (data: PhoneFormData) => {
+    setSmsConsentGiven(!!data.smsConsent);
     // Normalize to E.164 (+1XXXXXXXXXX) for Firebase
     const e164 = normalizeUSPhoneToE164OrNull(data.phoneNumber);
     if (!e164) {
@@ -130,7 +135,7 @@ const Login: React.FC = () => {
     try {
       console.log('🔍 Login: Calling verifyCode with isLogin=true (will preserve existing user data)');
       console.log('🔍 Login: This is a LOGIN attempt - should only work for existing users');
-      await verifyCode(confirmationResult, data.verificationCode, '', '', '', true);
+      await verifyCode(confirmationResult, data.verificationCode, '', '', '', true, smsConsentGiven, 'v1');
       console.log('🔍 Login: verifyCode completed successfully, Layout will handle routing based on status');
       // Navigate to home - Layout.tsx will automatically redirect pending users to /pending-approval
       // and rejected users to /account-rejected based on their status
@@ -214,6 +219,24 @@ const Login: React.FC = () => {
                 {phoneForm.formState.errors.phoneNumber && (
                   <p className="mt-1 text-sm text-red-600">
                     {phoneForm.formState.errors.phoneNumber.message}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="flex items-start gap-3 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#F25129] focus:ring-[#F25129]"
+                    {...phoneForm.register('smsConsent')}
+                  />
+                  <span>
+                    I consent to receive SMS and call notifications for verification, login, and account updates at this phone number.
+                  </span>
+                </label>
+                {phoneForm.formState.errors.smsConsent && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {phoneForm.formState.errors.smsConsent.message}
                   </p>
                 )}
               </div>
