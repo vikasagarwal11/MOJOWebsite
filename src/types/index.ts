@@ -43,6 +43,11 @@ export interface Event {
   updatedAt: Date;
   rsvps: RSVP[];
   attendees: string[];
+  // Geo fields for spatial event discovery
+  latitude: number | null;
+  longitude: number | null;
+  geohash: string | null;
+  region: string | null;
 }
 
 export interface RSVP {

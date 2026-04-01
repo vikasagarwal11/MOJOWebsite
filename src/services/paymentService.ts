@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -710,17 +711,23 @@ export class PaymentService {
       
       const batch = writeBatch(db);
 
-      // Update attendee status
-      batch.update(attendeeRef, {
-        paymentStatus: newStatus,
-        updatedAt: Timestamp.now()
-      });
-
       // If marking as paid, create a transaction record for audit trail
       if (newStatus === 'paid') {
         const transactionRef = doc(collection(db, this.TRANSACTIONS_COLLECTION));
         const amount = this.getPriceForAgeGroup(attendeeData.ageGroup, eventPricing);
+        const derivedMethod: PaymentMethod =
+          eventPricing.paymentMethod === 'zelle'
+            ? 'zelle'
+            : eventPricing.paymentMethod === 'stripe'
+              ? 'card'
+              : 'other';
         
+        batch.update(attendeeRef, {
+          paymentStatus: newStatus,
+          paymentTransactionId: transactionRef.id,
+          updatedAt: Timestamp.now()
+        });
+
         batch.set(transactionRef, {
           eventId,
           userId: attendeeData.userId,
@@ -728,7 +735,7 @@ export class PaymentService {
           amount,
           currency: eventPricing.currency,
           status: 'paid' as PaymentStatus,
-          method: 'other' as PaymentMethod, // Admin manual marking
+          method: derivedMethod,
           refundStatus: 'none' as RefundStatus,
           metadata: {
             attendeeName: attendeeData.name,
@@ -759,6 +766,29 @@ export class PaymentService {
         });
 
         console.log('✅ Created transaction record for manual payment');
+      } else {
+        // If marking as unpaid, remove admin-manual transactions for this attendee/event
+        // so Finance Console reflects active paid state only.
+        const manualTxQuery = query(
+          collection(db, this.TRANSACTIONS_COLLECTION),
+          where('attendeeId', '==', attendeeId)
+        );
+        const manualTxSnap = await getDocs(manualTxQuery);
+
+        manualTxSnap.docs.forEach((txDoc) => {
+          const txData = txDoc.data() as any;
+          const sameEvent = String(txData?.eventId || '') === eventId;
+          const isManual = Boolean(txData?.metadata?.adminManualUpdate);
+          if (sameEvent && isManual) {
+            batch.delete(txDoc.ref);
+          }
+        });
+
+        batch.update(attendeeRef, {
+          paymentStatus: newStatus,
+          paymentTransactionId: deleteField(),
+          updatedAt: Timestamp.now()
+        });
       }
 
       await batch.commit();

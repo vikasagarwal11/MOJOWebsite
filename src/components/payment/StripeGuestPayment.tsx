@@ -19,10 +19,12 @@ const StripePaymentForm: React.FC<{
     amount: number;
     currency: string;
     eventTitle: string;
+    customerName?: string;
+    customerEmail?: string;
     onSuccess: (transactionId: string) => void;
     onError: (error: string) => void;
     onBack: () => void;
-}> = ({ transactionId, amount, currency, eventTitle, onSuccess, onError, onBack }) => {
+}> = ({ transactionId, amount, currency, eventTitle, customerName, customerEmail, onSuccess, onError, onBack }) => {
     const stripe = useStripe();
     const elements = useElements();
     const [isProcessing, setIsProcessing] = useState(false);
@@ -47,7 +49,13 @@ const StripePaymentForm: React.FC<{
             const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
                 elements,
                 confirmParams: {
-                    return_url: `${window.location.origin}/payment/success`
+                    return_url: `${window.location.origin}/payment/success`,
+                    payment_method_data: {
+                        billing_details: {
+                            name: customerName,
+                            email: customerEmail
+                        }
+                    }
                 },
                 redirect: 'if_required'
             });
@@ -148,6 +156,8 @@ export const StripeGuestPayment: React.FC<StripeGuestPaymentProps> = ({
     const [transactionId, setTransactionId] = useState<string | null>(null);
     const [amount, setAmount] = useState<number>(0);
     const [currency, setCurrency] = useState<string>('usd');
+    const [customerName, setCustomerName] = useState<string>('');
+    const [customerEmail, setCustomerEmail] = useState<string>('');
 
     useEffect(() => {
         createPaymentIntent();
@@ -178,6 +188,8 @@ export const StripeGuestPayment: React.FC<StripeGuestPaymentProps> = ({
                 setTransactionId(result.data.transactionId);
                 setAmount(result.data.amount);
                 setCurrency(result.data.currency);
+                setCustomerName(result.data.customerName || '');
+                setCustomerEmail(result.data.customerEmail || '');
             } else {
                 throw new Error('Failed to create payment intent');
             }
@@ -220,11 +232,13 @@ export const StripeGuestPayment: React.FC<StripeGuestPaymentProps> = ({
 
     return (
         <StripeProvider clientSecret={clientSecret}>
-            <StripePaymentForm
+                <StripePaymentForm
                 transactionId={transactionId}
                 amount={amount}
                 currency={currency}
                 eventTitle={eventTitle}
+                customerName={customerName}
+                customerEmail={customerEmail}
                 onSuccess={onSuccess}
                 onError={onError}
                 onBack={onBack}

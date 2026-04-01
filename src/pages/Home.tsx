@@ -18,10 +18,10 @@ import { useInView } from 'react-intersection-observer';
 import { Link, useNavigate } from 'react-router-dom';
 import HeroCarousel from '../components/hero/HeroCarousel';
 import TestimonialCarousel from '../components/home/TestimonialCarousel';
+import { SEO_CONFIG } from '../config/seo';
 import { useAuth } from '../contexts/AuthContext';
 import { useFirestore } from '../hooks/useFirestore';
 import { useTestimonials } from '../hooks/useTestimonials';
-import { SEO_CONFIG } from '../config/seo';
 import { logAnalyticsEvent } from '../services/analyticsService';
 
 const LazyImage: React.FC<{ src: string; alt: string; className?: string }> = ({ src, alt, className }) => {
@@ -77,7 +77,7 @@ const MotionItem: any = isBrowser ? motion.div : MotionlessDiv;
 const Home: React.FC = () => {
   const { currentUser } = useAuth();
   const isAuthed = !!currentUser;
-  const { useRealtimeCollection } = useFirestore();
+  const { useRealtimeCollection, useRealtimeDoc } = useFirestore();
   const navigate = useNavigate();
   const lastSectionRef = useRef<string | null>(null);
 
@@ -198,6 +198,23 @@ const Home: React.FC = () => {
 
   const momMediaRaw = momMediaSnapshot.data ?? [];
   const loadingMoments = momMediaSnapshot.loading;
+  const homeStatsSnapshot = useRealtimeDoc('appConfig/homeStats');
+
+  const activeMembersText = useMemo(() => {
+    const data = homeStatsSnapshot.data as any;
+    const rawCount = Number(data?.activeMembersCount);
+    const count = Number.isFinite(rawCount) ? Math.max(0, Math.round(rawCount)) : 190;
+    const showPlus = (data?.activeMembersShowPlusSign ?? data?.showPlusSign) !== false;
+    return `${count}${showPlus ? '+' : ''}`;
+  }, [homeStatsSnapshot.data]);
+
+  const monthlyEventsText = useMemo(() => {
+    const data = homeStatsSnapshot.data as any;
+    const rawCount = Number(data?.monthlyEventsCount);
+    const count = Number.isFinite(rawCount) ? Math.max(0, Math.round(rawCount)) : 2;
+    const showPlus = data?.monthlyEventsShowPlusSign !== false;
+    return `${count}${showPlus ? '+' : ''}`;
+  }, [homeStatsSnapshot.data]);
 
   const momMoments = useMemo(() => {
     const formatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
@@ -385,7 +402,7 @@ const Home: React.FC = () => {
             </div>
             
             {/* Right: Hero Carousel (same size as before) */}
-            <div className="relative max-w-lg ml-auto min-h-[200px]">
+            <div className="relative max-w-lg ml-auto w-full flex-shrink-0">
               <HeroCarousel 
                 duration={4}
               />
@@ -512,11 +529,11 @@ const Home: React.FC = () => {
          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 bg-[#F25129] rounded-xl sm:rounded-2xl">
            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 text-center">
              <div>
-               <div className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-2">190+</div>
+               <div className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-2">{activeMembersText}</div>
                <div className="text-sm sm:text-base text-[#FFE4D6]">Active Members</div>
              </div>
              <div>
-               <div className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-2">2+</div>
+               <div className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-2">{monthlyEventsText}</div>
                <div className="text-sm sm:text-base text-[#FFE4D6]">Monthly Events</div>
              </div>
              <div>

@@ -7,6 +7,7 @@ import {
     ZelleInstructions
 } from '../types/paymentTransaction';
 import { GuestSessionService } from './guestSessionService';
+import { ensureStripeCustomer } from './stripeCustomerService';
 
 /**
  * Guest Payment Service
@@ -402,9 +403,19 @@ export class GuestPaymentService {
             console.log(`🚨 [FINAL CHECK] Calling Stripe API with amount: ${transaction.amount} cents ($${(transaction.amount / 100).toFixed(2)})`);
 
             // Create Stripe payment intent
+            const stripeCustomer = await ensureStripeCustomer(
+                this.db,
+                this.stripe,
+                {
+                    email: transaction.guestContactInfo!.email,
+                    name: `${transaction.guestContactInfo!.firstName} ${transaction.guestContactInfo!.lastName}`.trim()
+                }
+            );
+
             const paymentIntent = await this.stripe.paymentIntents.create({
                 amount: transaction.amount!,
                 currency: transaction.currency!,
+                customer: stripeCustomer.id,
                 automatic_payment_methods: {
                     enabled: true,
                 },
@@ -436,6 +447,8 @@ export class GuestPaymentService {
             return {
                 clientSecret: paymentIntent.client_secret!,
                 paymentIntentId: paymentIntent.id,
+                customerName: `${transaction.guestContactInfo!.firstName} ${transaction.guestContactInfo!.lastName}`.trim(),
+                customerEmail: transaction.guestContactInfo!.email,
                 transactionId,
                 amount: transaction.amount!,
                 currency: transaction.currency!
@@ -516,6 +529,8 @@ export class GuestPaymentService {
 
             return {
                 instructions,
+                customerName: `${transaction.guestContactInfo!.firstName} ${transaction.guestContactInfo!.lastName}`.trim(),
+                customerEmail: transaction.guestContactInfo!.email,
                 transactionId,
                 amount: transaction.amount!,
                 currency: transaction.currency!

@@ -15,6 +15,9 @@ const phoneSchema = z.object({
   phoneNumber: z.string().min(7, 'Enter a phone like 5551234567 or +12025550123'),
   firstName: z.string().min(2, 'First name must be at least 2 characters'),
   lastName: z.string().min(2, 'Last name must be at least 2 characters'),
+  smsConsent: z.literal(true, {
+    errorMap: () => ({ message: 'Please provide consent to receive SMS/calls on this number.' }),
+  }),
 });
 
 const codeSchema = z.object({
@@ -420,6 +423,8 @@ const Register: React.FC = () => {
         howDidYouHearOther: data.howDidYouHear === 'other' ? data.howDidYouHearOther : undefined,
         referredBy: selectedReferrer?.id || data.referredBy,
         referralNotes: data.referralNotes,
+        smsConsentGiven: true,
+        smsConsentVersion: 'v1',
       });
 
       console.log('✅ RegisterNew: User creation successful, navigating to pending-approval');
@@ -567,6 +572,24 @@ const Register: React.FC = () => {
                 {phoneForm.formState.errors.phoneNumber && (
                   <p className="mt-1 text-sm text-red-600">
                     {phoneForm.formState.errors.phoneNumber.message}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="flex items-start gap-3 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#F25129] focus:ring-[#F25129]"
+                    {...phoneForm.register('smsConsent')}
+                  />
+                  <span>
+                    I consent to receive SMS and call notifications for verification, login, and account updates at this phone number.
+                  </span>
+                </label>
+                {phoneForm.formState.errors.smsConsent && (
+                  <p className="mt-1 text-sm text-red-600">
+                    {phoneForm.formState.errors.smsConsent.message}
                   </p>
                 )}
               </div>

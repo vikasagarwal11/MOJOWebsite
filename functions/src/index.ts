@@ -539,18 +539,27 @@ async function sendSMSViaTwilio(phoneNumber: string, message: string): Promise<{
 
     const twilio = await import('twilio');
     const client = twilio.default(twilioAccountSid, twilioAuthToken);
+    const normalizedTo = normalizeUSPhoneToE164OrNull(phoneNumber);
+    if (!normalizedTo) {
+      const err = `Invalid phone format: "${phoneNumber}" (expected E.164, e.g. +14155550123)`;
+      console.error('❌ Twilio SMS failed:', err);
+      return { success: false, error: err };
+    }
 
     const result = await client.messages.create({
       body: message,
       from: twilioPhoneNumber,
-      to: phoneNumber,
+      to: normalizedTo,
     });
 
     console.log(`✅ SMS sent via Twilio. SID: ${result.sid}`);
     return { success: true, sid: result.sid };
   } catch (error: any) {
-    console.error('❌ Twilio SMS failed:', error?.message || error);
-    return { success: false, error: error?.message || 'Failed to send SMS' };
+    const code = error?.code ? ` code=${error.code}` : '';
+    const msg = error?.message || 'Failed to send SMS';
+    const more = error?.moreInfo ? ` moreInfo=${error.moreInfo}` : '';
+    console.error(`❌ Twilio SMS failed:${code} ${msg}${more}`.trim());
+    return { success: false, error: `${msg}${code}`.trim() };
   }
 }
 const PAYMENT_PENDING_STATUSES = new Set(['unpaid', 'pending', 'waiting_for_approval']);
@@ -5726,7 +5735,18 @@ export const onAccountApprovalUpdated = onDocumentWritten(
           const userDoc = await db.collection('users').doc(userId).get();
           const userData = userDoc.data();
           const userName = `${afterData.firstName || ''} ${afterData.lastName || ''}`.trim() || 'User';
+          const rawPhoneNumber = String(afterData.phoneNumber || userData?.phoneNumber || '').trim();
+          const phoneNumber = normalizeUSPhoneToE164OrNull(rawPhoneNumber);
           const smsEnabled = userData?.notificationPreferences?.smsEnabled !== false;
+
+          if (!phoneNumber) {
+            console.warn('⚠️ Skipping account approval SMS because phone number is invalid or missing', {
+              userId,
+              approvalId: event.params.approvalId,
+              rawPhoneNumber: rawPhoneNumber ? rawPhoneNumber.slice(0, 4) + '***' : null,
+            });
+            return;
+          }
 
           const project = process.env.GCLOUD_PROJECT || '';
           const isDev = project === 'momsfitnessmojo-dev' || project.endsWith('-dev');
@@ -5736,7 +5756,7 @@ export const onAccountApprovalUpdated = onDocumentWritten(
             await sendAccountApprovalSMSNow(
               userId,
               userName,
-              userData?.phoneNumber || '',
+              phoneNumber,
               smsEnabled
             );
           } else {
@@ -5744,7 +5764,7 @@ export const onAccountApprovalUpdated = onDocumentWritten(
             await queueAccountApprovalSMS(
               userId,
               userName,
-              userData?.phoneNumber || '',
+              phoneNumber,
               notificationId,
               smsEnabled
             );

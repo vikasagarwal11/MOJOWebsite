@@ -12,6 +12,7 @@ import * as admin from 'firebase-admin';
 import { CallableRequest, HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { defineSecret } from 'firebase-functions/params';
 import Stripe from 'stripe';
+import { ensureStripeCustomer } from './services/stripeCustomerService';
 
 const db = admin.firestore();
 
@@ -350,6 +351,27 @@ export const createPaymentIntent = onCall(
       const stripeInstance = getStripe();
       console.log('✅ Stripe initialized');
 
+      const userDoc = await db.collection('users').doc(userId).get();
+      const userData = userDoc.data() || {};
+      const customerEmail = String(userData.email || userData.primaryEmail || '').trim();
+      const customerName = String(
+        userData.displayName ||
+        [userData.firstName, userData.lastName].filter(Boolean).join(' ') ||
+        'Member'
+      ).trim();
+
+      if (!customerEmail) {
+        throw new HttpsError('failed-precondition', 'User email not found');
+      }
+
+      const stripeCustomer = await ensureStripeCustomer(
+        db,
+        stripeInstance,
+        { email: customerEmail, name: customerName },
+        userData.stripeCustomerId,
+        userId
+      );
+
       // Calculate incremental amount
       const {
         totalAmount,
@@ -446,6 +468,7 @@ export const createPaymentIntent = onCall(
         {
           amount: totalAmount,
           currency,
+          customer: stripeCustomer.id,
           automatic_payment_methods: {
             enabled: true,
           },

@@ -367,6 +367,8 @@ export const useFirestore = () => {
       // For resources, ensure non-admin users never query deleted docs (rules require !isDeleted)
       const isAdmin = currentUser?.role === 'admin';
       const shouldClientSortResources = collectionName === 'resources' && !isAdmin;
+      const shouldClientSortHeroMedia =
+        collectionName === 'media' && hasWhereEquals(safeConstraints, 'showOnHomepage', true);
       if (collectionName === 'resources' && !isAdmin) {
         if (!hasWhereEquals(safeConstraints, 'isDeleted', false)) {
           safeConstraints = [where('isDeleted', '==', false), ...safeConstraints];
@@ -378,6 +380,11 @@ export const useFirestore = () => {
       }
       if (shouldClientSortResources) {
         // Avoid composite index requirements; sort by createdAt on the client instead
+        safeConstraints = safeConstraints.filter((c: any) => c?.type !== 'orderBy');
+      }
+      if (shouldClientSortHeroMedia) {
+        // The homepage carousel only needs a simple filtered list.
+        // Avoid the createdAt orderBy so Firestore does not require a composite index.
         safeConstraints = safeConstraints.filter((c: any) => c?.type !== 'orderBy');
       }
       

@@ -110,10 +110,12 @@ const PaymentForm: React.FC<{
   amount: number;
   currency: string;
   unpaidAttendees: Attendee[];
+  payerName?: string;
+  payerEmail?: string;
   onSuccess: () => Promise<void>;
   onError: (error: string) => void;
   onCancel: () => void;
-}> = ({ amount, currency, unpaidAttendees, onSuccess, onError, onCancel }) => {
+}> = ({ amount, currency, unpaidAttendees, payerName, payerEmail, onSuccess, onError, onCancel }) => {
   const stripe = useStripe();
   const elements = useElements();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -145,6 +147,12 @@ const PaymentForm: React.FC<{
         elements,
         confirmParams: {
           return_url: window.location.href, // Redirect back to current page
+          payment_method_data: {
+            billing_details: {
+              name: payerName,
+              email: payerEmail,
+            },
+          },
         },
         redirect: 'if_required', // Only redirect if 3D Secure is required
       });
@@ -314,6 +322,10 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
   // Zelle payment state
   const [showZelleModal, setShowZelleModal] = useState(false);
   const isZellePayment = event.pricing?.paymentMethod === 'zelle';
+  const payerName = currentUser?.displayName ||
+    [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ') ||
+    'Member';
+  const payerEmail = currentUser?.email || guestEmail || '';
 
   const paidStorageKey = useMemo(() => {
     const userKey = currentUser?.id || guestUserId || 'guest';
@@ -989,6 +1001,8 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                     amount={isGuest && guestServerAmount !== null ? guestServerAmount : paymentSummary.totalAmount}
                     currency={isGuest && guestServerCurrency ? guestServerCurrency : paymentSummary.currency}
                     unpaidAttendees={unpaidAttendees}
+                    payerName={payerName}
+                    payerEmail={payerEmail}
                     onSuccess={handlePaymentSuccess}
                     onError={handlePaymentError}
                     onCancel={handleCancelPayment}
@@ -1261,7 +1275,7 @@ export const PaymentSection: React.FC<PaymentSectionProps> = ({
                         </span>
                         {isZellePayment && hasUnpaidAmount && (
                           <p className="text-xs text-purple-700 font-semibold">
-                            💵 Zelle - No fees!
+                            💵 Zelle Payment
                           </p>
                         )}
                         {hasUnpaidAmount && paidAttendees.length > 0 && (
