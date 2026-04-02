@@ -9,8 +9,24 @@ import 'core/theme/app_theme.dart';
 import 'core/branding/platform_branding.dart';
 import 'firebase_options.dart';
 
+import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
+
+  Stripe.publishableKey = dotenv.env['STRIPE_PUBLISHABLE_KEY'] ?? '';
+  Stripe.merchantIdentifier = 'com.mfm.mfmdev';
+  try {
+    await Stripe.instance.applySettings();
+  } catch (e, st) {
+    appLogger.e(
+      'Stripe initialization failed (payments may be unavailable until Android theme / keys are fixed)',
+      error: e,
+      stackTrace: st,
+    );
+  }
 
   if (firebaseOptionsConfigured) {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);

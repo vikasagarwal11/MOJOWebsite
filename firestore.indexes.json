@@ -1,5 +1,24 @@
-﻿{
+{
   "indexes": [
+    {
+      "collectionGroup": "attendees",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "userId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "DESCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
     {
       "collectionGroup": "kb_sources",
       "queryScope": "COLLECTION",

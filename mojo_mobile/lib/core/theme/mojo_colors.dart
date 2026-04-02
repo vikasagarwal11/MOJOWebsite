@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 class MojoColors {
-  // Brand Colors
-  static const primaryOrange = Color(0xFFFF5722);
+  // Brand Colors synced with Web Version
+  static const primaryOrange = Color(0xFFF25129);
   static const primaryPurple = Color(0xFF8B5CF6);
   static const primaryPink = Color(0xFFEC4899);
   

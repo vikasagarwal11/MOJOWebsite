@@ -1,70 +1,192 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:lottie/lottie.dart';
+import 'package:pedometer/pedometer.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../core/providers/core_providers.dart';
+import '../../../core/services/pedometer_service.dart';
 import '../../../core/theme/mojo_colors.dart';
 import '../../../data/models/mojo_event.dart';
 import '../../../data/models/mojo_post.dart';
+import '../widgets/stories_bar.dart';
+import '../widgets/progress_card.dart';
+import '../../events/widgets/rsvp_bottom_sheet.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mojo Dashboard', style: TextStyle(fontWeight: FontWeight.bold)),
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  bool _showConfetti = false;
+
+  Future<void> _handleHomeRsvp(MojoEvent event) async {
+    HapticFeedback.lightImpact();
+    final success = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => RsvpBottomSheet(event: event),
+    );
+    if (success == true && mounted) {
+      setState(() => _showConfetti = true);
+      await Future.delayed(const Duration(seconds: 4));
+      if (mounted) setState(() => _showConfetti = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final pedometerService = ref.watch(pedometerServiceProvider);
+    final user = ref.watch(authStateProvider).valueOrNull;
+    if (user != null) {
+      ref.listen(userProfileProvider(user.uid), (prev, next) {
+        final s = next.valueOrNull?.status;
+        if (s == 'pending' || s == 'needs_clarification') {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (context.mounted) context.go('/pending-approval');
+          });
+        }
+      });
+    }
+
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+        title: const Text('MOJO', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 2)),
         actions: [
-          IconButton(icon: const Icon(Icons.notifications_outlined), onPressed: () {}),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _WelcomeSection(scheme: scheme),
-            const SizedBox(height: 24),
-            _StatsSection(scheme: scheme),
-            const SizedBox(height: 24),
-            _SectionHeader(title: 'Upcoming Events', onSeeAll: () {}),
-            const SizedBox(height: 12),
-            const _UpcomingEventsStrip(),
-            const SizedBox(height: 24),
-            _SectionHeader(title: 'Community Posts', onSeeAll: () {}),
-            const SizedBox(height: 12),
-            const _HomePostsPreview(),
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Notifications will hook to FCM soon.')),
+              );
+            },
+          ),
+          Consumer(
+            builder: (context, ref, _) {
+              final user = ref.watch(authStateProvider).valueOrNull;
+              final uid = user?.uid;
+              final photoUrl = uid != null
+                  ? ref.watch(userProfileProvider(uid)).valueOrNull?.photoUrl ?? user?.photoURL
+                  : null;
+              return Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: CircleAvatar(
+                  radius: 18,
+                  backgroundImage: photoUrl != null && photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                  child: photoUrl == null || photoUrl.isEmpty ? const Icon(Icons.person, size: 20) : null,
+                ),
+              );
+            },
+          ),
           ],
         ),
-      ),
+        body: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 10),
+              const StoriesBar().animate().fadeIn(duration: 600.ms).slideX(begin: 0.1, end: 0),
+              const SizedBox(height: 20),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _WelcomeSection(scheme: scheme),
+                    const SizedBox(height: 24),
+                    const ProgressCard().animate().fadeIn(delay: 200.ms),
+                    const SizedBox(height: 24),
+                    _PedometerStats(pedometerService: pedometerService, scheme: scheme),
+                    const SizedBox(height: 24),
+                    _SectionHeader(title: 'Upcoming Events', onSeeAll: () => context.go('/events')),
+                    const SizedBox(height: 12),
+                    _UpcomingEventsStrip(onOpenRsvp: _handleHomeRsvp),
+                    const SizedBox(height: 24),
+                    _SectionHeader(title: 'Community Feed', onSeeAll: () => context.go('/posts')),
+                    const SizedBox(height: 12),
+                    const _HomePostsPreview(),
+                    const SizedBox(height: 30),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        ),
+        if (_showConfetti)
+          IgnorePointer(
+            child: Center(
+              child: Lottie.network(
+                'https://assets9.lottiefiles.com/packages/lf20_u4yrau.json',
+                repeat: false,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
 
-class _WelcomeSection extends StatelessWidget {
+class _PedometerStats extends StatelessWidget {
+  final PedometerService pedometerService;
+  final ColorScheme scheme;
+
+  const _PedometerStats({required this.pedometerService, required this.scheme});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<StepCount>(
+      stream: pedometerService.stepCountStream,
+      builder: (context, snapshot) {
+        String steps = snapshot.hasData ? snapshot.data!.steps.toString() : '0';
+        return Row(
+          children: [
+            _StatCard(title: 'Daily Steps', value: steps, icon: Icons.directions_walk, color: Colors.blue),
+            const SizedBox(width: 16),
+            _StatCard(title: 'Active Min', value: '—', icon: Icons.timer, color: Colors.orange),
+            const SizedBox(width: 16),
+            _StatCard(title: 'Mojo XP', value: '—', icon: Icons.bolt, color: Colors.purple),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _WelcomeSection extends ConsumerWidget {
   const _WelcomeSection({required this.scheme});
 
   final ColorScheme scheme;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authStateProvider).valueOrNull;
+    final uid = user?.uid;
+    final profileName =
+        uid != null ? ref.watch(userProfileProvider(uid)).valueOrNull?.displayName : null;
+    final firstName = (profileName ?? user?.displayName ?? user?.email?.split('@').first ?? 'Mojo Mom').split(' ').first;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [scheme.primary, scheme.secondary],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: MojoColors.mainGradient,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: scheme.primary.withValues(alpha: 0.35),
+            color: MojoColors.primaryOrange.withOpacity(0.3),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -72,44 +194,30 @@ class _WelcomeSection extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Welcome back,', style: TextStyle(color: Colors.white70, fontSize: 16)),
-                Text('Mojo Mom! ✨', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                SizedBox(height: 12),
-                Text('Ready for your daily fitness goal?', style: TextStyle(color: Colors.white, fontSize: 14)),
+                Text('Ready for today, $firstName?', style: const TextStyle(color: Colors.white70, fontSize: 16)),
+                const Text('Let\'s crush it! 💪', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
               ],
             ),
           ),
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
-            child: const Icon(Icons.fitness_center, color: Colors.white, size: 32),
+            child: ClipOval(
+              child: SvgPicture.asset(
+                'assets/images/mfm_logo.svg',
+                width: 44,
+                height: 44,
+                fit: BoxFit.cover,
+              ),
+            ),
           ),
         ],
       ),
     ).animate().fadeIn(duration: 600.ms).slideY(begin: 0.2, end: 0);
-  }
-}
-
-class _StatsSection extends StatelessWidget {
-  const _StatsSection({required this.scheme});
-
-  final ColorScheme scheme;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _StatCard(title: 'Events', value: '—', icon: Icons.event, color: scheme.primary),
-        const SizedBox(width: 16),
-        _StatCard(title: 'Posts', value: '—', icon: Icons.feed, color: scheme.secondary),
-        const SizedBox(width: 16),
-        _StatCard(title: 'Points', value: '—', icon: Icons.star, color: scheme.tertiary),
-      ],
-    );
   }
 }
 
@@ -127,16 +235,16 @@ class _StatCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.withValues(alpha: 0.12)),
+          border: Border.all(color: Colors.grey.withOpacity(0.1)),
         ),
         child: Column(
           children: [
             Icon(icon, color: color, size: 24),
             const SizedBox(height: 8),
             Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            Text(title, style: const TextStyle(fontSize: 12, color: MojoColors.textSecondary)),
+            Text(title, style: const TextStyle(fontSize: 10, color: MojoColors.textSecondary)),
           ],
         ),
       ),
@@ -163,120 +271,134 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _UpcomingEventsStrip extends ConsumerWidget {
-  const _UpcomingEventsStrip();
+  const _UpcomingEventsStrip({required this.onOpenRsvp});
+
+  final Future<void> Function(MojoEvent) onOpenRsvp;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
     final async = ref.watch(upcomingEventsProvider);
 
     return async.when(
       data: (List<MojoEvent> events) {
         final slice = events.take(6).toList();
-        if (slice.isEmpty) {
-          return SizedBox(
-            height: 120,
-            child: Center(
-              child: Text('No upcoming events', style: TextStyle(color: scheme.onSurfaceVariant)),
-            ),
-          );
-        }
+        if (slice.isEmpty) return const SizedBox();
         return SizedBox(
-          height: 200,
+          height: 272,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: slice.length,
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
-              final e = slice[index];
-              return _HomeEventCard(event: e);
+              final ev = slice[index];
+              return _HomeEventCard(
+                event: ev,
+                onOpenDetail: () => context.push('/event/${ev.id}'),
+                onRSVP: () => onOpenRsvp(ev),
+              );
             },
           ),
         );
       },
-      loading: () => const SizedBox(
-        height: 200,
-        child: Center(child: CircularProgressIndicator()),
-      ),
-      error: (err, _) => SizedBox(
-        height: 120,
-        child: Center(child: Text('Events: $err')),
-      ),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (err, _) => Center(child: Text('Events: $err')),
     );
   }
 }
 
 class _HomeEventCard extends StatelessWidget {
-  const _HomeEventCard({required this.event});
+  const _HomeEventCard({required this.event, this.onOpenDetail, this.onRSVP});
 
   final MojoEvent event;
+  final VoidCallback? onOpenDetail;
+  final VoidCallback? onRSVP;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final when = DateFormat('EEE, MMM d · jm').format(event.startAt);
-    final imageUrl = event.imageUrl;
-
     return Container(
       width: 280,
       decoration: BoxDecoration(
-        color: scheme.surface,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
       ),
+      clipBehavior: Clip.hardEdge,
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            child: SizedBox(
-              height: 100,
-              width: double.infinity,
-              child: imageUrl != null && imageUrl.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: imageUrl,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(color: scheme.surfaceContainerHighest),
-                      errorWidget: (_, __, ___) => Container(
-                        color: scheme.surfaceContainerHighest,
-                        child: Icon(Icons.event, color: scheme.primary),
-                      ),
-                    )
-                  : Container(
-                      color: scheme.surfaceContainerHighest,
-                      child: Icon(Icons.event, color: scheme.primary),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onOpenDetail,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                    child: SizedBox(
+                      height: 76,
+                      width: double.infinity,
+                      child: event.imageUrl != null
+                          ? CachedNetworkImage(imageUrl: event.imageUrl!, fit: BoxFit.cover)
+                          : Container(color: Colors.grey.shade100),
                     ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          event.title,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, height: 1.2),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            const Icon(Icons.access_time, size: 11, color: Colors.grey),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                DateFormat('MMM d, h:mm a').format(event.startAt),
+                                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  event.title,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+          if (onRSVP != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: onRSVP,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    backgroundColor: scheme.primary,
+                    foregroundColor: scheme.onPrimary,
+                  ),
+                  child: const Text('RSVP', style: TextStyle(fontSize: 12)),
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.calendar_today, size: 12, color: scheme.onSurfaceVariant),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        when,
-                        style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -288,15 +410,11 @@ class _HomePostsPreview extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scheme = Theme.of(context).colorScheme;
     final async = ref.watch(postsFeedProvider);
 
     return async.when(
       data: (List<MojoPost> posts) {
         final slice = posts.take(3).toList();
-        if (slice.isEmpty) {
-          return Text('No community posts yet.', style: TextStyle(color: scheme.onSurfaceVariant));
-        }
         return ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -305,33 +423,20 @@ class _HomePostsPreview extends ConsumerWidget {
           itemBuilder: (context, index) {
             final p = slice[index];
             return ListTile(
+              onTap: () => context.go('/posts'),
               leading: CircleAvatar(
-                backgroundImage: p.authorPhotoUrl != null && p.authorPhotoUrl!.isNotEmpty
-                    ? CachedNetworkImageProvider(p.authorPhotoUrl!)
-                    : null,
-                child: p.authorPhotoUrl == null || p.authorPhotoUrl!.isEmpty
-                    ? Icon(Icons.person, color: scheme.primary)
-                    : null,
+                backgroundImage: p.authorPhotoUrl != null ? NetworkImage(p.authorPhotoUrl!) : null,
               ),
-              title: Text(
-                p.title.trim().isNotEmpty ? p.title : (p.content.length > 48 ? '${p.content.substring(0, 48)}…' : p.content),
-                style: const TextStyle(fontWeight: FontWeight.bold),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Text(
-                p.authorName ?? 'Member',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+              title: Text(p.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text(p.authorName ?? 'Member'),
               trailing: const Icon(Icons.chevron_right),
-              tileColor: scheme.surface,
+              tileColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             );
           },
         );
       },
-      loading: () => const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator())),
+      loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Text('Posts: $e'),
     );
   }

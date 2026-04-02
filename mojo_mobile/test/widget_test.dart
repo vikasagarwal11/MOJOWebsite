@@ -23,7 +23,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Mojo Dashboard'), findsOneWidget);
+      expect(find.text('MOJO'), findsOneWidget);
     });
   });
 }

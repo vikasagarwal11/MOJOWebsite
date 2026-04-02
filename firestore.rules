@@ -1412,6 +1412,42 @@ service cloud.firestore {
         (isAdmin() || request.auth.uid == resource.data.contributorId);
     }
 
+    // --- Ephemeral community stories (mobile Media → stories; 24h TTL client-side) ---
+    match /stories/{storyId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isApprovedUser() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.url is string &&
+        request.resource.data.url.size() > 0 &&
+        request.resource.data.mediaType is string &&
+        (!('authorName' in request.resource.data) || request.resource.data.authorName is string) &&
+        (!('authorPhotoUrl' in request.resource.data) || request.resource.data.authorPhotoUrl == null || isUrlLike(request.resource.data.authorPhotoUrl));
+      allow update, delete: if isSignedIn() &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // --- Real-time chat (mobile + web chatService; rooms usually seeded in Console) ---
+    match /chatRooms/{roomId} {
+      allow read: if isSignedIn() && isApprovedUser();
+      // Admins can seed rooms; first message uses merge-create with only preview fields.
+      allow create: if isSignedIn() && (
+        isAdmin() ||
+        (isApprovedUser() && request.resource.data.keys().hasOnly(['lastMessage', 'lastMessageTime']))
+      );
+      allow update: if isSignedIn() && isApprovedUser();
+      allow delete: if isSignedIn() && isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && isApprovedUser();
+        allow create: if isSignedIn() && isApprovedUser() &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() <= 8000 &&
+          (!('type' in request.resource.data) || request.resource.data.type in ['text', 'image', 'event', 'voice']);
+        allow update, delete: if false;
+      }
+    }
+
     // =========================
     // Internal analytics (client-write, admin-read)
     // =========================

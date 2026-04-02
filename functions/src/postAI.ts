@@ -6,6 +6,10 @@ export const generatePostSuggestionsV2 = onCall({
   cors: [
     'https://momsfitnessmojo.com',
     'https://www.momsfitnessmojo.com',
+    'https://momsfitnessmojo-65d00.web.app',
+    'https://momsfitnessmojo-65d00.firebaseapp.com',
+    'https://momsfitnessmojo-dev.web.app',
+    'https://momsfitnessmojo-dev.firebaseapp.com',
     'https://momfitnessmojo.web.app',
     'https://momfitnessmojo.firebaseapp.com',
     'http://localhost:5173',

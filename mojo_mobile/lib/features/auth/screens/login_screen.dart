@@ -50,7 +50,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final registered = await auth.checkPhoneNumberRegistered(e164);
       if (!registered) {
-        _showError('This phone number is not registered. Please register on the website first.');
+        _showError('This phone number is not registered. Tap Create Account to join MOJO.');
         return;
       }
 
@@ -61,7 +61,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           setState(() => _loading = true);
           try {
             await auth.signInWithPhoneCredential(credential, requireUserDocument: true);
-            if (mounted) context.go('/');
+            if (!mounted) return;
+            await _routeAfterSuccessfulLogin(context, ref);
           } on FirebaseAuthException catch (e) {
             _showError(e.message ?? e.code);
           } catch (e) {
@@ -130,10 +131,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             smsCode: code,
             requireUserDocument: true,
           );
-      if (mounted) context.go('/');
+      if (mounted) await _routeAfterSuccessfulLogin(context, ref);
     } on FirebaseAuthException catch (e) {
       if (e.code == 'user-doc-missing' || (e.message?.contains('No account found') ?? false)) {
-        _showError('No account found. Please register on the website first.');
+        _showError('No account found. Tap Create Account to register.');
         setState(() {
           _step = _LoginStep.phone;
           _verificationId = null;
@@ -151,6 +152,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Matches web: pending / needs_clarification users see `/pending-approval` instead of the shell.
+  Future<void> _routeAfterSuccessfulLogin(BuildContext context, WidgetRef ref) async {
+    final uid = ref.read(authStateProvider).valueOrNull?.uid;
+    if (uid == null || !context.mounted) return;
+    final status = await ref.read(authServiceProvider).getUserProfileStatus(uid);
+    if (!context.mounted) return;
+    if (status == 'pending' || status == 'needs_clarification') {
+      context.go('/pending-approval');
+    } else {
+      context.go('/');
+    }
   }
 
   void _backToPhone() {
@@ -286,6 +300,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ],
                     const SizedBox(height: 16),
+                    if (_step == _LoginStep.phone)
+                      Text(
+                        'By signing in, I consent to receive SMS and call notifications for verification, login, and account updates at this phone number.',
+                        style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+                        textAlign: TextAlign.center,
+                      ),
+                    const SizedBox(height: 16),
                     FilledButton(
                       onPressed: _loading
                           ? null
@@ -314,11 +335,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                     ),
                     const SizedBox(height: 16),
-                    Text(
-                      'New users: complete registration on the website first, then sign in here.',
-                      style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
-                      textAlign: TextAlign.center,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('Don\'t have an account? ', style: TextStyle(color: scheme.onSurfaceVariant)),
+                        TextButton(
+                          onPressed: _loading ? null : () => context.push('/register'),
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: const Text('Create Account', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: 8),
                     TextButton(
                       onPressed: _loading ? null : () => context.go('/'),
                       child: const Text('Continue without signing in'),

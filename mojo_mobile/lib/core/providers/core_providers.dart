@@ -98,6 +98,75 @@ final pastEventsProvider = StreamProvider<List<MojoEvent>>((ref) {
   return ref.watch(eventsRepositoryProvider).watchPast();
 });
 
+/// Single event doc for detail screen / deep link target ` /event/:eventId `.
+final eventByIdProvider = StreamProvider.family<MojoEvent?, String>((ref, eventId) {
+  if (!firebaseOptionsConfigured || eventId.isEmpty) {
+    return Stream<MojoEvent?>.value(null);
+  }
+  return ref
+      .watch(firestoreProvider)
+      .collection('events')
+      .doc(eventId)
+      .snapshots()
+      .map((s) {
+        if (!s.exists) return null;
+        return MojoEvent.fromDoc(s);
+      });
+});
+
+/// One of the signed-in user's `events/{eventId}/attendees/{attendeeId}` docs plus loaded event (web parity).
+class MyRsvpRow {
+  const MyRsvpRow({required this.attendeeDoc, required this.event});
+  final QueryDocumentSnapshot<Map<String, dynamic>> attendeeDoc;
+  final MojoEvent? event;
+}
+
+final myRsvpsProvider = StreamProvider<List<MyRsvpRow>>((ref) {
+  if (!firebaseOptionsConfigured) {
+    return Stream<List<MyRsvpRow>>.value(const []);
+  }
+  final user = ref.watch(authStateProvider).valueOrNull;
+  if (user == null) {
+    return Stream<List<MyRsvpRow>>.value(const []);
+  }
+  final fs = ref.watch(firestoreProvider);
+  // No server-side orderBy: avoids composite index (userId + createdAt + __name__) that often
+  // collides with CLI 409 / missing index on dev. Sort newest-first in memory instead.
+  return fs
+      .collectionGroup('attendees')
+      .where('userId', isEqualTo: user.uid)
+      .limit(120)
+      .snapshots()
+      .asyncMap((snap) async {
+        int createdAtMs(QueryDocumentSnapshot<Map<String, dynamic>> d) {
+          final c = d.data()['createdAt'];
+          if (c is Timestamp) return c.millisecondsSinceEpoch;
+          return 0;
+        }
+
+        final sorted = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snap.docs)
+          ..sort((a, b) => createdAtMs(b).compareTo(createdAtMs(a)));
+        final docs = sorted.take(40).toList();
+
+        final eventCache = <String, MojoEvent?>{};
+        final out = <MyRsvpRow>[];
+        for (final d in docs) {
+          final data = d.data();
+          final rawEventId = (data['eventId'] as String?)?.trim();
+          final eventId = (rawEventId != null && rawEventId.isNotEmpty)
+              ? rawEventId
+              : d.reference.parent.parent?.id;
+          if (eventId == null || eventId.isEmpty) continue;
+          if (!eventCache.containsKey(eventId)) {
+            final evSnap = await fs.collection('events').doc(eventId).get();
+            eventCache[eventId] = evSnap.exists ? MojoEvent.fromDoc(evSnap) : null;
+          }
+          out.add(MyRsvpRow(attendeeDoc: d, event: eventCache[eventId]));
+        }
+        return out;
+      });
+});
+
 final postsFeedProvider = StreamProvider<List<MojoPost>>((ref) {
   if (!firebaseOptionsConfigured) {
     return Stream<List<MojoPost>>.value(const []);

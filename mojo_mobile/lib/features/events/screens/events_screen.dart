@@ -1,58 +1,103 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:lottie/lottie.dart';
 
 import '../../../core/providers/core_providers.dart';
 import '../../../core/theme/mojo_colors.dart';
 import '../../../data/models/mojo_event.dart';
+import '../services/stripe_payment_service.dart';
+import '../widgets/rsvp_bottom_sheet.dart';
 
-class EventsScreen extends ConsumerWidget {
+class EventsScreen extends ConsumerStatefulWidget {
   const EventsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<EventsScreen> createState() => _EventsScreenState();
+}
+
+class _EventsScreenState extends ConsumerState<EventsScreen> {
+  bool _showConfetti = false;
+
+  void _handleRSVP(MojoEvent event) async {
+    // 1. Trigger Premium Haptic Feedback
+    HapticFeedback.lightImpact();
+
+    // 2. Invoke the Native Stripe + RSVP Bottom Sheet
+    final success = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => RsvpBottomSheet(event: event),
+    );
+
+    // 3. Show Success Animation if Payment/RSVP cleared
+    if (success == true && mounted) {
+      setState(() => _showConfetti = true);
+      await Future.delayed(const Duration(seconds: 4));
+      if (mounted) setState(() => _showConfetti = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Mojo Events', style: TextStyle(fontWeight: FontWeight.bold)),
-          bottom: TabBar(
-            indicatorColor: scheme.primary,
-            labelColor: scheme.primary,
-            unselectedLabelColor: MojoColors.textSecondary,
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            tabs: const [
-              Tab(text: 'Upcoming'),
-              Tab(text: 'Past'),
-              Tab(text: 'My RSVPs'),
-            ],
+    return Stack(
+      children: [
+        DefaultTabController(
+          length: 3,
+          child: Scaffold(
+            appBar: AppBar(
+              title: const Text('Mojo Events', style: TextStyle(fontWeight: FontWeight.bold)),
+              bottom: TabBar(
+                indicatorColor: scheme.primary,
+                labelColor: scheme.primary,
+                unselectedLabelColor: MojoColors.textSecondary,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                tabs: const [
+                  Tab(text: 'Upcoming'),
+                  Tab(text: 'Past'),
+                  Tab(text: 'My RSVPs'),
+                ],
+              ),
+            ),
+            body: TabBarView(
+              children: [
+                _UpcomingTab(onRSVP: _handleRSVP),
+                const _PastTab(),
+                _RsvpTab(scheme: scheme),
+              ],
+            ),
+            floatingActionButton: FloatingActionButton.extended(
+              onPressed: () {},
+              backgroundColor: scheme.primary,
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text('Host Event', style: TextStyle(color: Colors.white)),
+            ),
           ),
         ),
-        body: TabBarView(
-          children: [
-            const _UpcomingTab(),
-            const _PastTab(),
-            _RsvpTab(scheme: scheme),
-          ],
-        ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () {},
-          backgroundColor: scheme.primary,
-          icon: const Icon(Icons.add, color: Colors.white),
-          label: const Text('Host Event', style: TextStyle(color: Colors.white)),
-        ),
-      ),
+        if (_showConfetti)
+          IgnorePointer(
+            child: Center(
+              child: Lottie.network(
+                'https://assets9.lottiefiles.com/packages/lf20_u4yrau.json',
+                repeat: false,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
 
 class _UpcomingTab extends ConsumerWidget {
-  const _UpcomingTab();
+  final Function(MojoEvent) onRSVP;
+  const _UpcomingTab({required this.onRSVP});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -73,7 +118,11 @@ class _UpcomingTab extends ConsumerWidget {
           padding: const EdgeInsets.all(16),
           itemCount: events.length,
           separatorBuilder: (_, __) => const SizedBox(height: 16),
-          itemBuilder: (context, index) => _EventCard(event: events[index], isPast: false),
+          itemBuilder: (context, index) => _EventCard(
+            event: events[index], 
+            isPast: false,
+            onRSVP: () => onRSVP(events[index]),
+          ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -145,13 +194,152 @@ class _RsvpTab extends ConsumerWidget {
         ),
       );
     }
-    return Center(
+
+    final async = ref.watch(myRsvpsProvider);
+    return async.when(
+      data: (rows) {
+        if (rows.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'No RSVPs yet. Open Upcoming and tap RSVP on an event.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 16),
+              ),
+            ),
+          );
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: rows.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, i) => _MyRsvpTile(row: rows[i], scheme: scheme),
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Could not load RSVPs: $e\nIf this mentions an index, deploy Firestore indexes from the repo.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: scheme.onSurfaceVariant),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MyRsvpTile extends ConsumerWidget {
+  const _MyRsvpTile({required this.row, required this.scheme});
+
+  final MyRsvpRow row;
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final d = row.attendeeDoc.data();
+    final name = d['name'] as String? ?? 'Guest';
+    final rsvpStatus = d['rsvpStatus'] as String? ?? '—';
+    final paymentStatus = d['paymentStatus'] as String? ?? '—';
+    final ev = row.event;
+    final title = ev?.title ?? 'Event (details unavailable)';
+    final when = ev != null ? DateFormat('EEE, MMM d · h:mm a').format(ev.startAt) : '';
+    final user = ref.watch(authStateProvider).valueOrNull;
+    final eventForPay = (paymentStatus == 'unpaid' &&
+            ev != null &&
+            ev.requiresStripeCheckout &&
+            ev.startAt.isAfter(DateTime.now()))
+        ? ev
+        : null;
+    final rawEventId = (d['eventId'] as String?)?.trim();
+    final eventIdForNav = (rawEventId != null && rawEventId.isNotEmpty)
+        ? rawEventId
+        : row.attendeeDoc.reference.parent.parent?.id;
+
+    return Card(
+      elevation: 0,
+      color: scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.shade100),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          'RSVP list from Firestore (events/{id}/rsvps) will be wired in a follow-up.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: scheme.onSurfaceVariant),
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              onTap: eventIdForNav != null ? () => context.push('/event/$eventIdForNav') : null,
+              behavior: HitTestBehavior.opaque,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  if (when.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(when, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
+                  ],
+                  const SizedBox(height: 8),
+                  Text(name, style: const TextStyle(fontSize: 14)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      Chip(
+                        label: Text('RSVP: $rsvpStatus'),
+                        visualDensity: VisualDensity.compact,
+                        labelStyle: const TextStyle(fontSize: 12),
+                      ),
+                      Chip(
+                        label: Text('Payment: $paymentStatus'),
+                        visualDensity: VisualDensity.compact,
+                        labelStyle: const TextStyle(fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (ev != null)
+                  TextButton(
+                    onPressed: () async {
+                      await showModalBottomSheet<bool>(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (ctx) => RsvpBottomSheet(event: ev),
+                      );
+                    },
+                    child: const Text('Manage RSVP'),
+                  ),
+                if (eventForPay != null && user != null)
+                  TextButton(
+                    onPressed: () async {
+                      final stripe = ref.read(stripePaymentServiceProvider);
+                      final ok = await stripe.processEventRSVPPayment(
+                        context: context,
+                        eventId: eventForPay.id,
+                        userId: user.uid,
+                        attendeeIds: [row.attendeeDoc.id],
+                        merchantDisplayName: 'Moms Fitness MOJO',
+                      );
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(ok ? 'Payment completed.' : 'Payment was not completed.')),
+                      );
+                    },
+                    child: const Text('Pay now'),
+                  ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -159,10 +347,11 @@ class _RsvpTab extends ConsumerWidget {
 }
 
 class _EventCard extends StatelessWidget {
-  const _EventCard({required this.event, this.isPast = false});
+  const _EventCard({required this.event, this.isPast = false, this.onRSVP});
 
   final MojoEvent event;
   final bool isPast;
+  final VoidCallback? onRSVP;
 
   @override
   Widget build(BuildContext context) {
@@ -172,7 +361,10 @@ class _EventCard extends StatelessWidget {
     final whenLine = DateFormat('EEE, MMM d · jm').format(event.startAt);
     final imageUrl = event.imageUrl;
 
-    return Card(
+    return InkWell(
+      onTap: () => context.push('/event/${event.id}'),
+      borderRadius: BorderRadius.circular(20),
+      child: Card(
       elevation: 0,
       color: scheme.surface,
       shape: RoundedRectangleBorder(
@@ -291,21 +483,35 @@ class _EventCard extends StatelessWidget {
                     ],
                   ),
                 ],
-                if (!isPast && event.visibility != null) ...[
-                  const SizedBox(height: 12),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Chip(
-                      label: Text(event.visibility!.replaceAll('_', ' ')),
-                      visualDensity: VisualDensity.compact,
-                      labelStyle: TextStyle(fontSize: 11, color: scheme.primary),
-                    ),
-                  ),
-                ],
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (!isPast && event.visibility != null)
+                      Chip(
+                        label: Text(event.visibility!.replaceAll('_', ' ')),
+                        visualDensity: VisualDensity.compact,
+                        labelStyle: TextStyle(fontSize: 11, color: scheme.primary),
+                      ),
+                    const Spacer(),
+                    if (!isPast && onRSVP != null)
+                      ElevatedButton(
+                        onPressed: onRSVP,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: scheme.primary,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text('RSVP'),
+                      ),
+                  ],
+                ),
               ],
             ),
-          ),
+            ),
         ],
+      ),
       ),
     );
   }

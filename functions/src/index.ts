@@ -91,10 +91,19 @@ export function onRequestWithCors(
   }
   return onRequest({ ...opts, cors: opts.cors ?? ALLOWED_CORS_ORIGINS }, handler);
 }
+
+/** Admin default bucket: STORAGE_BUCKET env, else `{GCLOUD_PROJECT}.firebasestorage.app`, else dev bucket. */
+function resolveDefaultStorageBucket(): string {
+  const fromEnv = process.env.STORAGE_BUCKET?.trim();
+  if (fromEnv) return fromEnv;
+  const pid = process.env.GCLOUD_PROJECT;
+  if (pid) return `${pid}.firebasestorage.app`;
+  return 'momsfitnessmojo-dev.firebasestorage.app';
+}
+
 // Initialize Firebase Admin BEFORE importing modules that use it
-// Explicitly set storage bucket to fix Firebase CLI deployment bug
 initializeApp({
-  storageBucket: process.env.STORAGE_BUCKET || 'momsfitnessmojo-dev.appspot.com'
+  storageBucket: resolveDefaultStorageBucket(),
 });
 
 // Lazy-load Cloud Tasks and Speech clients to avoid deployment timeout
@@ -1410,7 +1419,7 @@ export const onMediaDeletedCleanup = onDocumentDeleted("media/{mediaId}", async 
   });
 
   // Use the bucket from environment variable or default
-  const bucketName = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
+  const bucketName = resolveDefaultStorageBucket();
   const bucket = getStorage().bucket(bucketName);
 
   // Debug logging
@@ -1609,7 +1618,7 @@ export const onMediaFileFinalize = onObjectFinalized({
   const ctype = object.contentType || '';
 
   // Only process files from our target bucket (use bucket from event if env var not set)
-  const expectedBucket = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
+  const expectedBucket = resolveDefaultStorageBucket();
   if (object.bucket !== expectedBucket) {
     console.log(`⏭️ Skipping file from bucket: ${object.bucket}, expected: ${expectedBucket}`);
     return;
@@ -1790,7 +1799,7 @@ export const onMediaFileFinalize = onObjectFinalized({
   }
 
   // Use the bucket from environment variable or default
-  const bucketName = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
+  const bucketName = resolveDefaultStorageBucket();
   const bucket = getStorage().bucket(bucketName);
   const dir = path.dirname(name);   // media/<uid>/<batchId>
   const base = path.parse(name).name;
@@ -2786,7 +2795,7 @@ export const processQualityLevel = onRequestWithCors({
 
   console.log(`🎬 [WORKER] Processing quality level: ${qualityLevel} for media: ${mediaId}`);
 
-  const bucketName = process.env.STORAGE_BUCKET || 'momsfitnessmojo-65d00.firebasestorage.app';
+  const bucketName = resolveDefaultStorageBucket();
   const bucket = getStorage().bucket(bucketName);
   const mediaRef = db.doc(`media/${mediaId}`);
   const tmpOriginal = path.join(os.tmpdir(), `${path.basename(filePath)}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -3809,7 +3818,7 @@ export const checkSMSDeliveryStatus = onCall(async (request) => {
     }
 
     // Check Firebase project configuration
-    const projectId = process.env.GCLOUD_PROJECT || 'momfitnessmojo';
+    const projectId = process.env.GCLOUD_PROJECT || 'momsfitnessmojo-dev';
 
     // Log detailed information for debugging
     const debugInfo = {
@@ -5285,7 +5294,7 @@ export const generateChallengeShareCard = onCallWithCors({
   try {
     await applyImageWatermark(tmpCardPath, tmpWatermarked);
 
-    const bucketName = process.env.STORAGE_BUCKET || `${process.env.GCLOUD_PROJECT}.firebasestorage.app`;
+    const bucketName = resolveDefaultStorageBucket();
     const bucket = getStorage().bucket(bucketName);
     const storagePath = `share/cards/${uid}/${challengeId}-${Date.now()}.png`;
     const downloadToken = uuidv4();

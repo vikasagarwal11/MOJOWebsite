@@ -1,1 +1,22 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"momsfitnessmojo-65d00","appId":"1:313384637691:android:862cd595cbfcc262634c5e","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"momsfitnessmojo-65d00","configurations":{"android":"1:313384637691:android:862cd595cbfcc262634c5e","ios":"1:313384637691:ios:c8cdf387f3c5ea43634c5e"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "momsfitnessmojo-dev",
+          "appId": "1:459380776372:android:8ff171bb879a7ca89ba6e1",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "momsfitnessmojo-dev",
+          "configurations": {
+            "android": "1:459380776372:android:8ff171bb879a7ca89ba6e1",
+            "ios": "1:313384637691:ios:c8cdf387f3c5ea43634c5e"
+          }
+        }
+      }
+    }
+  }
+}
