@@ -19,6 +19,8 @@ build/
 .env.production.local
 .env.test.local
 functions/.env
+functions/.env.*
+!functions/.env.example
 
 # IDE
 .vscode/
