@@ -5,20 +5,24 @@ import 'package:go_router/go_router.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../../core/logging/app_logger.dart';
 import '../../core/providers/core_providers.dart';
+import '../../core/providers/pending_shared_media_provider.dart';
 import '../../core/widgets/connectivity_banner.dart';
 
-class MainLayout extends StatefulWidget {
+class MainLayout extends ConsumerStatefulWidget {
   final Widget child;
 
   const MainLayout({super.key, required this.child});
 
   @override
-  State<MainLayout> createState() => _MainLayoutState();
+  ConsumerState<MainLayout> createState() => _MainLayoutState();
 }
 
-class _MainLayoutState extends State<MainLayout> {
+class _MainLayoutState extends ConsumerState<MainLayout> {
   late StreamSubscription _intentDataStreamSubscription;
 
   @override
@@ -51,17 +55,34 @@ class _MainLayoutState extends State<MainLayout> {
 
   void _handleSharedMedia(List<SharedMediaFile> files) {
     if (files.isEmpty) return;
-    
-    // Auto-navigate user to the Media/Gallery Screen so they can instantly start their edit
+
+    final paths = <String>[];
+    for (final f in files) {
+      final p = f.path.trim();
+      if (p.isEmpty) continue;
+      if (f.type == SharedMediaType.url || f.type == SharedMediaType.text) {
+        if (p.startsWith('http://') || p.startsWith('https://')) paths.add(p);
+      } else {
+        paths.add(p);
+      }
+    }
+    if (paths.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Shared content could not be opened in MOJO.')),
+      );
+      return;
+    }
+
+    ref.read(pendingSharedMediaPathsProvider.notifier).state = paths;
     context.go('/media');
-    
-    // In a fully developed production state, we would pass `files.first.path` as an argument to the MediaScreen.
-    // Right now, simply getting them into the editor removes the major friction of opening the app manually.
+
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Received Media from outside MOJO! ✨ Tap Add to edit it.'),
+      SnackBar(
+        content: Text(paths.length > 1
+            ? 'Received ${paths.length} items — opening the first in the editor.'
+            : 'Opening your shared media…'),
         backgroundColor: Colors.green,
-        duration: Duration(seconds: 4),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -237,12 +258,43 @@ class MojoDrawer extends ConsumerWidget {
           ListTile(
             leading: const Icon(FontAwesomeIcons.instagram),
             title: const Text('Follow on Instagram'),
-            onTap: () {},
+            onTap: () async {
+              Navigator.pop(context);
+              final raw = dotenv.env['MOJO_INSTAGRAM_URL']?.trim();
+              final uri = Uri.tryParse(raw ?? '');
+              if (uri != null && uri.hasScheme) {
+                final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+                if (!ok && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Could not open Instagram link.')),
+                  );
+                }
+              } else if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Set MOJO_INSTAGRAM_URL in .env (e.g. https://instagram.com/yourhandle).'),
+                  ),
+                );
+              }
+            },
           ),
           ListTile(
             leading: const Icon(FontAwesomeIcons.facebook),
             title: const Text('Follow on Facebook'),
-            onTap: () {},
+            onTap: () async {
+              Navigator.pop(context);
+              final raw = dotenv.env['MOJO_FACEBOOK_URL']?.trim();
+              final uri = Uri.tryParse(raw ?? '');
+              if (uri != null && uri.hasScheme) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              } else if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Set MOJO_FACEBOOK_URL in .env for this shortcut.'),
+                  ),
+                );
+              }
+            },
           ),
         ],
       ),

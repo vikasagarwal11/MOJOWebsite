@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -13,23 +14,26 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/logging/app_logger.dart';
 import '../../../core/network/firebase_error_messages.dart';
+import '../../../core/providers/pending_shared_media_provider.dart';
 import '../../../core/theme/mojo_colors.dart';
 import '../services/media_service.dart';
+import '../widgets/instagram_import_sheet.dart';
 import 'media_viewer_screen.dart';
 import 'video_editor_screen.dart';
 
 /// Aligns with website `media` docs: `type` (image | video | reel), optional `eventId`.
 enum MediaGalleryFilter { all, images, videos, events }
 
-class MediaScreen extends StatefulWidget {
+class MediaScreen extends ConsumerStatefulWidget {
   const MediaScreen({super.key});
 
   @override
-  State<MediaScreen> createState() => _MediaScreenState();
+  ConsumerState<MediaScreen> createState() => _MediaScreenState();
 }
 
-class _MediaScreenState extends State<MediaScreen> {
+class _MediaScreenState extends ConsumerState<MediaScreen> {
   final _mediaService = MediaService();
   final _picker = ImagePicker();
   bool _isUploading = false;
@@ -40,6 +44,79 @@ class _MediaScreenState extends State<MediaScreen> {
   void initState() {
     super.initState();
     _checkDraft();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _takePendingShareIntent());
+  }
+
+  /// Drains [pendingSharedMediaPathsProvider] once (share from another app or same-tab update).
+  void _takePendingShareIntent() {
+    if (!mounted) return;
+    final next = ref.read(pendingSharedMediaPathsProvider);
+    if (next == null || next.isEmpty) return;
+    ref.read(pendingSharedMediaPathsProvider.notifier).state = null;
+    _processSharedPaths(next);
+  }
+
+  void _processSharedPaths(List<String> paths) {
+    if (!mounted) return;
+    if (paths.length > 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Opening the first of ${paths.length} shared items.')),
+      );
+    }
+    final raw = paths.first.trim();
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      _handleSharedUrl(raw);
+      return;
+    }
+    final file = File(raw);
+    if (!file.existsSync()) {
+      appLogger.w('Shared file missing: $raw');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open the shared file.')),
+      );
+      return;
+    }
+    _handleMediaSelection(overrideFile: file);
+  }
+
+  Future<void> _handleSharedUrl(String url) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => const Center(child: CircularProgressIndicator(color: MojoColors.primaryOrange)),
+    );
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      if (res.statusCode != 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not download media (${res.statusCode}).')),
+        );
+        return;
+      }
+      final lower = url.toLowerCase();
+      final looksVideo = lower.contains('.mp4') || lower.contains('.mov') || lower.contains('.webm');
+      final tempDir = await getTemporaryDirectory();
+      final ext = looksVideo ? 'mp4' : 'jpg';
+      final file = File('${tempDir.path}/share_${DateTime.now().millisecondsSinceEpoch}.$ext');
+      await file.writeAsBytes(res.bodyBytes);
+      if (!mounted) return;
+      if (looksVideo) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => VideoEditorScreen(file: file, onExport: _promptDestinations)),
+        );
+      } else {
+        await _showAIProcessingDialog(file);
+      }
+    } catch (e, st) {
+      appLogger.w('Shared URL load failed', error: e, stackTrace: st);
+      if (mounted) {
+        if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Download failed: $e')));
+      }
+    }
   }
 
   Future<void> _checkDraft() async {
@@ -266,6 +343,12 @@ class _MediaScreenState extends State<MediaScreen> {
                 foregroundColor: Colors.white,
               ),
             ),
+            filterEditor: FilterEditorConfigs(
+              enabled: true,
+              filterList: presetFiltersList,
+            ),
+            tuneEditor: const TuneEditorConfigs(enabled: true),
+            blurEditor: const BlurEditorConfigs(enabled: true),
             stickerEditor: StickerEditorConfigs(
               enabled: true,
               builder: (setLayer, scrollController) {
@@ -399,6 +482,12 @@ class _MediaScreenState extends State<MediaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<List<String>?>(pendingSharedMediaPathsProvider, (previous, next) {
+      if (next != null && next.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _takePendingShareIntent());
+      }
+    });
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mojo Gallery', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -408,11 +497,23 @@ class _MediaScreenState extends State<MediaScreen> {
               padding: EdgeInsets.all(16.0),
               child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
             )
-          else
+          else ...[
             IconButton(
+              tooltip: 'Import from Instagram',
+              icon: const Icon(Icons.camera_alt_outlined, color: MojoColors.primaryOrange),
+              onPressed: () {
+                showInstagramImportSheet(
+                  context,
+                  onImported: (file, type) => _handleMediaSelection(overrideFile: file),
+                );
+              },
+            ),
+            IconButton(
+              tooltip: 'Add from device',
               icon: const Icon(Icons.add_a_photo_outlined, color: MojoColors.primaryOrange),
               onPressed: () => _handleMediaSelection(),
             ),
+          ],
         ],
       ),
       body: Column(

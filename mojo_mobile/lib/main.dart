@@ -1,4 +1,6 @@
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -30,6 +32,14 @@ void main() async {
 
   if (firebaseOptionsConfigured) {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    try {
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+        appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
+      );
+    } catch (e, st) {
+      appLogger.w('Firebase App Check activate failed (enforcement may still block some APIs)', error: e, stackTrace: st);
+    }
   } else {
     appLogger.w(
       'Firebase options still contain REPLACE_ME. Run `flutterfire configure` in mojo_mobile '

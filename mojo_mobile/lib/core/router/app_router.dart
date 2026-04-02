@@ -10,11 +10,21 @@ import '../../features/posts/screens/posts_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
 import '../../features/auth/screens/pending_approval_screen.dart';
+import '../../features/onboarding/screens/onboarding_gate_screen.dart';
+import '../../features/onboarding/screens/onboarding_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
-    initialLocation: '/',
+    initialLocation: '/start',
     routes: [
+      GoRoute(
+        path: '/start',
+        builder: (context, state) => const OnboardingGateScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding',
+        builder: (context, state) => const OnboardingScreen(),
+      ),
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),

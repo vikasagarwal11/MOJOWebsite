@@ -116,6 +116,11 @@ class ChatService {
       return summary.trim();
     } on FirebaseFunctionsException catch (e, st) {
       appLogger.e('getAICatchUp callable failed', error: e, stackTrace: st);
+      if (e.code == 'not-found') {
+        return 'AI Catch-Up is not deployed for this Firebase project yet. '
+            'Deploy callable `summarizeChatRoom` in region us-east1 (same project as this app). '
+            'From repo root: `firebase deploy --only functions:summarizeChatRoom` with project selected.';
+      }
       final msg = e.message ?? e.code;
       return 'Could not load summary: $msg';
     } catch (e, st) {

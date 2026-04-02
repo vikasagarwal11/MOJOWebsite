@@ -23,6 +23,7 @@ dependencies:
   firebase_storage: ^12.0.0
   firebase_messaging: ^15.0.0
   cloud_functions: ^5.6.2
+  firebase_app_check: ^0.3.2+10
 
   # UI & UX (Best of the Best)
   google_fonts: ^6.2.1
@@ -46,19 +47,20 @@ dependencies:
   logger: ^2.4.0
   flutter_dotenv: ^5.1.0
   http: ^1.2.0
+  url_launcher: ^6.2.5
   connectivity_plus: ^6.1.0
   rxdart: ^0.28.0
   intl: ^0.19.0
   photo_view: ^0.15.0
   qr_flutter: ^4.1.0
 
-  # Image Processing & Filters
-  photofilters: ^3.0.1
-  image: ^3.3.0
+  # Image Processing (photofilters removed — unused; frees `image` ^4 for launcher_icons)
+  image: ^4.2.0
   pro_image_editor: 11.3.0
   video_editor: ^3.0.0
   receive_sharing_intent: ^1.8.1
   flutter_stripe: 11.2.0
+  shared_preferences: ^2.3.3
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +69,8 @@ dev_dependencies:
   build_runner: ^2.4.9
   riverpod_generator: ^2.4.0
   network_image_mock: ^2.1.1
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.4
 
 # Valid keys under top-level flutter: are listed in Flutter pubspec docs (assets, fonts, etc.).
 flutter:
@@ -76,4 +80,25 @@ flutter:
     - assets/icons/
     - assets/animations/
     - .env
+
+# Run after updating PNGs: dart run flutter_launcher_icons
+# Replace assets/images/app_icon.png with your final 1024×1024 artwork when ready.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/images/app_icon.png
+  min_sdk_android: 21
+  adaptive_icon_background: "#F25129"
+  adaptive_icon_foreground: assets/images/app_icon.png
+
+# Run after updating PNGs: dart run flutter_native_splash:create
+flutter_native_splash:
+  color: "#F25129"
+  image: assets/images/splash_logo.png
+  android_12:
+    color: "#F25129"
+    image: assets/images/splash_logo.png
+  ios: true
+  android: true
+  web: false
 

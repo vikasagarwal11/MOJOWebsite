@@ -1,6 +1,6 @@
 # 📋 Moms Fitness Mojo - Project Backlog
 
-*Last Updated: November 4, 2025*
+*Last Updated: April 2, 2026*
 
 ## 🎯 Project Overview
 
@@ -986,20 +986,46 @@ const errorMessages = {
     - Integration with workout events
     - Voice input for meal logging ("I had a chicken salad for lunch")
 
-### 📱 Mobile Application
-- [ ] **Native Mobile App** - iOS and Android apps
-  - *Status*: Planned
-  - *Impact*: High - Better user experience
-  - *Effort*: 80 hours
-  - *Dependencies*: PWA optimization
-  - *Description*: Native mobile apps with push notifications, offline support
+### 📱 Mobile Application (`mojo_mobile` — Flutter)
 
-- [ ] **Push Notifications** - Real-time event updates
-  - *Status*: Planned
-  - *Impact*: High - User engagement
-  - *Effort*: 20 hours
-  - *Dependencies*: Mobile app or PWA
-  - *Description*: Push notifications for event reminders, new posts, community updates
+*The native Flutter app lives in `mojo_mobile/`. Below is the production backlog; items already shipped are noted.*
+
+#### ✅ Recently shipped (baseline)
+- [x] **Core shell** — Riverpod, GoRouter, Firebase Auth/Firestore/Storage/Functions, main tabs (Home, Events, Chat, Media, Posts)
+- [x] **Events** — List/detail, RSVP + Stripe path, confetti/haptics on home RSVP
+- [x] **Chat** — Rooms/messages, admin broadcast, AI Catch-Up via callable `summarizeChatRoom` (Gemini when `GEMINI_API_KEY` is set on Functions)
+- [x] **Media** — Picker, ProImageEditor, Cloudinary optional transforms, gallery, story vs feed uploads, `MediaViewer` share via `SocialBridgeService`
+- [x] **Posts** — Create sheet with gallery/camera upload to Storage
+- [x] **Stories bar** — Firestore `stories` + rules; connectivity-aware errors + offline banner (`connectivity_plus`)
+- [x] **Onboarding** — 3-page walkthrough + `SharedPreferences` gate (`/start` → `/onboarding` or `/`)
+- [x] **Branding infra** — `flutter_launcher_icons` + `flutter_native_splash` (placeholder PNGs in `assets/images/`; regenerate with `tool/generate_brand_pngs.py` or replace with design finals)
+- [x] **QR invite** — Home AppBar + dialog + copy link
+
+#### 🔴 High priority — production readiness (P0)
+- [ ] **FCM end-to-end** — Request permission, get token, store `fcmToken` on user profile (or subdoc), refresh on token update; **background** handler (`firebase_messaging` + Android `Application`/`@pragma('vm:entry-point')` isolate); iOS capabilities + APNs
+- [ ] **Notification triggers** — Cloud Function or existing pipeline: **admin broadcast** → FCM topic or per-user send; optional **chat mention** / **new DM** payloads; tap action opens correct route (`/chat`, room id)
+- [ ] **Firebase App Check** — Enable for Firestore/Storage/Functions; register **Android Play Integrity** + **iOS DeviceCheck/App Attest**; ship debug providers for dev builds; tighten rules after rollout
+- [ ] **Final brand assets** — Replace `app_icon.png` / `splash_logo.png` with marketing-approved art (1024×1024 icon, safe zone for adaptive icon); re-run `dart run flutter_launcher_icons` and `dart run flutter_native_splash:create`
+- [ ] **Release hardening** — ProGuard/R8 keep rules for Firebase/Stripe; `minifyEnabled` verification; iOS **Privacy Manifest** / required reason APIs; version/build bump discipline
+
+#### 🟡 Medium priority — experience & parity (P1)
+- [ ] **Deep links** — Verify `https://momsfitnessmojo.com/invite?ref=` (and event links) open correct in-app screen; align `android:autoVerify` / iOS associated domains with hosting
+- [ ] **Media viewer video** — Grid/thumbnail path mixes images and videos; full-bleed video playback + share file type detection beyond static image provider
+- [ ] **Social bridge “pull from Instagram”** — `SocialBridgeService.syncFromInstagram()` stub; needs Meta app review, tokens, and server-side job if pursued
+- [ ] **Login / auth UX** — Biometric re-auth optional; clearer errors for pending-approval users; passwordless flow polish
+- [ ] **Offline queue** — Queue writes when offline (posts, chat) with conflict handling; or explicit “You’re offline” empty states per screen
+- [ ] **Analytics & crash** — Firebase Analytics screen events; Crashlytics for release builds; tie `logger` to remote in production only
+
+#### 🟢 Lower priority / product bets (P2)
+- [ ] **Health Connect (Android) + HealthKit (iOS)** — If product wants **accurate daily steps** again (replaces removed pedometer); privacy copy and permission UX
+- [ ] **Backend-driven XP / badges** — Firestore fields + Cloud Functions to award XP (events, streaks, posts); **Progress** screen today is mostly static UI
+- [ ] **App Store / Play Console** — Screenshots, feature graphic, data safety, content rating, support URL, export compliance
+- [ ] **Accessibility** — TalkBack/VoiceOver passes on chat, media picker, and RSVP flows; dynamic type
+- [ ] **Localization** — Extract strings; ES/other locales if community needs
+
+#### 🔗 Related web/PWA items (unchanged)
+- [ ] **PWA Optimization** — Enhanced mobile web experience (`mojo_mobile` is separate from PWA work)
+- [ ] **Push Notifications (web)** — Browser FCM where applicable (coordinate with mobile token model)
 
 ### 🔄 Waitlist & Auto-Upgrade System
 - [x] **Waitlist Auto-Upgrade** - Automatic promotion from waitlist

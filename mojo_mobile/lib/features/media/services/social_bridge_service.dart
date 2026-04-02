@@ -33,7 +33,4 @@ class SocialBridgeService {
       await Share.share('$text\n\n$url');
     }
   }
-
-  /// Reserved for Instagram Graph / web social sync (not implemented).
-  Future<void> syncFromInstagram() async {}
 }
