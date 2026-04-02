@@ -7,6 +7,7 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import '../../core/logging/app_logger.dart';
 import '../../core/providers/core_providers.dart';
+import '../../core/widgets/connectivity_banner.dart';
 
 class MainLayout extends StatefulWidget {
   final Widget child;
@@ -80,7 +81,13 @@ class _MainLayoutState extends State<MainLayout> {
     }
 
     return Scaffold(
-      body: widget.child,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const ConnectivityBanner(),
+          Expanded(child: widget.child),
+        ],
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [

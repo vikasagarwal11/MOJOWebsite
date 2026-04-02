@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/logging/app_logger.dart';
+import '../../../core/network/firebase_error_messages.dart';
 import '../../../core/theme/mojo_colors.dart';
 import '../../../firebase_options.dart';
 
@@ -57,7 +58,7 @@ class StoriesBar extends StatelessWidget {
           final signedIn = FirebaseAuth.instance.currentUser != null;
           final msg = !signedIn
               ? 'Sign in to see community stories.'
-              : 'Stories could not load. Deploy updated Firestore rules (stories collection) or check your connection.';
+              : userFacingFirestoreMessage(snapshot.error);
           return _StoriesRow(
             children: [
               const _AddStoryButton(),

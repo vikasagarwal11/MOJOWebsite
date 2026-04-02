@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>MOJO needs camera access to take photos for posts and media.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>MOJO needs photo library access to attach images to posts and uploads.</string>
 </dict>
 </plist>

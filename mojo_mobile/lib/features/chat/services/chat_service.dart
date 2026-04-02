@@ -1,14 +1,19 @@
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
 import '../../../core/logging/app_logger.dart';
 
 class ChatService {
+  ChatService({FirebaseFunctions? functions})
+      : _functions = functions ?? FirebaseFunctions.instanceFor(region: 'us-east1');
+
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFunctions _functions;
 
   // Stream of messages for a specific room
   Stream<QuerySnapshot> getMessages(String roomId) {
@@ -94,15 +99,29 @@ class ChatService {
     );
   }
 
-  // NEXT-GEN FEATURE: AI Catch-Up Summary
+  /// AI Catch-Up via Cloud Function `summarizeChatRoom` (Gemini when configured server-side).
   Future<String> getAICatchUp(String roomId) async {
-    // Simulated AI processing of the last 24h messages
-    await Future.delayed(const Duration(seconds: 1)); 
-    return "CATCH-UP SUMMARY (Last 24h):\n"
-        "• 🏃‍♀️ 5 Moms joined the 'Morning HIIT' session.\n"
-        "• 📍 Discussion: Park location moved to the North Entrance.\n"
-        "• 🥗 Sarah shared a new high-protein smoothie recipe.\n"
-        "• 📅 Reminder: Brunch this Sunday at 10 AM.";
+    final user = _auth.currentUser;
+    if (user == null) {
+      return 'Sign in to use AI Catch-Up.';
+    }
+    try {
+      final callable = _functions.httpsCallable('summarizeChatRoom');
+      final result = await callable.call({'roomId': roomId});
+      final data = result.data;
+      final summary = data is Map ? data['summary']?.toString() : null;
+      if (summary == null || summary.trim().isEmpty) {
+        return 'No summary returned. Try again in a moment.';
+      }
+      return summary.trim();
+    } on FirebaseFunctionsException catch (e, st) {
+      appLogger.e('getAICatchUp callable failed', error: e, stackTrace: st);
+      final msg = e.message ?? e.code;
+      return 'Could not load summary: $msg';
+    } catch (e, st) {
+      appLogger.e('getAICatchUp failed', error: e, stackTrace: st);
+      return 'Could not load summary. Check your connection and try again.';
+    }
   }
 
   /// Uploads audio to Storage, then stores the download URL on the message (matches web `voice` type).

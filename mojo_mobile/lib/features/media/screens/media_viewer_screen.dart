@@ -1,13 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 
 import '../../../core/theme/mojo_colors.dart';
+import '../services/social_bridge_service.dart';
 
 class MediaViewerScreen extends StatefulWidget {
   final List<String> imageUrls;
@@ -26,6 +23,7 @@ class MediaViewerScreen extends StatefulWidget {
 class _MediaViewerScreenState extends State<MediaViewerScreen> {
   late int _currentIndex;
   bool _isSharing = false;
+  final _socialBridge = SocialBridgeService();
 
   @override
   void initState() {
@@ -37,23 +35,7 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
     setState(() => _isSharing = true);
     try {
       final url = widget.imageUrls[_currentIndex];
-      
-      // WhatsApp prefers raw files over text URLs. We download the image to temp.
-      final response = await http.get(Uri.parse(url));
-      final documentDirectory = await getTemporaryDirectory();
-      
-      // Extract extension natively or fallback
-      final extension = url.contains('.mp4') ? 'mp4' : 'jpg';
-      final file = File('${documentDirectory.path}/share_mojo_${DateTime.now().millisecondsSinceEpoch}.$extension');
-      
-      file.writeAsBytesSync(response.bodyBytes);
-
-      // Trigger the native OS Share Sheet (WhatsApp, IG Stories, Facebook, etc.)
-      await Share.shareXFiles([XFile(file.path)], text: 'Check out this moment on MOJO! 💥');
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to Share')));
-      }
+      await _socialBridge.shareMediaNatively(url, 'Check out this moment on MOJO!');
     } finally {
       if (mounted) setState(() => _isSharing = false);
     }
@@ -74,9 +56,9 @@ class _MediaViewerScreenState extends State<MediaViewerScreen> {
             )
           else
             IconButton(
-              icon: const Icon(Icons.share_outlined), 
-              tooltip: 'Share to WhatsApp / Instagram',
-              onPressed: _shareCurrentMedia
+              icon: const Icon(Icons.share_outlined),
+              tooltip: 'Share (file when possible)',
+              onPressed: _shareCurrentMedia,
             ),
           IconButton(icon: const Icon(Icons.download_outlined), onPressed: () {}),
         ],

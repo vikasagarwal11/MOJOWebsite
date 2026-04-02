@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/network/firebase_error_messages.dart';
 import '../../../core/theme/mojo_colors.dart';
 import '../services/chat_service.dart';
 
@@ -32,10 +33,31 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     );
   }
 
-  void _showAICatchUp() async {
+  Future<void> _showAICatchUp() async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Summarizing recent chat…'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
     final summary = await _chatService.getAICatchUp(widget.roomId);
     if (!mounted) return;
-    
+    Navigator.of(context).pop();
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -123,7 +145,23 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       body: StreamBuilder<QuerySnapshot>(
         stream: _chatService.getMessages(widget.roomId),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  userFacingFirestoreMessage(snapshot.error),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
+          }
+          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
           final messages = snapshot.data!.docs.map((doc) {
             final data = doc.data() as Map<String, dynamic>;

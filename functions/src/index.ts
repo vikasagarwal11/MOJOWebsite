@@ -4631,6 +4631,7 @@ export const getWatermarkedMedia = onCallWithCors({
 });
 
 export { generatePostSuggestionsV2 } from './postAI';
+export { summarizeChatRoom } from './chatSummarize';
 export { sendAdminNotificationWithFallback };
 
 // ───────────────── AI WORKOUTS: Plan + Daily Suggestion (MVP) ─────────────────

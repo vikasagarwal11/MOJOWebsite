@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/theme/mojo_colors.dart';
 
@@ -62,7 +63,20 @@ class QrInviteDialog extends StatelessWidget {
               inviteUrl,
               style: const TextStyle(fontSize: 10, color: Colors.grey),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: inviteUrl));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Invite link copied')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.link),
+              label: const Text('Copy invite link'),
+            ),
+            const SizedBox(height: 12),
             ElevatedButton(
               onPressed: () => Navigator.pop(context),
               style: ElevatedButton.styleFrom(

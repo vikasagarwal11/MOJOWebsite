@@ -6,14 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
-import 'package:pedometer/pedometer.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../core/providers/core_providers.dart';
-import '../../../core/services/pedometer_service.dart';
 import '../../../core/theme/mojo_colors.dart';
 import '../../../data/models/mojo_event.dart';
 import '../../../data/models/mojo_post.dart';
+import '../widgets/qr_invite_dialog.dart';
 import '../widgets/stories_bar.dart';
 import '../widgets/progress_card.dart';
 import '../../events/widgets/rsvp_bottom_sheet.dart';
@@ -46,7 +45,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final pedometerService = ref.watch(pedometerServiceProvider);
     final user = ref.watch(authStateProvider).valueOrNull;
     if (user != null) {
       ref.listen(userProfileProvider(user.uid), (prev, next) {
@@ -70,6 +68,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Notifications will hook to FCM soon.')),
+              );
+            },
+          ),
+          Consumer(
+            builder: (context, ref, _) {
+              final user = ref.watch(authStateProvider).valueOrNull;
+              if (user == null) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(Icons.qr_code_2_outlined),
+                tooltip: 'Invite a friend',
+                onPressed: () {
+                  final profile = ref.read(userProfileProvider(user.uid)).valueOrNull;
+                  final name = profile?.displayName?.trim().isNotEmpty == true
+                      ? profile!.displayName!.trim()
+                      : (user.displayName ?? 'MOJO');
+                  showDialog<void>(
+                    context: context,
+                    builder: (ctx) => QrInviteDialog(userId: user.uid, userName: name),
+                  );
+                },
               );
             },
           ),
@@ -109,8 +127,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     const SizedBox(height: 24),
                     const ProgressCard().animate().fadeIn(delay: 200.ms),
                     const SizedBox(height: 24),
-                    _PedometerStats(pedometerService: pedometerService, scheme: scheme),
-                    const SizedBox(height: 24),
                     _SectionHeader(title: 'Upcoming Events', onSeeAll: () => context.go('/events')),
                     const SizedBox(height: 12),
                     _UpcomingEventsStrip(onOpenRsvp: _handleHomeRsvp),
@@ -136,32 +152,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
       ],
-    );
-  }
-}
-
-class _PedometerStats extends StatelessWidget {
-  final PedometerService pedometerService;
-  final ColorScheme scheme;
-
-  const _PedometerStats({required this.pedometerService, required this.scheme});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<StepCount>(
-      stream: pedometerService.stepCountStream,
-      builder: (context, snapshot) {
-        String steps = snapshot.hasData ? snapshot.data!.steps.toString() : '0';
-        return Row(
-          children: [
-            _StatCard(title: 'Daily Steps', value: steps, icon: Icons.directions_walk, color: Colors.blue),
-            const SizedBox(width: 16),
-            _StatCard(title: 'Active Min', value: '—', icon: Icons.timer, color: Colors.orange),
-            const SizedBox(width: 16),
-            _StatCard(title: 'Mojo XP', value: '—', icon: Icons.bolt, color: Colors.purple),
-          ],
-        );
-      },
     );
   }
 }
@@ -218,37 +208,6 @@ class _WelcomeSection extends ConsumerWidget {
         ],
       ),
     ).animate().fadeIn(duration: 600.ms).slideY(begin: 0.2, end: 0);
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final IconData icon;
-  final Color color;
-
-  const _StatCard({required this.title, required this.value, required this.icon, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.withOpacity(0.1)),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 8),
-            Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            Text(title, style: const TextStyle(fontSize: 10, color: MojoColors.textSecondary)),
-          ],
-        ),
-      ),
-    ).animate().scale(delay: 200.ms);
   }
 }
 

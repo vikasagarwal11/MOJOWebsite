@@ -1,3 +1,6 @@
+# Local secrets (Flutter loads via flutter_dotenv; do not commit)
+.env
+
 # Miscellaneous
 *.class
 *.log

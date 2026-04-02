@@ -1,32 +1,39 @@
-import 'package:share_plus/share_plus.dart';
-import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+
+import '../../../core/logging/app_logger.dart';
+
+/// Shares media as a downloaded file when possible (better for WhatsApp / IG than URL-only).
 class SocialBridgeService {
-  // NEXT-GEN: Share the actual FILE to WhatsApp/Instagram, not just a link
   Future<void> shareMediaNatively(String url, String text) async {
     try {
-      // 1. Download the file locally first for high-quality sharing
       final response = await http.get(Uri.parse(url));
+      if (response.statusCode != 200) {
+        appLogger.w('shareMediaNatively: HTTP ${response.statusCode} for $url');
+        await Share.share('$text\n\n$url');
+        return;
+      }
       final directory = await getTemporaryDirectory();
-      final file = File('${directory.path}/mojo_share_media.jpg');
+      final lower = url.toLowerCase();
+      final ext = lower.contains('.mp4') || lower.contains('.mov') || lower.contains('.webm')
+          ? 'mp4'
+          : 'jpg';
+      final file = File('${directory.path}/mojo_share_${DateTime.now().millisecondsSinceEpoch}.$ext');
       await file.writeAsBytes(response.bodyBytes);
 
-      // 2. Open native share sheet with the actual file
       await Share.shareXFiles(
         [XFile(file.path)],
         text: text,
       );
-    } catch (e) {
-      // Fallback to text link if file sharing fails
-      await Share.share('$text \n\nCheck it out here: $url');
+    } catch (e, st) {
+      appLogger.w('shareMediaNatively failed, falling back to link', error: e, stackTrace: st);
+      await Share.share('$text\n\n$url');
     }
   }
 
-  // TODO: Implement "Pull from Social" logic using Instagram Graph API
-  Future<void> syncFromInstagram() async {
-    // This will hit the endpoint you configured in your web socialMediaService
-    // and populate the local Firestore 'media' collection
-  }
+  /// Reserved for Instagram Graph / web social sync (not implemented).
+  Future<void> syncFromInstagram() async {}
 }

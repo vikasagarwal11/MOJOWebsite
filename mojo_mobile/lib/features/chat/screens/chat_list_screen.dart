@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/providers/core_providers.dart';
+import '../../../core/network/firebase_error_messages.dart';
 import '../../../core/theme/mojo_colors.dart';
 import '../services/chat_service.dart';
 import 'chat_room_screen.dart';
@@ -132,7 +133,7 @@ class _ChatRoomsBody extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'Could not load chat rooms: ${snapshot.error}\nDeploy Firestore rules with chatRooms access.',
+                  userFacingFirestoreMessage(snapshot.error),
                   textAlign: TextAlign.center,
                 ),
               ),

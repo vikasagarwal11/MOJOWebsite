@@ -13,6 +13,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import '../../../core/network/firebase_error_messages.dart';
 import '../../../core/theme/mojo_colors.dart';
 import '../services/media_service.dart';
 import 'media_viewer_screen.dart';
@@ -71,6 +72,8 @@ class _MediaScreenState extends State<MediaScreen> {
     }
   }
 
+  /// Unsigned preset only (no API secret on device). Lock the preset in Cloudinary Console:
+  /// signed uploads off, folder/format limits, max file size, allowed eager/transformations if needed.
   Future<File?> _applyCloudinaryAI(File imageFile, String transformation) async {
     final cloudName = dotenv.env['CLOUDINARY_CLOUD_NAME'] ?? '';
     final uploadPreset = dotenv.env['CLOUDINARY_UPLOAD_PRESET'] ?? '';
@@ -118,11 +121,12 @@ class _MediaScreenState extends State<MediaScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.blur_on, color: MojoColors.primaryOrange),
-                title: const Text('Magic Blur Background', style: TextStyle(color: Colors.white)),
+                leading: const Icon(Icons.palette_outlined, color: MojoColors.primaryOrange),
+                title: const Text('Boost colors', style: TextStyle(color: Colors.white)),
+                subtitle: const Text('Saturation (Cloudinary)', style: TextStyle(color: Colors.white54, fontSize: 11)),
                 onTap: () async {
                   Navigator.pop(context);
-                  _processAI(file, 'e_blur_region:bg');
+                  _processAI(file, 'e_saturation:35');
                 },
               ),
               ListTile(
@@ -359,21 +363,23 @@ class _MediaScreenState extends State<MediaScreen> {
   Future<void> _uploadFinalMedia(File file, String mediaType, {required bool isStory}) async {
     setState(() => _isUploading = true);
     try {
-      final downloadUrl = await _mediaService.uploadMedia(file, mediaType);
-      
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Not signed in');
+
+      final String downloadUrl;
       if (isStory) {
-        final user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          await FirebaseFirestore.instance.collection('stories').add({
-            'userId': user.uid,
-            'authorPhotoUrl': user.photoURL,
-            'authorName': user.displayName ?? 'Mojo Mom',
-            'url': downloadUrl,
-            'mediaType': mediaType,
-            'createdAt': FieldValue.serverTimestamp(),
-            'expiresAt': DateTime.now().add(const Duration(hours: 24)).toIso8601String(),
-          });
-        }
+        downloadUrl = await _mediaService.uploadStoryFile(file, mediaType);
+        await FirebaseFirestore.instance.collection('stories').add({
+          'userId': user.uid,
+          'authorPhotoUrl': user.photoURL,
+          'authorName': user.displayName ?? 'Mojo Mom',
+          'url': downloadUrl,
+          'mediaType': mediaType,
+          'createdAt': FieldValue.serverTimestamp(),
+          'expiresAt': DateTime.now().add(const Duration(hours: 24)).toIso8601String(),
+        });
+      } else {
+        await _mediaService.uploadFeedMedia(file, mediaType);
       }
 
       if (mounted) {
@@ -435,7 +441,17 @@ class _MediaScreenState extends State<MediaScreen> {
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance.collection('media').orderBy('createdAt', descending: true).snapshots(),
               builder: (context, snapshot) {
-                if (snapshot.hasError) return const Center(child: Text('Something went wrong'));
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        userFacingFirestoreMessage(snapshot.error),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
                 if (snapshot.connectionState == ConnectionState.waiting) return _buildLoadingGrid();
                 
                 final docs = snapshot.data?.docs ?? [];
