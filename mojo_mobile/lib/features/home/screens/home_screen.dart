@@ -17,6 +17,26 @@ import '../widgets/stories_bar.dart';
 import '../widgets/progress_card.dart';
 import '../../events/widgets/rsvp_bottom_sheet.dart';
 
+/// Keeps [ref.listen] out of a conditional — Riverpod requires a stable listener lifecycle.
+class _ProfilePendingApprovalListener extends ConsumerWidget {
+  const _ProfilePendingApprovalListener({required this.uid});
+
+  final String uid;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen(userProfileProvider(uid), (prev, next) {
+      final s = next.valueOrNull?.status;
+      if (s == 'pending' || s == 'needs_clarification') {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) context.go('/pending-approval');
+        });
+      }
+    });
+    return const SizedBox.shrink();
+  }
+}
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -46,28 +66,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final user = ref.watch(authStateProvider).valueOrNull;
-    if (user != null) {
-      ref.listen(userProfileProvider(user.uid), (prev, next) {
-        final s = next.valueOrNull?.status;
-        if (s == 'pending' || s == 'needs_clarification') {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted) context.go('/pending-approval');
-          });
-        }
-      });
-    }
 
     return Stack(
       children: [
+        if (user != null) _ProfilePendingApprovalListener(uid: user.uid),
         Scaffold(
           appBar: AppBar(
         title: const Text('MOJO', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 2)),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Notifications will hook to FCM soon.')),
+          Consumer(
+            builder: (context, ref, _) {
+              final unread = ref.watch(unreadNotificationCountProvider);
+              final n = unread.valueOrNull ?? 0;
+              return IconButton(
+                tooltip: 'Notifications',
+                onPressed: () => context.push('/notifications'),
+                icon: Badge(
+                  isLabelVisible: n > 0,
+                  label: Text(n > 99 ? '99+' : '$n'),
+                  child: const Icon(Icons.notifications_outlined),
+                ),
               );
             },
           ),
@@ -80,8 +98,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 tooltip: 'Invite a friend',
                 onPressed: () {
                   final profile = ref.read(userProfileProvider(user.uid)).valueOrNull;
-                  final name = profile?.displayName?.trim().isNotEmpty == true
-                      ? profile!.displayName!.trim()
+                  final name = profile?.resolvedPublicName?.trim().isNotEmpty == true
+                      ? profile!.resolvedPublicName!.trim()
                       : (user.displayName ?? 'MOJO');
                   showDialog<void>(
                     context: context,
@@ -100,10 +118,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   : null;
               return Padding(
                 padding: const EdgeInsets.only(right: 16),
-                child: CircleAvatar(
-                  radius: 18,
-                  backgroundImage: photoUrl != null && photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
-                  child: photoUrl == null || photoUrl.isEmpty ? const Icon(Icons.person, size: 20) : null,
+                child: GestureDetector(
+                  onTap: () => context.go('/profile'),
+                  child: CircleAvatar(
+                    radius: 18,
+                    backgroundImage: photoUrl != null && photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+                    child: photoUrl == null || photoUrl.isEmpty ? const Icon(Icons.person, size: 20) : null,
+                  ),
                 ),
               );
             },
@@ -166,7 +187,7 @@ class _WelcomeSection extends ConsumerWidget {
     final user = ref.watch(authStateProvider).valueOrNull;
     final uid = user?.uid;
     final profileName =
-        uid != null ? ref.watch(userProfileProvider(uid)).valueOrNull?.displayName : null;
+        uid != null ? ref.watch(userProfileProvider(uid)).valueOrNull?.resolvedPublicName : null;
     final firstName = (profileName ?? user?.displayName ?? user?.email?.split('@').first ?? 'Mojo Mom').split(' ').first;
 
     return Container(

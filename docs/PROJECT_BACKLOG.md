@@ -1,6 +1,6 @@
 # 📋 Moms Fitness Mojo - Project Backlog
 
-*Last Updated: April 2, 2026*
+*Last Updated: April 3, 2026*
 
 ## 🎯 Project Overview
 
@@ -144,6 +144,23 @@ Server poster ready → Replace client thumbnail → Delete IndexedDB entry
   - *Effort*: 4 hours
   - *Dependencies*: None
   - *Description*: Currently using hardcoded production bucket 'momsfitnessmojo-65d00.firebasestorage.app' that breaks in non-prod environments
+
+### 🧩 RAG & assistant observability
+- [ ] **RAG tracing from step zero + quality metrics over time** — End-to-end observability for the knowledge assistant / RAG stack (`kb_*`, embeddings, retrieval, generation)
+  - *Status*: Planned
+  - *Impact*: High — debuggability, regression detection, and product trust as RAG grows
+  - *Effort*: 16–24 hours (initial instrumentation + dashboard); ongoing tuning
+  - *Dependencies*: Stable RAG entrypoints in Cloud Functions (or gateway); API keys / project for chosen vendor
+  - *Description*: **Phase 1 — Instrument every step** with a shared **trace id** from the **initial** RAG entrypoint (before embedding/retrieval), so we can always answer: which **chunks** were retrieved, how a **reranker** ordered them, what **prompt** went to the LLM, what **response** came back, and **token** usage (see definitions doc). Emit traces to a **LangSmith-class** tool (**LangSmith**, **Langfuse**, **Braintrust**, **Helicone**, **Arize Phoenix**, or **OpenTelemetry** → Cloud Trace + BigQuery). **Track a quality matrix over time** (rolling windows): retrieval hit rate @k, groundedness / citation coverage, user thumbs, latency p95/p99, error classes (Firestore `permission-denied`, App Check, LLM failures), cost per answer. **Phase 3 — Regression gating**: tie traces + eval sets + CI/release so bad changes do not ship silently.
+  - *Cross-cutting product diagnostics*: Align client/server logging conventions (e.g. mobile `MOJO_CHAT` / structured errors) with trace ids so permission and App Check issues are correlated with assistant flows, not only LLM quality.
+  - *Definition*: See `docs/definitions/RAG_OBSERVABILITY.md`
+
+- [ ] **LLM fine-tuning with Axolotl (optional model track)** — Custom weights for tone, safety, or format when retrieval-only RAG is not enough
+  - *Status*: Future / when product needs a dedicated model adapter
+  - *Impact*: Medium–High for differentiated assistant behavior; separate from observability
+  - *Effort*: Multi-day (data prep, GPU environment, eval, deployment path)
+  - *Dependencies*: Clear success metrics; GPU or managed training; coordination with RAG tracing so **trained models** are still **observed** and **gated** like any other prompt/model change
+  - *Description*: **Axolotl** is an open-source fine-tuning stack (e.g. LoRA, YAML configs), not a tracing product. Use it to train or adapt base models; keep **LangSmith-class** tracing on the serving path and use **regression gating** when swapping adapters. *Definition*: `docs/definitions/RAG_OBSERVABILITY.md` → section **Axolotl (fine-tuning)**.
 
 ### 🧠 AI Workout Roadmap
 - [ ] **Adaptive Planner MVP** - Personalized 8-week plans with readiness inputs

@@ -1,7 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/theme/mojo_colors.dart';
+
+/// Web URL must serve `/invite?ref=` (see `src/pages/InvitePage.tsx`). Override with `INVITE_WEB_BASE_URL` in `.env` for dev.
+String _inviteWebBaseUrl() {
+  try {
+    final b = dotenv.env['INVITE_WEB_BASE_URL']?.trim();
+    if (b != null && b.isNotEmpty) {
+      return b.replaceAll(RegExp(r'/+$'), '');
+    }
+  } catch (_) {}
+  return 'https://momsfitnessmojo.com';
+}
 
 class QrInviteDialog extends StatelessWidget {
   final String userId;
@@ -11,8 +23,8 @@ class QrInviteDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Generate a deep link for the user's invite
-    final String inviteUrl = 'https://momsfitnessmojo.com/invite?ref=$userId';
+    final base = _inviteWebBaseUrl();
+    final inviteUrl = '$base/invite?ref=${Uri.encodeComponent(userId)}';
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),

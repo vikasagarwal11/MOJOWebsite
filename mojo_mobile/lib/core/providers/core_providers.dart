@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../firebase_options.dart';
 import '../services/auth_service.dart';
+import '../../features/chat/services/chat_service.dart';
+import '../../features/events/services/rsvp_update_service.dart';
 import '../../data/models/mojo_event.dart';
 import '../../data/models/mojo_post.dart';
 import '../../data/models/mojo_user_profile.dart';
@@ -19,6 +21,11 @@ final firestoreProvider = Provider<FirebaseFirestore>((ref) => FirebaseFirestore
 /// Same region as web ([VITE_FIREBASE_FUNCTIONS_REGION] / `us-east1`).
 final firebaseFunctionsProvider = Provider<FirebaseFunctions>(
   (ref) => FirebaseFunctions.instanceFor(region: 'us-east1'),
+);
+
+/// Shared [ChatService] using the same Functions region as web (`us-east1`).
+final chatServiceProvider = Provider<ChatService>(
+  (ref) => ChatService(functions: ref.watch(firebaseFunctionsProvider)),
 );
 
 final authServiceProvider = Provider<AuthService>(
@@ -36,6 +43,30 @@ final eventsRepositoryProvider = Provider<EventsRepository>(
 final postsRepositoryProvider = Provider<PostsRepository>(
   (ref) => PostsRepository(ref.watch(firestoreProvider)),
 );
+
+final rsvpUpdateServiceProvider = Provider<RsvpUpdateService>(
+  (ref) => RsvpUpdateService(ref.watch(firestoreProvider)),
+);
+
+/// Signed-in user's attendee documents for [eventId] (RSVP status / manage flow).
+final userAttendeesForEventProvider = StreamProvider.family<
+    List<QueryDocumentSnapshot<Map<String, dynamic>>>, String>((ref, eventId) {
+  if (!firebaseOptionsConfigured || eventId.isEmpty) {
+    return Stream.value(const []);
+  }
+  final user = ref.watch(authStateProvider).valueOrNull;
+  if (user == null) {
+    return Stream.value(const []);
+  }
+  return ref
+      .watch(firestoreProvider)
+      .collection('events')
+      .doc(eventId)
+      .collection('attendees')
+      .where('userId', isEqualTo: user.uid)
+      .snapshots()
+      .map((s) => s.docs);
+});
 
 final authStateProvider = StreamProvider<User?>((ref) {
   if (!firebaseOptionsConfigured) {
@@ -121,6 +152,19 @@ class MyRsvpRow {
   final MojoEvent? event;
 }
 
+String? eventIdFromAttendeeDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
+  final data = d.data();
+  final raw = (data['eventId'] as String?)?.trim();
+  if (raw != null && raw.isNotEmpty) return raw;
+  return d.reference.parent.parent?.id;
+}
+
+bool _attendeeIsGoing(Map<String, dynamic> data) {
+  final s = data['rsvpStatus'] ?? data['status'];
+  return s == 'going';
+}
+
+/// **I'm Going** tab — only `going` rows; one card per event (primary doc preferred).
 final myRsvpsProvider = StreamProvider<List<MyRsvpRow>>((ref) {
   if (!firebaseOptionsConfigured) {
     return Stream<List<MyRsvpRow>>.value(const []);
@@ -131,7 +175,7 @@ final myRsvpsProvider = StreamProvider<List<MyRsvpRow>>((ref) {
   }
   final fs = ref.watch(firestoreProvider);
   // No server-side orderBy: avoids composite index (userId + createdAt + __name__) that often
-  // collides with CLI 409 / missing index on dev. Sort newest-first in memory instead.
+  // collides with CLI 409 / missing index on dev. Sort in memory instead.
   return fs
       .collectionGroup('attendees')
       .where('userId', isEqualTo: user.uid)
@@ -144,25 +188,45 @@ final myRsvpsProvider = StreamProvider<List<MyRsvpRow>>((ref) {
           return 0;
         }
 
-        final sorted = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(snap.docs)
+        final goingDocs = snap.docs.where((d) => _attendeeIsGoing(d.data())).toList();
+        final sorted = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(goingDocs)
           ..sort((a, b) => createdAtMs(b).compareTo(createdAtMs(a)));
-        final docs = sorted.take(40).toList();
+
+        final byEvent = <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+        for (final d in sorted) {
+          final eventId = eventIdFromAttendeeDoc(d);
+          if (eventId == null || eventId.isEmpty) continue;
+          byEvent.putIfAbsent(eventId, () => []).add(d);
+        }
 
         final eventCache = <String, MojoEvent?>{};
         final out = <MyRsvpRow>[];
-        for (final d in docs) {
-          final data = d.data();
-          final rawEventId = (data['eventId'] as String?)?.trim();
-          final eventId = (rawEventId != null && rawEventId.isNotEmpty)
-              ? rawEventId
-              : d.reference.parent.parent?.id;
-          if (eventId == null || eventId.isEmpty) continue;
+        for (final entry in byEvent.entries) {
+          final eventId = entry.key;
+          final list = entry.value;
+          QueryDocumentSnapshot<Map<String, dynamic>>? pick;
+          for (final d in list) {
+            if (d.data()['attendeeType'] == 'primary') {
+              pick = d;
+              break;
+            }
+          }
+          pick ??= list.isNotEmpty ? list.first : null;
+          if (pick == null) continue;
+
           if (!eventCache.containsKey(eventId)) {
             final evSnap = await fs.collection('events').doc(eventId).get();
             eventCache[eventId] = evSnap.exists ? MojoEvent.fromDoc(evSnap) : null;
           }
-          out.add(MyRsvpRow(attendeeDoc: d, event: eventCache[eventId]));
+          out.add(MyRsvpRow(attendeeDoc: pick, event: eventCache[eventId]));
         }
+
+        out.sort((a, b) {
+          final da = a.event?.startAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final db = b.event?.startAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+          return da.compareTo(db);
+        });
+
         return out;
       });
 });
@@ -173,4 +237,59 @@ final postsFeedProvider = StreamProvider<List<MojoPost>>((ref) {
   }
   final member = ref.watch(useMemberPostFeedProvider);
   return ref.watch(postsRepositoryProvider).watchFeed(useMemberFeed: member);
+});
+
+/// In-app notification feed (same query as web `NotificationCenter`).
+final notificationsStreamProvider =
+    StreamProvider.autoDispose<List<QueryDocumentSnapshot<Map<String, dynamic>>>>((ref) {
+  if (!firebaseOptionsConfigured) {
+    return Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>.value(const []);
+  }
+  final user = ref.watch(authStateProvider).valueOrNull;
+  if (user == null) {
+    return Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>.value(const []);
+  }
+  return ref
+      .watch(firestoreProvider)
+      .collection('notifications')
+      .where('userId', isEqualTo: user.uid)
+      .orderBy('createdAt', descending: true)
+      .limit(50)
+      .snapshots()
+      .map((s) => s.docs);
+});
+
+final unreadNotificationCountProvider = Provider<AsyncValue<int>>((ref) {
+  final async = ref.watch(notificationsStreamProvider);
+  return async.when(
+    data: (docs) {
+      var n = 0;
+      for (final d in docs) {
+        if (d.data()['read'] != true) n++;
+      }
+      return AsyncValue.data(n);
+    },
+    loading: () => const AsyncValue.loading(),
+    error: (e, st) => AsyncValue.error(e, st),
+  );
+});
+
+/// All attendee rows for an event (web `listAllAttendees` / Who's going). Rules allow reads for public + members events.
+final eventAttendeesOrderedProvider = StreamProvider.autoDispose
+    .family<List<QueryDocumentSnapshot<Map<String, dynamic>>>, String>((ref, eventId) {
+  if (!firebaseOptionsConfigured || eventId.isEmpty) {
+    return Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>.value(const []);
+  }
+  final user = ref.watch(authStateProvider).valueOrNull;
+  if (user == null) {
+    return Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>.value(const []);
+  }
+  return ref
+      .watch(firestoreProvider)
+      .collection('events')
+      .doc(eventId)
+      .collection('attendees')
+      .orderBy('createdAt')
+      .snapshots()
+      .map((s) => s.docs);
 });

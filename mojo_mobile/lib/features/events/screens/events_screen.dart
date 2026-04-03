@@ -10,6 +10,7 @@ import '../../../core/providers/core_providers.dart';
 import '../../../core/theme/mojo_colors.dart';
 import '../../../data/models/mojo_event.dart';
 import '../services/stripe_payment_service.dart';
+import '../widgets/manage_rsvp_bottom_sheet.dart';
 import '../widgets/rsvp_bottom_sheet.dart';
 
 class EventsScreen extends ConsumerStatefulWidget {
@@ -62,7 +63,7 @@ class _EventsScreenState extends ConsumerState<EventsScreen> {
                 tabs: const [
                   Tab(text: 'Upcoming'),
                   Tab(text: 'Past'),
-                  Tab(text: 'My RSVPs'),
+                  Tab(text: "I'm Going"),
                 ],
               ),
             ),
@@ -203,7 +204,7 @@ class _RsvpTab extends ConsumerWidget {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Text(
-                'No RSVPs yet. Open Upcoming and tap RSVP on an event.',
+                'No "Going" RSVPs yet. Open Upcoming to find events, or change your RSVP to Going on an event.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 16),
               ),
@@ -310,11 +311,11 @@ class _MyRsvpTile extends ConsumerWidget {
                 if (ev != null)
                   TextButton(
                     onPressed: () async {
-                      await showModalBottomSheet<bool>(
+                      await showManageRsvpSheet(
                         context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (ctx) => RsvpBottomSheet(event: ev),
+                        ref: ref,
+                        event: ev,
+                        attendeeDoc: row.attendeeDoc,
                       );
                     },
                     child: const Text('Manage RSVP'),

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { getAuth, type ConfirmationResult } from 'firebase/auth';
-import { collection, getDocs, limit, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
 import { Clock, Mail, MapPin, Phone, Search, Shield, User, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -104,6 +104,7 @@ const Register: React.FC = () => {
 
   const { sendVerificationCode, verifyPhoneCode, createPendingUser, checkIfUserExists } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const phoneForm = useForm<PhoneFormData>({ resolver: zodResolver(phoneSchema) });
   const codeForm = useForm<CodeFormData>({ resolver: zodResolver(codeSchema) });
@@ -178,6 +179,37 @@ const Register: React.FC = () => {
       saveSession(null);
     }
   }, []);
+
+  // QR / invite link: /register?ref={uid} (from /invite?ref=...)
+  const inviteReferrerUid = searchParams.get('ref')?.trim() ?? '';
+
+  useEffect(() => {
+    if (!inviteReferrerUid) return;
+
+    additionalInfoForm.setValue('howDidYouHear', 'referred_by_member');
+    additionalInfoForm.setValue('referredBy', inviteReferrerUid);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', inviteReferrerUid));
+        if (!snap.exists() || cancelled) return;
+        const u = snap.data();
+        const displayName =
+          (typeof u.displayName === 'string' && u.displayName.trim()) ||
+          [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
+        if (displayName) {
+          setSelectedReferrer({ id: inviteReferrerUid, displayName, ...u });
+        }
+      } catch {
+        // Unauthenticated clients may not be allowed to read user docs; referredBy is still set on the form.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteReferrerUid, additionalInfoForm]);
 
   // Countdown timer effect
   useEffect(() => {
@@ -396,7 +428,11 @@ const Register: React.FC = () => {
   const onAdditionalInfoSubmit = async (data: AdditionalInfoFormData) => {
     if (!verifiedFirebaseUser) {
       toast.error('Session expired. Please start over.');
-      navigate('/register');
+      navigate(
+        inviteReferrerUid
+          ? `/register?ref=${encodeURIComponent(inviteReferrerUid)}`
+          : '/register',
+      );
       return;
     }
 
@@ -511,6 +547,17 @@ const Register: React.FC = () => {
               {step === 'additional' && 'Tell us a bit more about yourself'}
             </p>
           </div>
+
+          {inviteReferrerUid ? (
+            <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              <p className="font-medium">You’re using a member invite link.</p>
+              <p className="mt-1 text-emerald-800">
+                {selectedReferrer?.displayName
+                  ? `Invited by ${selectedReferrer.displayName}. We’ll send this with your application.`
+                  : 'We’ll attach your inviter when you complete registration.'}
+              </p>
+            </div>
+          ) : null}
 
           {step === 'phone' && (
             <form onSubmit={phoneForm.handleSubmit(onPhoneSubmit)} className="space-y-6">

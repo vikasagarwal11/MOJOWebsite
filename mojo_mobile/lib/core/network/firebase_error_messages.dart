@@ -11,8 +11,11 @@ String userFacingFirestoreMessage(Object? error) {
   }
 
   if (s.contains('permission-denied')) {
-    return 'Access was denied. Stay signed in, ensure your account is approved, '
-        'and ask an admin that Firestore rules are deployed for this app.';
+    return 'Access was denied. Stay signed in, ensure your account is approved in '
+        'Firestore (users doc: status approved or unset), and that rules are deployed. '
+        'Debug builds: register the App Check debug token from logcat in Firebase Console → '
+        'App Check → your Android app → Manage debug tokens (or turn off Firestore App Check '
+        'enforcement for dev). Developers: search logcat for MOJO_CHAT for Firebase error code.';
   }
 
   if (s.contains('failed-precondition') && s.contains('index')) {

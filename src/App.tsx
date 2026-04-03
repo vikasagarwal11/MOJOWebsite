@@ -25,6 +25,7 @@ import Events from './pages/Events';
 import EventsV2 from './pages/EventsV2';
 import FamilyManagement from './pages/FamilyManagement';
 import Founder from './pages/Founder';
+import InvitePage from './pages/InvitePage';
 import Home from './pages/Home';
 import Media from './pages/Media';
 import PendingApproval from './pages/PendingApproval';
@@ -186,6 +187,7 @@ function AppRouter() {
 
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/invite" element={<InvitePage />} />
           <Route path="/register" element={<Register />} />
           <Route path="/pending-approval" element={<PendingApproval />} />
           <Route path="/account-rejected" element={<AccountRejected />} />

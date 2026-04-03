@@ -49,6 +49,7 @@ flutter {
 dependencies {
     implementation(platform("com.google.firebase:firebase-bom:34.11.0"))
     implementation("com.google.firebase:firebase-analytics")
+    implementation("androidx.appcompat:appcompat:1.7.0")
     // Required by flutter_stripe: Activity theme must extend Theme.MaterialComponents or AppCompat
     implementation("com.google.android.material:material:1.12.0")
 }

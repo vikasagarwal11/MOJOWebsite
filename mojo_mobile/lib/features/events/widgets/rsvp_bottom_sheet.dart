@@ -30,10 +30,26 @@ class _RsvpBottomSheetState extends ConsumerState<RsvpBottomSheet> {
     setState(() => _isProcessing = true);
 
     try {
-      final displayName = user.displayName ?? user.email ?? 'Member';
+      final profile = ref.read(userProfileProvider(user.uid)).valueOrNull;
+      final fromFirestore = profile?.resolvedPublicName?.trim();
+      final fromAuth = user.displayName?.trim();
+      final fromEmail = user.email != null && user.email!.contains('@')
+          ? user.email!.split('@').first.trim()
+          : null;
+      final displayName = (fromFirestore != null && fromFirestore.isNotEmpty)
+          ? fromFirestore
+          : (fromAuth != null && fromAuth.isNotEmpty)
+              ? fromAuth
+              : (fromEmail != null && fromEmail.isNotEmpty)
+                  ? fromEmail
+                  : 'Member';
       if (displayName.trim().length < 2) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please set a display name in your profile (at least 2 characters).')),
+          const SnackBar(
+            content: Text(
+              'Add your name under Profile (tap your photo on Home), then try again.',
+            ),
+          ),
         );
         setState(() => _isProcessing = false);
         return;
@@ -51,7 +67,11 @@ class _RsvpBottomSheetState extends ConsumerState<RsvpBottomSheet> {
       if (hasPrimary && _adultCount == 1) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('You already have an RSVP for this event.')),
+            const SnackBar(
+              content: Text(
+                'You already have an RSVP. Use Manage my RSVP on the event, or Events → I\'m Going → Manage RSVP, to change to Not going or add guests.',
+              ),
+            ),
           );
         }
         setState(() => _isProcessing = false);

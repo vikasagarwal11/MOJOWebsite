@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/layout/main_layout.dart';
@@ -5,16 +6,24 @@ import '../../features/home/screens/home_screen.dart';
 import '../../features/events/screens/events_screen.dart';
 import '../../features/events/screens/event_detail_screen.dart';
 import '../../features/chat/screens/chat_list_screen.dart';
+import '../../features/chat/screens/chat_room_screen.dart';
 import '../../features/media/screens/media_screen.dart';
+
 import '../../features/posts/screens/posts_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
 import '../../features/auth/screens/pending_approval_screen.dart';
 import '../../features/onboarding/screens/onboarding_gate_screen.dart';
 import '../../features/onboarding/screens/onboarding_screen.dart';
+import '../../features/profile/screens/profile_screen.dart';
+import '../../features/notifications/screens/notifications_screen.dart';
+
+/// Used by FCM for cold-start / background notification navigation.
+final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/start',
     routes: [
       GoRoute(
@@ -60,6 +69,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/chat',
             builder: (context, state) => const ChatListScreen(),
+            routes: [
+              GoRoute(
+                path: ':roomId',
+                builder: (context, state) {
+                  final roomId = state.pathParameters['roomId'] ?? '';
+                  final roomName = state.uri.queryParameters['name'] ?? 'Chat';
+                  return ChatRoomScreen(roomId: roomId, roomName: roomName);
+                },
+              ),
+            ],
           ),
           GoRoute(
             path: '/media',
@@ -68,6 +87,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/posts',
             builder: (context, state) => const PostsScreen(),
+          ),
+          GoRoute(
+            path: '/profile',
+            builder: (context, state) => const ProfileScreen(),
+          ),
+          GoRoute(
+            path: '/notifications',
+            builder: (context, state) => const NotificationsScreen(),
           ),
         ],
       ),

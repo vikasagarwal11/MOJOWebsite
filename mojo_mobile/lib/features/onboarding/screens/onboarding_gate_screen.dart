@@ -15,13 +15,19 @@ class OnboardingGateScreen extends StatefulWidget {
 }
 
 class _OnboardingGateScreenState extends State<OnboardingGateScreen> {
+  /// User tapped Skip — skip onboarding carousel and go straight home.
+  bool _skipped = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _decide());
   }
 
+  /// Brief delay so Skip stays tappable before we route away.
   Future<void> _decide() async {
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!mounted || _skipped) return;
     final prefs = await SharedPreferences.getInstance();
     final done = prefs.getBool(kOnboardingDoneKey) ?? false;
     if (!mounted) return;
@@ -32,6 +38,14 @@ class _OnboardingGateScreenState extends State<OnboardingGateScreen> {
     }
   }
 
+  Future<void> _onSkip() async {
+    setState(() => _skipped = true);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(kOnboardingDoneKey, true);
+    if (!mounted) return;
+    context.go('/');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -39,19 +53,40 @@ class _OnboardingGateScreenState extends State<OnboardingGateScreen> {
         width: double.infinity,
         height: double.infinity,
         decoration: const BoxDecoration(gradient: MojoColors.mainGradient),
-        child: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+        child: SafeArea(
+          child: Stack(
             children: [
-              CircularProgressIndicator(color: Colors.white),
-              SizedBox(height: 24),
-              Text(
-                'MOJO',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 4,
+              Positioned(
+                top: 8,
+                right: 8,
+                child: TextButton(
+                  onPressed: _onSkip,
+                  child: const Text(
+                    'Skip',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 24),
+                    Text(
+                      'MFM',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 6,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

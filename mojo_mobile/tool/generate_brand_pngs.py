@@ -27,10 +27,10 @@ def make_app_icon() -> None:
         width=24,
     )
     try:
-        font = ImageFont.truetype("arial.ttf", 420)
+        font = ImageFont.truetype("arial.ttf", 260)
     except OSError:
         font = ImageFont.load_default()
-    d.text((s // 2, s // 2), "M", fill="#F25129", anchor="mm", font=font)
+    d.text((s // 2, s // 2), "MFM", fill="#F25129", anchor="mm", font=font)
     img.save(OUT / "app_icon.png", "PNG")
 
 
@@ -40,10 +40,10 @@ def make_splash_logo() -> None:
     d = ImageDraw.Draw(img)
     d.ellipse([40, 40, s - 40, s - 40], fill=(255, 255, 255, 255), outline=(139, 92, 246, 255), width=12)
     try:
-        font = ImageFont.truetype("arial.ttf", 220)
+        font = ImageFont.truetype("arial.ttf", 130)
     except OSError:
         font = ImageFont.load_default()
-    d.text((s // 2, s // 2), "M", fill=(242, 81, 41, 255), anchor="mm", font=font)
+    d.text((s // 2, s // 2), "MFM", fill=(242, 81, 41, 255), anchor="mm", font=font)
     img.save(OUT / "splash_logo.png", "PNG")
 
 

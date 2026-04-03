@@ -329,7 +329,11 @@ class _MediaScreenState extends ConsumerState<MediaScreen> {
               Navigator.pop(context);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Progress saved as draft.')),
+                  const SnackBar(
+                    content: Text(
+                      'Editor closed. Use the yellow draft bar above to reopen your saved photo.',
+                    ),
+                  ),
                 );
               }
             },
@@ -523,19 +527,59 @@ class _MediaScreenState extends ConsumerState<MediaScreen> {
             onChanged: (f) => setState(() => _galleryFilter = f),
           ),
           if (_draftFile != null && !_isUploading)
-            Container(
+            Material(
               color: Colors.amber.shade100,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.description_outlined, color: Colors.orange),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text('Unsaved photo draft', style: TextStyle(color: Colors.deepOrange)),
+              child: InkWell(
+                onTap: () => _handleMediaSelection(overrideFile: _draftFile),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          _draftFile!,
+                          width: 64,
+                          height: 64,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 64,
+                            height: 64,
+                            color: Colors.orange.shade200,
+                            child: const Icon(Icons.image_not_supported_outlined),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Photo draft on this device',
+                              style: TextStyle(fontWeight: FontWeight.w600, color: Colors.deepOrange),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Tap this bar or Resume to open AI options & editor, then post to the feed.',
+                              style: TextStyle(fontSize: 13, color: Colors.brown.shade800),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _handleMediaSelection(overrideFile: _draftFile),
+                        child: const Text('Resume'),
+                      ),
+                      IconButton(
+                        tooltip: 'Discard draft',
+                        icon: const Icon(Icons.close, size: 22),
+                        onPressed: _clearDraft,
+                      ),
+                    ],
                   ),
-                  TextButton(onPressed: () => _handleMediaSelection(overrideFile: _draftFile), child: const Text('Resume')),
-                  IconButton(icon: const Icon(Icons.close, size: 20), onPressed: _clearDraft),
-                ],
+                ),
               ),
             ),
           Expanded(
@@ -607,15 +651,32 @@ class _MediaScreenState extends ConsumerState<MediaScreen> {
   }
 
   Widget _buildEmptyState() {
+    final signedIn = FirebaseAuth.instance.currentUser != null;
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.photo_library_outlined, size: 64, color: Colors.grey.shade300),
-          const SizedBox(height: 16),
-          const Text('No media found', style: TextStyle(color: Colors.grey, fontSize: 18)),
-          const Text('Be the first to share a moment!', style: TextStyle(color: Colors.grey)),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.photo_library_outlined, size: 64, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            const Text('No photos or videos here yet', style: TextStyle(color: Colors.grey, fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text(
+              'Use + to upload. After editing, choose Post to Feed so it is saved to the gallery.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+            ),
+            if (signedIn) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Only approved posts are visible to everyone. You should still see your own uploads while they are pending review.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

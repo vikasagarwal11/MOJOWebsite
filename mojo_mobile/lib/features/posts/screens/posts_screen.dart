@@ -143,7 +143,7 @@ class _PostsScreenState extends ConsumerState<PostsScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 88),
                   itemCount: visible.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 20),
-                  itemBuilder: (context, index) => _PostCard(post: visible[index]),
+                  itemBuilder: (context, index) => _PostCard(key: ValueKey(visible[index].id), post: visible[index]),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
@@ -162,7 +162,7 @@ class _PostsScreenState extends ConsumerState<PostsScreen> {
 }
 
 class _PostCard extends ConsumerStatefulWidget {
-  const _PostCard({required this.post});
+  const _PostCard({super.key, required this.post});
 
   final MojoPost post;
 

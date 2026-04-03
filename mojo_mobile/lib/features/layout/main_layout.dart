@@ -224,7 +224,16 @@ class MojoDrawer extends ConsumerWidget {
                 context.push('/login');
               },
             )
-          else
+          else ...[
+            ListTile(
+              leading: Icon(Icons.person_outline, color: scheme.primary),
+              title: const Text('My profile'),
+              subtitle: const Text('Name, email, about'),
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/profile');
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
               title: const Text('Sign out', style: TextStyle(color: Colors.red)),
@@ -233,6 +242,7 @@ class MojoDrawer extends ConsumerWidget {
                 await ref.read(authServiceProvider).signOut();
               },
             ),
+          ],
           const Divider(),
           ListTile(
             leading: const Icon(Icons.info_outline),

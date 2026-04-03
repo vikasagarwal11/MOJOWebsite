@@ -19,8 +19,15 @@ service cloud.firestore {
       return userDoc() != null && userDoc().role == 'member';
     }
 
+    // Must match mobile/web: MojoUserProfile.isApproved → status == null || status == 'approved'
+    // If `status` exists but is null (explicit null), old rules failed: ('status' in map) was true
+    // but status == 'approved' was false → PERMISSION_DENIED while the app still showed approved UI.
     function isApprovedUser() {
-      return userDoc() != null && (!('status' in userDoc()) || userDoc().status == 'approved');
+      return userDoc() != null && (
+        !('status' in userDoc()) ||
+        userDoc().status == null ||
+        userDoc().status == 'approved'
+      );
     }
 
     function isTrainer() {
@@ -73,6 +80,91 @@ service cloud.firestore {
     
     function isUrlLike(v) {
       return v is string && v.size() <= 2048 && v.matches('https?://.*');
+    }
+
+    // --- Chat helpers (chatRooms / messages) ---
+    function chatRoomRef(roomId) {
+      return /databases/$(database)/documents/chatRooms/$(roomId);
+    }
+    function chatRoomExists(roomId) {
+      return exists(chatRoomRef(roomId));
+    }
+    function chatRoomData(roomId) {
+      return get(chatRoomRef(roomId)).data;
+    }
+    function chatRoomHasMember(roomData) {
+      return roomData != null &&
+        ('memberIds' in roomData) &&
+        roomData.memberIds is list &&
+        request.auth.uid in roomData.memberIds;
+    }
+    function chatRoomAllowsApprovedRead(roomData) {
+      return roomData != null &&
+        ('type' in roomData) &&
+        roomData.type in ['community', 'broadcast', 'channel'];
+    }
+    function chatRoomAllowsApprovedWrite(roomData) {
+      return chatRoomAllowsApprovedRead(roomData) &&
+        (!('isAdminOnly' in roomData) || roomData.isAdminOnly == false);
+    }
+    // Open community-style rooms: approved users may read room metadata without being in memberIds
+    // (messages subcollection uses its own rules). Direct/group require membership.
+    function chatRoomCommunityLike(roomData) {
+      return roomData != null &&
+        ('type' in roomData) &&
+        roomData.type in ['community', 'broadcast', 'channel'];
+    }
+    function isChatRoomMember(roomId) {
+      return isSignedIn() && chatRoomExists(roomId) &&
+        chatRoomHasMember(chatRoomData(roomId));
+    }
+    function isChatRoomAdminMember(roomId) {
+      return isChatRoomMember(roomId) &&
+        ('adminIds' in chatRoomData(roomId)) &&
+        chatRoomData(roomId).adminIds is list &&
+        request.auth.uid in chatRoomData(roomId).adminIds;
+    }
+    function chatMessageDiffKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+    function chatMessageTypes() {
+      return [
+        'text', 'image', 'video', 'voice', 'gif', 'sticker', 'document',
+        'location', 'contact', 'system', 'reply', 'event'
+      ];
+    }
+    function chatMessageMemberReceiptOrReactionUpdate(roomId) {
+      let keys = chatMessageDiffKeys();
+      return isChatRoomMember(roomId) && (
+        keys.hasOnly(['reactions']) ||
+        keys.hasOnly(['readBy']) ||
+        keys.hasOnly(['status']) ||
+        keys.hasOnly(['readBy', 'status'])
+      );
+    }
+    function chatMessageSenderOwnedUpdate(roomId) {
+      let keys = chatMessageDiffKeys();
+      return isChatRoomMember(roomId) &&
+        resource.data.senderId == request.auth.uid &&
+        !keys.hasAny([
+          'senderId', 'senderName', 'type', 'timestamp', 'createdAt', 'roomId', 'chatRoomId',
+          'reactions', 'readBy'
+        ]);
+    }
+    function chatMessagePinFieldsUpdate(roomId) {
+      let keys = chatMessageDiffKeys();
+      return isChatRoomMember(roomId) &&
+        keys.hasOnly(['isPinned', 'pinnedBy', 'pinnedAt']);
+    }
+    function chatMessageStarUpdate(roomId) {
+      let keys = chatMessageDiffKeys();
+      return isChatRoomMember(roomId) && keys.hasOnly(['isStarred']);
+    }
+    function chatMessageForwardCountUpdate(roomId) {
+      let keys = chatMessageDiffKeys();
+      return isChatRoomMember(roomId) &&
+        resource.data.senderId == request.auth.uid &&
+        keys.hasOnly(['forwardCount']);
     }
 
     function isValidRating(r) {
@@ -1358,12 +1450,13 @@ service cloud.firestore {
     // =========================
     // Resources (community knowledge hub)
     // =========================
-    function getResourceCategory(categoryId) {
+    // Name must not start with `get` — reserved / confuses the rules compiler (warns "Invalid function name: get").
+    function resourceCategoryDocData(categoryId) {
       return get(/databases/$(database)/documents/resourceCategories/$(categoryId)).data;
     }
 
     function resourceCategoryAllowsPublicRead(categoryId) {
-      let cat = getResourceCategory(categoryId);
+      let cat = resourceCategoryDocData(categoryId);
       return cat != null && cat.allowPublicRead == true;
     }
 
@@ -1426,25 +1519,58 @@ service cloud.firestore {
         (resource.data.userId == request.auth.uid || isAdmin());
     }
 
-    // --- Real-time chat (mobile + web chatService; rooms usually seeded in Console) ---
+    // --- Real-time chat (mobile ChatService + web) ---
+    // List/get: member of room OR community/broadcast/channel metadata (see messages for read/write).
     match /chatRooms/{roomId} {
-      allow read: if isSignedIn() && isApprovedUser();
-      // Admins can seed rooms; first message uses merge-create with only preview fields.
+      allow get, list: if isSignedIn() && isApprovedUser() && (
+        chatRoomHasMember(resource.data) ||
+        chatRoomCommunityLike(resource.data)
+      );
       allow create: if isSignedIn() && (
         isAdmin() ||
-        (isApprovedUser() && request.resource.data.keys().hasOnly(['lastMessage', 'lastMessageTime']))
+        (
+          request.auth.uid in request.resource.data.memberIds &&
+          request.resource.data.memberIds is list &&
+          request.resource.data.keys().hasAll(['memberIds', 'createdBy'])
+        )
       );
-      allow update: if isSignedIn() && isApprovedUser();
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (
+          isChatRoomMember(roomId) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['memberIds', 'adminIds'])
+        ) ||
+        (
+          isChatRoomAdminMember(roomId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'memberCount', 'updatedAt'])
+        )
+      );
       allow delete: if isSignedIn() && isAdmin();
 
       match /messages/{messageId} {
-        allow read: if isSignedIn() && isApprovedUser();
-        allow create: if isSignedIn() && isApprovedUser() &&
+        allow read: if isSignedIn() && (
+          isAdmin() ||
+          isChatRoomMember(roomId) ||
+          (isApprovedUser() && chatRoomAllowsApprovedRead(chatRoomData(roomId)))
+        );
+        allow create: if isSignedIn() && (
+          isAdmin() ||
+          isChatRoomMember(roomId) ||
+          (isApprovedUser() && chatRoomAllowsApprovedWrite(chatRoomData(roomId)))
+        ) &&
           request.resource.data.senderId == request.auth.uid &&
           request.resource.data.text is string &&
           request.resource.data.text.size() <= 8000 &&
-          (!('type' in request.resource.data) || request.resource.data.type in ['text', 'image', 'event', 'voice']);
-        allow update, delete: if false;
+          (!('type' in request.resource.data) || request.resource.data.type in chatMessageTypes());
+        allow update: if isSignedIn() && (
+          isAdmin() ||
+          chatMessageMemberReceiptOrReactionUpdate(roomId) ||
+          chatMessageSenderOwnedUpdate(roomId) ||
+          chatMessagePinFieldsUpdate(roomId) ||
+          chatMessageStarUpdate(roomId) ||
+          chatMessageForwardCountUpdate(roomId)
+        );
+        allow delete: if false;
       }
     }
 

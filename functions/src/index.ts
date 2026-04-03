@@ -15,6 +15,17 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  summarizeChatRoom as summarizeChatRoomImpl,
+  getSmartReplies as getSmartRepliesImpl,
+  generateImageCaption as generateImageCaptionImpl,
+} from './chatSummarize';
+
+/** Explicit exports so `firebase deploy --only functions:<name>` can resolve (re-exports alone may not). */
+export const summarizeChatRoom = summarizeChatRoomImpl;
+export const getSmartReplies = getSmartRepliesImpl;
+export const generateImageCaption = generateImageCaptionImpl;
+
 const fsp = fs.promises;
 
 // Set global options for all functions - set to us-east1 to match prod bucket
@@ -4631,7 +4642,6 @@ export const getWatermarkedMedia = onCallWithCors({
 });
 
 export { generatePostSuggestionsV2 } from './postAI';
-export { summarizeChatRoom } from './chatSummarize';
 export { sendAdminNotificationWithFallback };
 
 // ───────────────── AI WORKOUTS: Plan + Daily Suggestion (MVP) ─────────────────
@@ -6731,4 +6741,6 @@ export { deleteGuestAttendee } from './callable/deleteGuestAttendee';
 export { sendGuestOTP } from './callable/sendGuestOTP';
 export { verifyGuestOTP } from './callable/verifyGuestOTP';
 export { cleanupExpiredSessions } from './scheduled/cleanupExpiredSessions';
+
+export { searchMembers } from './memberSearch';
 

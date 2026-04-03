@@ -15,6 +15,7 @@
     "test:run": "vitest run",
     "emulators": "firebase emulators:start",
     "deploy:dev": "npm run build:dev && firebase deploy --project dev --only hosting:momsfitnessmojo-dev,functions",
+    "deploy:firestore:dev": "firebase deploy --project dev --only firestore:rules",
     "deploy:prod": "npm run build && firebase deploy --project prod --only hosting:momsfitnessmojo-65d00,functions"
   },
   "dependencies": {

@@ -112,8 +112,8 @@ class _CreatePostSheetState extends ConsumerState<CreatePostSheet> {
 
     setState(() => _submitting = true);
     try {
-      final authorName = profile?.displayName?.trim().isNotEmpty == true
-          ? profile!.displayName!.trim()
+      final authorName = profile?.resolvedPublicName?.trim().isNotEmpty == true
+          ? profile!.resolvedPublicName!.trim()
           : (user!.displayName ?? user.email?.split('@').first ?? 'Member');
       final photo = profile?.photoUrl ?? user!.photoURL;
 

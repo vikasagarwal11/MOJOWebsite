@@ -19,6 +19,7 @@ class MojoEvent {
     this.adultPriceCents = 0,
     this.pricingRequiresPayment = false,
     this.eventSupportAmountCents = 0,
+    this.attendingCount = 0,
   });
 
   final String id;
@@ -38,6 +39,9 @@ class MojoEvent {
   final bool pricingRequiresPayment;
   /// Optional per-ticket support add-on in cents (`pricing.eventSupportAmount`).
   final int eventSupportAmountCents;
+
+  /// Denormalized headcount (web `attendingCount`).
+  final int attendingCount;
 
   /// Paid Stripe flow (matches `functions/src/stripe.ts` eligibility).
   bool get requiresStripeCheckout {
@@ -84,6 +88,9 @@ class MojoEvent {
           : ((pricing['adultPrice'] as num?)?.toInt() ?? 0),
       pricingRequiresPayment: pricing['requiresPayment'] == true,
       eventSupportAmountCents: supportCents,
+      attendingCount: d['attendingCount'] is int
+          ? d['attendingCount'] as int
+          : ((d['attendingCount'] as num?)?.toInt() ?? 0),
     );
   }
 
