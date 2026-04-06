@@ -120,6 +120,7 @@ import { manualRecalculateWaitlistPositions as _manualRecalcWaitlist } from './a
 import { backfillKnowledgeBaseEmbeddings, ensureChunkEmbedding, getKnowledgeEmbeddingStatus, retryFailedKnowledgeEmbeddings } from './kbEmbeddingWorker';
 import { manualDeleteKnowledgeSource, manualUpsertKnowledgeSource, type KnowledgeVisibilityLevel } from './knowledgeBase';
 import { syncStaticKnowledgeEntries } from './staticContent';
+import { NOTIFICATION_CONTENT } from './config/notificationContent';
 import { ensureAdmin } from './utils/admin';
 import { sendEventCreatedSMS } from './utils/notifications';
 import { isNotificationTypeEnabled } from './utils/notificationSettings';
@@ -325,8 +326,8 @@ const sendPromotionNotifications = async (
         await db.collection('notifications').add({
           userId: user.userId,
           type: 'waitlist_promotion',
-          title: '🎉 Waitlist Promotion Confirmed!',
-          message: `You've been promoted from waitlist for "${eventTitle}"`,
+          title: NOTIFICATION_CONTENT.waitlistPromotion.inAppTitle,
+          message: NOTIFICATION_CONTENT.waitlistPromotion.inAppMessage(eventTitle),
           eventId: eventId,
           read: false,
           createdAt: FieldValue.serverTimestamp(),
@@ -347,8 +348,8 @@ const sendPromotionNotifications = async (
             await messaging.send({
               token: fcmToken,
               notification: {
-                title: '🎉 Waitlist Promotion Confirmed!',
-                body: `You've been promoted from waitlist for "${eventTitle}"`,
+                title: NOTIFICATION_CONTENT.waitlistPromotion.pushTitle,
+                body: NOTIFICATION_CONTENT.waitlistPromotion.pushBody(eventTitle),
               },
               data: {
                 type: 'waitlist_promotion',
@@ -370,8 +371,8 @@ const sendPromotionNotifications = async (
         await db.collection('popup_alerts').add({
           userId: user.userId,
           type: 'promotion',
-          title: '🎉 Waitlist Promotion Confirmed!',
-          message: `Congratulations! You've been promoted from waitlist for "${eventTitle}"`,
+          title: NOTIFICATION_CONTENT.waitlistPromotion.popupTitle,
+          message: NOTIFICATION_CONTENT.waitlistPromotion.popupMessage(eventTitle),
           eventId: eventId,
           createdAt: FieldValue.serverTimestamp(),
           acknowledged: false
@@ -5606,8 +5607,8 @@ export const onAccountApprovalCreated = onDocumentCreated(
         return {
           userId: adminDoc.id,
           type: 'account_approval_request',
-          title: 'New Account Approval Request',
-          message: `${userName} has submitted an account approval request.`,
+          title: NOTIFICATION_CONTENT.accountApprovalRequest.inAppTitle,
+          message: NOTIFICATION_CONTENT.accountApprovalRequest.inAppMessage(userName),
           createdAt: FieldValue.serverTimestamp(),
           read: false,
           metadata: {
@@ -5641,9 +5642,9 @@ export const onAccountApprovalCreated = onDocumentCreated(
         await sendAdminNotificationWithFallback(
           adminId,
           adminData,
-          'New Account Approval Request',
-          `${userName} has submitted an account approval request.`,
-          `MOMS FITNESS MOJO: New account approval request from ${userName}. Check admin console.`,
+          NOTIFICATION_CONTENT.accountApprovalRequest.pushTitle,
+          NOTIFICATION_CONTENT.accountApprovalRequest.pushBody(userName),
+          NOTIFICATION_CONTENT.accountApprovalRequest.adminFallbackSms(userName),
           {
             type: 'account_approval_request',
             approvalId: event.params.approvalId,
@@ -5719,8 +5720,8 @@ export const onAccountApprovalUpdated = onDocumentWritten(
         await notificationRef.set({
           userId: userId,
           type: 'account_approved',
-          title: '🎉 Account Approved!',
-          message: 'Your account has been approved! Welcome to Moms Fitness Mojo!',
+          title: NOTIFICATION_CONTENT.accountApproved.inAppTitle,
+          message: NOTIFICATION_CONTENT.accountApproved.inAppMessage,
           createdAt: FieldValue.serverTimestamp(),
           read: false,
           metadata: {
@@ -5786,8 +5787,8 @@ export const onAccountApprovalUpdated = onDocumentWritten(
             await messaging.send({
               token: fcmToken,
               notification: {
-                title: '🎉 Account Approved!',
-                body: 'Your account has been approved! Welcome to Moms Fitness Mojo!',
+                title: NOTIFICATION_CONTENT.accountApproved.pushTitle,
+                body: NOTIFICATION_CONTENT.accountApproved.pushBody,
               },
               data: {
                 type: 'account_approved',
@@ -5815,8 +5816,8 @@ export const onAccountApprovalUpdated = onDocumentWritten(
         await db.collection('notifications').add({
           userId: userId,
           type: 'account_rejected',
-          title: 'Account Request Not Approved',
-          message: `Your account request was not approved. Reason: ${rejectionReason}`,
+          title: NOTIFICATION_CONTENT.accountRejected.inAppTitle,
+          message: NOTIFICATION_CONTENT.accountRejected.inAppMessage(rejectionReason),
           createdAt: FieldValue.serverTimestamp(),
           read: false,
           metadata: {
@@ -5853,8 +5854,8 @@ export const onAccountApprovalUpdated = onDocumentWritten(
             await messaging.send({
               token: fcmToken,
               notification: {
-                title: 'Account Request Not Approved',
-                body: `Your account request was not approved. Reason: ${rejectionReason}`,
+                title: NOTIFICATION_CONTENT.accountRejected.pushTitle,
+                body: NOTIFICATION_CONTENT.accountRejected.pushBody(rejectionReason),
               },
               data: {
                 type: 'account_rejected',
@@ -6303,8 +6304,8 @@ export const onApprovalMessageCreated = onDocumentCreated(
         await notificationRef.set({
           userId: approvalData.userId,
           type: 'approval_question',
-          title: 'Admin Question',
-          message: 'An admin has a question about your account request. Please check your pending approval page.',
+          title: NOTIFICATION_CONTENT.approvalQuestion.inAppTitle,
+          message: NOTIFICATION_CONTENT.approvalQuestion.inAppMessage,
           createdAt: FieldValue.serverTimestamp(),
           read: false,
           metadata: {
@@ -6366,8 +6367,8 @@ export const onApprovalMessageCreated = onDocumentCreated(
           const notifications = adminsSnapshot.docs.map(adminDoc => ({
             userId: adminDoc.id,
             type: 'approval_response',
-            title: 'User Response',
-            message: `${senderName} has responded to your question about their account request.`,
+            title: NOTIFICATION_CONTENT.approvalResponse.inAppTitle,
+            message: NOTIFICATION_CONTENT.approvalResponse.inAppMessage(senderName),
             createdAt: FieldValue.serverTimestamp(),
             read: false,
             metadata: {
@@ -6392,9 +6393,9 @@ export const onApprovalMessageCreated = onDocumentCreated(
             await sendAdminNotificationWithFallback(
               adminId,
               adminData,
-              'User Response',
-              `${senderName} has responded to your question about their account request.`,
-              `MOMS FITNESS MOJO: ${senderName} has responded to your question. Check admin console.`,
+              NOTIFICATION_CONTENT.approvalResponse.pushTitle,
+              NOTIFICATION_CONTENT.approvalResponse.pushBody(senderName),
+              NOTIFICATION_CONTENT.approvalResponse.adminFallbackSms(senderName),
               {
                 type: 'approval_response',
                 approvalId: approvalId,

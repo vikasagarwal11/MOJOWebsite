@@ -3,37 +3,38 @@
  * Centralized location for all SMS message content
  * Easy to edit and maintain
  */
+import { NOTIFICATION_CONTENT } from '../config/notificationContent';
 
 export const SMS_TEMPLATES = {
   /**
    * Waitlist Promotion - Time-sensitive (24h RSVP deadline)
    */
-  WAITLIST_PROMOTION: (eventTitle: string) => 
-    `🎉 MOMS FITNESS MOJO: You've been promoted from waitlist! Confirm attendance at "${eventTitle}" within 24h.`,
+  WAITLIST_PROMOTION: (eventTitle: string) =>
+    NOTIFICATION_CONTENT.waitlistPromotion.sms(eventTitle),
 
   /**
    * Account Approval - Welcome message
    */
-  ACCOUNT_APPROVED: (userName: string) => 
-    `🎉 MOMS FITNESS MOJO: Your account has been approved! Welcome ${userName}! You can now access all features.`,
+  ACCOUNT_APPROVED: (userName: string) =>
+    NOTIFICATION_CONTENT.accountApproved.sms(userName),
 
   /**
    * Account Rejection - Critical notification
    */
-  ACCOUNT_REJECTED: (rejectionReason: string) => 
-    `MOMS FITNESS MOJO: Your account request was not approved. Reason: ${rejectionReason}. You can view details and reapply after 30 days.`,
+  ACCOUNT_REJECTED: (rejectionReason: string) =>
+    NOTIFICATION_CONTENT.accountRejected.sms(rejectionReason),
 
   /**
    * Admin Question - Time-sensitive response needed
    */
-  ADMIN_QUESTION: () => 
-    `MOMS FITNESS MOJO: An admin has a question about your account request. Please check your pending approval page to respond.`,
+  ADMIN_QUESTION: () =>
+    NOTIFICATION_CONTENT.approvalQuestion.sms(),
 
   /**
    * New Event Created - Notify all users about new event
    */
-  EVENT_CREATED: (eventTitle: string, eventDate: string, eventLink: string) => 
-    `🎉 NEW EVENT: "${eventTitle}" on ${eventDate}! Check it out: ${eventLink}`,
+  EVENT_CREATED: (eventTitle: string, eventDate: string, eventLink: string) =>
+    NOTIFICATION_CONTENT.eventCreated.sms(eventTitle, eventDate, eventLink),
 } as const;
 
 /**

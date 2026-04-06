@@ -1,6 +1,7 @@
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { isNotificationTypeEnabled } from './utils/notificationSettings';
+import { NOTIFICATION_CONTENT } from './config/notificationContent';
 import {
   adjustUserTrustScore,
   analyzeMediaSafeSearch,
@@ -216,8 +217,8 @@ async function handleModeration(job: ModerationJob) {
       const notifications = adminsSnapshot.docs.map(adminDoc => ({
         userId: adminDoc.id,
         type: 'media_pending_approval',
-        title: 'Media Pending Approval',
-        message: `${uploadedByName} has uploaded ${mediaType === 'video' ? 'a video' : 'an image'} that requires your approval.`,
+        title: NOTIFICATION_CONTENT.mediaPendingApproval.inAppTitle,
+        message: NOTIFICATION_CONTENT.mediaPendingApproval.inAppMessage(uploadedByName, mediaType),
         createdAt: FieldValue.serverTimestamp(),
         read: false,
         metadata: {
@@ -248,9 +249,9 @@ async function handleModeration(job: ModerationJob) {
         await sendAdminNotificationWithFallback(
           adminId,
           adminData,
-          'Media Pending Approval',
-          `${uploadedByName} has uploaded ${mediaType === 'video' ? 'a video' : 'an image'} that requires your approval.`,
-          `MOMS FITNESS MOJO: New ${mediaType} pending approval from ${uploadedByName}. Check Content Moderation.`,
+          NOTIFICATION_CONTENT.mediaPendingApproval.pushTitle,
+          NOTIFICATION_CONTENT.mediaPendingApproval.pushBody(uploadedByName, mediaType),
+          NOTIFICATION_CONTENT.mediaPendingApproval.adminFallbackSms(uploadedByName, mediaType),
           {
             type: 'media_pending_approval',
             mediaId: mediaId,
