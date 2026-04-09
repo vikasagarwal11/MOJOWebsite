@@ -26,6 +26,11 @@ export interface Attendee {
   paymentStatus?: import('./payment').PaymentStatus;
   paymentTransactionId?: string; // Reference to payment transaction
   price?: number; // Price in cents for this attendee
+  // Guest RSVP metadata (truly public / non-logged-in flows)
+  isGuest?: boolean;
+  guestEmail?: string;
+  guestPhone?: string;
+  source?: string;
   createdAt: any;
   updatedAt: any;
 }

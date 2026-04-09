@@ -1,16 +1,15 @@
 import { Firestore, Timestamp } from 'firebase-admin/firestore';
-import Twilio from 'twilio';
 import {
     OTPAttempt,
     OTPSendResult,
     OTPVerificationResult,
     RateLimitResult
 } from '../types/otpAttempt';
+import { sendSMS } from '../utils/smsProvider';
 
 /**
  * OTP Service (Simple Version)
- * Uses Twilio Messaging API (same as your existing notifications.ts)
- * No need for TWILIO_VERIFY_SERVICE_SID - just uses your existing credentials!
+ * Uses centralized SMS provider (Telnyx by default, Twilio optional fallback)
  * 
  * Implements:
  * - Manual OTP generation (6-digit codes)
@@ -20,18 +19,9 @@ import {
  */
 export class OTPServiceSimple {
     private db: Firestore;
-    private twilioClient: Twilio.Twilio;
-    private twilioPhoneNumber: string;
 
-    constructor(
-        db: Firestore,
-        twilioAccountSid: string,
-        twilioAuthToken: string,
-        twilioPhoneNumber: string
-    ) {
+    constructor(db: Firestore) {
         this.db = db;
-        this.twilioClient = Twilio(twilioAccountSid, twilioAuthToken);
-        this.twilioPhoneNumber = twilioPhoneNumber;
     }
 
     /**
@@ -42,7 +32,7 @@ export class OTPServiceSimple {
     }
 
     /**
-     * Send OTP to phone number using Twilio Messaging API
+     * Send OTP to phone number using configured SMS provider
      * @param phone - E.164 formatted phone number
      * @param firstName - User's first name for personalization
      * @returns OTP send result with request ID and attempts remaining
@@ -66,16 +56,23 @@ export class OTPServiceSimple {
             // Generate OTP code
             const otpCode = this.generateOTP();
 
-            // Send SMS using Twilio Messaging API (same as your notifications.ts)
             const message = `Hi ${firstName}! Your verification code is: ${otpCode}\n\nThis code expires in 10 minutes.\n\n- Moms Fitness Mojo`;
+            const result = await sendSMS(phone, message);
+            if (!result.success) {
+                console.error('❌ OTP SMS failed:', result.error);
+                const normalizedError = String(result.error || '').toLowerCase();
+                const sendErrorCode: OTPSendResult['error'] =
+                    normalizedError.includes('invalid phone') ? 'invalid_phone' : 'service_unavailable';
+                return {
+                    success: false,
+                    requestId: '',
+                    expiresIn: 0,
+                    attemptsRemaining: rateLimit.attemptsRemaining,
+                    error: sendErrorCode
+                };
+            }
 
-            const result = await this.twilioClient.messages.create({
-                body: message,
-                from: this.twilioPhoneNumber,
-                to: phone,
-            });
-
-            console.log(`✅ OTP SMS sent via Twilio. SID: ${result.sid}`);
+            console.log(`✅ OTP SMS sent via ${result.provider || 'sms-provider'}. ID: ${result.sid || 'n/a'}`);
 
             // Store OTP attempt in database
             const attemptRef = this.db.collection('otp_attempts').doc(phone);
@@ -84,7 +81,7 @@ export class OTPServiceSimple {
 
             const otpAttempt: OTPAttempt = {
                 phone,
-                requestId: result.sid, // Twilio message SID
+                requestId: result.sid || '', // provider message ID
                 attempts: 0,
                 lastAttempt: now,
                 lockedUntil: null,
@@ -99,23 +96,12 @@ export class OTPServiceSimple {
 
             return {
                 success: true,
-                requestId: result.sid,
+                requestId: result.sid || '',
                 expiresIn: 600, // 10 minutes in seconds
                 attemptsRemaining: rateLimit.attemptsRemaining
             };
         } catch (error: any) {
             console.error('❌ Error sending OTP:', error);
-
-            // Twilio error codes
-            if (error.code === 21211 || error.code === 21614) {
-                return {
-                    success: false,
-                    requestId: '',
-                    expiresIn: 0,
-                    attemptsRemaining: 0,
-                    error: 'invalid_phone'
-                };
-            }
 
             return {
                 success: false,

@@ -1,69 +1,13 @@
 import { FieldValue, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { SMS_TEMPLATES, SMS_TYPES } from './smsTemplates';
 import { isNotificationTypeEnabled } from './notificationSettings';
+import { sendSMS as sendSMSWithProvider } from './smsProvider';
 
 const db = getFirestore();
 
 function isDevProject(): boolean {
   const project = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '';
   return project === 'momsfitnessmojo-dev' || project.endsWith('-dev');
-}
-
-function normalizePhoneToE164OrNull(input: string): string | null {
-  const raw = String(input || '').trim();
-  if (!raw) return null;
-
-  if (raw.startsWith('+')) {
-    const cleaned = raw.replace(/[^\d+]/g, '');
-    return /^\+[1-9]\d{6,14}$/.test(cleaned) ? cleaned : null;
-  }
-
-  // Backward compatibility: if users saved US numbers without +1
-  const digits = raw.replace(/\D/g, '');
-  if (digits.length === 10) return `+1${digits}`;
-  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
-  return null;
-}
-
-/**
- * Send SMS using Twilio (helper function)
- */
-async function sendSMSViaTwilio(phoneNumber: string, message: string): Promise<{ success: boolean; error?: string; sid?: string }> {
-  try {
-    // For Firebase Functions v2, use environment variables directly
-    const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
-    const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-    const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
-
-    if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
-      console.error('❌ Twilio credentials not configured');
-      return { success: false, error: 'Twilio credentials not configured. Please set twilio.account_sid, twilio.auth_token, and twilio.phone_number' };
-    }
-
-    const twilio = await import('twilio');
-    const client = twilio.default(twilioAccountSid, twilioAuthToken);
-    const normalizedTo = normalizePhoneToE164OrNull(phoneNumber);
-    if (!normalizedTo) {
-      const err = `Invalid phone format: "${phoneNumber}" (expected E.164, e.g. +14155550123)`;
-      console.error('❌ Twilio SMS failed:', err);
-      return { success: false, error: err };
-    }
-
-    const result = await client.messages.create({
-      body: message,
-      from: twilioPhoneNumber,
-      to: normalizedTo,
-    });
-
-    console.log(`✅ SMS sent via Twilio. SID: ${result.sid}`);
-    return { success: true, sid: result.sid };
-  } catch (error: any) {
-    const code = error?.code ? ` code=${error.code}` : '';
-    const msg = error?.message || 'Failed to send SMS';
-    const more = error?.moreInfo ? ` moreInfo=${error.moreInfo}` : '';
-    console.error(`❌ Twilio SMS failed:${code} ${msg}${more}`.trim());
-    return { success: false, error: `${msg}${code}`.trim() };
-  }
 }
 
 /**
@@ -112,7 +56,7 @@ export async function sendAdminNotificationWithFallback(
   // SMS Fallback: Send SMS immediately if push failed or disabled (admins need immediate notification)
   if (phoneNumber) {
     try {
-      const result = await sendSMSViaTwilio(phoneNumber, smsMessage);
+      const result = await sendSMSWithProvider(phoneNumber, smsMessage);
       if (result.success) {
         console.log(`✅ SMS sent immediately to admin ${adminId} (push ${fcmToken && pushEnabled ? 'failed' : 'disabled'})`);
       } else {
@@ -153,7 +97,7 @@ export async function sendWaitlistPromotionSMS(
 
   try {
     const message = SMS_TEMPLATES.WAITLIST_PROMOTION(eventTitle);
-    const result = await sendSMSViaTwilio(phoneNumber, message);
+    const result = await sendSMSWithProvider(phoneNumber, message);
     
     if (result.success) {
       console.log(`✅ Waitlist promotion SMS sent immediately to ${userId}`);
@@ -257,7 +201,7 @@ export async function sendAccountApprovalSMSNow(
 
   try {
     const message = SMS_TEMPLATES.ACCOUNT_APPROVED(userName);
-    const result = await sendSMSViaTwilio(phoneNumber, message);
+    const result = await sendSMSWithProvider(phoneNumber, message);
     if (result.success) {
       console.log(`✅ Account approval SMS sent immediately to user ${userId}`);
       return { success: true, sid: result.sid };
@@ -297,7 +241,7 @@ export async function sendAccountRejectionSMS(
 
   try {
     const message = SMS_TEMPLATES.ACCOUNT_REJECTED(rejectionReason);
-    const result = await sendSMSViaTwilio(phoneNumber, message);
+    const result = await sendSMSWithProvider(phoneNumber, message);
     
     if (result.success) {
       console.log(`✅ Account rejection SMS sent immediately to user ${userId}`);
@@ -389,7 +333,7 @@ export async function sendAdminQuestionSMSNow(
 
   try {
     const message = SMS_TEMPLATES.ADMIN_QUESTION();
-    const result = await sendSMSViaTwilio(phoneNumber, message);
+    const result = await sendSMSWithProvider(phoneNumber, message);
     if (result.success) {
       console.log(`✅ Admin question SMS sent immediately to user ${userId}`);
       return { success: true, sid: result.sid };
@@ -457,7 +401,7 @@ export async function sendEventCreatedSMS(
       
       try {
         const message = SMS_TEMPLATES.EVENT_CREATED(eventTitle, eventDate, eventLink);
-        const result = await sendSMSViaTwilio(phoneNumber, message);
+        const result = await sendSMSWithProvider(phoneNumber, message);
         
         if (result.success) {
           sentCount++;
@@ -495,4 +439,5 @@ export async function sendEventCreatedSMS(
     };
   }
 }
+
 

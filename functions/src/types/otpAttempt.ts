@@ -17,7 +17,7 @@ export interface OTPAttempt {
     /** Phone number in E.164 format (document ID) */
     phone: string;
 
-    /** Twilio Verify request ID (SID) */
+    /** SMS provider message/request ID */
     requestId: string;
 
     /** Number of verification attempts made */
@@ -41,7 +41,7 @@ export interface OTPAttempt {
     /** Session token created on successful verification */
     sessionToken?: string;
 
-    /** The OTP code (only for simple/manual OTP, not used with Twilio Verify) */
+    /** The OTP code (only for simple/manual OTP) */
     otpCode?: string;
 }
 
@@ -89,7 +89,7 @@ export interface OTPSendResult {
     /** Whether OTP was sent successfully */
     success: boolean;
 
-    /** Twilio Verify request ID */
+    /** SMS provider request ID */
     requestId: string;
 
     /** Seconds until OTP expires */

@@ -17,7 +17,6 @@ import { useAttendees } from '../hooks/useAttendees';
 import { EventDoc } from '../hooks/useEvents';
 import { useUserBlocking } from '../hooks/useUserBlocking';
 import { AgeGroup, Attendee, AttendeeStatus, CreateAttendeeData, Relationship } from '../types/attendee';
-import { normalizeUSPhoneToE164OrNull } from '../utils/phone';
 
 import { collection, doc, getDocFromServer, getDocsFromServer, onSnapshot, query, where } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -173,6 +172,7 @@ const RSVPPage: React.FC = () => {
   const [guestFirstName, setGuestFirstName] = useState('');
   const [guestLastName, setGuestLastName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
+  const [guestCountryCode, setGuestCountryCode] = useState<'+1' | '+91'>('+1');
   const [guestPhone, setGuestPhone] = useState('');
       const [guestRows, setGuestRows] = useState<GuestRow[]>(() => [{ id: generateGuestRowId(), name: '', relationship: 'guest', ageGroup: 'adult' }]);
   const [guestSubmitting, setGuestSubmitting] = useState(false);
@@ -184,6 +184,52 @@ const RSVPPage: React.FC = () => {
   const [guestSessionToken, setGuestSessionToken] = useState<string | null>(null);
   const [isPhoneVerified, setIsPhoneVerified] = useState(false);
   const [showAdditionalMembersForm, setShowAdditionalMembersForm] = useState(false);
+  const normalizeGuestPhoneToE164OrNull = useCallback((input: string): string | null => {
+    const raw = (input || '').trim();
+    if (!raw) return null;
+
+    if (raw.startsWith('+')) {
+      const cleaned = raw.replace(/[^\d+]/g, '');
+      return /^\+[1-9]\d{6,14}$/.test(cleaned) ? cleaned : null;
+    }
+
+    const digits = raw.replace(/\D/g, '');
+    if (!digits) return null;
+
+    if (guestCountryCode === '+1') {
+      if (digits.length === 10) return `+1${digits}`;
+      if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+      return null;
+    }
+
+    if (guestCountryCode === '+91') {
+      if (digits.length === 10 && /^[6-9]\d{9}$/.test(digits)) return `+91${digits}`;
+      if (digits.length === 12 && digits.startsWith('91') && /^[6-9]\d{9}$/.test(digits.slice(2))) return `+${digits}`;
+      return null;
+    }
+
+    return null;
+  }, [guestCountryCode]);
+
+  const guestContactReady = useMemo(() => {
+    const firstName = guestFirstName.trim();
+    const lastName = guestLastName.trim();
+    const email = guestEmail.trim().toLowerCase();
+    const phoneE164 = normalizeGuestPhoneToE164OrNull(guestPhone);
+    return Boolean(firstName && lastName && email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && phoneE164);
+  }, [guestEmail, guestFirstName, guestLastName, guestPhone, normalizeGuestPhoneToE164OrNull]);
+  const guestAdditionalCount = useMemo(
+    () => guestRows.filter((row) => row.name.trim().length > 0).length,
+    [guestRows]
+  );
+  const guestFamilyCount = useMemo(
+    () => guestRows.filter((row) => row.name.trim().length > 0 && row.relationship !== 'guest').length,
+    [guestRows]
+  );
+  const guestOnlyCount = useMemo(
+    () => guestRows.filter((row) => row.name.trim().length > 0 && row.relationship === 'guest').length,
+    [guestRows]
+  );
 
   useEffect(() => {
     if (!event?.id) return;
@@ -471,17 +517,25 @@ const RSVPPage: React.FC = () => {
     await refreshAttendees();
   };
 
+  const addGuestFamilyRow = () => {
+    setGuestRows((prev) => [...prev, { id: generateGuestRowId(), name: '', relationship: 'spouse', ageGroup: 'adult' }]);
+  };
+
+  const addGuestOnlyRow = () => {
+    setGuestRows((prev) => [...prev, { id: generateGuestRowId(), name: '', relationship: 'guest', ageGroup: 'adult' }]);
+  };
+
   // Handler for verifying phone BEFORE RSVP submission
   const handleVerifyPhone = () => {
     const firstName = guestFirstName.trim();
     const lastName = guestLastName.trim();
     const email = guestEmail.trim().toLowerCase();
-    const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+    const phoneE164 = normalizeGuestPhoneToE164OrNull(guestPhone);
 
     // Validate contact info before showing OTP modal
     if (!firstName || !lastName) { toast.error('First and last name are required'); return; }
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error('Please enter a valid email address'); return; }
-    if (!phoneE164) { toast.error('Please enter a valid US phone number'); return; }
+    if (!phoneE164) { toast.error(`Please enter a valid ${guestCountryCode} phone number`); return; }
 
     // Clear any previous guest state before starting a new verification flow
     setGuestAttendees([]);
@@ -506,7 +560,7 @@ const RSVPPage: React.FC = () => {
     toast.success('Phone verified! You can now add additional members and submit your RSVP.');
 
     if (!event?.id) return;
-    const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+    const phoneE164 = normalizeGuestPhoneToE164OrNull(guestPhone);
     if (!phoneE164) return;
     const phoneDigits = phoneE164.replace(/[^\d]/g, '');
     const guestUserId = `guest_${event.id}_${phoneDigits}`;
@@ -517,6 +571,7 @@ const RSVPPage: React.FC = () => {
       if (existing.length > 0) {
         setGuestAttendees(existing);
         setGuestSubmitted(true);
+        setGuestRows([{ id: generateGuestRowId(), name: '', relationship: 'guest', ageGroup: 'adult' }]);
         console.log('[GUEST] Existing attendees loaded:', existing.map(a => ({ id: a.attendeeId, paymentStatus: a.paymentStatus })));
       }
     } catch (error) {
@@ -598,7 +653,7 @@ const RSVPPage: React.FC = () => {
 
       if (updatedAttendees.length !== attendeeIds.length) {
         console.warn('⚠️ [GUEST] Some attendee IDs missing. Falling back to query by userId/guestPhone.');
-        const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+        const phoneE164 = normalizeGuestPhoneToE164OrNull(guestPhone);
         const fallback = await fetchGuestAttendeesFromFirestore(
           event.id,
           guestAttendees[0]?.userId,
@@ -630,7 +685,7 @@ const RSVPPage: React.FC = () => {
     const firstName = guestFirstName.trim();
     const lastName = guestLastName.trim();
     const email = guestEmail.trim().toLowerCase();
-    const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+    const phoneE164 = normalizeGuestPhoneToE164OrNull(guestPhone);
 
     // Additional validation (should never happen since phone was verified)
     if (!phoneE164) {
@@ -695,6 +750,7 @@ const RSVPPage: React.FC = () => {
 
       setGuestAttendees(finalAttendees);
       setGuestSubmitted(true);
+      setGuestRows([{ id: generateGuestRowId(), name: '', relationship: 'guest', ageGroup: 'adult' }]);
 
       console.log('✅ [FRONTEND] RSVP Submitted! Session token still available:', guestSessionToken ? 'YES' : 'NO');
       if (guestSessionToken) {
@@ -1097,6 +1153,13 @@ const RSVPPage: React.FC = () => {
                 <div className="px-4 py-4">
                     {/* Payment Section */}
                     <div id="payment" ref={paymentSectionRef}>
+                      {isGuestTrulyPublic && !guestSubmitted && (
+                        <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                          <p className="text-xs font-medium text-blue-800">
+                            RSVP first in the section below. Payment options will activate after RSVP submission.
+                          </p>
+                        </div>
+                      )}
                       <PaymentSection
                         event={event}
                         attendees={isGuestTrulyPublic ? guestAttendees : attendees.filter(attendee => attendee.userId === currentUser?.id)}
@@ -1253,8 +1316,18 @@ const RSVPPage: React.FC = () => {
                                 </div>
                               ) : (
                                 <>
+                                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                                    <p className="text-xs font-semibold text-blue-800">Simple 3-Step RSVP</p>
+                                    <p className="mt-1 text-xs text-blue-700">Verify phone with OTP, add attendees if needed, then submit RSVP.</p>
+                                  </div>
+                                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                    <div className={`rounded-md border px-2 py-1.5 text-[11px] font-semibold ${guestContactReady ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>1. Contact details</div>
+                                    <div className={`rounded-md border px-2 py-1.5 text-[11px] font-semibold ${isPhoneVerified ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>2. OTP verified</div>
+                                    <div className={`rounded-md border px-2 py-1.5 text-[11px] font-semibold ${guestSubmitted ? 'border-emerald-300 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>3. RSVP submitted</div>
+                                  </div>
                                   {/* Step 1: Contact Information */}
-                                  <div className="space-y-3">
+                                  <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-3">
+                                    <h4 className="text-sm font-semibold text-gray-900">Step 1: Your details</h4>
                                     <div className="grid grid-cols-2 gap-3">
                                       <div>
                                         <label className="block text-xs font-medium text-gray-700 mb-1">First Name *</label>
@@ -1290,14 +1363,26 @@ const RSVPPage: React.FC = () => {
                                     </div>
                                     <div>
                                       <label className="block text-xs font-medium text-gray-700 mb-1">Phone *</label>
-                                      <input
-                                        type="tel"
-                                        value={guestPhone}
-                                        onChange={(e) => setGuestPhone(e.target.value)}
-                                        placeholder="Phone number"
-                                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                                        disabled={isPhoneVerified}
-                                      />
+                                      <div className="flex gap-2">
+                                        <select
+                                          value={guestCountryCode}
+                                          onChange={(e) => setGuestCountryCode(e.target.value as '+1' | '+91')}
+                                          disabled={isPhoneVerified}
+                                          className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+                                        >
+                                          <option value="+1">+1 (US)</option>
+                                          <option value="+91">+91 (India)</option>
+                                        </select>
+                                        <input
+                                          type="tel"
+                                          value={guestPhone}
+                                          onChange={(e) => setGuestPhone(e.target.value)}
+                                          placeholder={guestCountryCode === '+91' ? '98765 43210' : '201 555 0123'}
+                                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                          disabled={isPhoneVerified}
+                                        />
+                                      </div>
+                                      <p className="mt-1 text-[11px] text-gray-500">Country code will be sent as {guestCountryCode}</p>
                                     </div>
 
                                     {/* Verify Phone Button - Only show if not verified */}
@@ -1305,9 +1390,10 @@ const RSVPPage: React.FC = () => {
                                       <button
                                         type="button"
                                         onClick={handleVerifyPhone}
-                                        className="w-full py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg active:scale-95 transition-transform touch-manipulation"
+                                        disabled={!guestContactReady}
+                                        className="w-full py-2.5 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 transition-transform touch-manipulation"
                                       >
-                                        Verify Phone Number
+                                        Step 1: Verify Phone Number (OTP)
                                       </button>
                                     )}
 
@@ -1318,7 +1404,7 @@ const RSVPPage: React.FC = () => {
                                           <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                                           </svg>
-                                          <span className="text-sm text-green-700 font-medium">✓ Phone verified successfully!</span>
+                                          <span className="text-sm text-green-700 font-medium">Phone verified. Continue with Step 2 or submit RSVP in Step 3.</span>
                                         </div>
                                       </div>
                                     )}
@@ -1328,28 +1414,40 @@ const RSVPPage: React.FC = () => {
                                   {isPhoneVerified && showAdditionalMembersForm && (
                                     <div className="rounded-lg border border-gray-200 p-3 space-y-3">
                                       <div className="mb-2 flex items-center justify-between">
-                                        <h4 className="text-sm font-semibold text-gray-900">Additional Members <span className="text-xs font-normal text-gray-500">(Optional)</span></h4>
+                                        <h4 className="text-sm font-semibold text-gray-900">Step 2: Additional Attendees <span className="text-xs font-normal text-gray-500">(Optional)</span></h4>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2">
                                         <button
                                           type="button"
-                                          onClick={() => setGuestRows((prev) => [...prev, { id: generateGuestRowId(), name: '', relationship: 'guest', ageGroup: 'adult' }])}
-                                          className="text-xs font-semibold text-[#F25129] hover:text-[#E0451F]"
+                                          onClick={addGuestFamilyRow}
+                                          className="rounded-md border border-[#F25129]/30 bg-[#FFF6F2] px-2.5 py-1.5 text-xs font-semibold text-[#C74221] hover:bg-[#FFEDE5]"
                                         >
-                                          + Add Row
+                                          + Add Family Member
                                         </button>
+                                        <button
+                                          type="button"
+                                          onClick={addGuestOnlyRow}
+                                          className="rounded-md border border-[#FFC107]/40 bg-[#FFF9E6] px-2.5 py-1.5 text-xs font-semibold text-[#9A6A00] hover:bg-[#FFF2C2]"
+                                        >
+                                          + Add Guest
+                                        </button>
+                                      </div>
+                                      <div className="text-[11px] text-gray-600">
+                                        Added: {guestAdditionalCount} total ({guestFamilyCount} family, {guestOnlyCount} guest)
                                       </div>
                                       <div className="space-y-2">
                                         {guestRows.map((row) => (
-                                          <div key={row.id} className="flex gap-2">
+                                          <div key={row.id} className="grid grid-cols-1 gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2 sm:grid-cols-12">
                                             <input
                                               value={row.name}
                                               onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, name: e.target.value } : r))}
                                               placeholder="Member name"
-                                              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm sm:col-span-5"
                                             />
                                             <select
                                               value={row.ageGroup}
                                               onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, ageGroup: e.target.value as AgeGroup } : r))}
-                                              className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+                                              className="rounded-lg border border-gray-300 px-2 py-2 text-sm sm:col-span-2"
                                             >
                                               <option value="0-2">Infant (0-2)</option>
                                               <option value="3-5">Toddler (3-5)</option>
@@ -1360,7 +1458,7 @@ const RSVPPage: React.FC = () => {
                                             <select
                                               value={row.relationship}
                                               onChange={(e) => setGuestRows((prev) => prev.map((r) => r.id === row.id ? { ...r, relationship: e.target.value as Relationship } : r))}
-                                              className="rounded-lg border border-gray-300 px-2 py-2 text-sm"
+                                              className="rounded-lg border border-gray-300 px-2 py-2 text-sm sm:col-span-3"
                                             >
                                               <option value="guest">Guest</option>
                                               <option value="spouse">Spouse</option>
@@ -1369,9 +1467,9 @@ const RSVPPage: React.FC = () => {
                                             <button
                                               type="button"
                                               onClick={() => setGuestRows((prev) => prev.length > 1 ? prev.filter((r) => r.id !== row.id) : prev)}
-                                              className="px-2 py-2 text-xs text-gray-500 hover:text-red-500 border border-gray-200 rounded-lg"
+                                              className="px-2 py-2 text-xs text-gray-500 hover:text-red-500 border border-gray-200 rounded-lg sm:col-span-2"
                                             >
-                                              ✕
+                                              Remove
                                             </button>
                                           </div>
                                         ))}
@@ -1381,14 +1479,17 @@ const RSVPPage: React.FC = () => {
 
                                   {/* Step 3: Submit RSVP - Only enabled after phone verification */}
                                   {isPhoneVerified && (
-                                    <button
-                                      type="button"
-                                      onClick={handleSubmitGuestRsvp}
-                                      disabled={guestSubmitting}
-                                      className="w-full py-2.5 text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation"
-                                    >
-                                      {guestSubmitting ? 'Submitting...' : 'Submit RSVP'}
-                                    </button>
+                                    <div className="rounded-lg border border-[#F25129]/20 bg-[#FFF7F3] p-3">
+                                      <p className="mb-2 text-xs font-semibold text-[#C74221]">Step 3: Final confirmation</p>
+                                      <button
+                                        type="button"
+                                        onClick={handleSubmitGuestRsvp}
+                                        disabled={guestSubmitting}
+                                        className="w-full py-2.5 text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation"
+                                      >
+                                        {guestSubmitting ? 'Submitting...' : `Submit RSVP for ${1 + guestAdditionalCount} attendee(s)`}
+                                      </button>
+                                    </div>
                                   )}
                                 </>
                               )}
@@ -1556,7 +1657,7 @@ const RSVPPage: React.FC = () => {
           isOpen={showOTPModal}
           onClose={() => setShowOTPModal(false)}
           onVerified={handleOTPVerified}
-          phone={guestPhone}
+          phone={normalizeGuestPhoneToE164OrNull(guestPhone) || `${guestCountryCode}${guestPhone.replace(/\D/g, '')}`}
           email={guestEmail}
           firstName={guestFirstName}
           lastName={guestLastName}

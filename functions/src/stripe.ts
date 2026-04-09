@@ -699,6 +699,11 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
     const userId = transactionData.userId;
     console.log(`💳 Processing payment for ${transactionData.metadata.paidAttendees.length} attendee(s) in event ${eventId}`);
 
+    const chargedByAttendeeId = distributeChargedAmountsByAttendee(
+      transactionData.metadata.paidAttendees,
+      Number(transactionData.amount || 0)
+    );
+
     // Update each attendee's payment status in the CORRECT subcollection
     for (const attendee of transactionData.metadata.paidAttendees) {
       const attendeeRef = db.collection('events').doc(eventId).collection('attendees').doc(attendee.attendeeId);
@@ -706,6 +711,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         paymentStatus: 'paid',
         paymentTransactionId: transactionId,
         price: attendee.amount,
+        chargedAmount: chargedByAttendeeId[attendee.attendeeId] ?? attendee.amount,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
       console.log(`✅ Marking attendee ${attendee.name} (${attendee.attendeeId}) as paid`);
@@ -730,6 +736,41 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
     console.error('⚠️ Error sending confirmation email:', error);
     // Do not fail the webhook
   }
+}
+
+function distributeChargedAmountsByAttendee(
+  paidAttendees: Array<{ attendeeId: string; amount: number }>,
+  totalChargeAmount: number
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  if (!Array.isArray(paidAttendees) || paidAttendees.length === 0) return result;
+
+  const sanitized = paidAttendees
+    .map((a) => ({ attendeeId: String(a.attendeeId || ''), net: Number(a.amount || 0) }))
+    .filter((a) => a.attendeeId.length > 0);
+
+  if (sanitized.length === 0) return result;
+
+  const netTotal = sanitized.reduce((sum, a) => sum + Math.max(0, a.net), 0);
+  const total = Number(totalChargeAmount || 0);
+
+  if (total <= 0 || netTotal <= 0) {
+    for (const row of sanitized) result[row.attendeeId] = Math.max(0, Math.round(row.net));
+    return result;
+  }
+
+  let distributed = 0;
+  for (let i = 0; i < sanitized.length; i++) {
+    const row = sanitized[i];
+    const share =
+      i === sanitized.length - 1
+        ? total - distributed
+        : Math.round((Math.max(0, row.net) * total) / netTotal);
+    distributed += share;
+    result[row.attendeeId] = Math.max(0, share);
+  }
+
+  return result;
 }
 
 /**
@@ -758,12 +799,18 @@ async function handleGuestPaymentSuccess(
       const eventId = transactionData.eventId;
       const batch = db.batch();
 
+      const chargedByAttendeeId = distributeChargedAmountsByAttendee(
+        transactionData.metadata.paidAttendees,
+        Number(transactionData.amount || 0)
+      );
+
       for (const attendee of transactionData.metadata.paidAttendees) {
         const attendeeRef = db.collection('events').doc(eventId).collection('attendees').doc(attendee.attendeeId);
         batch.update(attendeeRef, {
           paymentStatus: 'paid',
           paymentTransactionId: transactionRef.id,
           price: attendee.amount,
+          chargedAmount: chargedByAttendeeId[attendee.attendeeId] ?? attendee.amount,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
         console.log(`✅ [GUEST] Marking attendee ${attendee.name} (${attendee.attendeeId}) as paid`);

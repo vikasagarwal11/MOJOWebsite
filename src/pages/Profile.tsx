@@ -812,6 +812,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
       };
 
       const getPaymentAmounts = (attendee: any) => {
+        const isGuestNonLoggedIn = Boolean(attendee?.isGuest || String(attendee?.userId || '').startsWith('guest_'));
         const isPaid = attendee.paymentStatus === 'paid';
         const ticketNetCents = isPaid ? getPriceForAgeGroupCents(attendee.ageGroup || 'adult', event.pricing) : 0;
         const supportNetCents = isPaid && event.pricing?.eventSupportAmount ? event.pricing.eventSupportAmount : 0;
@@ -820,6 +821,7 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         const stripeFeeCents = isPaid ? calculateStripeFee(chargeTotalCents) : 0;
 
         return {
+          isGuestNonLoggedIn,
           ticketNetCents,
           supportNetCents,
           netTotalCents,
@@ -840,6 +842,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
                 // Attendee-specific data
                 attendeeId: attendee.attendeeId || attendee.id,
                 attendeeName: attendee.name || attendee.attendeeName || '',
+                guestRsvp: paymentAmounts.isGuestNonLoggedIn ? 'Yes' : 'No',
+                loginType: paymentAmounts.isGuestNonLoggedIn ? 'Non-Logged-In Guest' : 'Member/Logged-In',
                 attendeeType: attendee.attendeeType || 'primary',
                 ageGroup: attendee.ageGroup || '',
                 relationship: attendee.relationship || '',
@@ -855,8 +859,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
                 firstName: userData.firstName || '',
                 lastName: userData.lastName || '',
                 displayName: userData.displayName || '',
-                email: userData.email || '',
-                phone: userData.phoneNumber || userData.phone || '',
+                email: attendee.guestEmail || userData.email || '',
+                phone: attendee.guestPhone || userData.phoneNumber || userData.phone || '',
                 address: userData.address ? `${userData.address.street || ''} ${userData.address.city || ''} ${userData.address.state || ''} ${userData.address.postalCode || ''}`.trim() : '',
                 // Dates - use sanitized data
                 rsvpDate: attendee.createdAt instanceof Date ? attendee.createdAt.toLocaleDateString('en-US') : 'Unknown',
@@ -867,6 +871,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               // Attendee-specific data
               attendeeId: attendee.id,
               attendeeName: attendee.name || attendee.attendeeName || 'Unknown',
+              guestRsvp: paymentAmounts.isGuestNonLoggedIn ? 'Yes' : 'No',
+              loginType: paymentAmounts.isGuestNonLoggedIn ? 'Non-Logged-In Guest' : 'Member/Logged-In',
               attendeeType: attendee.attendeeType || 'primary',
               ageGroup: attendee.ageGroup || '',
               relationship: attendee.relationship || '',
@@ -882,8 +888,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               firstName: 'Unknown',
               lastName: 'User',
               displayName: 'Unknown User',
-              email: '',
-              phone: '',
+              email: attendee.guestEmail || '',
+              phone: attendee.guestPhone || '',
               address: '',
               // Dates - use sanitized data
               rsvpDate: attendee.createdAt instanceof Date ? attendee.createdAt.toLocaleDateString('en-US') : 'Unknown',
@@ -894,6 +900,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               // Attendee-specific data
               attendeeId: attendee.id,
               attendeeName: attendee.name || attendee.attendeeName || 'Error',
+              guestRsvp: paymentAmounts.isGuestNonLoggedIn ? 'Yes' : 'No',
+              loginType: paymentAmounts.isGuestNonLoggedIn ? 'Non-Logged-In Guest' : 'Member/Logged-In',
               attendeeType: attendee.attendeeType || 'primary',
               ageGroup: attendee.ageGroup || '',
               relationship: attendee.relationship || '',
@@ -909,8 +917,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
               firstName: 'Error',
               lastName: 'Loading',
               displayName: 'Error Loading User',
-              email: '',
-              phone: '',
+              email: attendee.guestEmail || '',
+              phone: attendee.guestPhone || '',
               address: '',
               // Dates - use sanitized data
               rsvpDate: attendee.createdAt instanceof Date ? attendee.createdAt.toLocaleDateString('en-US') : 'Unknown',
@@ -922,6 +930,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
       const headers = [
         'Attendee ID',
         'Attendee Name',
+        'Guest RSVP',
+        'Login Type',
         'Attendee Type',
         'Age Group',
         'Relationship',
@@ -964,6 +974,8 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
         ...attendeeDetails.map(attendee => [
           attendee.attendeeId,
           attendee.attendeeName,
+          attendee.guestRsvp,
+          attendee.loginType,
           attendee.attendeeType,
           attendee.ageGroup,
           attendee.relationship,
@@ -985,11 +997,11 @@ const Profile: React.FC<ProfileProps> = ({ mode = 'profile' }) => {
           attendee.updatedDate
         ].map(escapeCsvValue).join(',')),
         // Summary rows
-        ['SUMMARY', 'Total Event Amount', '', '', '', '', '', totalEventAmount.toFixed(2), '', '', '', '', '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(','),
-        ['SUMMARY', 'Total Support Amount', '', '', '', '', '', '', totalSupportAmount.toFixed(2), '', '', '', '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(','),
-        ['SUMMARY', 'Total Net Amount (We Get After Stripe Cut)', '', '', '', '', '', '', '', totalNetAmount.toFixed(2), '', '', '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(','),
-        ['SUMMARY', 'Total Sent to Stripe', '', '', '', '', '', '', '', '', totalSentToStripe.toFixed(2), '', '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(','),
-        ['SUMMARY', 'Stripe Total / What Stripe Gets', '', '', '', '', '', '', '', '', '', totalStripeFee.toFixed(2), '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(',')
+        ['SUMMARY', 'Total Event Amount', '', '', '', '', '', '', '', totalEventAmount.toFixed(2), '', '', '', '', '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(','),
+        ['SUMMARY', 'Total Support Amount', '', '', '', '', '', '', '', '', totalSupportAmount.toFixed(2), '', '', '', '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(','),
+        ['SUMMARY', 'Total Net Amount (We Get After Stripe Cut)', '', '', '', '', '', '', '', '', '', totalNetAmount.toFixed(2), '', '', '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(','),
+        ['SUMMARY', 'Total Sent to Stripe', '', '', '', '', '', '', '', '', '', '', totalSentToStripe.toFixed(2), '', '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(','),
+        ['SUMMARY', 'Stripe Total / What Stripe Gets', '', '', '', '', '', '', '', '', '', '', '', totalStripeFee.toFixed(2), '', '', '', '', '', '', '', '', ''].map(escapeCsvValue).join(',')
       ];
       const csv = csvRows.join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

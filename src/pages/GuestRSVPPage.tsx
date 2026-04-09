@@ -9,7 +9,6 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import toast from 'react-hot-toast';
 import { db } from '../config/firebase';
 import { Helmet } from 'react-helmet-async';
-import { normalizeUSPhoneToE164OrNull } from '../utils/phone';
 import { createEventCanonicalUrl } from '../utils/seo';
 import { PaymentSection } from '../components/events/PaymentSection';
 
@@ -28,6 +27,7 @@ const GuestRSVPPage: React.FC = () => {
   const [guestFirstName, setGuestFirstName] = useState('');
   const [guestLastName, setGuestLastName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
+  const [guestCountryCode, setGuestCountryCode] = useState<'+1' | '+91'>('+1');
   const [guestPhone, setGuestPhone] = useState('');
   const [guestRows, setGuestRows] = useState<GuestAttendeeRow[]>([{ id: makeId(), name: '', relationship: 'guest' }]);
   const [guestSubmitting, setGuestSubmitting] = useState(false);
@@ -67,6 +67,10 @@ const GuestRSVPPage: React.FC = () => {
     setGuestRows((prev) => [...prev, { id: makeId(), name: '', relationship: 'guest' }]);
   }, []);
 
+  const addFamilyRow = useCallback(() => {
+    setGuestRows((prev) => [...prev, { id: makeId(), name: '', relationship: 'spouse' }]);
+  }, []);
+
   const removeGuestRow = useCallback((id: string) => {
     setGuestRows((prev) => (prev.length > 1 ? prev.filter((row) => row.id !== id) : prev));
   }, []);
@@ -79,6 +83,7 @@ const GuestRSVPPage: React.FC = () => {
     setGuestFirstName('');
     setGuestLastName('');
     setGuestEmail('');
+    setGuestCountryCode('+1');
     setGuestPhone('');
     setGuestRows([{ id: makeId(), name: '', relationship: 'guest' }]);
     setGuestMemberExists(false);
@@ -90,7 +95,34 @@ const GuestRSVPPage: React.FC = () => {
     const firstName = guestFirstName.trim();
     const lastName = guestLastName.trim();
     const email = guestEmail.trim().toLowerCase();
-    const phoneE164 = normalizeUSPhoneToE164OrNull(guestPhone);
+    const normalizeGuestPhoneToE164OrNull = (input: string): string | null => {
+      const raw = (input || '').trim();
+      if (!raw) return null;
+
+      if (raw.startsWith('+')) {
+        const cleaned = raw.replace(/[^\d+]/g, '');
+        return /^\+[1-9]\d{6,14}$/.test(cleaned) ? cleaned : null;
+      }
+
+      const digits = raw.replace(/\D/g, '');
+      if (!digits) return null;
+
+      if (guestCountryCode === '+1') {
+        if (digits.length === 10) return `+1${digits}`;
+        if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+        return null;
+      }
+
+      if (guestCountryCode === '+91') {
+        if (digits.length === 10 && /^[6-9]\d{9}$/.test(digits)) return `+91${digits}`;
+        if (digits.length === 12 && digits.startsWith('91') && /^[6-9]\d{9}$/.test(digits.slice(2))) return `+${digits}`;
+        return null;
+      }
+
+      return null;
+    };
+
+    const phoneE164 = normalizeGuestPhoneToE164OrNull(guestPhone);
     const additionalAttendees = guestRows.map((row) => ({ name: row.name.trim(), relationship: (row.relationship || 'guest') as Relationship })).filter((row) => row.name.length > 0);
 
     if (!firstName || !lastName) {
@@ -102,7 +134,7 @@ const GuestRSVPPage: React.FC = () => {
       return;
     }
     if (!phoneE164) {
-      toast.error('Please enter a valid US phone number');
+      toast.error(`Please enter a valid ${guestCountryCode} phone number`);
       return;
     }
 
@@ -138,9 +170,17 @@ const GuestRSVPPage: React.FC = () => {
     } finally {
       setGuestSubmitting(false);
     }
-  }, [event?.id, guestEmail, guestFirstName, guestLastName, guestPhone, guestRows, resetGuestForm]);
+  }, [event?.id, guestCountryCode, guestEmail, guestFirstName, guestLastName, guestPhone, guestRows, resetGuestForm]);
 
   const guestReadyToAddCount = useMemo(() => guestRows.filter((row) => row.name.trim()).length, [guestRows]);
+  const guestFamilyCount = useMemo(
+    () => guestRows.filter((row) => row.name.trim() && row.relationship !== 'guest').length,
+    [guestRows]
+  );
+  const guestOnlyCount = useMemo(
+    () => guestRows.filter((row) => row.name.trim() && row.relationship === 'guest').length,
+    [guestRows]
+  );
 
   if (loading) {
     return (
@@ -281,18 +321,47 @@ const GuestRSVPPage: React.FC = () => {
                             </div>
                           ) : (
                             <div className="space-y-3">
-                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                                <p className="text-xs font-semibold text-blue-800">Simple RSVP Flow</p>
+                                <p className="mt-1 text-xs text-blue-700">Step 1 add your info, Step 2 add attendees (optional), Step 3 submit.</p>
+                              </div>
+
+                              <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
+                                <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">1. Your details</div>
+                                <div className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-semibold text-gray-600">2. Additional attendees</div>
+                                <div className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-semibold text-gray-600">3. Submit RSVP</div>
+                              </div>
+
+                              <div className="rounded-lg border border-gray-200 bg-white p-3">
+                                <h4 className="mb-2 text-sm font-semibold text-gray-900">Step 1: Your details</h4>
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div><label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label><input value={guestFirstName} onChange={(e) => setGuestFirstName(e.target.value)} placeholder="First name" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
                                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label><input value={guestLastName} onChange={(e) => setGuestLastName(e.target.value)} placeholder="Last name" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
                               </div>
                               <div><label className="block text-sm font-medium text-gray-700 mb-1">Email *</label><input value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} placeholder="Email address" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
-                              <div><label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label><input value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} placeholder="Phone number" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div>
-                              
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                                <div className="flex gap-2">
+                                  <select value={guestCountryCode} onChange={(e) => setGuestCountryCode(e.target.value as '+1' | '+91')} className="rounded-lg border border-gray-300 px-2 py-2 text-sm">
+                                    <option value="+1">+1 (US)</option>
+                                    <option value="+91">+91 (India)</option>
+                                  </select>
+                                  <input value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} placeholder={guestCountryCode === '+91' ? '98765 43210' : '201 555 0123'} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                                </div>
+                                <p className="mt-1 text-[11px] text-gray-500">Country code will be sent as {guestCountryCode}</p>
+                              </div>
+                              </div>
+
                               <div className="rounded-lg border border-gray-200 p-3">
-                                <div className="mb-2 flex items-center justify-between"><h4 className="text-sm font-semibold text-gray-900">Additional Members (Optional)</h4><button type="button" onClick={addGuestRow} className="text-xs font-semibold text-[#F25129] hover:text-[#E0451F]">Add Row</button></div>
+                                <div className="mb-2 flex items-center justify-between"><h4 className="text-sm font-semibold text-gray-900">Step 2: Additional Attendees (Optional)</h4></div>
+                                <div className="mb-2 flex flex-wrap gap-2">
+                                  <button type="button" onClick={addFamilyRow} className="rounded-md border border-[#F25129]/30 bg-[#FFF6F2] px-2.5 py-1.5 text-xs font-semibold text-[#C74221] hover:bg-[#FFEDE5]">+ Add Family Member</button>
+                                  <button type="button" onClick={addGuestRow} className="rounded-md border border-[#FFC107]/40 bg-[#FFF9E6] px-2.5 py-1.5 text-xs font-semibold text-[#9A6A00] hover:bg-[#FFF2C2]">+ Add Guest</button>
+                                </div>
+                                <div className="mb-2 text-[11px] text-gray-600">Added: {guestReadyToAddCount} total ({guestFamilyCount} family, {guestOnlyCount} guest)</div>
                                 <div className="space-y-2">
                                   {guestRows.map((row) => (
-                                    <div key={row.id} className="grid grid-cols-1 gap-2 sm:grid-cols-6">
+                                    <div key={row.id} className="grid grid-cols-1 gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2 sm:grid-cols-6">
                                       <input value={row.name} onChange={(e) => updateGuestRowField(row.id, 'name', e.target.value)} placeholder="Member name" className="rounded-lg border border-gray-300 px-3 py-2 text-sm sm:col-span-4" />
                                       <select value={row.relationship} onChange={(e) => updateGuestRowField(row.id, 'relationship', e.target.value)} className="rounded-lg border border-gray-300 px-2 py-2 text-sm sm:col-span-1"><option value="guest">Guest</option><option value="spouse">Spouse</option><option value="child">Child</option></select>
                                       <button type="button" onClick={() => removeGuestRow(row.id)} className="rounded-lg border border-gray-200 px-2 py-2 text-xs text-gray-700 hover:bg-gray-50 sm:col-span-1">Remove</button>
@@ -301,8 +370,9 @@ const GuestRSVPPage: React.FC = () => {
                                 </div>
                               </div>
 
-                              <div className="pt-2.5 sm:pt-3 border-t border-orange-200">
-                                <button type="button" onClick={handleSubmitGuestRsvp} disabled={guestSubmitting} className="w-full px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation">{guestSubmitting ? 'Submitting...' : 'Submit RSVP'}</button>
+                              <div className="rounded-lg border border-[#F25129]/20 bg-[#FFF7F3] p-3">
+                                <p className="mb-2 text-xs font-semibold text-[#C74221]">Step 3: Final confirmation</p>
+                                <button type="button" onClick={handleSubmitGuestRsvp} disabled={guestSubmitting} className="w-full px-4 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-gradient-to-r from-[#F25129] to-[#E0451F] text-white rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed transition-transform touch-manipulation">{guestSubmitting ? 'Submitting...' : `Submit RSVP for ${1 + guestReadyToAddCount} attendee(s)`}</button>
                               </div>
                             </div>
                           )}

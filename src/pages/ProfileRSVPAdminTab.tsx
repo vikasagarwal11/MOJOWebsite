@@ -161,6 +161,15 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
     }));
   };
 
+  const isGuestNonLoggedIn = (rsvp: any) => {
+    const userId = String(rsvp?.userId || '');
+    return Boolean(rsvp?.isGuest || userId.startsWith('guest_'));
+  };
+
+  const getGuestLabel = (rsvp: any) => {
+    return isGuestNonLoggedIn(rsvp) ? 'Guest (Non-Logged-In)' : null;
+  };
+
   // Helper function to organize attendees by primary user
   const organizeAttendeesByUser = (attendees: any[]) => {
     const userGroups: {[userId: string]: any[]} = {};
@@ -1135,11 +1144,23 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                 .map((rsvp) => (
                                   <tr key={rsvp.id} className="border-b border-gray-100 align-top hover:bg-[#FFF9F6]">
                                     <td className="px-3 py-2">
-                                      <div className="font-medium text-sm text-gray-900">{rsvp.name || rsvp.attendeeName || userNames[rsvp.userId] || 'Unknown'}</div>
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <div className="font-medium text-sm text-gray-900">{rsvp.name || rsvp.attendeeName || userNames[rsvp.userId] || 'Unknown'}</div>
+                                        {getGuestLabel(rsvp) && (
+                                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                                            {getGuestLabel(rsvp)}
+                                          </span>
+                                        )}
+                                      </div>
                                       {rsvp.ageGroup && <div className="text-[11px] text-gray-500">{rsvp.ageGroup === '11+' ? '11+' : rsvp.ageGroup}</div>}
                                     </td>
                                     <td className="px-3 py-2 text-gray-700">
-                                      {rsvp.attendeeType === 'primary' ? 'Primary User' : rsvp.attendeeType === 'family_member' ? 'Family' : 'Guest'}
+                                      <div>
+                                        {rsvp.attendeeType === 'primary' ? 'Primary User' : rsvp.attendeeType === 'family_member' ? 'Family' : 'Guest'}
+                                      </div>
+                                      {isGuestNonLoggedIn(rsvp) && (
+                                        <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Non-Logged-In</div>
+                                      )}
                                     </td>
                                     <td className="px-3 py-2">
                                       <button
@@ -1151,8 +1172,14 @@ export const ProfileRSVPAdminTab: React.FC<ProfileRSVPAdminTabProps> = ({
                                       </button>
                                       {showContactInfo[rsvp.userId] && userDetails[rsvp.userId] && (
                                         <div className="mt-2 space-y-1 text-[11px] text-gray-600">
-                                          <div>{userDetails[rsvp.userId].email}</div>
-                                          <div>{userDetails[rsvp.userId].phone}</div>
+                                          <div>{userDetails[rsvp.userId].email || rsvp.guestEmail || 'Not Available'}</div>
+                                          <div>{userDetails[rsvp.userId].phone || rsvp.guestPhone || 'Not Available'}</div>
+                                        </div>
+                                      )}
+                                      {showContactInfo[rsvp.userId] && !userDetails[rsvp.userId] && isGuestNonLoggedIn(rsvp) && (
+                                        <div className="mt-2 space-y-1 text-[11px] text-gray-600">
+                                          <div>{rsvp.guestEmail || 'Not Available'}</div>
+                                          <div>{rsvp.guestPhone || 'Not Available'}</div>
                                         </div>
                                       )}
                                     </td>

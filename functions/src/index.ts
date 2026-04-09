@@ -124,6 +124,7 @@ import { NOTIFICATION_CONTENT } from './config/notificationContent';
 import { ensureAdmin } from './utils/admin';
 import { sendEventCreatedSMS } from './utils/notifications';
 import { isNotificationTypeEnabled } from './utils/notificationSettings';
+import { sendSMS } from './utils/smsProvider';
 
 // Export the new attendee count management functions
 export { backfillKnowledgeBaseEmbeddings, bulkAttendeeOperation, ensureChunkEmbedding, getKnowledgeEmbeddingStatus, manualRecalculateCount, onAttendeeChange, retryFailedKnowledgeEmbeddings };
@@ -519,50 +520,7 @@ export const sendEventRemindersThreeDaysPrior = onSchedule({
 // Toggle for event RSVP notifications only
 const EVENT_NOTIFICATIONS_ENABLED = process.env.EVENT_NOTIFICATIONS_ENABLED !== 'false';
 
-// ───────────────── SMS SERVICE (Twilio) ─────────────────
-
-/**
- * Send SMS using Twilio
- * Requires Firebase config: twilio.account_sid, twilio.auth_token, twilio.phone_number
- * Set via: firebase functions:config:set twilio.account_sid="..." twilio.auth_token="..." twilio.phone_number="..."
- */
-async function sendSMSViaTwilio(phoneNumber: string, message: string): Promise<{ success: boolean; error?: string; sid?: string }> {
-  try {
-    // For Firebase Functions v2, use environment variables directly
-    const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
-    const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-    const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
-
-    if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
-      console.error('❌ Twilio credentials not configured');
-      return { success: false, error: 'Twilio credentials not configured. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER environment variables' };
-    }
-
-    const twilio = await import('twilio');
-    const client = twilio.default(twilioAccountSid, twilioAuthToken);
-    const normalizedTo = normalizeUSPhoneToE164OrNull(phoneNumber);
-    if (!normalizedTo) {
-      const err = `Invalid phone format: "${phoneNumber}" (expected E.164, e.g. +14155550123)`;
-      console.error('❌ Twilio SMS failed:', err);
-      return { success: false, error: err };
-    }
-
-    const result = await client.messages.create({
-      body: message,
-      from: twilioPhoneNumber,
-      to: normalizedTo,
-    });
-
-    console.log(`✅ SMS sent via Twilio. SID: ${result.sid}`);
-    return { success: true, sid: result.sid };
-  } catch (error: any) {
-    const code = error?.code ? ` code=${error.code}` : '';
-    const msg = error?.message || 'Failed to send SMS';
-    const more = error?.moreInfo ? ` moreInfo=${error.moreInfo}` : '';
-    console.error(`❌ Twilio SMS failed:${code} ${msg}${more}`.trim());
-    return { success: false, error: `${msg}${code}`.trim() };
-  }
-}
+// SMS sending is centralized in utils/smsProvider (Telnyx default, Twilio optional fallback).
 const PAYMENT_PENDING_STATUSES = new Set(['unpaid', 'pending', 'waiting_for_approval']);
 
 function getEventStartDate(eventData: any): Date | null {
@@ -3586,7 +3544,7 @@ export const submitTrulyPublicGuestRsvp = onCall({ region: 'us-east1', cors: ALL
   }
 });
 
-// Send notification SMS using Twilio
+// Send notification SMS using configured SMS provider (Telnyx default)
 // SECURITY: Restricted to admins only, with validation and App Check
 export const sendNotificationSMS = onCall(
   {
@@ -3621,7 +3579,7 @@ export const sendNotificationSMS = onCall(
       throw new HttpsError('invalid-argument', 'phoneNumber must be in E.164 format (e.g., +1234567890)');
     }
 
-    // Validate message length (Twilio limit is 1600 characters)
+    // Validate message length (provider-safe cap)
     if (message.length > 1600) {
       throw new HttpsError('invalid-argument', 'message must be 1600 characters or less');
     }
@@ -3701,7 +3659,7 @@ export const sendNotificationSMS = onCall(
     });
 
     try {
-      const result = await sendSMSViaTwilio(phoneNumber, message);
+      const result = await sendSMS(phoneNumber, message);
 
       if (result.success) {
         return {
@@ -6558,7 +6516,7 @@ export const checkAndDispatchPendingSms = onSchedule({
 
         if (!shouldSkip) {
           // Send SMS
-          const result = await sendSMSViaTwilio(smsData.phoneNumber, smsData.message);
+          const result = await sendSMS(smsData.phoneNumber, smsData.message);
 
           if (result.success) {
             await processingRef.update({
@@ -6722,4 +6680,5 @@ export { deleteGuestAttendee } from './callable/deleteGuestAttendee';
 export { sendGuestOTP } from './callable/sendGuestOTP';
 export { verifyGuestOTP } from './callable/verifyGuestOTP';
 export { cleanupExpiredSessions } from './scheduled/cleanupExpiredSessions';
+
 

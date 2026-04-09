@@ -950,6 +950,56 @@ service cloud.firestore {
          }
       }
     }
+
+    // --- STORIES (Mobile 24h stories) ---
+    match /stories/{storyId} {
+      // Stories are shown in app to signed-in users only.
+      allow read: if isSignedIn();
+
+      // Owner creates their own story document.
+      allow create: if isSignedIn() &&
+        request.auth.uid == request.resource.data.userId &&
+        request.resource.data.keys().hasOnly([
+          'userId',
+          'authorPhotoUrl',
+          'authorName',
+          'url',
+          'mediaType',
+          'createdAt',
+          'expiresAt'
+        ]) &&
+        isNonEmptyString(request.resource.data.userId) &&
+        (!('authorPhotoUrl' in request.resource.data) || request.resource.data.authorPhotoUrl == null || isUrlLike(request.resource.data.authorPhotoUrl)) &&
+        (!('authorName' in request.resource.data) || (request.resource.data.authorName is string && request.resource.data.authorName.size() <= 120)) &&
+        isUrlLike(request.resource.data.url) &&
+        request.resource.data.mediaType in ['image', 'video', 'reel'] &&
+        request.resource.data.createdAt is timestamp &&
+        (
+          !('expiresAt' in request.resource.data) ||
+          request.resource.data.expiresAt is timestamp ||
+          request.resource.data.expiresAt is string
+        );
+
+      // Owner can update a limited set of fields; admin can update anything.
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (
+          request.auth.uid == resource.data.userId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'authorPhotoUrl',
+            'authorName',
+            'url',
+            'mediaType',
+            'expiresAt',
+            'updatedAt'
+          ])
+        )
+      );
+
+      // Owner or admin can delete.
+      allow delete: if isSignedIn() &&
+        (request.auth.uid == resource.data.userId || isAdmin());
+    }
     
     // --- SPONSORS ---
     match /sponsors/{sponsorId} {
@@ -1026,6 +1076,13 @@ service cloud.firestore {
 
     // --- Homepage Stats Settings (admin managed, readable by clients) ---
     match /appConfig/homeStats {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // --- Platform Branding (admin managed, readable by clients) ---
+    // Mobile app reads `platform_branding/default` during startup.
+    match /platform_branding/{docId} {
       allow read: if true;
       allow write: if isAdmin();
     }

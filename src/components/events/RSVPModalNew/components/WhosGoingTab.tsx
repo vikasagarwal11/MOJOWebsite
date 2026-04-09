@@ -24,6 +24,7 @@ interface GroupedAttendee {
   status: 'going' | 'not-going' | 'waitlisted';
   familyCount: number;
   displayName: string;
+  isGuestNonLoggedIn: boolean;
   email?: string;
   phone?: string;
   rsvpDate?: string;
@@ -45,6 +46,11 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
   const [userContacts, setUserContacts] = useState<{ [userId: string]: { email: string; phone: string } }>({});
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage] = useState(10);
+
+  const isGuestNonLoggedIn = useCallback((attendee: Attendee) => {
+    const userId = safeStringConversion((attendee as any)?.userId);
+    return Boolean((attendee as any)?.isGuest || userId.startsWith('guest_'));
+  }, []);
 
   // Fetch user contact information for admins
   const fetchUserContacts = useCallback(async (attendeeUserIds: string[]) => {
@@ -141,8 +147,13 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
           // Count both family members and guests who are "going" - if primary is not going, show 0
           familyCount: attendee.rsvpStatus === 'not-going' ? 0 : goingFamilyMembers.length + goingGuests.length,
           displayName: attendee.name,
-          email: userContacts[attendee.userId]?.email || 'Not Available',
-          phone: userContacts[attendee.userId]?.phone || 'Not Available',
+          isGuestNonLoggedIn: isGuestNonLoggedIn(attendee),
+          email: isGuestNonLoggedIn(attendee)
+            ? ((attendee as any).guestEmail || userContacts[attendee.userId]?.email || 'Not Available')
+            : (userContacts[attendee.userId]?.email || 'Not Available'),
+          phone: isGuestNonLoggedIn(attendee)
+            ? ((attendee as any).guestPhone || userContacts[attendee.userId]?.phone || 'Not Available')
+            : (userContacts[attendee.userId]?.phone || 'Not Available'),
           waitlistPosition: waitlistPositions.get(attendee.userId) || undefined,
           rsvpDate: (() => {
             if (!attendee.createdAt) return 'Not Available';
@@ -186,7 +197,7 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
     });
 
     return Object.values(grouped);
-  }, [allAttendees, userContacts, waitlistPositions]);
+  }, [allAttendees, userContacts, waitlistPositions, isGuestNonLoggedIn]);
 
   // Filter attendees based on search and status
   const filteredAttendees = useMemo(() => {
@@ -341,11 +352,13 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
       ['Spots Remaining', event.maxAttendees ? Math.max(0, event.maxAttendees - totalPeopleGoing) : 'N/A'],
       [''],
       ['DETAILED ATTENDEE LIST'],
-      ['Name', 'Status', 'Additional Family', 'Total People', 'Email', 'Phone', 'RSVP Date', 'User ID'],
+      ['Name', 'Status', 'Guest RSVP', 'Login Type', 'Additional Family', 'Total People', 'Email', 'Phone', 'RSVP Date', 'User ID'],
       // Attendee data
       ...(Array.isArray(filteredAttendees) ? filteredAttendees.map((attendee) => [
         attendee.name,
         attendee.status,
+        attendee.isGuestNonLoggedIn ? 'Yes' : 'No',
+        attendee.isGuestNonLoggedIn ? 'Non-Logged-In Guest' : 'Member/Logged-In',
         attendee.familyCount, // Only additional family members
         attendee.familyCount + 1, // Total people (primary + family)
         attendee.email,
@@ -478,6 +491,11 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
                             text={`${attendee.displayName}${attendee.familyCount > 0 ? ` (+${attendee.familyCount})` : ''}`} 
                             className="text-sm font-medium text-gray-900 flex-1" 
                           />
+                          {isAdmin && attendee.isGuestNonLoggedIn && (
+                            <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                              Guest (Non-Logged-In)
+                            </span>
+                          )}
                         </div>
                       </td>
 
@@ -539,6 +557,11 @@ export const WhosGoingTab: React.FC<WhosGoingTabProps> = ({
                         text={`${attendee.displayName}${attendee.familyCount > 0 ? ` (+${attendee.familyCount})` : ''}`} 
                         className="text-sm font-medium text-gray-900 flex-1" 
                       />
+                      {isAdmin && attendee.isGuestNonLoggedIn && (
+                        <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                          Guest
+                        </span>
+                      )}
                       <span
                         className={[
                           "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium shrink-0",

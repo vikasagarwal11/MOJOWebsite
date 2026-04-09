@@ -77,3 +77,4 @@ scripts/log-reader-key.json
 !/*/*/*/*/*/README.md
 
 extensions/send-email-params.env
+!docs/mobile-rsvp-architecture.md

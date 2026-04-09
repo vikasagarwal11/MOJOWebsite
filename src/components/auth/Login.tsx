@@ -1,40 +1,47 @@
 // src/components/auth/Login.tsx
-import { zodResolver } from '@hookform/resolvers/zod';
-import type { ConfirmationResult } from 'firebase/auth';
-import { Phone, Shield } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
-import toast from 'react-hot-toast';
-import { Link, useNavigate } from 'react-router-dom';
-import { z } from 'zod';
-import { useAuth } from '../../contexts/AuthContext';
-import { normalizeUSPhoneToE164OrNull } from '../../utils/phone';
+import { zodResolver } from "@hookform/resolvers/zod";
+import type { ConfirmationResult } from "firebase/auth";
+import { Phone, Shield } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import toast from "react-hot-toast";
+import { Link, useNavigate } from "react-router-dom";
+import { z } from "zod";
+import { useAuth } from "../../contexts/AuthContext";
+import { normalizeUSPhoneToE164OrNull } from "../../utils/phone";
 
 // Keep the schema loose; we’ll do real normalization/validation in submit
 const phoneSchema = z.object({
-  phoneNumber: z.string().min(7, 'Please enter your phone number'),
+  phoneNumber: z.string().min(7, "Please enter your phone number"),
   smsConsent: z.literal(true, {
-    errorMap: () => ({ message: 'Please provide consent to receive SMS/calls on this number.' }),
+    errorMap: () => ({
+      message:
+        "Please check the consent box to continue. We need your permission to send verification/login/account update calls or SMS to this phone number.",
+    }),
   }),
 });
 
 const codeSchema = z.object({
-  verificationCode: z.string().min(6, 'Verification code must be 6 digits'),
+  verificationCode: z.string().min(6, "Verification code must be 6 digits"),
 });
 
 type PhoneFormData = z.infer<typeof phoneSchema>;
 type CodeFormData = z.infer<typeof codeSchema>;
 
 const Login: React.FC = () => {
-  const [step, setStep] = useState<'phone' | 'code'>('phone');
+  const [step, setStep] = useState<"phone" | "code">("phone");
   const [isLoading, setIsLoading] = useState(false);
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [confirmationResult, setConfirmationResult] =
+    useState<ConfirmationResult | null>(null);
   const [smsConsentGiven, setSmsConsentGiven] = useState(false);
   const { sendVerificationCode, verifyCode, checkIfUserExists } = useAuth();
   const navigate = useNavigate();
 
-  const phoneForm = useForm<PhoneFormData>({ resolver: zodResolver(phoneSchema) });
-  const codeForm  = useForm<CodeFormData>({ resolver: zodResolver(codeSchema) });
+  const phoneForm = useForm<PhoneFormData>({
+    resolver: zodResolver(phoneSchema),
+  });
+  const codeForm = useForm<CodeFormData>({ resolver: zodResolver(codeSchema) });
+  const smsConsentChecked = !!phoneForm.watch("smsConsent");
 
   // Safari fix: Clear any stale confirmation results on mount
   useEffect(() => {
@@ -46,119 +53,145 @@ const Login: React.FC = () => {
   }, []);
 
   const onPhoneSubmit = async (data: PhoneFormData) => {
+    if (!data.smsConsent) {
+      phoneForm.setError("smsConsent", {
+        message:
+          "Please check the consent box to continue. We need your permission to send verification/login/account update calls or SMS to this phone number.",
+      });
+      return;
+    }
     setSmsConsentGiven(!!data.smsConsent);
     // Normalize to E.164 (+1XXXXXXXXXX) for Firebase
     const e164 = normalizeUSPhoneToE164OrNull(data.phoneNumber);
     if (!e164) {
-      phoneForm.setError('phoneNumber', {
-        message: 'Please enter a valid US number (e.g., 212 555 0123).',
+      phoneForm.setError("phoneNumber", {
+        message: "Please enter a valid US number (e.g., 212 555 0123).",
       });
       return; // don't call Firebase with an invalid number
     }
 
     setIsLoading(true);
     try {
-      console.log('🔍 Login: Checking if phone number is registered...');
-      
+      console.log("🔍 Login: Checking if phone number is registered...");
+
       // First, check if this phone number is registered
       const userExists = await checkIfUserExists(e164);
       if (!userExists) {
-        console.log('🔍 Login: User not found, showing error message');
-        toast.error('Phone number not registered. Please register first.');
-        phoneForm.setError('phoneNumber', {
-          message: 'This phone number is not registered. Please register first.'
+        console.log("🔍 Login: User not found, showing error message");
+        toast.error("Phone number not registered. Please register first.");
+        phoneForm.setError("phoneNumber", {
+          message:
+            "This phone number is not registered. Please register first.",
         });
         return;
       }
-      
-      console.log('🔍 Login: User found, sending verification code...');
+
+      console.log("🔍 Login: User found, sending verification code...");
       // User exists, send verification code
       const result = await sendVerificationCode(e164);
       setConfirmationResult(result);
-      console.log('🔍 Login: Phone verification successful, switching to code step');
+      console.log(
+        "🔍 Login: Phone verification successful, switching to code step",
+      );
 
       // Clear phone input and code input, switch step, focus code field
-      phoneForm.reset({ phoneNumber: '' });
-      codeForm.reset({ verificationCode: '' });
-      setStep('code');
-      requestAnimationFrame(() => codeForm.setFocus('verificationCode'));
-   } catch (err: any) {
-  console.error('Phone verification error:', err);
+      phoneForm.reset({ phoneNumber: "" });
+      codeForm.reset({ verificationCode: "" });
+      setStep("code");
+      requestAnimationFrame(() => codeForm.setFocus("verificationCode"));
+    } catch (err: any) {
+      console.error("Phone verification error:", err);
 
-  let message = 'Could not send code. Please try again.';
+      let message = "Could not send code. Please try again.";
 
-  switch (err?.code) {
-    case 'auth/invalid-phone-number':
-      message = 'Invalid phone number. Please check and try again.';
-      break;
-    case 'auth/captcha-check-failed':
-      message =
-        "reCAPTCHA failed: add this site’s host to Firebase → Authentication → Authorized domains, then retry.";
-      break;
-    case 'auth/operation-not-allowed':
-      message =
-        'Phone sign-in is disabled. Enable it in Firebase Console → Authentication → Sign-in method.';
-      break;
-    case 'auth/too-many-requests':
-      message = 'Too many attempts. Please wait a minute and try again.';
-      break;
-    case 'auth/network-request-failed':
-      message = 'Network error. Check your connection and try again.';
-      break;
-  }
+      switch (err?.code) {
+        case "auth/invalid-phone-number":
+          message = "Invalid phone number. Please check and try again.";
+          break;
+        case "auth/captcha-check-failed":
+          message =
+            "reCAPTCHA failed: add this site’s host to Firebase → Authentication → Authorized domains, then retry.";
+          break;
+        case "auth/operation-not-allowed":
+          message =
+            "Phone sign-in is disabled. Enable it in Firebase Console → Authentication → Sign-in method.";
+          break;
+        case "auth/too-many-requests":
+          message = "Too many attempts. Please wait a minute and try again.";
+          break;
+        case "auth/network-request-failed":
+          message = "Network error. Check your connection and try again.";
+          break;
+      }
 
-  const lower = String(err?.message || '').toLowerCase();
-  if (lower.includes('hostname match not found')) {
-    message =
-      "This preview host isn’t authorized in Firebase. Add the exact host under Authentication → Authorized domains and retry.";
-  } else if (lower.includes('already been rendered')) {
-    message = 'Security check hiccup. Please try again.';
-  }
+      const lower = String(err?.message || "").toLowerCase();
+      if (lower.includes("hostname match not found")) {
+        message =
+          "This preview host isn’t authorized in Firebase. Add the exact host under Authentication → Authorized domains and retry.";
+      } else if (lower.includes("already been rendered")) {
+        message = "Security check hiccup. Please try again.";
+      }
 
-  phoneForm.setError('phoneNumber', { message });
-}
- finally {
+      phoneForm.setError("phoneNumber", { message });
+    } finally {
       setIsLoading(false);
     }
   };
 
   const onCodeSubmit = async (data: CodeFormData) => {
-    console.log('🔍 Login: onCodeSubmit called with data:', data);
-    console.log('🔍 Login: Current state:', { confirmationResult: !!confirmationResult });
-    
+    console.log("🔍 Login: onCodeSubmit called with data:", data);
+    console.log("🔍 Login: Current state:", {
+      confirmationResult: !!confirmationResult,
+    });
+
     if (!confirmationResult) {
-      console.log('🔍 Login: No confirmationResult, returning');
+      console.log("🔍 Login: No confirmationResult, returning");
       return;
     }
 
     setIsLoading(true);
     try {
-      console.log('🔍 Login: Calling verifyCode with isLogin=true (will preserve existing user data)');
-      console.log('🔍 Login: This is a LOGIN attempt - should only work for existing users');
-      await verifyCode(confirmationResult, data.verificationCode, '', '', '', true, smsConsentGiven, 'v1');
-      console.log('🔍 Login: verifyCode completed successfully, Layout will handle routing based on status');
+      console.log(
+        "🔍 Login: Calling verifyCode with isLogin=true (will preserve existing user data)",
+      );
+      console.log(
+        "🔍 Login: This is a LOGIN attempt - should only work for existing users",
+      );
+      await verifyCode(
+        confirmationResult,
+        data.verificationCode,
+        "",
+        "",
+        "",
+        true,
+        smsConsentGiven,
+        "v1",
+      );
+      console.log(
+        "🔍 Login: verifyCode completed successfully, Layout will handle routing based on status",
+      );
       // Navigate to home - Layout.tsx will automatically redirect pending users to /pending-approval
       // and rejected users to /account-rejected based on their status
-      navigate('/');
+      navigate("/");
     } catch (error) {
-      console.error('🚨 Login: Code verification error:', {
+      console.error("🚨 Login: Code verification error:", {
         error,
         errorCode: (error as any)?.code,
         errorMessage: (error as any)?.message,
-        errorStack: (error as any)?.stack
+        errorStack: (error as any)?.stack,
       });
-      
+
       const errorMessage = (error as any)?.message;
-      
+
       // 🔥 FIX: Handle specific error messages from AuthContext for redirection
-      if (errorMessage?.includes('No account found')) {
-        toast.error('No account found. Please register first.');
+      if (errorMessage?.includes("No account found")) {
+        toast.error("No account found. Please register first.");
         // Reset to phone step and redirect to registration
-        setStep('phone');
+        setStep("phone");
         phoneForm.reset();
-        navigate('/register');
+        navigate("/register");
       } else {
-        toast.error(errorMessage || 'Login failed. Please try again.');
+        toast.error(errorMessage || "Login failed. Please try again.");
       }
     } finally {
       setIsLoading(false);
@@ -174,31 +207,35 @@ const Login: React.FC = () => {
               Welcome Back
             </h2>
             <p className="text-sm sm:text-base text-gray-600 mt-2">
-              {step === 'phone'
-                ? 'Enter your phone number to sign in'
-                : 'Enter the verification code sent to your phone'}
+              {step === "phone"
+                ? "Enter your phone number to sign in"
+                : "Enter the verification code sent to your phone"}
             </p>
-            {step === 'phone' && (
+            {step === "phone" && (
               <div className="text-xs sm:text-sm text-gray-500 mt-2 space-y-1">
                 <p>
-                  Don't have an account?{' '}
+                  Don't have an account?{" "}
                   <button
                     type="button"
-                    onClick={() => navigate('/register')}
+                    onClick={() => navigate("/register")}
                     className="text-[#F25129] hover:text-[#FFC107] font-medium underline touch-target"
                   >
                     Register here
                   </button>
                 </p>
                 <p className="text-xs text-gray-400">
-                  Only registered users can sign in. New users should register first.
+                  Only registered users can sign in. New users should register
+                  first.
                 </p>
               </div>
             )}
           </div>
 
-          {step === 'phone' ? (
-            <form onSubmit={phoneForm.handleSubmit(onPhoneSubmit)} className="space-y-5 sm:space-y-6">
+          {step === "phone" ? (
+            <form
+              onSubmit={phoneForm.handleSubmit(onPhoneSubmit)}
+              className="space-y-5 sm:space-y-6"
+            >
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Phone Number
@@ -206,12 +243,14 @@ const Login: React.FC = () => {
                 <div className="relative">
                   <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 z-10" />
                   <input
-                    {...phoneForm.register('phoneNumber')}
+                    {...phoneForm.register("phoneNumber")}
                     type="tel"
                     inputMode="tel"
                     autoComplete="tel"
                     className={`w-full pl-10 pr-4 py-3 sm:py-3.5 rounded-lg border text-base ${
-                      phoneForm.formState.errors.phoneNumber ? 'border-red-300' : 'border-gray-300'
+                      phoneForm.formState.errors.phoneNumber
+                        ? "border-red-300"
+                        : "border-gray-300"
                     } focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200`}
                     placeholder="e.g. 212 555 0123"
                   />
@@ -228,10 +267,12 @@ const Login: React.FC = () => {
                   <input
                     type="checkbox"
                     className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#F25129] focus:ring-[#F25129]"
-                    {...phoneForm.register('smsConsent')}
+                    {...phoneForm.register("smsConsent")}
                   />
                   <span>
-                    I consent to receive SMS and call notifications for verification, login, and account updates at this phone number.
+                    I consent to receive SMS and call notifications for
+                    verification, login, Event and account updates at this phone
+                    number.
                   </span>
                 </label>
                 {phoneForm.formState.errors.smsConsent && (
@@ -239,18 +280,26 @@ const Login: React.FC = () => {
                     {phoneForm.formState.errors.smsConsent.message}
                   </p>
                 )}
+                {!smsConsentChecked && !phoneForm.formState.errors.smsConsent && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    Required: check this consent to continue.
+                  </p>
+                )}
               </div>
 
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || !smsConsentChecked}
                 className="w-full py-3 sm:py-3.5 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-medium hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed touch-target text-sm sm:text-base"
               >
-                {isLoading ? 'Sending Code...' : 'Send Verification Code'}
+                {isLoading ? "Sending Code..." : "Send Verification Code"}
               </button>
             </form>
           ) : (
-            <form onSubmit={codeForm.handleSubmit(onCodeSubmit)} className="space-y-5 sm:space-y-6">
+            <form
+              onSubmit={codeForm.handleSubmit(onCodeSubmit)}
+              className="space-y-5 sm:space-y-6"
+            >
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Verification Code
@@ -258,14 +307,14 @@ const Login: React.FC = () => {
                 <div className="relative">
                   <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input
-                    {...codeForm.register('verificationCode')}
+                    {...codeForm.register("verificationCode")}
                     type="text"
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     maxLength={6}
                     onInput={(e) => {
                       const t = e.currentTarget;
-                      t.value = t.value.replace(/\D/g, '').slice(0, 6);
+                      t.value = t.value.replace(/\D/g, "").slice(0, 6);
                     }}
                     className="w-full pl-10 pr-4 py-3 sm:py-3.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#F25129] focus:border-transparent transition-all duration-200 text-center text-xl sm:text-2xl font-mono tracking-widest"
                     placeholder="000000"
@@ -285,9 +334,11 @@ const Login: React.FC = () => {
                     // Clear confirmation result to prevent stuck state in Safari
                     setConfirmationResult(null);
                     setIsLoading(false);
-                    codeForm.reset({ verificationCode: '' });
-                    setStep('phone');
-                    requestAnimationFrame(() => phoneForm.setFocus('phoneNumber'));
+                    codeForm.reset({ verificationCode: "" });
+                    setStep("phone");
+                    requestAnimationFrame(() =>
+                      phoneForm.setFocus("phoneNumber"),
+                    );
                   }}
                   className="flex-1 py-3 sm:py-3.5 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors touch-target text-sm sm:text-base"
                 >
@@ -298,7 +349,7 @@ const Login: React.FC = () => {
                   disabled={isLoading}
                   className="flex-1 py-3 sm:py-3.5 px-4 rounded-lg bg-gradient-to-r from-[#F25129] to-[#FFC107] text-white font-medium hover:from-[#E0451F] hover:to-[#E55A2A] focus:ring-2 focus:ring-[#F25129] focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed touch-target text-sm sm:text-base"
                 >
-                  {isLoading ? 'Verifying...' : 'Verify Code'}
+                  {isLoading ? "Verifying..." : "Verify Code"}
                 </button>
               </div>
             </form>
@@ -306,7 +357,7 @@ const Login: React.FC = () => {
 
           <div className="mt-5 sm:mt-6 text-center">
             <p className="text-sm sm:text-base text-gray-600">
-              Don't have an account?{' '}
+              Don't have an account?{" "}
               <Link
                 to="/register"
                 className="text-[#F25129] hover:text-[#E0451F] font-medium transition-colors touch-target"
@@ -317,8 +368,6 @@ const Login: React.FC = () => {
           </div>
         </div>
       </div>
-
-
     </div>
   );
 };

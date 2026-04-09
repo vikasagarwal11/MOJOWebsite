@@ -45,25 +45,9 @@ export const sendGuestOTP = onCall(
                 );
             }
 
-            // Initialize OTP service (Simple version - uses your existing Twilio setup)
+            // Initialize OTP service (uses configured SMS provider)
             const db = getFirestore();
-            const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
-            const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-            const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
-
-            if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
-                throw new HttpsError(
-                    'failed-precondition',
-                    'Twilio configuration not found'
-                );
-            }
-
-            const otpService = new OTPServiceSimple(
-                db,
-                twilioAccountSid,
-                twilioAuthToken,
-                twilioPhoneNumber
-            );
+            const otpService = new OTPServiceSimple(db);
 
             // Send OTP
             const result = await otpService.sendOTP(phone, firstName);

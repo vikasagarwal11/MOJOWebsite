@@ -18,24 +18,9 @@ export const cleanupExpiredSessions = onSchedule(
         try {
             const db = getFirestore();
 
-            // Initialize services (Simple OTP - uses your existing Twilio setup)
+            // Initialize services (Simple OTP - uses configured SMS provider)
             const sessionService = new GuestSessionService(db);
-
-            const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
-            const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-            const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
-
-            if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
-                console.error('Twilio configuration not found');
-                return;
-            }
-
-            const otpService = new OTPServiceSimple(
-                db,
-                twilioAccountSid,
-                twilioAuthToken,
-                twilioPhoneNumber
-            );
+            const otpService = new OTPServiceSimple(db);
 
             // Clean up expired sessions
             const expiredSessionsCount = await sessionService.cleanupExpiredSessions();
