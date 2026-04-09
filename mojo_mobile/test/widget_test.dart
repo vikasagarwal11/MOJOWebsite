@@ -1,0 +1,38 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:network_image_mock/network_image_mock.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:mojo_mobile/core/branding/platform_branding.dart';
+import 'package:mojo_mobile/core/providers/connectivity_provider.dart';
+import 'package:mojo_mobile/core/providers/core_providers.dart';
+import 'package:mojo_mobile/features/onboarding/screens/onboarding_gate_screen.dart';
+import 'package:mojo_mobile/data/models/mojo_event.dart';
+import 'package:mojo_mobile/data/models/mojo_post.dart';
+import 'package:mojo_mobile/main.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('MojoApp shows home', (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({kOnboardingDoneKey: true});
+    mockNetworkImagesFor(() async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            connectivityProvider.overrideWith((ref) => Stream.value([ConnectivityResult.wifi])),
+            platformBrandingProvider.overrideWith((ref) => Stream.value(PlatformBranding.fallback)),
+            upcomingEventsProvider.overrideWith((ref) => Stream.value(const <MojoEvent>[])),
+            pastEventsProvider.overrideWith((ref) => Stream.value(const <MojoEvent>[])),
+            postsFeedProvider.overrideWith((ref) => Stream.value(const <MojoPost>[])),
+          ],
+          child: const MojoApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('MOJO'), findsOneWidget);
+    });
+  });
+}
+
